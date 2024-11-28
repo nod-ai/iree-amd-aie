@@ -3,12 +3,12 @@
 
 //        DEFAULT: hal.executable.variant public @amdaie_pdi_fb target(<"amd-aie", "amdaie-pdi-fb", {target_device = "npu1_4col", ukernels = "none"}>) {
 // ENABLE_UKERNEL: hal.executable.variant public @amdaie_pdi_fb target(<"amd-aie", "amdaie-pdi-fb", {target_device = "npu1_4col", ukernels = "all"}>) {
-func.func @matmul_small(%lhs : tensor<8x16xi32>,
-    %rhs : tensor<16x32xi32>) -> tensor<8x32xi32> {
-  %empty = tensor.empty() : tensor<8x32xi32>
+func.func @matmul_small(%lhs : tensor<16x16xi32>,
+    %rhs : tensor<16x32xi32>) -> tensor<16x32xi32> {
+  %empty = tensor.empty() : tensor<16x32xi32>
   %cst = arith.constant 0 : i32
-  %fill = linalg.fill ins(%cst : i32) outs(%empty : tensor<8x32xi32>) -> tensor<8x32xi32>
-  %2 = linalg.matmul ins(%lhs, %rhs : tensor<8x16xi32>, tensor<16x32xi32>)
-      outs(%fill : tensor<8x32xi32>) -> tensor<8x32xi32>
-  return %2 : tensor<8x32xi32>
+  %fill = linalg.fill ins(%cst : i32) outs(%empty : tensor<16x32xi32>) -> tensor<16x32xi32>
+  %2 = linalg.matmul ins(%lhs, %rhs : tensor<16x16xi32>, tensor<16x32xi32>)
+      outs(%fill : tensor<16x32xi32>) -> tensor<16x32xi32>
+  return %2 : tensor<16x32xi32>
 }

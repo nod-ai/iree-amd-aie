@@ -190,17 +190,7 @@ jobs:
           python build_tools/ci/cpu_comparison/run.py \
             /c/test_aie_vs_cpu \
             $PWD/iree-install \
-            $PWD/llvm-aie -v \
+            --peano_dir=$PWD/llvm-aie -v \
             --target_device "npu1_4col" \
-            --device-hal=xrt
-
-      - name: Python tests
-        run: |
-          ls $env:XILINX_XRT
-          .\.venv\Scripts\Activate.ps1
-          mkdir temp
-          pytest tests -sv `
-            --basetemp=$PWD\temp `
-            --iree-install-dir="$PWD\iree-install" `
-            --peano-install-dir="$PWD\llvm-aie" `
-            --device-hal=xrt
+            --device_hal=xrt \
+            --skip_tests "Performance"

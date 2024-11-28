@@ -18,30 +18,28 @@
 #      `iree-e2e-matmul-test` to include support for the runtime HAL
 #      driver/device you wish to test.
 #   2. Update the paths in this script or specify them via environment variables
-#   3. Run: `./run_matmul_tests.sh <output_dir_path> <iree_install_path> [<peano_install_path>] [<xrt_path>] [<vitis_path>] [do_signing]`
+#   3. Run: `./run_matmul_tests.sh <output_dir_path> <iree_install_path> [<peano_install_path>] [<xrt_path>]`
 #      The directories above in square brackets are optional, the first 2 directories are required.
 
 set -euo pipefail
 
-if [ "$#" -lt 2 ] || [ "$#" -gt 5 ]; then
+if [ "$#" -lt 2 ] || [ "$#" -gt 4 ]; then
 
    # The expected parameters are
    #    1) <output-dir>            (required)
    #    2) <iree-install-dir>      (required)
    #    3) <peano-install-dir>     (optional)
-   #    4) <vitis-install-dir>     (optional)
-   #    5) <xrt-dir>               (optional)
+   #    4) <xrt-dir>               (optional)
     echo -e "Illegal number of parameters: $#, expected 2-5 parameters." \
             "\n The parameters are as follows:" \
             "\n     1) <output-dir>               (required)" \
             "\n     2) <iree-install-dir>         (required)" \
             "\n     3) <peano-install-dir>        (optional)" \
-            "\n     4) <vitis-install-dir>        (optional)" \
-            "\n     5) <xrt-dir>                  (optional)" \
+            "\n     4) <xrt-dir>                  (optional)" \
             "\n Example, dependent on environment variables:" \
             "\n     ./run_matmul_test.sh  " \
             "results_dir_tmp  \$IREE_INSTALL_DIR " \
-            "\$PEANO_INSTALL_DIR  /opt/xilinx/xrt  \$VITIS_INSTALL_PATH"
+            "\$PEANO_INSTALL_DIR  /opt/xilinx/xrt "
     exit 1
 fi
 
@@ -102,18 +100,12 @@ if [ ! -d "${PEANO}" ]; then
   exit 1
 fi
 
-# Parameter 4) <vitis-install-dir>
-if [ -z "${4-}" ]; then
-  VITIS=/opt/Xilinx/Vitis/2024.2
-else
-  VITIS=`realpath "$4"`
-fi
 
-# Parameter 5) <xrt-dir>
+# Parameter 4) <xrt-dir>
 if [ -z "${5-}" ]; then
   XRT_DIR=/opt/xilinx/xrt
 else
-  XRT_DIR=`realpath "$5"`
+  XRT_DIR=`realpath "$4"`
 fi
 if [ -f "$XRT_DIR/setup.sh" ]; then
   source $XRT_DIR/setup.sh
@@ -183,10 +175,6 @@ function run_matmul_test() {
 
   local amd_aie_install_path="${IREE_INSTALL_DIR}"
 
-  local vitis_path="${VITIS}"
-
-  local use_chess="false"
-
   local tile_pipeline="pad-pack"
 
   # By default, the m,n,k provided are used, and there are no dynamic tensor
@@ -205,9 +193,6 @@ function run_matmul_test() {
   # The maximum number of elements to check for correctness.
   # See https://github.com/iree-org/iree/blob/tools/testing/e2e/test_utils.c#L40-L47
   local max_elements_to_check="20000"
-
-  # The default is to not use microkernels.
-  local use_ukernel="0"
 
   # After compilation, the test with be run 'num_repeat_runs' times. This option (when
   # set greater than 1) is useful for shapes which might be 'flakey' and fail
@@ -263,10 +248,6 @@ function run_matmul_test() {
         acc_type="$2"
         shift 2
         ;;
-      --use_ukernel)
-        use_ukernel="$2"
-        shift 2
-        ;;
       --target_device)
         target_device="$2"
         shift 2
@@ -281,14 +262,6 @@ function run_matmul_test() {
         ;;
       --amd_aie_install_path)
         amd_aie_install_path="$2"
-        shift 2
-        ;;
-      --use_chess)
-        use_chess="$2"
-        shift 2
-        ;;
-     --vitis_path)
-        vitis_path="$2"
         shift 2
         ;;
       --tile_pipeline)
@@ -398,8 +371,6 @@ function run_matmul_test() {
                       --iree-amdaie-tile-pipeline=${tile_pipeline} \
                       --iree-amd-aie-peano-install-dir=${peano_install_path} \
                       --iree-amd-aie-install-dir=${amd_aie_install_path} \
-                      --iree-amd-aie-vitis-install-dir=${vitis_path} \
-                      --iree-amd-aie-enable-chess=${use_chess} \
                       --iree-amdaie-enable-packet-flow=${enable_packet_flow} \
                       --iree-hal-dump-executable-files-to=$PWD \
                       --iree-amdaie-device-hal=${DEVICE_HAL} \
@@ -408,10 +379,6 @@ function run_matmul_test() {
                       --mlir-elide-resource-strings-if-larger=10 \
                       --iree-amd-aie-show-invoked-commands"
 
-  if [ $use_ukernel -ne 0 ]; then
-    compilation_flags="${compilation_flags} \
-                        --iree-amdaie-enable-ukernels=all"
-  fi
 
   set +e
 
@@ -537,7 +504,6 @@ run_matmul_test \
     --target_device "npu1_4col" \
     --peano_install_path "${PEANO}" \
     --amd_aie_install_path "${IREE_INSTALL_DIR}" \
-    --vitis_path  "${VITIS}" \
     --lower_to_aie_pipeline "air" \
     --tile_pipeline "pad-pack" \
     --m "64" \
@@ -548,23 +514,8 @@ run_matmul_test \
     --expect_compile_failure "0" \
     --do_transpose_rhs "0" \
     --max_elements_to_check "0" \
-    --use_ukernel "0" \
     --num_repeat_runs "2"
 
-###################################################################
-# MLIR-AIR Matmul tests
-###################################################################
-
-if [ -d "$VITIS" ]; then
-  run_matmul_test \
-      --name_prefix "ukern" \
-      --lower_to_aie_pipeline "air" \
-      --tile_pipeline "pad-pack" \
-      --lhs_rhs_type "bf16" \
-      --acc_type "f32" \
-      --m "256"  --k "256" --n "256" \
-      --use_ukernel "1"
-fi
 
 # Example of a run with a group of 2+ matmuls. Currently this test is passed
 # the flag '--num_repeat_runs 0" as there is currently an issue with the runtime if
@@ -692,15 +643,6 @@ bf16_i8_shapes_medium=(
   '4096x2048x4096'
 )
 
-bf16_ukernel_shapes_small=(
-  '64x64x64'
-  '256x256x256'
-)
-
-bf16_ukernel_shapes_medium=(
-  '128x512x512'
-  '512x4096x2048'
-)
 
 run_matmul_test_on_shapes ${bf16_i8_shapes_small[@]} \
     --name_prefix "small_bf16" \
@@ -735,66 +677,7 @@ run_matmul_test_on_shapes ${bf16_i8_shapes_medium[@]} \
     --acc_type "i32" \
     --num_repeat_runs "2"
 
-if [ -d "$VITIS" ]; then
-  run_matmul_test_on_shapes ${bf16_ukernel_shapes_small[@]} \
-      --name_prefix "small_ukern" \
-      --lower_to_aie_pipeline "objectFifo" \
-      --tile_pipeline "pack-peel" \
-      --lhs_rhs_type "bf16" \
-      --acc_type "f32" \
-      --num_repeat_runs "2" \
-      --use_ukernel "1"
 
-  run_matmul_test_on_shapes ${bf16_ukernel_shapes_medium[@]} \
-      --name_prefix "medium_ukern" \
-      --lower_to_aie_pipeline "objectFifo" \
-      --tile_pipeline "pack-peel" \
-      --lhs_rhs_type "bf16" \
-      --acc_type "f32" \
-      --num_repeat_runs "2" \
-      --use_ukernel "1"
-fi
-
-###################################################################
-# Chess tests
-###################################################################
-
-if [ -d "$VITIS" ]; then
-
-  run_matmul_test \
-      --name_prefix "chess_i32_matmul" \
-      --lhs_rhs_type "i32" \
-      --acc_type "i32" \
-      --m "32" \
-      --n "32" \
-      --k "32" \
-      --use_chess "1" \
-      --num_repeat_runs "10"
-
-  run_matmul_test \
-      --name_prefix "chess_bf16_ukernel" \
-      --lhs_rhs_type "bf16" \
-      --acc_type "f32" \
-      --m "64" \
-      --n "64" \
-      --k "64" \
-      --use_chess "1" \
-      --num_repeat_runs "10" \
-      --use_ukernel "1"
-
-  run_matmul_test \
-      --name_prefix "chess_i32_matmul_multi_core" \
-      --lower_to_aie_pipeline "objectFifo" \
-      --tile_pipeline "pack-peel" \
-      --lhs_rhs_type "i32" \
-      --acc_type "i32" \
-      --m "32" \
-      --n "32" \
-      --k "32" \
-      --use_chess "1" \
-      --num_repeat_runs "10"
-
-fi
 
 # note this will not actually show any devices because --xrt_lite_n_core_rows --xrt_lite_n_core_cols are not passed
 # which i have omitted to make the conditional slightly more succinct

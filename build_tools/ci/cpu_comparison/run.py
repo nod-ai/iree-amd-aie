@@ -40,21 +40,31 @@ def run_conv_test(config, aie_compilation_flags, filename, n_repeats):
 
 class BaseTest(ABC):
     """
-    Base class to be inherited by all tests. The derived instances will be
-    created specifying the intended target device(s) they're to be run on; and
-    will accordingly be `run` if the intended target device(s) contains
-    the `target_device` found in `config`. The default set of targets to run on
-    is the singleton set `["npu1_4col"]`.
+    Base class to be inherited by all tests.
 
-    An instance of this class has a member `aie_compilation_flags`
-    which are additional flags to be passed to the AIE backend compiler.
+    Args:
+       run_on_target: The derived instances will be created specifying the
+          intended target device(s) they're to be run on; and will accordingly
+          be `run` if the intended target device(s) contains the `target_device`
+          found in `config`. The default set of targets to run on is the
+          singleton set `["npu1_4col"]`.
 
-    Compilation flags can therefore be injected into tests in 2 ways:
-    1) via the constructor of this base class
-    2) via the `add_aie_compilation_flags` method
+       aie_compilation_flags: An instance of this class has a member
+          `aie_compilation_flags` which are additional flags to be passed to
+          the AIE backend compiler. Compilation flags can therefore be injected
+          into tests in 2 ways: 1) via the constructor of this base class
+          2) via the `add_aie_compilation_flags` method
+
+       use_chess: Compile for AIE using chess and not peano, even
+          if a path for peano is provided.
     """
 
-    def __init__(self, run_on_target=["npu1_4col"], aie_compilation_flags=None):
+    def __init__(
+        self,
+        run_on_target=["npu1_4col"],
+        aie_compilation_flags=None,
+        use_chess=False,
+    ):
         self.run_on_target = [] if run_on_target is None else run_on_target
         self.aie_compilation_flags = (
             [] if aie_compilation_flags is None else aie_compilation_flags
@@ -65,6 +75,13 @@ class BaseTest(ABC):
         # NB: derived classes should add labels to this list in their
         # constructor, never overwrite it.
         self.labels = ["All"]
+
+        self.use_chess = use_chess
+        if use_chess:
+            self.labels.append("Chess")
+            self.add_aie_compilation_flags([f"--iree-amd-aie-enable-chess=1"])
+        else:
+            self.labels.append("Peano")
 
     def add_aie_compilation_flags(self, flags):
         if flags:
@@ -78,13 +95,38 @@ class BaseTest(ABC):
             self.aie_compilation_flags = list(set(self.aie_compilation_flags))
 
     def run(self, config):
-        if config.target_device in self.run_on_target:
-            return self._execute(config)
-        return False
+
+        # If the target device is not in the set of devices to run on, then
+        # return False. ie. don't raise an error because is legitimate,
+        # we just won't run the test.
+        if config.target_device not in self.run_on_target:
+            return False
+
+        # If use_chess=1, and config has not provided a valid
+        # path to vitis, then don't run the test. The asymmetry between
+        # logic for peano and chess is because we don't expect everyone
+        # running this script to have chess (currently Windows CI for example
+        # does not).
+        if self.use_chess and not config.vitis_dir:
+            return False
+
+        # If use_chess=0, and config has not provided a valid
+        # path to peano, then bail: a path to peano must be provided.
+        if not self.use_chess and not config.peano_dir:
+            raise RuntimeError("Peano path not provided, and use_chess=False")
+
+        # Call into test-specific code to run the test.
+        return self._execute(config)
 
     @abstractmethod
     def _execute(self, config):
-        raise RuntimeError("Derived class must implement this method")
+        raise NotImplementedError("Derived class must implement this method")
+
+    def get_dir(self, config):
+        return config.get_test_dir(self.name)
+
+    def get_filename(self, config):
+        return self.get_dir(config) / f"{self.name}.mlir"
 
 
 class ConvolutionFromTemplate(BaseTest):
@@ -103,8 +145,7 @@ class ConvolutionFromTemplate(BaseTest):
 
     def _execute(self, config):
         # Generate MLIR file:
-        output_dir = config.output_dir
-        filename = output_dir / f"{self.name}.mlir"
+        filename = self.get_filename(config)
         self.generator.write_to_file(filename)
         # Perform numerical comparison between AIE and CPU:
         return run_conv_test(config, self.aie_compilation_flags, filename, n_repeats=2)
@@ -160,22 +201,45 @@ class BaseMatmul(BaseTest):
         lower_to_aie_pipeline="objectFifo",
         tile_pipeline="pack-peel",
         n_repeats=1,
+        use_chess=False,
+        function_name="matmul",
+        n_kernel_runs=1,
     ):
-        super().__init__(run_on_target, aie_compilation_flags)
+        """
+        Base class for all variants of dispatches with a matmul, currently
+        vanilla matmuls, and matmuls with fused elementwise operations.
+        """
+        super().__init__(run_on_target, aie_compilation_flags, use_chess)
+        self.labels.append("BaseMatmul")
         self.M = M
         self.N = N
         self.K = K
         self.input_type = input_type
         self.acc_type = acc_type
-        self.tile_pipeline = tile_pipeline
-        self.lower_to_aie_pipeline = lower_to_aie_pipeline
-        self.use_ukernel = use_ukernel
         self.n_repeats = n_repeats
-        self.labels.append("Matmul")
+        self.n_kernel_runs = n_kernel_runs
+
+        self.tile_pipeline = tile_pipeline
+        if tile_pipeline == "pack-peel":
+            self.labels.append("PackPeel")
+        elif tile_pipeline == "pad-pack":
+            self.labels.append("PadPack")
+
+        self.lower_to_aie_pipeline = lower_to_aie_pipeline
+        if lower_to_aie_pipeline == "air":
+            self.labels.append("Air")
+        elif lower_to_aie_pipeline == "objectFifo":
+            self.labels.append("ObjectFifo")
+
+        self.use_ukernel = use_ukernel
         if use_ukernel:
             self.labels.append("UKernel")
+        self.function_name = function_name
 
-    def vs_cpu(self, config, filename):
+    def vs_cpu(self, config):
+
+        filename = self.get_filename(config)
+
         if self.use_ukernel and not config.vitis_dir:
             return False
 
@@ -191,9 +255,31 @@ class BaseMatmul(BaseTest):
 
         return True
 
-    def generate(self, filename, template_name):
+    def benchmark(self, config):
+
+        filename = self.get_filename(config)
+
+        if self.use_ukernel and not config.vitis_dir:
+            return False
+
+        benchmark_aie(
+            config=config,
+            aie_compilation_flags=self.aie_compilation_flags,
+            test_file=filename,
+            use_ukernel=self.use_ukernel,
+            tile_pipeline=self.tile_pipeline,
+            lower_to_aie_pipeline=self.lower_to_aie_pipeline,
+            function_name=self.function_name,
+            n_repeats=self.n_repeats,
+            n_kernel_runs=self.n_kernel_runs,
+        )
+
+        return True
+
+    def generate(self, config, template_name):
+
         generate_matmul_test(
-            filename,
+            self.get_filename(config),
             template_name,
             self.M,
             self.N,
@@ -219,19 +305,18 @@ class MatmulFullBias(BaseMatmul):
             acc_type=acc_type,
             lower_to_aie_pipeline="air",
         )
-        self.name = f"matmul_full_bias_{M}_{N}_{K}_{input_type}_{acc_type}"
         self.labels.append("MatmulFullBias")
+        self.name = f"matmul_full_bias_{M}_{N}_{K}_{input_type}_{acc_type}"
 
     def _execute(self, config):
-        filename = config.output_dir / f"{self.name}.mlir"
         matmul_template_dir = config.file_dir / "matmul_template"
         template_name = matmul_template_dir / "matmul_bias_MxK_KxN_MxN.mlir"
-        self.generate(filename, template_name)
-        self.vs_cpu(config, filename)
+        self.generate(config, template_name)
+        self.vs_cpu(config)
         return True
 
 
-class VanillaMatmul(BaseMatmul):
+class Matmul(BaseMatmul):
     """
     A test of the form matmul(A,B) where A:MxK, B:KxN
     """
@@ -248,8 +333,73 @@ class VanillaMatmul(BaseMatmul):
         run_on_target=["npu1_4col"],
         additional_labels=None,
         aie_compilation_flags=None,
+        tile_pipeline="pack-peel",
+        lower_to_aie_pipeline="objectFifo",
         n_repeats=1,
+        use_chess=False,
     ):
+        super().__init__(
+            run_on_target=run_on_target,
+            aie_compilation_flags=aie_compilation_flags,
+            M=M,
+            N=N,
+            K=K,
+            input_type=input_type,
+            acc_type=acc_type,
+            tile_pipeline=tile_pipeline,
+            use_ukernel=use_ukernel,
+            n_repeats=n_repeats,
+            lower_to_aie_pipeline=lower_to_aie_pipeline,
+            use_chess=use_chess,
+        )
+        self.labels.append("Matmul")
+
+        self.name = f"vanilla_matmul_{M}_{N}_{K}_{input_type}_{acc_type}"
+        if name_suffix:
+            self.name += f"_{name_suffix}"
+        if use_ukernel:
+            self.name += "_ukernel"
+        if additional_labels:
+            self.labels += additional_labels
+        self.use_ukernel = use_ukernel
+
+    def _execute(self, config):
+        matmul_template_dir = config.file_dir / "matmul_template"
+        template_name = matmul_template_dir / "matmul_MxK_KxN.mlir"
+        self.generate(config, template_name)
+        self.vs_cpu(config)
+
+        return True
+
+
+class MatmulBenchmark(BaseMatmul):
+    """
+    A test of the form matmul(A,B) where A:MxK, B:KxN
+    """
+
+    benchmark_compilation_flags = [
+        "--iree-amdaie-enable-infinite-loop-around-core-block=true"
+    ]
+
+    def __init__(
+        self,
+        M,
+        N,
+        K,
+        input_type,
+        acc_type,
+        name_suffix="",
+        use_ukernel=False,
+        run_on_target=["npu1_4col"],
+        additional_labels=None,
+        aie_compilation_flags=None,
+        n_repeats=1,
+        n_kernel_runs=1,
+    ):
+        aie_compilation_flags = (
+            [] if aie_compilation_flags is None else aie_compilation_flags
+        )
+        aie_compilation_flags += MatmulBenchmark.benchmark_compilation_flags
         super().__init__(
             run_on_target=run_on_target,
             aie_compilation_flags=aie_compilation_flags,
@@ -261,26 +411,24 @@ class VanillaMatmul(BaseMatmul):
             tile_pipeline="pack-peel",
             use_ukernel=use_ukernel,
             n_repeats=n_repeats,
+            n_kernel_runs=n_kernel_runs,
         )
 
-        self.name = f"vanilla_matmul_{M}_{N}_{K}_{input_type}_{acc_type}"
+        self.name = f"vanilla_matmul_benchmark_{M}_{N}_{K}_{input_type}_{acc_type}"
         if name_suffix:
             self.name += f"_{name_suffix}"
         if use_ukernel:
             self.name += "_ukernel"
-        self.labels.append("VanillaMatmul")
+        self.labels.append("MatmulBenchmark")
         if additional_labels:
             self.labels += additional_labels
         self.use_ukernel = use_ukernel
 
     def _execute(self, config):
-        self.filename = config.output_dir / f"{self.name}.mlir"
         matmul_template_dir = config.file_dir / "matmul_template"
         template_name = matmul_template_dir / "matmul_MxK_KxN.mlir"
-        self.generate(self.filename, template_name)
-        self.vs_cpu(config, self.filename)
-
-        return True
+        self.generate(config, template_name)
+        return self.benchmark(config)
 
 
 class MatmulThinBias(BaseMatmul):
@@ -309,18 +457,17 @@ class MatmulThinBias(BaseMatmul):
             lower_to_aie_pipeline="air",
             use_ukernel=use_ukernel,
         )
+        self.labels.append("MatmulThinBias")
 
         self.name = f"matmul_thin_bias_{M}_{N}_{K}_{input_type}_{acc_type}"
         if use_ukernel:
             self.name += "_ukernel"
-        self.labels.append("MatmulThinBias")
 
     def _execute(self, config):
-        self.filename = config.output_dir / f"{self.name}.mlir"
         matmul_template_dir = config.file_dir / "matmul_template"
         template_name = matmul_template_dir / "matmul_bias_MxK_KxN_N.mlir"
-        self.generate(self.filename, template_name)
-        return self.vs_cpu(config, self.filename)
+        self.generate(config, template_name)
+        return self.vs_cpu(config)
 
 
 class BatchMatmul(BaseMatmul):
@@ -340,17 +487,16 @@ class BatchMatmul(BaseMatmul):
             tile_pipeline="pack-peel",
             n_repeats=1,
         )
+        self.labels.append("BatchMatmul")
 
         self.name = f"batch_matmul_{B}_{M}_{N}_{K}_{input_type}_{acc_type}"
-        self.labels.append("BatchMatmul")
         self.B = B
 
     def _execute(self, config):
-        self.filename = config.output_dir / f"{self.name}.mlir"
         matmul_template_dir = config.file_dir / "matmul_template"
         template_name = matmul_template_dir / "batch_matmul_BxMxK_BxKxN.mlir"
         generate_matmul_test(
-            self.filename,
+            self.get_filename(config),
             template_name,
             k=self.K,
             b=self.B,
@@ -359,7 +505,7 @@ class BatchMatmul(BaseMatmul):
             lhs_rhs_type=self.input_type,
             acc_type=self.acc_type,
         )
-        return self.vs_cpu(config, self.filename)
+        return self.vs_cpu(config)
 
 
 class MatmulTruncf(BaseMatmul):
@@ -389,6 +535,7 @@ class MatmulTruncf(BaseMatmul):
             tile_pipeline="pack-peel",
             n_repeats=1,
         )
+        self.labels.append("MatmulTruncf")
 
         # Assertions on shapes: Check that lhs is MxK, rhs is KxM, and expected_out is MxM
         assert lhs.shape == (M, K)
@@ -396,19 +543,17 @@ class MatmulTruncf(BaseMatmul):
         assert expected_out.shape == (M, M)
 
         self.name = f"matmul_truncf_{M}_{K}_{input_type}_{acc_type}"
-        self.labels.append("MatmulTruncf")
         self.lhs = lhs
         self.rhs = rhs
         self.expected_out = expected_out
 
     def _execute(self, config):
-        self.filename = config.output_dir / f"{self.name}.mlir"
         matmul_template_dir = config.file_dir / "matmul_template"
         template_name = matmul_template_dir / "matmul_truncf_MxK_KxN.mlir"
-        self.generate(self.filename, template_name)
-
+        self.generate(config, template_name)
+        filename = self.get_filename(config)
         input_args = generate_inputs(
-            self.filename, config.output_dir, 1, {1: self.lhs, 2: self.rhs}
+            filename, self.get_dir(config), 1, {1: self.lhs, 2: self.rhs}
         )
         """
         currently without enabling loop coalescing and unit dimension collapsing
@@ -425,7 +570,7 @@ class MatmulTruncf(BaseMatmul):
         aie_vs_baseline(
             config=config,
             aie_compilation_flags=self.aie_compilation_flags,
-            test_file=self.filename,
+            test_file=self.get_filename(config),
             input_args=input_args,
             baseline_value=self.expected_out,
             use_ukernel=self.use_ukernel,
@@ -436,7 +581,7 @@ class MatmulTruncf(BaseMatmul):
             atol=0,
             lower_to_aie_pipeline=self.lower_to_aie_pipeline,
             n_repeats=self.n_repeats,
-            output_type=get_output_type(self.filename),
+            output_type=get_output_type(self.get_filename(config)),
         )
 
         return True
@@ -533,6 +678,8 @@ def generate_aie_vmfb(
 
     additional_flags = aie_compilation_flags
 
+    test_dir = config.get_test_dir(name)
+
     aie_compilation_flags = [
         config.iree_compile_exe,
         test_file,
@@ -542,10 +689,9 @@ def generate_aie_vmfb(
         f"--iree-amdaie-lower-to-aie-pipeline={lower_to_aie_pipeline}",
         "--iree-amdaie-matmul-elementwise-fusion",
         f"--iree-amd-aie-peano-install-dir={config.peano_dir}",
-        f"--iree-amd-aie-install-dir={config.iree_install_dir}",
+        f"--iree-amd-aie-install-dir={config.iree_dir}",
         f"--iree-amd-aie-vitis-install-dir={config.vitis_dir}",
-        f"--iree-amd-aie-enable-chess={int(config.use_chess)}",
-        f"--iree-hal-dump-executable-files-to={config.output_dir}",
+        f"--iree-hal-dump-executable-files-to={test_dir}",
         f"--iree-amdaie-device-hal={config.device_hal}",
         "--iree-scheduling-optimize-bindings=false",
         "--iree-hal-memoization=false",
@@ -566,16 +712,16 @@ def generate_aie_vmfb(
 
     aie_compilation_flags += [
         "-o",
-        config.output_dir / f"{name}_aie.vmfb",
+        test_dir / f"{name}_aie.vmfb",
     ]
 
     start = time.monotonic_ns()
-    shell_out(aie_compilation_flags, config.output_dir, config.verbose)
+    shell_out(aie_compilation_flags, test_dir, config.verbose)
     compile_time = time.monotonic_ns() - start
     if config.verbose:
         print(f"Time spent in compilation: {compile_time // 1e6} [ms]")
 
-    aie_vmfb = config.output_dir / f"{name}_aie.vmfb"
+    aie_vmfb = test_dir / f"{name}_aie.vmfb"
     if not aie_vmfb.exists():
         raise RuntimeError(f"Failed to compile {test_file} to {aie_vmfb}")
 
@@ -587,7 +733,8 @@ def generate_aie_output(config, aie_vmfb, input_args, function_name, name, outpu
     Run a compiled AIE module (aie_vmfb), returning a numpy array of the output.
     """
 
-    aie_bin = config.output_dir / f"{name}_aie.bin"
+    test_dir = config.get_test_dir(name)
+    aie_bin = test_dir / f"{name}_aie.bin"
     run_args = [
         config.iree_run_exe,
         f"--module={aie_vmfb}",
@@ -606,13 +753,49 @@ def generate_aie_output(config, aie_vmfb, input_args, function_name, name, outpu
         shell_out(config.reset_npu_script, verbose=config.verbose)
 
     start = time.monotonic_ns()
-    shell_out(run_args, config.output_dir, config.verbose)
+    shell_out(run_args, test_dir, config.verbose)
     run_time = time.monotonic_ns() - start
 
     if config.verbose:
         print(f"Time spent in running the model: {run_time // 1e6} [ms]")
 
     return np_from_binfile(aie_bin, output_type)
+
+
+def benchmark_aie_kernel_time(
+    config, aie_vmfb, input_args, function_name, name, n_repeats, n_kernel_runs
+):
+    """
+    Benchmark a compiled AIE module's (aie_vmfb) kernel time, average over the specified number of runs.
+    """
+    test_dir = config.get_test_dir(name)
+    aie_bin = test_dir / f"{name}_aie.bin"
+    run_args = [
+        config.iree_benchmark_exe,
+        f"--module={aie_vmfb}",
+        *input_args,
+        f"--device={config.device_hal}",
+        f"--benchmark_repetitions={n_repeats}",
+        f"--batch_size={n_kernel_runs}",
+        f"--xrt_lite_n_kernel_runs={n_kernel_runs}",
+    ]
+    if function_name:
+        run_args += [f"--function={function_name}"]
+    if config.xrt_lite_n_core_rows is not None:
+        run_args += [f"--xrt_lite_n_core_rows={config.xrt_lite_n_core_rows}"]
+    if config.xrt_lite_n_core_cols is not None:
+        run_args += [f"--xrt_lite_n_core_cols={config.xrt_lite_n_core_cols}"]
+
+    if config.reset_npu_between_runs:
+        shell_out(config.reset_npu_script, verbose=config.verbose)
+
+    start = time.monotonic_ns()
+    shell_out(run_args, test_dir, config.verbose)
+    run_time = time.monotonic_ns() - start
+
+    if config.verbose:
+        print(f"Time spent in running the model: {run_time // 1e6} [ms]")
+    return True
 
 
 def generate_llvm_cpu_output(
@@ -628,7 +811,8 @@ def generate_llvm_cpu_output(
     of the output.
     """
 
-    cpu_vmfb = config.output_dir / f"{name}_cpu.vmfb"
+    test_dir = config.get_test_dir(name)
+    cpu_vmfb = test_dir / f"{name}_cpu.vmfb"
     aie_compilation_flags = [
         config.iree_compile_exe,
         test_file,
@@ -637,9 +821,9 @@ def generate_llvm_cpu_output(
         "-o",
         f"{cpu_vmfb}",
     ]
-    shell_out(aie_compilation_flags, workdir=config.output_dir, verbose=config.verbose)
+    shell_out(aie_compilation_flags, workdir=test_dir, verbose=config.verbose)
 
-    cpu_bin = config.output_dir / f"{name}_cpu.bin"
+    cpu_bin = test_dir / f"{name}_cpu.bin"
     run_args = [
         config.iree_run_exe,
         f"--module={cpu_vmfb}",
@@ -648,7 +832,7 @@ def generate_llvm_cpu_output(
     ]
     if function_name:
         run_args += [f"--function={function_name}"]
-    shell_out(run_args, workdir=config.output_dir, verbose=config.verbose)
+    shell_out(run_args, workdir=test_dir, verbose=config.verbose)
     return np_from_binfile(cpu_bin, output_type)
 
 
@@ -657,14 +841,27 @@ class TestConfig:
     Global state used for all tests. Stores paths to executables used.
     """
 
+    def get_test_dir(self, test_name):
+        """
+        Return the subdirectory `test_name` of `output_dir`.
+        (1) Assert that `test_name` is a 'good' name (no '.' no whitespace, etc)
+        (2) Assert that `output_dir` / `test_name` exists and is a directory (create if not)
+        """
+        if not test_name.isidentifier():
+            raise ValueError(f"test_name '{test_name}' is not a valid identifier")
+        test_dir = self.output_dir / test_name
+        test_dir.mkdir(parents=True, exist_ok=True)
+        return test_dir
+
     def __init__(
         self,
         output_dir,
-        iree_install_dir,
+        iree_dir,
         peano_dir,
         xrt_dir,
         vitis_dir,
         file_dir,
+        iree_benchmark_exe,
         iree_compile_exe,
         iree_run_exe,
         verbose,
@@ -674,14 +871,14 @@ class TestConfig:
         xrt_lite_n_core_rows,
         xrt_lite_n_core_cols,
         target_device,
-        use_chess,
     ):
         self.output_dir = output_dir
-        self.iree_install_dir = iree_install_dir
+        self.iree_dir = iree_dir
         self.peano_dir = peano_dir
         self.xrt_dir = xrt_dir
         self.vitis_dir = vitis_dir
         self.file_dir = file_dir
+        self.iree_benchmark_exe = iree_benchmark_exe
         self.iree_compile_exe = iree_compile_exe
         self.iree_run_exe = iree_run_exe
         self.verbose = verbose
@@ -693,7 +890,6 @@ class TestConfig:
         self.xrt_lite_n_core_rows = xrt_lite_n_core_rows
         self.xrt_lite_n_core_cols = xrt_lite_n_core_cols
         self.target_device = target_device
-        self.use_chess = use_chess
 
         # Try get the xrt and (linux) kernel versions.
         self.linux_kernel = "undetermined"
@@ -795,14 +991,13 @@ class TestConfig:
         do_not_run_aie:       {self.do_not_run_aie}
         file_dir:             {self.file_dir}
         iree_compile_exe:     {self.iree_compile_exe}
-        iree_install_dir:     {self.iree_install_dir}
+        iree_dir:             {self.iree_dir}
         iree_run_exe:         {self.iree_run_exe}
         kernel_version:       {self.linux_kernel}
         output_dir:           {self.output_dir}
         peano_commit_hash:    {self.peano_commit_hash}
         peano_dir:            {self.peano_dir}
         reset_npu_script:     {self.reset_npu_script}
-        use_chess:            {self.use_chess}
         verbose:              {self.verbose}
         vitis_dir:            {self.vitis_dir}
         xrt_dir:              {self.xrt_dir}
@@ -936,6 +1131,86 @@ def aie_vs_baseline(
             raise RuntimeError("Test failed, exiting.")
 
 
+def benchmark_aie(
+    config,
+    aie_compilation_flags,
+    test_file,
+    use_ukernel,
+    tile_pipeline,
+    lower_to_aie_pipeline,
+    function_name,
+    n_repeats,
+    n_kernel_runs,
+    seed=1,
+):
+    """
+    Arguments to the function are:
+    config:
+        TestConfig containing any state which is common to all tests
+    test_file:
+        The path to the test (.mlir) file
+    input_args:
+        a string of the form
+        "--input=3x40xf32=@<binary_file> --input=2x2xi32=@<binary_file>"
+    use_ukernel:
+        Whether to use micro-kernels when running on the AIE backend
+    tile_pipeline:
+        The tiling pipeline to use when compiling for the AIE backend
+    lower_to_aie_pipeline:
+        The pipeline to be used for lowering to AIE (objectFifo, AIR).
+    n_repeats:
+        The number of repetitions to be used for getting statistics (mean, median, stddev)
+    n_kernel_runs:
+        The number of invocations of the kernel, for averaging.
+    function_name:
+        The name of the function to run (the test file may contain multiple
+        functions).
+    seed:
+        The seed to be used for generating the inputs.
+    """
+    if (
+        "--iree-amdaie-enable-infinite-loop-around-core-block=true"
+        not in aie_compilation_flags
+    ):
+        raise ValueError(
+            "To benchmark an AIE kernel module, the "
+            "`--iree-amdaie-enable-infinite-loop-around-core-block=true` "
+            "should be passed."
+        )
+
+    name = name_from_mlir_filename(test_file)
+    test_dir = config.get_test_dir(name)
+    input_args = generate_inputs(test_file, test_dir, seed)
+
+    aie_vmfb = generate_aie_vmfb(
+        config,
+        aie_compilation_flags,
+        name,
+        tile_pipeline,
+        lower_to_aie_pipeline,
+        use_ukernel,
+        test_file,
+        input_args,
+        function_name,
+    )
+
+    if config.do_not_run_aie:
+        if config.verbose:
+            print(f"Skipping AIE run for {test_file} because 'do_not_run_aie=True'.")
+        return
+
+    print(f"Performance benchmark: {test_file}")
+    benchmark_aie_kernel_time(
+        config,
+        aie_vmfb,
+        input_args,
+        function_name,
+        name,
+        n_repeats,
+        n_kernel_runs,
+    )
+
+
 def aie_vs_llvm_cpu(
     config,
     aie_compilation_flags,
@@ -961,7 +1236,9 @@ def aie_vs_llvm_cpu(
     if config.verbose:
         print(f"Running {name} test")
 
-    input_args = generate_inputs(test_file, config.output_dir, seed)
+    test_dir = config.get_test_dir(name)
+
+    input_args = generate_inputs(test_file, test_dir, seed)
     output_type = get_output_type(test_file)
 
     cpu_output = generate_llvm_cpu_output(
@@ -1027,13 +1304,13 @@ class Tests:
         # Matmul with truncf test(s):
         self.register(
             MatmulTruncf(
-                8,
-                8,
+                16,
+                16,
                 "bf16",
                 "f32",
-                101 * np.ones([8, 8]),
-                3 * np.eye(8),
-                302 * np.ones([8, 8]),
+                101 * np.ones([16, 16]),
+                3 * np.eye(16),
+                302 * np.ones([16, 16]),
             )
         )
 
@@ -1060,42 +1337,48 @@ class Tests:
         self.register(MatmulThinBias(1024, 1024, 512, "bf16", "f32", use_ukernel=True))
         self.register(MatmulThinBias(1024, 1024, 512, "bf16", "f32"))
 
-        # VanillaMatmul test(s):
+        # Matmul test(s):
         self.register(
-            VanillaMatmul(
+            Matmul(
                 32,
                 32,
                 32,
                 "i32",
                 "i32",
-                run_on_target=["npu1_4col", "npu4"],
+                name_suffix="chess_npu4",
+                run_on_target=["npu4"],
+                use_chess=True,
             )
         )
-        self.register(
-            VanillaMatmul(
-                32,
-                32,
-                32,
-                "i32",
-                "i32",
-                name_suffix="infinite_loop",
-                run_on_target=["npu1_4col", "npu4"],
-                aie_compilation_flags=[
-                    "--iree-amdaie-enable-infinite-loop-around-core-block=true"
-                ],
+
+        for target in ["npu1_4col", "npu4"]:
+            use_chess = target == "npu4"
+            self.register(
+                Matmul(
+                    32,
+                    32,
+                    32,
+                    "i32",
+                    "i32",
+                    name_suffix="infinite_loop_" + target,
+                    run_on_target=[target],
+                    use_chess=use_chess,
+                    aie_compilation_flags=[
+                        "--iree-amdaie-enable-infinite-loop-around-core-block=true"
+                    ],
+                )
             )
-        )
-        self.register(VanillaMatmul(32, 32, 64, "bf16", "f32"))
 
         # TODO: Failure is expected for the 128x128 case we don't yet understand why.
         self.register(
-            VanillaMatmul(
+            Matmul(
                 64,
                 64,
                 64,
                 "bf16",
                 "f32",
                 use_ukernel=True,
+                use_chess=True,
                 run_on_target=["npu4"],
             )
         )
@@ -1110,7 +1393,18 @@ class Tests:
             (4096, 512, 512, True),
         ]:
             self.register(
-                VanillaMatmul(
+                Matmul(
+                    M,
+                    N,
+                    K,
+                    "bf16",
+                    "f32",
+                    use_ukernel=use_ukernel,
+                    n_repeats=2,
+                )
+            )
+            self.register(
+                MatmulBenchmark(
                     M,
                     N,
                     K,
@@ -1118,9 +1412,75 @@ class Tests:
                     "f32",
                     additional_labels=["Performance"],
                     use_ukernel=use_ukernel,
+                    n_repeats=5,
+                    n_kernel_runs=100,
+                )
+            )
+
+        # ukernel test for AIR pad-pack pipeline
+        self.register(
+            Matmul(
+                256,
+                256,
+                256,
+                "bf16",
+                "f32",
+                name_suffix="air_pad_pack",
+                use_ukernel=True,
+                lower_to_aie_pipeline="air",
+                tile_pipeline="pad-pack",
+            )
+        )
+
+        # M, K, N (copies from run_matmul_tests.sh)
+        bf16_ukernel_shapes_medium = [
+            [256, 256, 256],
+            [128, 512, 512],
+            [512, 4096, 2048],
+        ]
+        for shape in bf16_ukernel_shapes_medium:
+            self.register(
+                Matmul(
+                    shape[0],
+                    shape[2],
+                    shape[1],
+                    "bf16",
+                    "f32",
+                    use_ukernel=True,
+                    lower_to_aie_pipeline="objectFifo",
+                    tile_pipeline="pack-peel",
                     n_repeats=2,
                 )
             )
+
+        # chess test
+        self.register(
+            Matmul(
+                32,
+                32,
+                32,
+                "i32",
+                "i32",
+                name_suffix="chess",
+                use_chess=True,
+                n_repeats=10,
+            )
+        )
+
+        # chess test with ukernel
+        self.register(
+            Matmul(
+                64,
+                64,
+                64,
+                "bf16",
+                "f32",
+                name_suffix="chess",
+                use_chess=True,
+                use_ukernel=True,
+                n_repeats=10,
+            )
+        )
 
         # MultipleDispatches tests:
         for name in ["two_matmul_switching", "matmul_f32_8_8_4", "matmul_f32_8_4_8"]:
@@ -1164,7 +1524,7 @@ class Tests:
 def all_tests(
     tests,
     output_dir,
-    iree_install_dir,
+    iree_dir,
     peano_dir,
     xrt_dir,
     vitis_dir,
@@ -1172,11 +1532,11 @@ def all_tests(
     reset_npu_between_runs,
     do_not_run_aie,
     test_set,
+    skip_test_set,
     device_hal,
     xrt_lite_n_core_rows,
     xrt_lite_n_core_cols,
     target_device,
-    use_chess,
 ):
     """
     There are a few ways to add tests to this script:
@@ -1198,19 +1558,21 @@ def all_tests(
 
     if not output_dir.exists():
         output_dir.mkdir()
-    if not iree_install_dir.exists():
-        raise RuntimeError(f"'{iree_install_dir}' is not a directory.")
-    iree_compile_exe = find_executable(iree_install_dir, "iree-compile")
-    iree_run_exe = find_executable(iree_install_dir, "iree-run-module")
+    if not iree_dir.exists():
+        raise RuntimeError(f"'{iree_dir}' is not a directory.")
+    iree_benchmark_exe = find_executable(iree_dir, "iree-benchmark-module")
+    iree_compile_exe = find_executable(iree_dir, "iree-compile")
+    iree_run_exe = find_executable(iree_dir, "iree-run-module")
     file_dir = Path(os.path.dirname(os.path.abspath(__file__)))
 
     config = TestConfig(
         output_dir,
-        iree_install_dir,
+        iree_dir,
         peano_dir,
         xrt_dir,
         vitis_dir,
         file_dir,
+        iree_benchmark_exe,
         iree_compile_exe,
         iree_run_exe,
         verbose,
@@ -1220,7 +1582,6 @@ def all_tests(
         xrt_lite_n_core_rows,
         xrt_lite_n_core_cols,
         target_device,
-        use_chess,
     )
     if verbose:
         print(config)
@@ -1240,6 +1601,13 @@ def all_tests(
     not_match = []
 
     for test in tests.tests:
+
+        skip = test.name in skip_test_set or any(
+            (label in skip_test_set for label in test.labels)
+        )
+        if skip:
+            not_match.append(test.name)
+            continue
 
         # Determine if the test is a match for the test_set provided by caller
         # match = "All" in test_set
@@ -1268,11 +1636,32 @@ if __name__ == "__main__":
         description="This program compares numerical outputs on AIE against baseline values",
     )
     abs_path = lambda x: Path(x).absolute()
-    parser.add_argument("output_dir", type=abs_path)
-    parser.add_argument("iree_install_dir", type=abs_path)
-    parser.add_argument("peano_install_dir", type=abs_path)
-    parser.add_argument("--xrt-dir", type=abs_path)
-    parser.add_argument("--vitis-dir", type=abs_path)
+
+    parser.add_argument(
+        "output_dir",
+        type=abs_path,
+        help="The directory where artifacts are saved. Each test will have a subdirectory in this directory based on its (unique) name, containing all test specific files.",
+    )
+
+    parser.add_argument(
+        "iree_dir",
+        type=abs_path,
+        help="Either the build or install directory of IREE. iree-compile will be looked for in a `bin` or `tools` subdirectory.",
+    )
+
+    parser.add_argument(
+        "--peano_dir",
+        type=abs_path,
+        help="The directory where peano is installed. Typically a directory called `llvm-aie`, and obtained as a wheel.",
+    )
+
+    parser.add_argument(
+        "--vitis_dir",
+        type=abs_path,
+        help="The directory where the vitis project is installed. This path must be provided if the chess compiler is to be used.",
+    )
+
+    parser.add_argument("--xrt_dir", type=abs_path)
     parser.add_argument(
         "--xrt_lite_n_core_rows",
         type=int,
@@ -1318,7 +1707,7 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--reset-npu-between-runs",
+        "--reset_npu_between_runs",
         action="store_true",
         help=(
             "If passed then the NPU is not reset between runs, otherwise it is reset. "
@@ -1328,7 +1717,7 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--do-not-run-aie",
+        "--do_not_run_aie",
         action="store_true",
         help=dedent(
             """
@@ -1341,7 +1730,7 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--aie-compilation-flags",
+        "--aie_compilation_flags",
         type=str,
         help=dedent(
             """
@@ -1361,8 +1750,13 @@ if __name__ == "__main__":
     label_string = ", ".join(labels)
     name_string = ", ".join(names)
 
-    help_string = (
+    tests_help_string = (
         "A comma-separated list of test names or sets to run. Available test sets: "
+        + f"{label_string}"
+        + f". Available individual tests: {name_string}. "
+    )
+    skip_tests_help_string = (
+        "A comma-separated list of test names or sets to skip. Available test sets: "
         + f"{label_string}"
         + f". Available individual tests: {name_string}. "
     )
@@ -1370,12 +1764,19 @@ if __name__ == "__main__":
     parser.add_argument(
         "--tests",
         type=str,
-        help=help_string,
+        help=tests_help_string,
         default="All",
     )
 
     parser.add_argument(
-        "--device-hal",
+        "--skip_tests",
+        type=str,
+        help=skip_tests_help_string,
+        default="",
+    )
+
+    parser.add_argument(
+        "--device_hal",
         default="xrt-lite",
         const="xrt-lite",
         nargs="?",
@@ -1383,17 +1784,12 @@ if __name__ == "__main__":
         help="device HAL to use (default: %(default)s)",
     )
 
-    parser.add_argument(
-        "--use_chess",
-        type=bool,
-        default=False,
-    )
-
-    parser.epilog = "Example call: ./run.py --verbose  output_dir ${IREE_INSTALL}  ${LLVM_AIE}  --target_device=npu1_4col --xrt_lite_n_core_rows=4 --xrt_lite_n_core_cols=4 --tests=Matmul"
+    parser.epilog = "Example call: ./run.py --verbose  output_dir ${IREE_INSTALL}  --peano_dir=${LLVM_AIE}  --target_device=npu1_4col --xrt_lite_n_core_rows=4 --xrt_lite_n_core_cols=4 --tests=Peano"
 
     args = parser.parse_args()
 
     test_set_list = args.tests.split(",")
+    skip_test_list = args.skip_tests.split(",")
 
     if args.target_device not in current_devices:
         raise ValueError(
@@ -1401,20 +1797,26 @@ if __name__ == "__main__":
         )
     tests.add_aie_compilation_flags(args.aie_compilation_flags)
 
+    # At least one of peano_dir and vitis_dir must be provided:
+    if not args.peano_dir and not args.vitis_dir:
+        raise ValueError(
+            "At least one of --peano_dir and --vitis_dir must be provided to run the tests."
+        )
+
     all_tests(
         tests,
         args.output_dir,
-        args.iree_install_dir,
-        args.peano_install_dir,
+        args.iree_dir,
+        args.peano_dir,
         args.xrt_dir,
         args.vitis_dir,
         args.verbose,
         args.reset_npu_between_runs,
         args.do_not_run_aie,
         test_set_list,
+        skip_test_list,
         args.device_hal,
         args.xrt_lite_n_core_rows,
         args.xrt_lite_n_core_cols,
         args.target_device,
-        args.use_chess,
     )

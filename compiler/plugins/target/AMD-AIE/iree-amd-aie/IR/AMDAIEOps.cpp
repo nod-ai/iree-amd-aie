@@ -613,6 +613,14 @@ LogicalResult LogicalObjectFifoFromBuffersOp::verify() {
   return success();
 }
 
+FailureOr<LogicalObjFifoOpInterface>
+LogicalObjectFifoFromBuffersOp::replaceWithNewTiles(
+    ::mlir::RewriterBase &rewriter, ::mlir::ValueRange tiles) {
+  // NOTE(jornt): This can potentially be implemented by updating the buffer's
+  // tiles.
+  return (*this).emitOpError() << "doesn't support tile replacement";
+}
+
 //===----------------------------------------------------------------------===//
 // AMDAIE_LogicalObjectFifoFromMemrefOp
 //===----------------------------------------------------------------------===//
@@ -665,6 +673,17 @@ LogicalResult LogicalObjectFifoFromMemrefOp::canonicalize(
   return success();
 }
 
+FailureOr<LogicalObjFifoOpInterface>
+LogicalObjectFifoFromMemrefOp::replaceWithNewTiles(
+    ::mlir::RewriterBase &rewriter, ::mlir::ValueRange tiles) {
+  OpBuilder::InsertionGuard g(rewriter);
+  rewriter.setInsertionPoint(getOperation());
+  auto newOp =
+      rewriter.replaceOpWithNewOp<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+          *this, getType(), getMemref(), tiles);
+  return cast<LogicalObjFifoOpInterface>(newOp.getOperation());
+}
+
 LogicalResult LogicalObjectFifoFromMemrefOp::verify() {
   // Check whether the tile arguments are all of type AMDAIE::TileOp
   if (llvm::all_of(getTiles(), [](Value result) {
@@ -673,6 +692,21 @@ LogicalResult LogicalObjectFifoFromMemrefOp::verify() {
     return success();
   }
   return failure();
+}
+
+//===----------------------------------------------------------------------===//
+// AMDAIE_LogicalObjectFifoPlaceholderOp
+//===----------------------------------------------------------------------===//
+
+FailureOr<LogicalObjFifoOpInterface>
+LogicalObjectFifoPlaceholderOp::replaceWithNewTiles(
+    ::mlir::RewriterBase &rewriter, ::mlir::ValueRange tiles) {
+  OpBuilder::InsertionGuard g(rewriter);
+  rewriter.setInsertionPoint(getOperation());
+  auto newOp =
+      rewriter.replaceOpWithNewOp<AMDAIE::LogicalObjectFifoPlaceholderOp>(
+          *this, getType(), tiles);
+  return cast<LogicalObjFifoOpInterface>(newOp.getOperation());
 }
 
 //===----------------------------------------------------------------------===//

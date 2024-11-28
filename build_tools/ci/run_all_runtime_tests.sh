@@ -43,8 +43,7 @@ $this_dir/cpu_comparison/run.py \
 $this_dir/run_matmul_test.sh \
   $this_dir/test_matmuls \
   $IREE_INSTALL_DIR \
-  $PEANO_INSTALL_DIR \
-  $VITIS_DIR
+  $PEANO_INSTALL_DIR
 
 pytest -rv --capture=tee-sys $src_dir/tests \
   --peano-install-dir=$PEANO_INSTALL_DIR \

@@ -1,7 +1,7 @@
 // RUN: iree-opt --split-input-file --pass-pipeline='builtin.module(iree-amdaie-lowering-strategy{use-pass-pipeline=pack-peel use-lower-to-aie-pipeline=objectFifo target-device=npu4})' %s | FileCheck %s
 
 // CHECK:       #config = #iree_codegen.lowering_config<tile_sizes = [
-// CHECK-SAME:                [64, 64], [0, 0, 1], [1, 1, 0, 0, 0, 0]
+// CHECK-SAME:                [128, 128], [0, 0, 1], [1, 1, 0, 0, 0, 0]
 // CHECK-SAME:            ]>
 // CHECK:       #packingConfig = #amdaie.packing_config<packing_config = [{packedSizes = [32, 32, 32], transposePackIndices = [1], unpackEmpty = [false],
 // CHECK-SAME:                      innerPerm = [

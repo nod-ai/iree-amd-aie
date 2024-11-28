@@ -40,21 +40,45 @@ void AMDAIEAssignPacketIdsPass::runOnOperation() {
       AMDAIE::getDeviceModel(maybeDevice.value());
   auto ui8ty =
       IntegerType::get(rewriter.getContext(), 8, IntegerType::Unsigned);
-  int pktFlowIndex{0};
-  WalkResult res = parentOp->walk([&](AMDAIE::FlowOp flowOp) {
-    if (pktFlowIndex > deviceModel.getPacketIdMaxIdx()) {
-      flowOp.emitOpError() << "ran out of packet IDs to assign";
-      return WalkResult::interrupt();
-    }
-    rewriter.setInsertionPoint(flowOp);
-    IntegerAttr pktIdAttr = flowOp.getIsPacketFlow()
-                                ? IntegerAttr::get(ui8ty, pktFlowIndex++)
-                                : nullptr;
-    rewriter.replaceOpWithNewOp<AMDAIE::FlowOp>(
-        flowOp, flowOp.getSources(), flowOp.getTargets(),
-        flowOp.getIsPacketFlow(), pktIdAttr);
-    return WalkResult::advance();
-  });
+
+  // Perform assignment of packet IDs based on the source channels of the flow
+  // ops. I.e. `amdaie.flow` ops with the same source channel will get a
+  // different packet IDs assigned to accommodate multiple data packets being
+  // routed through the same ports.
+  DenseMap<AMDAIE::ChannelOp, size_t> channelToPktFlowIndex;
+  WalkResult res =
+      parentOp->walk([&](AMDAIE::FlowOp flowOp) {
+        if (!flowOp.getIsPacketFlow()) return WalkResult::advance();
+        SmallVector<Value> sourceChannels = flowOp.getSources();
+        if (sourceChannels.size() == 0) {
+          flowOp.emitOpError() << "with no source channel is unsupported";
+          return WalkResult::interrupt();
+        }
+        if (sourceChannels.size() > 1) {
+          flowOp.emitOpError()
+              << "with multiple source channels is unsupported";
+          return WalkResult::interrupt();
+        }
+        auto sourceChannelOp = dyn_cast_if_present<AMDAIE::ChannelOp>(
+            sourceChannels[0].getDefiningOp());
+        if (!sourceChannelOp) {
+          flowOp.emitOpError() << "source should be an `amdaie.channel` op";
+          return WalkResult::interrupt();
+        }
+        size_t pktFlowIndex = channelToPktFlowIndex[sourceChannelOp];
+        if (pktFlowIndex > deviceModel.getPacketIdMaxIdx()) {
+          flowOp.emitOpError()
+              << "ran out of packet IDs to assign for source channel";
+          return WalkResult::interrupt();
+        }
+        IntegerAttr pktIdAttr = IntegerAttr::get(ui8ty, pktFlowIndex);
+        rewriter.setInsertionPoint(flowOp);
+        rewriter.replaceOpWithNewOp<AMDAIE::FlowOp>(
+            flowOp, flowOp.getSources(), flowOp.getTargets(),
+            flowOp.getIsPacketFlow(), pktIdAttr);
+        channelToPktFlowIndex[sourceChannelOp]++;
+        return WalkResult::advance();
+      });
   if (res.wasInterrupted()) return signalPassFailure();
 }
 

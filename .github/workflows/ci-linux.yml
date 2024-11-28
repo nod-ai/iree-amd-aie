@@ -160,36 +160,6 @@ jobs:
           echo "XRT_LITE_N_CORE_ROWS=$(python build_tools/ci/amdxdna_driver_utils/amdxdna_ioctl.py --num-rows)" >> $GITHUB_ENV
           echo "XRT_LITE_N_CORE_COLS=$(python build_tools/ci/amdxdna_driver_utils/amdxdna_ioctl.py --num-cols)" >> $GITHUB_ENV
 
-      - name : E2E comparison of AIE to llvm-cpu
-        run: |
-          source .venv/bin/activate
-          python build_tools/ci/cpu_comparison/run.py \
-            test_aie_vs_cpu \
-            $PWD/iree-install \
-            $PWD/llvm-aie \
-            --vitis-dir /opt/Xilinx/Vitis/2024.2 \
-            --target_device "npu1_4col" \
-            --reset-npu-between-runs -v \
-            --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
-            --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS
-
-      - name : Performance benchmarks
-
-        run: |
-          source .venv/bin/activate
-          python build_tools/ci/cpu_comparison/run.py \
-            test_aie_vs_cpu \
-            $PWD/iree-install \
-            $PWD/llvm-aie \
-            --vitis-dir /opt/Xilinx/Vitis/2024.2 \
-            --target_device "npu1_4col" \
-            --reset-npu-between-runs -v \
-            --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
-            --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
-            --tests=Performance > performance.log
-
-          python build_tools/ci/cpu_comparison/performance_summarizer.py \
-            performance.log
 
       - name: E2E correctness matmul test
         run: |
@@ -201,18 +171,40 @@ jobs:
           bash build_tools/ci/run_matmul_test.sh \
             test_matmuls \
             iree-install \
-            $PWD/llvm-aie \
-            /opt/Xilinx/Vitis/2024.2
+            $PWD/llvm-aie
 
-      - name: Python tests
+
+      - name : E2E comparison of AIE to llvm-cpu
         run: |
+          sudo prlimit -lunlimited --pid $$
           source .venv/bin/activate
-          pytest -rv tests \
-            --capture=tee-sys \
-            --iree-install-dir=$PWD/iree-install \
-            --peano-install-dir=$PWD/llvm-aie \
+          python build_tools/ci/cpu_comparison/run.py \
+            test_aie_vs_cpu \
+            $PWD/iree-install \
+            --peano_dir=$PWD/llvm-aie \
+            --vitis_dir=/opt/Xilinx/Vitis/2024.2 \
+            --target_device="npu1_4col" \
+            --reset_npu_between_runs -v \
             --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
             --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS
+
+      - name : Performance benchmarks
+        run: |
+          source .venv/bin/activate
+          python build_tools/ci/cpu_comparison/run.py \
+            test_aie_vs_cpu \
+            $PWD/iree-install \
+            --peano_dir=$PWD/llvm-aie \
+            --vitis_dir=/opt/Xilinx/Vitis/2024.2 \
+            --target_device="npu1_4col" \
+            --reset_npu_between_runs -v \
+            --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
+            --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
+            --tests=Performance > performance.log
+
+          python build_tools/ci/cpu_comparison/performance_summarizer.py \
+            performance.log
+
 
       - name: XRT-LITE tests
         run: |
@@ -274,11 +266,9 @@ jobs:
           python build_tools/ci/cpu_comparison/run.py \
             test_aie_vs_cpu \
             $PWD/iree-install \
-            /opt/xilinx/Vitis/2024.2 \
-            --vitis-dir /opt/xilinx/Vitis/2024.2 \
-            --target_device "npu4" \
-            --use_chess "1" \
-            --reset-npu-between-runs \
+            --vitis_dir=/opt/xilinx/Vitis/2024.2 \
+            --target_device="npu4" \
+            --reset_npu_between_runs \
             --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
             --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
             -v
