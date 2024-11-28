@@ -16,7 +16,7 @@ module {
 
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 // expected-error @+2 {{non-local tile assignment failed}}
-// expected-error @+1 {{failed to clear non-local tile assigments}}
+// expected-error @+1 {{failed to clear non-local tile assignments}}
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @logicalobjectfifo_from_buffers_error() {
     %c0 = arith.constant 0 : index

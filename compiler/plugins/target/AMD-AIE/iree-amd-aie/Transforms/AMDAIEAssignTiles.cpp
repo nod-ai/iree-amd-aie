@@ -317,7 +317,7 @@ LogicalResult assignNonLocalTiles(RewriterBase &rewriter, Operation *op,
                                   const AMDAIEDeviceModel &deviceModel) {
   MLIRContext *context = rewriter.getContext();
   if (failed(clearNonLocalTiles(rewriter, op)))
-    return op->emitOpError() << "failed to clear non-local tile assigments";
+    return op->emitOpError() << "failed to clear non-local tile assignments";
 
   // Find and fill the tile candidates.
   RewritePatternSet fillTilePatterns(context);
