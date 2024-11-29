@@ -182,19 +182,6 @@ module {
 
 // -----
 
-func.func @no_user_of_producer(%arg0: tensor<64xf32>) {
-  %c0 = arith.constant 0 : index
-  %c1 = arith.constant 1 : index
-  %c8 = arith.constant 8 : index
-  scf.for %arg1 = %c0 to %c8 step %c1 {
-    // expected-error @+1 {{Expected only one user of the compute op}}
-    %1 = linalg.elemwise_binary {fun = #linalg.binary_fn<add>} ins(%arg0, %arg0 : tensor<64xf32>, tensor<64xf32>) outs(%arg0 : tensor<64xf32>) -> tensor<64xf32>
-  }
-  return
-}
-
-// -----
-
 func.func @no_consumer_fusion(%arg0: tensor<64xf32>) -> tensor<64xf32> {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -385,16 +372,6 @@ module {
 //      CHECK:        }
 //      CHECK:   }
 //      CHECK:   return %[[FINAL]]
-
-// -----
-
-func.func @no_user_of_producer(%arg0: tensor<64xf32>) {
-  scf.forall (%arg1, %arg2) in (1,2) {
-    // expected-error @+1 {{Expected only one user of the compute op}}
-    %1 = linalg.elemwise_binary {fun = #linalg.binary_fn<add>} ins(%arg0, %arg0 : tensor<64xf32>, tensor<64xf32>) outs(%arg0 : tensor<64xf32>) -> tensor<64xf32>
-  }
-  return
-}
 
 // -----
 

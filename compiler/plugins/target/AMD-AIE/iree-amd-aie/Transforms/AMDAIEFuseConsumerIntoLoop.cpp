@@ -79,13 +79,14 @@ void AMDAIEFuseConsumerIntoLoopPass::runOnOperation() {
     do {
       Value::user_range users = computeOp->getResult(0).getUsers();
       if (!llvm::hasSingleElement(users)) {
-        computeOp->emitOpError("Expected only one user of the compute op");
+        LLVM_DEBUG(llvm::dbgs()
+                   << "Expected only one user of the compute op\n");
         return signalPassFailure();
       }
 
-      Operation *terminatorStoreOp = *(users.begin());
+      Operation *candidateSliceOp = *(users.begin());
       if (!(isa<tensor::InsertSliceOp, tensor::ParallelInsertSliceOp>(
-              terminatorStoreOp))) {
+              candidateSliceOp))) {
         computeOp = computeOp->getParentOfType<LoopLikeOpInterface>();
         LLVM_DEBUG(llvm::dbgs()
                    << "Going to reattempt fusion because didn't find "
@@ -94,9 +95,9 @@ void AMDAIEFuseConsumerIntoLoopPass::runOnOperation() {
         continue;
       }
       std::optional<scf::SCFFuseConsumerOfSliceResult> fusedConsumer =
-          scf::tileAndFuseConsumerOfSlice(rewriter, terminatorStoreOp);
+          scf::tileAndFuseConsumerOfSlice(rewriter, candidateSliceOp);
       if (!fusedConsumer) {
-        terminatorStoreOp->emitOpError(
+        candidateSliceOp->emitOpError(
             "Failed to fuse any consumer op into the producer");
         return signalPassFailure();
       }
