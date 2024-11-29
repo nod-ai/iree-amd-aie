@@ -396,6 +396,24 @@ LogicalResult moveNpuDmaSyncUsersAfterAncestorInSameBlock(
   return success();
 }
 
+// Move NPU DMA wait operations with async_source tokens as late as possible
+// (after the target DMA wait operation which has async_target token) This is to
+// help later optimizations such as DMA BD chaining. Example:
+//
+// %0 = dma_cpy_nd async_source
+// dma_wait(%0 : !amdaie.async_source_token)
+// %1 = dma_cpy_nd async_source
+// dma_wait(%1 : !amdaie.async_source_token)
+// %2 = dma_cpy_nd async_target
+// dma_wait(%2 : !amdaie.async_target_token)
+// ------------------------------->>>>>>>>>>
+// %0 = dma_cpy_nd async_source
+// %1 = dma_cpy_nd async_source
+// %2 = dma_cpy_nd async_target
+// dma_wait(%2 : !amdaie.async_target_token)
+// dma_wait(%0 : !amdaie.async_source_token)
+// dma_wait(%1 : !amdaie.async_source_token)
+
 LogicalResult moveNpuSourceDmaSyncAfterTargetDmaCpy(RewriterBase &rewriter,
                                                     Operation *parentOp) {
   // Stores NPU source DMA wait operations to be moved later.
