@@ -121,8 +121,12 @@ std::unique_ptr<Pass> createAMDAIEControlCodeForallToForPass();
 /// Pass to unroll the loops within the control code regions.
 std::unique_ptr<Pass> createAMDAIEControlCodeLoopUnrollPass();
 
-/// Pass to convert control code DMA operations into NPU writes and syncs.
-std::unique_ptr<Pass> createAMDAIEControlCodeLoweringPass();
+/// Pass to convert control code DMA operations into HalfDmaCpyNd
+std::unique_ptr<Pass> createAMDAIEControlCodeToHalfDmaCpyNdPass();
+
+/// Pass to convert control code HalfDmaCpyNd into NPU WriteBd, AddressPatch,
+/// PushToQueue operations
+std::unique_ptr<Pass> createAMDAIEControlCodeToNpuPass();
 
 /// Pass to convert control code into a transaction binary.
 std::unique_ptr<Pass> createAMDAIEControlCodeToTransactionPass(
@@ -161,6 +165,9 @@ std::unique_ptr<Pass> createAMDAIEDistributeCoresAndObjectFifosPass();
 /// Create pass to distribute/privatize/localize memory alloocations in L1
 /// memory
 std::unique_ptr<Pass> createAMDAIEDistributeL1AllocationsPass();
+
+/// Create pass to chain DMA BDs and reduce the number of DMA waits.
+std::unique_ptr<Pass> createAMDAIEDmaBdChainPass();
 
 /// Create a pass to compose more complex DMA operations, e.g. by combining DMA
 /// operations and/or subsuming loop iterations into the strided access

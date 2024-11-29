@@ -406,16 +406,16 @@ func.func @npu_half_dma_cpy_nd(%arg0: !amdaie.logicalobjectfifo<memref<2048xi32>
   %bd_id = amdaie.bd_id(%tile_0_0, 0)
   %channel = amdaie.channel(%tile_0_0, 0, port_type = DMA, direction = S2MM)
   %0 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<2048xi32>>, !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>>)
-// CHECK: amdaie.npu.half_dma_cpy_nd %[[CONNECTION_0]](%[[ARG0]] [] [] []) : !amdaie.logicalobjectfifo<memref<2048xi32>>
-  amdaie.npu.half_dma_cpy_nd %0(%arg0[] [] []) : !amdaie.logicalobjectfifo<memref<2048xi32>>
-// CHECK: %{{.+}} = amdaie.npu.half_dma_cpy_nd async %[[CONNECTION_0]](%[[ARG0]] [] [] []) : !amdaie.logicalobjectfifo<memref<2048xi32>>
-  amdaie.npu.half_dma_cpy_nd async %0(%arg0[] [] []) : !amdaie.logicalobjectfifo<memref<2048xi32>>
-// CHECK: amdaie.npu.half_dma_cpy_nd %[[CONNECTION_0]](%[[ARG0]] [0] [1024] [1] bd_id = %[[BD_ID]]) : !amdaie.logicalobjectfifo<memref<2048xi32>>
-  amdaie.npu.half_dma_cpy_nd %0(%arg0[0] [1024] [1] bd_id = %bd_id) : !amdaie.logicalobjectfifo<memref<2048xi32>>
-// CHECK: amdaie.npu.half_dma_cpy_nd %[[CONNECTION_0]](%[[ARG0]] [%[[C0]], 0] [%[[C0]], 64] [%[[C0]], 1] channel = %[[CHANNEL]]) : !amdaie.logicalobjectfifo<memref<2048xi32>>
-  amdaie.npu.half_dma_cpy_nd %0(%arg0[%c0, 0] [%c0, 64] [%c0, 1] channel = %channel) : !amdaie.logicalobjectfifo<memref<2048xi32>>
-// CHECK: amdaie.npu.half_dma_cpy_nd %[[CONNECTION_0]](%[[ARG0]] [] [] [] bd_id = %[[BD_ID]] channel = %[[CHANNEL]]) : !amdaie.logicalobjectfifo<memref<2048xi32>>
-  amdaie.npu.half_dma_cpy_nd %0(%arg0[] [] [] bd_id = %bd_id channel = %channel) : !amdaie.logicalobjectfifo<memref<2048xi32>>
+// CHECK: amdaie.npu.half_dma_cpy_nd %[[CONNECTION_0]](%[[ARG0]] [] [] [] use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xi32>>
+  amdaie.npu.half_dma_cpy_nd %0(%arg0[] [] [] use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xi32>>
+// CHECK: %{{.+}} = amdaie.npu.half_dma_cpy_nd async %[[CONNECTION_0]](%[[ARG0]] [] [] [] use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xi32>>
+  amdaie.npu.half_dma_cpy_nd async %0(%arg0[] [] [] use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xi32>>
+// CHECK: amdaie.npu.half_dma_cpy_nd %[[CONNECTION_0]](%[[ARG0]] [0] [1024] [1] bd_id = %[[BD_ID]] use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xi32>>
+  amdaie.npu.half_dma_cpy_nd %0(%arg0[0] [1024] [1] bd_id = %bd_id use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xi32>>
+// CHECK: amdaie.npu.half_dma_cpy_nd %[[CONNECTION_0]](%[[ARG0]] [%[[C0]], 0] [%[[C0]], 64] [%[[C0]], 1] channel = %[[CHANNEL]] use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xi32>>
+  amdaie.npu.half_dma_cpy_nd %0(%arg0[%c0, 0] [%c0, 64] [%c0, 1] channel = %channel use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xi32>>
+// CHECK: amdaie.npu.half_dma_cpy_nd %[[CONNECTION_0]](%[[ARG0]] [] [] [] bd_id = %[[BD_ID]] channel = %[[CHANNEL]] use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xi32>>
+  amdaie.npu.half_dma_cpy_nd %0(%arg0[] [] [] bd_id = %bd_id channel = %channel use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xi32>>
   return
 }
 

@@ -165,11 +165,18 @@ def AMDAIEControlCodeLoopUnroll :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEControlCodeLoopUnrollPass()";
 }
 
-def AMDAIEControlCodeLowering :
-    Pass<"iree-amdaie-controlcode-lowering", ""> {
-  let summary = "Lower control code ops to the most basic NPU write/sync/patch instructions";
-  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEControlCodeLoweringPass()";
+def AMDAIEControlCodeToHalfDmaCpyNd :
+    Pass<"iree-amdaie-controlcode-to-half-dma-cpy-nd", ""> {
+  let summary = "Lower control code ops to HalfDmaCpyNd operations";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEControlCodeToHalfDmaCpyNdPass()";
 }
+
+def AMDAIEControlCodeToNpu :
+    Pass<"iree-amdaie-controlcode-to-npu", ""> {
+  let summary = "Lower control code ops to the most basic NPU write/sync/patch instructions";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEControlCodeToNpuPass()";
+}
+
 
 def AMDAIEControlCodeToTransaction :
     Pass<"iree-amdaie-controlcode-to-transaction", ""> {
@@ -232,6 +239,11 @@ def AMDAIEDistributeL1Allocations :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDistributeL1AllocationsPass()";
 }
 
+def AMDAIEDmaBdChain :
+    Pass<"iree-amdaie-dma-bd-chain"> {
+  let summary = "Chain the DMA BDs to reduce the number of DMA wait.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDmaBdChainPass()";
+}
 
 def AMDAIEDmaComposition :
   Pass<"iree-amdaie-dma-composition"> {
