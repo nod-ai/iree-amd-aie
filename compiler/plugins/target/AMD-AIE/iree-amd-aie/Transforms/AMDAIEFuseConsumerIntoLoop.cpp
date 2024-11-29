@@ -50,10 +50,7 @@ void AMDAIEFuseConsumerIntoLoopPass::runOnOperation() {
   Operation *scfLoopOp = nullptr;
   funcOp->walk<WalkOrder::PostOrder, ReverseIterator>(
       [&](LoopLikeOpInterface op) {
-        if (isa<scf::ForOp>(op)) {
-          scfLoopOp = op;
-          return WalkResult::interrupt();
-        } else if (isa<scf::ForallOp>(op)) {
+        if (isa<scf::ForOp, scf::ForallOp>(op)) {
           scfLoopOp = op;
           return WalkResult::interrupt();
         }
@@ -66,18 +63,17 @@ void AMDAIEFuseConsumerIntoLoopPass::runOnOperation() {
   }
 
   // Step 3. Search the compute op and its consumer slices.
-  linalg::LinalgOp linalgOp;
+  Operation *computeOp;
   scfLoopOp->walk<WalkOrder::PostOrder, ReverseIterator>(
       [&](linalg::LinalgOp op) {
-        linalgOp = op;
+        computeOp = op;
         return WalkResult::interrupt();
       });
-  if (!linalgOp) {
+  if (!computeOp) {
     LLVM_DEBUG(llvm::dbgs() << "Could not find any compute op\n");
     return;
   }
 
-  Operation *computeOp = linalgOp;
   // Step 4. Based on the `fuseDepth`, we would greedily fuse the consumer ops.
   for (unsigned depth = 1; depth <= fuseDepth; depth++) {
     do {
