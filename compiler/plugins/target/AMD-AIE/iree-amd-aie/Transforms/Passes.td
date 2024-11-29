@@ -165,16 +165,10 @@ def AMDAIEControlCodeLoopUnroll :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEControlCodeLoopUnrollPass()";
 }
 
-def AMDAIEControlCodeToHalfDmaCpyNd :
-    Pass<"iree-amdaie-controlcode-to-half-dma-cpy-nd", ""> {
-  let summary = "Lower control code ops to HalfDmaCpyNd operations";
-  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEControlCodeToHalfDmaCpyNdPass()";
-}
-
-def AMDAIEControlCodeToNpu :
-    Pass<"iree-amdaie-controlcode-to-npu", ""> {
+def AMDAIEControlCodeLowering :
+    Pass<"iree-amdaie-controlcode-lowering", ""> {
   let summary = "Lower control code ops to the most basic NPU write/sync/patch instructions";
-  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEControlCodeToNpuPass()";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEControlCodeLoweringPass()";
 }
 
 
@@ -541,6 +535,12 @@ def AMDAIENormalizeLoopBounds :
     Pass<"iree-amdaie-normalize-loop-bounds", ""> {
   let summary = "Normalize the loop bounds of `scf.for` and `scf.forall`";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIENormalizeLoopBoundsPass()";
+}
+
+def AMDAIENpuDmaToHalfDmaCpyNd :
+    Pass<"iree-amdaie-npu-dma-to-half-dma-cpy-nd", ""> {
+  let summary = "Lower DmaCpNd ops to HalfDmaCpyNd ops";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIENpuDmaToHalfDmaCpyNdPass()";
 }
 
 def AMDAIEObjFifoBufferization :

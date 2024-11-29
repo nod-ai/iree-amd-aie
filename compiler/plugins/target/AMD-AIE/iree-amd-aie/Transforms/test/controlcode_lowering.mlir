@@ -1,4 +1,4 @@
-// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-controlcode-to-npu)" --split-input-file --verify-diagnostics %s | FileCheck %s
+// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-controlcode-lowering)" --split-input-file --verify-diagnostics %s | FileCheck %s
 
 // expected-error @+1 {{op has no AMDAIEDevice in the target attribute configuration}}
 module {

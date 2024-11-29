@@ -14,11 +14,11 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
-#define DEBUG_TYPE "iree-amdaie-controlcode-to-half-dma-cpy-nd"
+#define DEBUG_TYPE "iree-amdaie-npu-dma-to-half-dma-cpy-nd"
 
 namespace mlir::iree_compiler::AMDAIE {
 
-struct DmaCpyNdToHalfDmaCpyNdConverter final
+struct NpuDmaToHalfDmaCpyNdConverter final
     : OpConversionPattern<AMDAIE::NpuDmaCpyNdOp> {
   using OpConversionPattern::OpConversionPattern;
 
@@ -93,9 +93,9 @@ struct DmaCpyNdToHalfDmaCpyNdConverter final
 };
 
 namespace {
-class AMDAIEControlCodeToHalfDmaCpyNdPass
-    : public impl::AMDAIEControlCodeToHalfDmaCpyNdBase<
-          AMDAIEControlCodeToHalfDmaCpyNdPass> {
+class AMDAIENpuDmaToHalfDmaCpyNdPass
+    : public impl::AMDAIENpuDmaToHalfDmaCpyNdBase<
+          AMDAIENpuDmaToHalfDmaCpyNdPass> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<AMDAIEDialect>();
@@ -103,14 +103,14 @@ class AMDAIEControlCodeToHalfDmaCpyNdPass
   void runOnOperation() override;
 };
 
-void AMDAIEControlCodeToHalfDmaCpyNdPass::runOnOperation() {
+void AMDAIENpuDmaToHalfDmaCpyNdPass::runOnOperation() {
   Operation *parentOp = getOperation();
   MLIRContext *context = &getContext();
   RewritePatternSet patterns(context);
   ConversionTarget conversionTarget(*context);
   conversionTarget.addLegalDialect<AMDAIEDialect>();
   conversionTarget.addIllegalOp<AMDAIE::NpuDmaCpyNdOp>();
-  patterns.insert<DmaCpyNdToHalfDmaCpyNdConverter>(context);
+  patterns.insert<NpuDmaToHalfDmaCpyNdConverter>(context);
   if (failed(applyPartialConversion(parentOp, conversionTarget,
                                     std::move(patterns)))) {
     return signalPassFailure();
@@ -119,8 +119,8 @@ void AMDAIEControlCodeToHalfDmaCpyNdPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<Pass> createAMDAIEControlCodeToHalfDmaCpyNdPass() {
-  return std::make_unique<AMDAIEControlCodeToHalfDmaCpyNdPass>();
+std::unique_ptr<Pass> createAMDAIENpuDmaToHalfDmaCpyNdPass() {
+  return std::make_unique<AMDAIENpuDmaToHalfDmaCpyNdPass>();
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE

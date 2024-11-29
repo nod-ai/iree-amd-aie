@@ -1,4 +1,4 @@
-// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-controlcode-to-half-dma-cpy-nd)" --split-input-file --verify-diagnostics %s | FileCheck %s
+// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-npu-dma-to-half-dma-cpy-nd)" --split-input-file --verify-diagnostics %s | FileCheck %s
 
 // CHECK-LABEL: @no_amdaie_device
 module {
