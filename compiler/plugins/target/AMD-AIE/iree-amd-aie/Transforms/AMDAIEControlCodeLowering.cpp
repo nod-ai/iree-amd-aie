@@ -136,7 +136,7 @@ struct HalfDmaCpyNdToNpuConverter final
       return bdIdOp.emitOpError() << "must operate on an `amdaie.tile`";
     int64_t col = getConstantIndexOrAssert(tileOp.getCol());
     int64_t row = getConstantIndexOrAssert(tileOp.getRow());
-    int32_t bdId = bdIdOp.getValue();
+    int32_t bdId = getConstantIndexOrAssert(bdIdOp.getValue());
     int32_t outOfOrderId{0};
 
     SmallVector<int32_t, 4> staticSizes;
@@ -159,22 +159,18 @@ struct HalfDmaCpyNdToNpuConverter final
         if (stride == 0) {
           repeatCount = size;
         } else {
-          iterationStride =
-              std::max(stride * elemWidthInBits / minStrideBitWidth,
-                       (int64_t)1);
+          iterationStride = std::max(
+              stride * elemWidthInBits / minStrideBitWidth, (int64_t)1);
           iterationSize = size;
-          if (stride == 1)
-            size = (size * elemWidthInBits) / minStrideBitWidth;
+          if (stride == 1) size = (size * elemWidthInBits) / minStrideBitWidth;
           repeatCount = iterationSize;
         }
       } else {
         staticStrides.push_back(
-            std::max(stride * elemWidthInBits / minStrideBitWidth,
-                     (int64_t)1));
+            std::max(stride * elemWidthInBits / minStrideBitWidth, (int64_t)1));
         // Innermost size needs to account for addressing granularity.
         if (iter.index() == (sizes.size() - 1)) {
-          staticSizes.push_back(size * elemWidthInBits /
-                                minStrideBitWidth);
+          staticSizes.push_back(size * elemWidthInBits / minStrideBitWidth);
         } else {
           staticSizes.push_back(size);
         }
