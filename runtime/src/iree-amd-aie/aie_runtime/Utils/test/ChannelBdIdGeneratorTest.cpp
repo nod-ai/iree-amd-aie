@@ -4,18 +4,14 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-
 #include <numeric>
 
 #include "gtest/gtest.h"
 #include "iree-amd-aie/aie_runtime/Utils/ChannelBdIdGenerator.h"
 
-
 namespace {
 
-
 using namespace mlir::iree_compiler::AMDAIE;
-
 
 DenseMap<uint32_t, SmallVector<uint32_t>>
 getTestSingleRangeChannelToValidBdIds() {
@@ -25,7 +21,6 @@ getTestSingleRangeChannelToValidBdIds() {
                                                                    {1, range}};
   return channelToValidBdIds;
 }
-
 
 DenseMap<uint32_t, SmallVector<uint32_t>> getTestEvenOddChannelToValidBdIds() {
   SmallVector<uint32_t> evenRange(4);
@@ -38,7 +33,6 @@ DenseMap<uint32_t, SmallVector<uint32_t>> getTestEvenOddChannelToValidBdIds() {
   return channelToValidBdIds;
 }
 
-
 TEST(ChannelBdIdGeneratorTest, SingleRange) {
   ChannelBdIdGenerator generator(getTestSingleRangeChannelToValidBdIds());
   EXPECT_EQ(generator.getAndAssignBdId(0).value(), 0);
@@ -49,7 +43,6 @@ TEST(ChannelBdIdGeneratorTest, SingleRange) {
   EXPECT_EQ(generator.isBdIdAssigned(2), true);
   EXPECT_EQ(generator.getAndAssignBdId(1), std::nullopt);
 }
-
 
 TEST(ChannelBdIdGeneratorTest, EvenOdd) {
   ChannelBdIdGenerator generator(getTestEvenOddChannelToValidBdIds());
@@ -77,7 +70,6 @@ TEST(ChannelBdIdGeneratorTest, EvenOdd) {
   EXPECT_EQ(generator.getAndAssignBdId(3), std::nullopt);
 }
 
-
 TEST(ChannelBdIdGeneratorTest, AssignBdId) {
   ChannelBdIdGenerator generator(getTestSingleRangeChannelToValidBdIds());
   generator.assignBdId(0);
@@ -86,7 +78,6 @@ TEST(ChannelBdIdGeneratorTest, AssignBdId) {
   generator.assignBdId(2);
   EXPECT_EQ(generator.getAndAssignBdId(1), std::nullopt);
 }
-
 
 TEST(ChannelBdIdGeneratorTest, Release) {
   ChannelBdIdGenerator generator(getTestSingleRangeChannelToValidBdIds());
@@ -102,9 +93,25 @@ TEST(ChannelBdIdGeneratorTest, Release) {
   EXPECT_EQ(generator.isBdIdAssigned(1), true);
 }
 
+TEST(ChannelBdIdGeneratorTest, IncrementalAssign) {
+  ChannelBdIdGenerator generator(getTestSingleRangeChannelToValidBdIds());
+  EXPECT_EQ(
+      generator.getAndAssignBdId(0, BdIdAssignmentMode::Incremental).value(),
+      0);
+  generator.releaseBdId(0);
+  EXPECT_EQ(
+      generator.getAndAssignBdId(0, BdIdAssignmentMode::Incremental).value(),
+      1);
+  generator.releaseBdId(1);
+  EXPECT_EQ(
+      generator.getAndAssignBdId(0, BdIdAssignmentMode::Incremental).value(),
+      2);
+  generator.releaseBdId(2);
+  EXPECT_EQ(generator.getAndAssignBdId(0).value(), 0);
+  generator.releaseBdId(0);
+}
 
 }  // namespace
-
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);

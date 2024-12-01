@@ -336,7 +336,7 @@ def AMDAIE_BdIdOp: AMDAIE_Op<"bd_id", [
 
   let arguments = (
     ins Index:$tile,
-        UI32Attr:$value
+        Index:$value
   );
 
   let assemblyFormat = [{ `(` $tile `,` $value `)` attr-dict }];
