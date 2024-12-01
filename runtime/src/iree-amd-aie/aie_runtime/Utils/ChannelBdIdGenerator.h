@@ -50,6 +50,18 @@ class ChannelBdIdGenerator {
   /// reused.
   void releaseBdId(uint32_t bdId) { assignedBdIds.erase(bdId); }
 
+  uint32_t getAvailableBdIdNum(uint32_t channel) {
+    if (!channelToValidBdIds.contains(channel)) {
+      return 0;
+    } else {
+      uint32_t count = 0;
+      for (uint32_t bdId : channelToValidBdIds[channel]) {
+        if (!isBdIdAssigned(bdId)) count += 1;
+      }
+      return count;
+    }
+  }
+
  private:
   // Maps channel indices to vectors of valid BD ids.
   DenseMap<uint32_t, SmallVector<uint32_t>> channelToValidBdIds;

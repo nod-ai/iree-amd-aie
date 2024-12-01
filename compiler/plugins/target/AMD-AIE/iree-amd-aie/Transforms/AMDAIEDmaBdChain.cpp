@@ -39,7 +39,22 @@ LogicalResult dmaBdChain(AMDAIE::AMDAIEDeviceModel deviceModel,
   SmallVector<std::pair<AMDAIE::TileOp, uint32_t>> tileArgIdxsBlackList;
 
   AMDAIE::ControlCodeOp controlCodeOp = workgroupOp.getControlCode();
+
+  // Move all BdIdOps to the beginning of the control code.
+  // This is to avoid dominance issues when chaining BD IDs.
+  SmallVector<Operation *> ops;
   WalkResult res = controlCodeOp->walk([&](Operation *op) {
+    if (auto bdIdOp = dyn_cast<AMDAIE::BdIdOp>(op)) {
+      ops.push_back(op);
+    }
+    return WalkResult::advance();
+  });
+  for (Operation *op : llvm::reverse(ops)) {
+    op->moveBefore(&controlCodeOp.front());
+  }
+
+  // Find `NpuHalfDmaCpyNdOp` operations and chain BD IDs.
+  res = controlCodeOp->walk([&](Operation *op) {
     if (auto npuHalfDmaCpyNdOp = dyn_cast<AMDAIE::NpuHalfDmaCpyNdOp>(op)) {
       // not shim, do not chain BDs
       if (npuHalfDmaCpyNdOp.getMemorySpaceAsUInt() != 0) {
@@ -241,10 +256,6 @@ LogicalResult dmaBdChain(AMDAIE::AMDAIEDeviceModel deviceModel,
             rewriter.replaceOp(lastDmaOp, lastDmaOpNew.getResults());
             tileArgIdxToLastDmaOp[{tileOp, argIdx}] = lastDmaOpNew;
           }
-        } else {
-          npuDmaWaitOp.emitError() << "unhandled situation in DMA BD chaining, "
-                                      "please try to disable this pass";
-          return WalkResult::interrupt();
         }
       }
 

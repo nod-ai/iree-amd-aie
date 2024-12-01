@@ -874,7 +874,6 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %tile_0 = amdaie.tile(%c0, %c1)
       %tile_1 = amdaie.tile(%c0, %c2)
       %tile_2 = amdaie.tile(%c1, %c2)
-      %bd_id = amdaie.bd_id(%tile, 0)
       %buffer = amdaie.buffer(%tile_0) : memref<4096xi32, 1 : i32>
       %buffer_3 = amdaie.buffer(%tile_0) : memref<4096xi32, 1 : i32>
       %lock = amdaie.lock(%tile_0(0), 2)

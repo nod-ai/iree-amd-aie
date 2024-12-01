@@ -62,7 +62,7 @@ struct HalfDmaCpyNdToNpuConverter final
       return bdIdOp.emitOpError() << "must operate on an `amdaie.tile`";
     int64_t col = getConstantIndexOrAssert(tileOp.getCol());
     int64_t row = getConstantIndexOrAssert(tileOp.getRow());
-    int32_t bdId = bdIdOp.getValue();
+    int32_t bdId = getConstantIndexOrAssert(bdIdOp.getValue());
     int32_t outOfOrderId{0};
 
     SmallVector<int32_t, 4> staticSizes;
@@ -116,7 +116,7 @@ struct HalfDmaCpyNdToNpuConverter final
       if (!nextBdIdOp) {
         return op.emitOpError() << "useNextBd set, but no next BD ID op found";
       }
-      nextBd = nextBdIdOp.value().getValue();
+      nextBd = getConstantIndexOrAssert(nextBdIdOp.value().getValue());
     }
 
     bool validBd{true};
@@ -224,8 +224,10 @@ struct HalfDmaCpyNdToNpuConverter final
       std::optional<AMDAIE::BdIdOp> maybeStartBdIdOp = op.getStartBdIdOp();
       if (maybeStartBdIdOp) {
         // Update the BD ID with the start of the chain.
-        uint32_t startBdId = maybeStartBdIdOp.value().getValue();
-        uint32_t bdId = maybeBdIdOp.value().getValue();
+        uint32_t startBdId =
+            getConstantIndexOrAssert(maybeStartBdIdOp.value().getValue());
+        uint32_t bdId =
+            getConstantIndexOrAssert(maybeBdIdOp.value().getValue());
         if (startBdId != bdId) npuPushToQueueOp->setBdId(startBdId);
       }
     }
