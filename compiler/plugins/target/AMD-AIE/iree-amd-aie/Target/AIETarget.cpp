@@ -483,7 +483,8 @@ LogicalResult AIETargetBackend::serializeExecutable(
             /*xclBinInstanceName=*/"IREE",
             /*amdAIEInstallDir=*/options.amdAieInstallDir,
             /*InputXCLBin=*/std::nullopt,
-            /*ukernel=*/options.enableAMDAIEUkernels))) {
+            /*ukernel=*/options.enableAMDAIEUkernels,
+            /*additionalPeanoOptFlags=*/options.additionalPeanoOptFlags))) {
       return failure();
     }
 
