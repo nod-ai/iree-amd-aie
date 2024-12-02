@@ -59,7 +59,7 @@ using Path = std::filesystem::path;
 namespace mlir::iree_compiler::AMDAIE {
 namespace detail {
 
-// peano's `opt` program optimizes llvm-ir (.ll files). We run it with a system
+// Peano's `opt` program optimizes llvm-ir (.ll files). We run it with a system
 // call. This functions constructs the flags to pass to `opt`. There are some
 // default flags, most of which are copied from llvm-aie. See
 //
