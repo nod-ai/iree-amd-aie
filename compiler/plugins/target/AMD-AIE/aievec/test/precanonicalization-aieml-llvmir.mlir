@@ -156,6 +156,30 @@ func.func @noncontiguous_write(%v: vector<4x8xi8>) {
 
 // -----
 
+// CHECK-LABEL: @linearize_index_transfer_write(
+// CHECK-SAME:      %[[ARG0:.*]]: index,
+// CHECK-SAME:      %[[ARG1:.*]]: memref<8x8x4x4xf32, strided<[128, 16, 4, 1]>>,
+// CHECK-SAME:      %[[ARG2:.*]]: vector<1x1x4x4xf32>)
+func.func @linearize_index_transfer_write(%arg0: index, %arg1: memref<8x8x4x4xf32, strided<[128, 16, 4, 1]>>, %val: vector<1x1x4x4xf32>) {
+  // CHECK-DAG:         %[[C0:.*]] = arith.constant 0 : index
+  // CHECK:             %[[DELIN:.*]]:3 = affine.delinearize_index %[[ARG0]]
+  // CHECK:             %[[COLLAPSE:.*]] = memref.collapse_shape %[[ARG1]]
+  // CHECK-SAME:                            into memref<1024xf32, strided<[1]>>
+  // CHECK:             %[[LIN:.*]] = affine.linearize_index disjoint 
+  // CHECK-SAME:                             [%[[DELIN]]#1, %[[DELIN]]#0, %[[C0]], %[[C0]]]
+  // CHECK-SAME:                             by (8, 8, 4, 4) : index
+  // CHECK:             %[[SHAPE_CAST:.*]] = vector.shape_cast %[[ARG2]]
+  // CHECK-SAME:                                  to vector<16xf32>
+  // CHECK:             vector.transfer_write %[[SHAPE_CAST]], %[[COLLAPSE]][%[[LIN]]]
+  // CHECK:             return
+  %c0 = arith.constant 0 : index
+  %0:3 = affine.delinearize_index %arg0 into (8, 8, 4) : index, index, index
+  vector.transfer_write %val, %arg1[%0#1, %0#0, %c0, %c0] {in_bounds = [true, true, true, true]} : vector<1x1x4x4xf32>, memref<8x8x4x4xf32, strided<[128, 16, 4, 1]>>
+  return
+}
+
+// -----
+
 // CHECK-LABEL: @arith_truncf(
 // CHECK-SAME:      %[[INP:.*]]: vector<2x3xf32>)
 func.func @arith_truncf(%inp: vector<2x3xf32>) -> vector<2x3xbf16> {

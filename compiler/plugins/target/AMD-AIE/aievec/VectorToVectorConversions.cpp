@@ -123,6 +123,17 @@ static SmallVector<Value> getCollapsedIndices(RewriterBase &rewriter,
   return indicesAfterCollapsing;
 }
 
+static bool hasDelinearizeIndexVal(OperandRange vals) {
+  return llvm::any_of(vals, [](OpFoldResult index) {
+    if (auto val = dyn_cast<Value>(index)) {
+      if (dyn_cast_if_present<affine::AffineDelinearizeIndexOp>(
+              val.getDefiningOp()))
+        return true;
+    }
+    return false;
+  });
+}
+
 /// Rewrites contiguous row-major vector.transfer_read ops by inserting
 /// memref.collapse_shape on the source so that the resulting
 /// vector.transfer_read has a 1D source. Requires the source shape to be
@@ -185,14 +196,20 @@ class FlattenContiguousRowMajorTransferReadPattern
     auto collapsedMap =
         AffineMap::get(collapsedRank, 0, dimExprs, rewriter.getContext());
 
-    // 2.2 New indices
-    // SmallVector<Value> collapsedIndices =
-    //     getCollapsedIndices(rewriter, loc, sourceType.getShape(),
-    //                         transferReadOp.getIndices(), firstDimToCollapse);
-    Value linearizedIndices = rewriter.create<affine::AffineLinearizeIndexOp>(
-        loc, transferReadOp.getIndices(), sourceType.getShape(), true);
+    // 2.2 Form new collapsed/linear indices.
+    // In case any of the indices derive their uses from an
+    // affine.delinearize_index op, we will form the new indices using
+    // affine.linearize_index else we use affine.apply/map to form the same.
     SmallVector<Value> collapsedIndices;
-    collapsedIndices.push_back(linearizedIndices);
+    if (hasDelinearizeIndexVal(transferReadOp.getIndices())) {
+      Value linearizedIndices = rewriter.create<affine::AffineLinearizeIndexOp>(
+          loc, transferReadOp.getIndices(), sourceType.getShape(), true);
+      collapsedIndices.push_back(linearizedIndices);
+    } else {
+      collapsedIndices =
+          getCollapsedIndices(rewriter, loc, sourceType.getShape(),
+                              transferReadOp.getIndices(), firstDimToCollapse);
+    }
 
     // 3. Create new vector.transfer_read that reads from the collapsed memref
     VectorType flatVectorType = VectorType::get({vectorType.getNumElements()},
@@ -279,15 +296,20 @@ class FlattenContiguousRowMajorTransferWritePattern
     auto collapsedMap =
         AffineMap::get(collapsedRank, 0, dimExprs, rewriter.getContext());
 
-    // 2.2 New indices
-    // SmallVector<Value> collapsedIndices =
-    //     getCollapsedIndices(rewriter, loc, sourceType.getShape(),
-    //                         transferWriteOp.getIndices(),
-    //                         firstDimToCollapse);
-    Value linearizedIndices = rewriter.create<affine::AffineLinearizeIndexOp>(
-        loc, transferWriteOp.getIndices(), sourceType.getShape(), true);
+    // 2.2 Form new collapsed/linear indices.
+    // In case any of the indices derive their uses from an
+    // affine.delinearize_index op, we will form the new indices using
+    // affine.linearize_index else we use affine.apply/map to form the same.
     SmallVector<Value> collapsedIndices;
-    collapsedIndices.push_back(linearizedIndices);
+    if (hasDelinearizeIndexVal(transferWriteOp.getIndices())) {
+      Value linearizedIndices = rewriter.create<affine::AffineLinearizeIndexOp>(
+          loc, transferWriteOp.getIndices(), sourceType.getShape(), true);
+      collapsedIndices.push_back(linearizedIndices);
+    } else {
+      collapsedIndices =
+          getCollapsedIndices(rewriter, loc, sourceType.getShape(),
+                              transferWriteOp.getIndices(), firstDimToCollapse);
+    }
 
     // 3. Create new vector.transfer_write that writes to the collapsed memref
     VectorType flatVectorType = VectorType::get({vectorType.getNumElements()},
