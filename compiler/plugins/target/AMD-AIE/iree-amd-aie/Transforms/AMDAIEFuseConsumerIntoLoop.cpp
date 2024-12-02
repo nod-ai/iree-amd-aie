@@ -21,9 +21,6 @@ class AMDAIEFuseConsumerIntoLoopPass
  public:
   AMDAIEFuseConsumerIntoLoopPass() = default;
   AMDAIEFuseConsumerIntoLoopPass(const AMDAIEFuseConsumerIntoLoopPass &pass) {}
-  AMDAIEFuseConsumerIntoLoopPass(
-      const AMDAIEFuseConsumerIntoLoopOptions &options)
-      : AMDAIEFuseConsumerIntoLoopBase(options) {}
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<scf::SCFDialect>();
@@ -36,7 +33,7 @@ void AMDAIEFuseConsumerIntoLoopPass::runOnOperation() {
   mlir::FunctionOpInterface funcOp = getOperation();
   IRRewriter rewriter(context);
 
-  // The depth until which we would keep fusing consumer chain.
+  // Step 1. The depth until which we would keep fusing consumer chain.
   // TODO(avarma): This should also be part of KernelDispatch logic.
   unsigned fuseDepth = 1;
   // Check if there is matmul-elementwise fusion opportunity. If so, overwrite
@@ -49,72 +46,71 @@ void AMDAIEFuseConsumerIntoLoopPass::runOnOperation() {
     return WalkResult::advance();
   });
 
-  // Based on the `fuseDepth`, we would greedily fuse the consumer ops.
-  for (unsigned depth = 1; depth <= fuseDepth; depth++) {
-    // Walk through the graph in post order and find the loop.
-    Operation *scfLoopOp = nullptr;
-    funcOp->walk<WalkOrder::PostOrder, ReverseIterator>(
-        [&](LoopLikeOpInterface op) {
-          if (isa<scf::ForOp>(op) && useSCFFor) {
-            scfLoopOp = op;
-            return WalkResult::interrupt();
-          } else if (isa<scf::ForallOp>(op) && !useSCFFor) {
-            scfLoopOp = op;
-            return WalkResult::interrupt();
-          }
-          return WalkResult::advance();
-        });
-
-    if (!scfLoopOp) {
-      LLVM_DEBUG(llvm::dbgs()
-                 << "There is no scf.for/forall loop to fuse with\n");
-      return;
-    }
-
-    // Search the compute op and its consumer slices.
-    linalg::LinalgOp linalgOp;
-    scfLoopOp->walk<WalkOrder::PostOrder, ReverseIterator>(
-        [&](linalg::LinalgOp op) {
-          linalgOp = op;
+  // Step 2. Find the first scf loop in postorder walk.
+  Operation *scfLoopOp = nullptr;
+  funcOp->walk<WalkOrder::PostOrder, ReverseIterator>(
+      [&](LoopLikeOpInterface op) {
+        if (isa<scf::ForOp, scf::ForallOp>(op)) {
+          scfLoopOp = op;
           return WalkResult::interrupt();
-        });
+        }
+        return WalkResult::advance();
+      });
+  if (!scfLoopOp) {
+    LLVM_DEBUG(llvm::dbgs()
+               << "There is no scf.for/forall loop to fuse with\n");
+    return;
+  }
 
-    if (!linalgOp) {
-      LLVM_DEBUG(llvm::dbgs() << "Could not find any compute op\n");
-      return;
-    }
+  // Step 3. Search the compute op and its consumer slices.
+  Operation *computeOp;
+  scfLoopOp->walk<WalkOrder::PostOrder, ReverseIterator>(
+      [&](linalg::LinalgOp op) {
+        computeOp = op;
+        return WalkResult::interrupt();
+      });
+  if (!computeOp) {
+    LLVM_DEBUG(llvm::dbgs() << "Could not find any compute op\n");
+    return;
+  }
 
-    Value::user_range users = linalgOp->getResult(0).getUsers();
-    if (!llvm::hasSingleElement(users)) {
-      linalgOp->emitOpError("Expected only one user of the compute op");
-      return signalPassFailure();
-    }
+  // Step 4. Based on the `fuseDepth`, we would greedily fuse the consumer ops.
+  for (unsigned depth = 1; depth <= fuseDepth; depth++) {
+    do {
+      Value::user_range users = computeOp->getResult(0).getUsers();
+      if (!llvm::hasSingleElement(users)) {
+        LLVM_DEBUG(llvm::dbgs()
+                   << "Expected only one user of the compute op\n");
+        return signalPassFailure();
+      }
 
-    Operation *terminatorStoreOp = *(users.begin());
-    if (!(isa<tensor::InsertSliceOp, tensor::ParallelInsertSliceOp>(
-            terminatorStoreOp))) {
-      terminatorStoreOp->emitOpError(
-          "Expected either tensor.insert_slice OR tensor.parallel_insert_slice "
-          "to be the only user of the compute op");
-      return signalPassFailure();
-    }
-
-    std::optional<scf::SCFFuseConsumerOfSliceResult> fusedConsumer =
-        scf::tileAndFuseConsumerOfSlice(rewriter, terminatorStoreOp);
-    if (!fusedConsumer) {
-      terminatorStoreOp->emitOpError(
-          "Failed to fuse any consumer op into the producer");
-      return signalPassFailure();
-    }
-    fusedConsumer->origConsumerOperand->getOwner()->erase();
+      Operation *candidateSliceOp = *(users.begin());
+      if (!(isa<tensor::InsertSliceOp, tensor::ParallelInsertSliceOp>(
+              candidateSliceOp))) {
+        computeOp = computeOp->getParentOfType<LoopLikeOpInterface>();
+        LLVM_DEBUG(llvm::dbgs()
+                   << "Going to reattempt fusion because didn't find "
+                      "tensor.insert_slice/tensor.parallel_insert_slice as the "
+                      "user of the compute op\n");
+        continue;
+      }
+      std::optional<scf::SCFFuseConsumerOfSliceResult> fusedConsumer =
+          scf::tileAndFuseConsumerOfSlice(rewriter, candidateSliceOp);
+      if (!fusedConsumer) {
+        candidateSliceOp->emitOpError(
+            "Failed to fuse any consumer op into the producer");
+        return signalPassFailure();
+      }
+      fusedConsumer->origConsumerOperand->getOwner()->erase();
+      computeOp = fusedConsumer->tiledAndFusedConsumerOperand->getOwner();
+      break;
+    } while (computeOp && computeOp->getParentOp() != funcOp);
   }
 }
 
 }  // namespace
 
-std::unique_ptr<Pass> createAMDAIEFuseConsumerIntoLoopPass(
-    AMDAIEFuseConsumerIntoLoopOptions options) {
-  return std::make_unique<AMDAIEFuseConsumerIntoLoopPass>(options);
+std::unique_ptr<Pass> createAMDAIEFuseConsumerIntoLoopPass() {
+  return std::make_unique<AMDAIEFuseConsumerIntoLoopPass>();
 }
-
 }  // namespace mlir::iree_compiler::AMDAIE

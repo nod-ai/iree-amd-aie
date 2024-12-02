@@ -279,10 +279,6 @@ LogicalResult AIETargetBackend::serializeExecutable(
     IREE::HAL::ExecutableVariantOp variantOp, OpBuilder &executableBuilder) {
   ModuleOp moduleOp = variantOp.getInnerModule();
 
-  std::string basename =
-      llvm::join_items("_", serOptions.dumpBaseName, variantOp.getName());
-  sanitizeForBootgen(basename);
-
   FailureOr<SmallString<128>> maybeWorkDir;
   // If a path for intermediates has been specified, assume it is common for
   // all executables compiling in parallel, and so create an
@@ -290,7 +286,6 @@ LogicalResult AIETargetBackend::serializeExecutable(
   // separate.
   if (!serOptions.dumpIntermediatesPath.empty()) {
     SmallString<128> workDir{serOptions.dumpIntermediatesPath};
-    llvm::sys::path::append(workDir, basename);
     if (auto ecode = llvm::sys::fs::create_directories(workDir)) {
       return moduleOp.emitError()
              << "failed to create working directory " << workDir

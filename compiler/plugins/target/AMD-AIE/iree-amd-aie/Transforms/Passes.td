@@ -288,10 +288,6 @@ def AMDAIEFuseConsumerIntoLoop :
     InterfacePass<"iree-amdaie-fuse-consumer-into-loop", "mlir::FunctionOpInterface"> {
   let summary = "Fuse the consumer operation into the innermost last scf loop.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFuseConsumerIntoLoopPass()";
-  let options = [
-    Option<"useSCFFor", "use-scf-for", "bool", /*default=*/"false",
-      "Set the innermost scf loop type to fuse consumer ops into">
-  ];
 }
 
 def AMDAIEFuseFillIntoForall :
@@ -534,6 +530,12 @@ def AMDAIENormalizeLoopBounds :
     Pass<"iree-amdaie-normalize-loop-bounds", ""> {
   let summary = "Normalize the loop bounds of `scf.for` and `scf.forall`";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIENormalizeLoopBoundsPass()";
+}
+
+def AMDAIENpuDmaToHalfDmaCpyNd :
+    Pass<"iree-amdaie-npu-dma-to-half-dma-cpy-nd", ""> {
+  let summary = "Lower DmaCpNd ops to HalfDmaCpyNd ops";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIENpuDmaToHalfDmaCpyNdPass()";
 }
 
 def AMDAIEObjFifoBufferization :

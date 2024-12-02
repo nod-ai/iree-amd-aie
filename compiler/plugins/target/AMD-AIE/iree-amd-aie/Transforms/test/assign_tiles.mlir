@@ -14,6 +14,41 @@ module {
 
 // -----
 
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+// expected-error @+2 {{non-local tile assignment failed}}
+// expected-error @+1 {{failed to clear non-local tile assignments}}
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @logicalobjectfifo_from_buffers_error() {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c2 = arith.constant 2 : index
+    %alloc_1 = memref.alloc() : memref<2048xi32, 2>
+    amdaie.workgroup {
+      %tile_0_1 = amdaie.tile(%c0, %c1)
+      %tile_0_2 = amdaie.tile(%c0, %c2)
+      %buffer = amdaie.buffer(%tile_0_1) : memref<2048xi32, 1>
+      %lock = amdaie.lock(%tile_0_1(0), 2)
+      %lock_1 = amdaie.lock(%tile_0_1(1), 0)
+      // expected-error @+2 {{could not replace its tiles}}
+      // expected-error @+1 {{op doesn't support tile replacement}}
+      %0 = amdaie.logicalobjectfifo.from_buffers({%buffer}, {%lock}, {%lock_1}) : memref<2048xi32, 1> -> !amdaie.logicalobjectfifo<memref<2048xi32, 1>>
+      %1 = amdaie.logicalobjectfifo.from_memref %alloc_1, {} : memref<2048xi32, 2> -> !amdaie.logicalobjectfifo<memref<2048xi32, 2>>
+      %2 = amdaie.dma_cpy_nd(%1[] [] [], %0[] [] []) : (!amdaie.logicalobjectfifo<memref<2048xi32, 2>>, !amdaie.logicalobjectfifo<memref<2048xi32, 1>>)
+      %3 = amdaie.core(%tile_0_2, in : [], out : []) {
+        %4 = amdaie.logicalobjectfifo.access(%1, Read) : !amdaie.logicalobjectfifo<memref<2048xi32, 2>> -> memref<2048xi32, 2>
+        amdaie.end
+      }
+      amdaie.controlcode {
+        amdaie.end
+      }
+    }
+    memref.dealloc %alloc_1 : memref<2048xi32, 2>
+    return
+  }
+}
+
+// -----
+
 // Test assignment of L1 objFifos based on the cores where they are used.
 // CHECK-LABEL: @assign_local_tiles
 // CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
@@ -239,6 +274,42 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       }
     }
     memref.dealloc %alloc : memref<2048xi32>
+    memref.dealloc %alloc_1 : memref<2048xi32, 2>
+    return
+  }
+}
+
+// -----
+
+// Test assignment of L3 placeholder objFifos based on L1 assignments.
+// CHECK-LABEL: @assign_placeholder_l3_l1_tiles
+// CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:   %[[C2:.*]] = arith.constant 2 : index
+// CHECK-DAG:   %[[ALLOC_1:.*]] = memref.alloc() : memref<2048xi32, 2>
+// CHECK:       amdaie.workgroup
+// CHECK-DAG:     %[[TILE_0_0:.*]] = amdaie.tile(%[[C0]], %[[C0]])
+// CHECK-DAG:     %[[TILE_0_2:.*]] = amdaie.tile(%[[C0]], %[[C2]])
+// CHECK-DAG:     amdaie.logicalobjectfifo.placeholder{%[[TILE_0_0]]}
+// CHECK-DAG:     amdaie.logicalobjectfifo.from_memref %[[ALLOC_1]], {%[[TILE_0_2]]}
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @assign_placeholder_l3_l1_tiles() {
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    %alloc_1 = memref.alloc() : memref<2048xi32, 2>
+    amdaie.workgroup {
+      %tile_0_2 = amdaie.tile(%c0, %c2)
+      %0 = amdaie.logicalobjectfifo.placeholder{} : !amdaie.logicalobjectfifo<memref<2048xi32>>
+      %1 = amdaie.logicalobjectfifo.from_memref %alloc_1, {} : memref<2048xi32, 2> -> !amdaie.logicalobjectfifo<memref<2048xi32, 2>>
+      %2 = amdaie.dma_cpy_nd(%1[] [] [], %0[] [] []) : (!amdaie.logicalobjectfifo<memref<2048xi32, 2>>, !amdaie.logicalobjectfifo<memref<2048xi32>>)
+      %3 = amdaie.core(%tile_0_2, in : [], out : []) {
+        %4 = amdaie.logicalobjectfifo.access(%1, Read) : !amdaie.logicalobjectfifo<memref<2048xi32, 2>> -> memref<2048xi32, 2>
+        amdaie.end
+      }
+      amdaie.controlcode {
+        amdaie.end
+      }
+    }
     memref.dealloc %alloc_1 : memref<2048xi32, 2>
     return
   }
