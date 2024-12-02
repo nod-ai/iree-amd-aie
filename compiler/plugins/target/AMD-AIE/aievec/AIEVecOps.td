@@ -38,8 +38,8 @@ def AIEVec_ShiftOp:
   AIEVec_Op<"shift", [
     Pure
   ]>,
-  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, I32:$shift, DefaultValuedAttr<BoolAttr, "false">:$isAcc)>,
-  Results<(outs AnyVector:$result)> {
+  Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs, I32:$shift, DefaultValuedAttr<BoolAttr, "false">:$isAcc)>,
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE2 concat and shift";
   let description = [{
     AMD-specific shift intrinsic. Concatenates two
@@ -57,10 +57,10 @@ def AIEVec_ExtOp:
   AIEVec_Op<"ext", [
     Pure
   ]>,
-  Arguments<(ins AnyVector:$source,
+  Arguments<(ins AnyVectorOfNonZeroRank:$source,
              // ConfinedAttr<AIEI8Attr, [IntMinValue<0>, IntMaxValue<8>]>:$index)>,
              ConfinedAttr<I8Attr, [IntMinValue<0>, IntMaxValue<8>]>:$index)>,
-  Results<(outs AnyVector:$result)> {
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE ext";
   let description = [{
     AMD-specific vector extract intrinsic. Selects contiguous lanes from
@@ -78,9 +78,9 @@ def AIEVec_UPSOp:
   AIEVec_Op<"ups", [
     Pure
   ]>,
-  Arguments<(ins AnyVector:$source,
+  Arguments<(ins AnyVectorOfNonZeroRank:$source,
           DefaultValuedAttr<ConfinedAttr<I8Attr, [IntNonNegative]>, "0">:$shift)>,
-  Results<(outs AnyVector:$result)> {
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE ups";
   let description = [{
     AMD-specific upshift intrinsic. Moves data from AIE vector data type
@@ -99,8 +99,8 @@ def AIEVec_CastOp:
   AIEVec_Op<"cast", [
     Pure
   ]>,
-  Arguments<(ins AnyVector:$source, DefaultValuedAttr<BoolAttr, "false">:$isResAcc)>,
-  Results<(outs AnyVector:$result)> {
+  Arguments<(ins AnyVectorOfNonZeroRank:$source, DefaultValuedAttr<BoolAttr, "false">:$isResAcc)>,
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE cast";
   let description = [{
     AIE2 cast intrinsic. Cast values from source data type to result data types.
@@ -117,8 +117,8 @@ def AIEVec_SRSOp:
   AIEVec_Op<"srs", [
     Pure
   ]>,
-  Arguments<(ins AnyVector:$source, AnyInteger:$shift)>,
-  Results<(outs AnyVector:$result)> {
+  Arguments<(ins AnyVectorOfNonZeroRank:$source, AnyInteger:$shift)>,
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE srs";
   let description = [{
     AMD-specific shift-round-saturate intrinsic. Moves values from
@@ -177,7 +177,7 @@ def AIEVec_ShuffleOp : AIEVec_Op<"shuffle",
                       512, [I8, I16, I32, I64, I128, I256,
                             I512, BF16, F32]>>:$rhs,
                  AIEVec_ShuffleModeAttr:$mode)>,
-  Results<(outs AnyVector:$result)> {
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE2 shuffle";
   let description = [{
     AMD AIEv2-specific vector shuffle. It performs a shuffle of the elements of
@@ -348,9 +348,9 @@ def AIEVec_FMAElemOp :
   AIEVec_Op<"mac_elem", [
     Pure
   ]>,
-  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, AnyVector:$acc,
+  Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs, AnyVectorOfNonZeroRank:$acc,
                DefaultValuedAttr<BoolAttr, "false">:$fmsub)>,
-  Results<(outs AnyVector:$result)> {
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE2 element-wise vector fused multiply-add";
   let description = [{
     AMD-specific multiply-add operation. It multiplies two 1-D vectors in the same channel,
