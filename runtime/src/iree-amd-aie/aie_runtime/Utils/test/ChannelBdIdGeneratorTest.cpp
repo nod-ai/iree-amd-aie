@@ -93,7 +93,15 @@ TEST(ChannelBdIdGeneratorTest, Release) {
   EXPECT_EQ(generator.isBdIdAssigned(1), true);
 }
 
-TEST(ChannelBdIdGeneratorTest, IncrementalAssign) {
+TEST(ChannelBdIdGeneratorTest, AssignAll) {
+  ChannelBdIdGenerator generator(getTestSingleRangeChannelToValidBdIds());
+  EXPECT_EQ(generator.getAndAssignBdId(0).value(), 0);
+  EXPECT_EQ(generator.getAndAssignBdId(0).value(), 1);
+  EXPECT_EQ(generator.getAndAssignBdId(0).value(), 2);
+  EXPECT_EQ(generator.getAndAssignBdId(0), std::nullopt);
+}
+
+TEST(ChannelBdIdGeneratorTest, IncrementalWrap) {
   ChannelBdIdGenerator generator(getTestSingleRangeChannelToValidBdIds());
   EXPECT_EQ(
       generator.getAndAssignBdId(0, BdIdAssignmentMode::Incremental).value(),
@@ -107,7 +115,9 @@ TEST(ChannelBdIdGeneratorTest, IncrementalAssign) {
       generator.getAndAssignBdId(0, BdIdAssignmentMode::Incremental).value(),
       2);
   generator.releaseBdId(2);
-  EXPECT_EQ(generator.getAndAssignBdId(0).value(), 0);
+  EXPECT_EQ(
+      generator.getAndAssignBdId(0, BdIdAssignmentMode::Incremental).value(),
+      0);
   generator.releaseBdId(0);
 }
 

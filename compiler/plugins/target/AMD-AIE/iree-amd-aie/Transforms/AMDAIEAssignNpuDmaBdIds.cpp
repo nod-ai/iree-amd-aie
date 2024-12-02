@@ -4,6 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "iree-amd-aie/IR/AMDAIEAttrs.h"
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
@@ -20,19 +21,20 @@ namespace {
 
 // Utility to retrieve a TileOp from a vector of tile values, while doing
 // appropriate verifications.
+template <CopyOpOperateOn OperateOn>
 FailureOr<AMDAIE::TileOp> getGeneratorTileOp(
     AMDAIE::NpuDmaCpyNdOp &npuDmaOp,
     DenseMap<Value, ChannelBdIdGenerator> &shimTileToGeneratorMap) {
   SmallVector<Value> tiles;
-  if (npuDmaOp.getSource()) {
+  if constexpr (OperateOn == CopyOpOperateOn::Source) {
     auto logicalObjFifo =
         dyn_cast_if_present<AMDAIE::LogicalObjFifoOpInterface>(
             npuDmaOp.getSource().getDefiningOp());
     if (!logicalObjFifo)
       return npuDmaOp.emitOpError() << "expected a source logical objectFifo";
     tiles = logicalObjFifo.getTiles();
-  }
-  if (npuDmaOp.getTarget()) {
+
+  } else if constexpr (OperateOn == CopyOpOperateOn::Target) {
     auto logicalObjFifo =
         dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
             npuDmaOp.getTarget().getDefiningOp());
@@ -40,14 +42,14 @@ FailureOr<AMDAIE::TileOp> getGeneratorTileOp(
       return npuDmaOp.emitOpError()
              << "expected a target `amdaie.logicalobjectfifo.from_memref`";
     tiles = logicalObjFifo.getTiles();
+  } else {
+    return npuDmaOp.emitOpError()
+           << "Function can only operate on Source or Target";
   }
   if (tiles.size() != 1) {
-    if (tiles.empty()) {
-      return npuDmaOp.emitOpError() << "no tiles found";
-    } else {
-      return npuDmaOp.emitOpError()
-             << "operating on multiple tiles is not supported";
-    }
+    return npuDmaOp.emitOpError()
+           << "expected to operate on a singe tile, but found: "
+           << tiles.size();
   }
   Value tile = tiles[0];
   if (!shimTileToGeneratorMap.contains(tile))
@@ -73,98 +75,93 @@ bool isInMostInnerLoop(AMDAIE::NpuDmaCpyNdOp op) {
 
 // Count the number of BD IDs needed per loop iteration,
 // so that we know where to start the BD ID for the next iteration.
-uint32_t countBdIdPerLoopIteration(
+uint32_t getNumRequiredBdIds(
     scf::ForOp loop, AMDAIE::TileOp tileOp,
     DenseMap<Value, ChannelBdIdGenerator> &shimTileToGeneratorMap) {
   uint32_t count = 0;
   loop.walk([&](AMDAIE::NpuDmaCpyNdOp dmaOp) {
-    if (dmaOp.getSource() || dmaOp.getTarget()) {
+    if (dmaOp.getSource()) {
       FailureOr<AMDAIE::TileOp> tile =
-          getGeneratorTileOp(dmaOp, shimTileToGeneratorMap);
+          getGeneratorTileOp<CopyOpOperateOn::Source>(dmaOp,
+                                                      shimTileToGeneratorMap);
+      if (succeeded(tile) && *tile == tileOp) count++;
+    }
+    if (dmaOp.getTarget()) {
+      FailureOr<AMDAIE::TileOp> tile =
+          getGeneratorTileOp<CopyOpOperateOn::Target>(dmaOp,
+                                                      shimTileToGeneratorMap);
       if (succeeded(tile) && *tile == tileOp) count++;
     }
   });
   return count;
 }
 
+template <CopyOpOperateOn OperateOn>
 FailureOr<AMDAIE::BdIdOp> getBdIdOp(
     IRRewriter &rewriter, AMDAIE::NpuDmaCpyNdOp &npuDmaOp,
     DenseMap<Value, ChannelBdIdGenerator> &shimTileToGeneratorMap,
-    DenseMap<TileOp, uint32_t> &tileToBdIdOffsetMap,
-    DenseMap<TileOp, uint32_t> &tileToBdIdSizeMap, uint32_t channel) {
+    DenseMap<AMDAIE::TileOp, uint32_t> &tileToBdIdSizeMap,
+    DenseMap<AMDAIE::BdIdOp, SmallVector<uint32_t>> &bdIdOpToBdIdsMap,
+    uint32_t channel) {
   FailureOr<AMDAIE::TileOp> tileOp =
-      getGeneratorTileOp(npuDmaOp, shimTileToGeneratorMap);
+      getGeneratorTileOp<OperateOn>(npuDmaOp, shimTileToGeneratorMap);
   if (failed(tileOp)) return failure();
 
   ChannelBdIdGenerator &generator = shimTileToGeneratorMap[tileOp->getResult()];
-  std::optional<uint32_t> bdId =
-      generator.getAndAssignBdId(channel, BdIdAssignmentMode::Incremental);
-  if (!bdId) return failure();
   AMDAIE::BdIdOp bdIdOp;
   rewriter.setInsertionPoint(npuDmaOp);
   if (isInMostInnerLoop(npuDmaOp)) {
-    // If the DMA is in the innermost loop, assign a BD ID using the
-    // semi-affine expression:
-    // `(iv * step + bdId - offset) % size + offset`,
-    // `step` represents the number of BD IDs needed per loop iteration,
-    // `bdId` is the BD ID assigned by the generator,
-    // `offset` is the BD ID assigned to the first DMA in the loop,
-    // `size` is the number of BD IDs available.
-    if (!tileToBdIdOffsetMap.contains(*tileOp))
-      tileToBdIdOffsetMap[*tileOp] = bdId.value();
-    // plus one because one BD ID is just assigned in this function.
-    if (!tileToBdIdSizeMap.contains(*tileOp))
-      tileToBdIdSizeMap[*tileOp] = generator.getAvailableBdIdNum(channel) + 1;
-    auto loop = npuDmaOp->getParentOfType<scf::ForOp>();
-    uint32_t bdIdCount =
-        countBdIdPerLoopIteration(loop, *tileOp, shimTileToGeneratorMap);
+    // If the DMA is in the innermost loop, using the semi-affine expression:
+    // `iv % size + offset`,
+    // `iv` is the loop induction variable,
+    // `size` is the number of BD IDs assigned to each DMA op,
+    // `offset` is the BD ID assigned to current DMA op at first iteration.
+    scf::ForOp loop = npuDmaOp->getParentOfType<scf::ForOp>();
     Value iv = loop.getInductionVar();
-    auto step = rewriter.create<arith::ConstantOp>(
-        rewriter.getUnknownLoc(), rewriter.getIndexAttr(bdIdCount));
-    auto diff = rewriter.create<arith::ConstantOp>(
-        rewriter.getUnknownLoc(),
-        rewriter.getIndexAttr(bdId.value() -
-                              tileToBdIdOffsetMap[*tileOp]));  // bdId - offset
-    auto offset = rewriter.create<arith::ConstantOp>(
-        rewriter.getUnknownLoc(),
-        rewriter.getIndexAttr(tileToBdIdOffsetMap[*tileOp]));
-    auto size = rewriter.create<arith::ConstantOp>(
-        rewriter.getUnknownLoc(),
-        rewriter.getIndexAttr(tileToBdIdSizeMap[*tileOp]));
-    auto mul = rewriter.create<arith::MulIOp>(rewriter.getUnknownLoc(), iv,
-                                              step);  // iv * step
-    auto add1 =
-        rewriter.create<arith::AddIOp>(rewriter.getUnknownLoc(), mul,
-                                       diff);  // iv * step + bdId - offset
-    auto mod = rewriter.create<arith::RemUIOp>(
-        rewriter.getUnknownLoc(), add1,
-        size);  // (iv * step + bdId - offset) % size
-    auto add2 = rewriter.create<arith::AddIOp>(
-        rewriter.getUnknownLoc(), mod,
-        offset);  // (iv * step + bdId - offset) % size + offset
+
+    if (!tileToBdIdSizeMap.contains(*tileOp)) {
+      uint32_t numRequired =
+          getNumRequiredBdIds(loop, *tileOp, shimTileToGeneratorMap);
+      uint32_t numAvailable = generator.getNumAvailableBdIds(channel);
+      // In case of numRequired > numAvailable, BD ID size is set to 1, since
+      // reusing will happen.
+      tileToBdIdSizeMap[*tileOp] = std::max(numAvailable / numRequired, 1u);
+    }
+    uint32_t size = tileToBdIdSizeMap[*tileOp];
+
+    // Assigning BD IDs for all iterations in the loop.
+    SmallVector<uint32_t> bdIds;
+    for (uint32_t i = 0; i < size; i++) {
+      std::optional<uint32_t> bdId =
+          generator.getAndAssignBdId(channel, BdIdAssignmentMode::Incremental);
+      if (!bdId) return failure();
+      bdIds.push_back(bdId.value());
+    }
+    // Get the BD ID for the first iteration as the offset.
+    uint32_t offset = bdIds.front();
+
+    // Create the semi-affine expression.
+    AffineExpr ivExpr;
+    bindDims(loop.getContext(), ivExpr);
+    auto affineApply = rewriter.create<affine::AffineApplyOp>(
+        loop.getLoc(), ivExpr % size + offset,
+        ValueRange{
+            iv,
+        });
     bdIdOp = rewriter.create<AMDAIE::BdIdOp>(rewriter.getUnknownLoc(), *tileOp,
-                                             add2.getResult());
+                                             affineApply.getResult());
+    bdIdOpToBdIdsMap[bdIdOp] = bdIds;
   } else {
-    // If the DMA is not in the innermost loop, assign a constant BD ID
+    // If the DMA is not in the innermost loop, assign a constant BD ID.
+    std::optional<uint32_t> bdId =
+        generator.getAndAssignBdId(channel, BdIdAssignmentMode::Incremental);
+    if (!bdId) return failure();
     auto constant = rewriter.create<arith::ConstantOp>(
         rewriter.getUnknownLoc(), rewriter.getIndexAttr(bdId.value()));
     bdIdOp = rewriter.create<AMDAIE::BdIdOp>(rewriter.getUnknownLoc(), *tileOp,
                                              constant.getResult());
   }
   return bdIdOp;
-};
-
-FailureOr<uint32_t> retriveBdId(arith::AddIOp add2) {
-  uint32_t offset = getConstantIndexOrAssert(add2.getOperand(1));
-  if (auto mod = dyn_cast<arith::RemUIOp>(add2.getOperand(0).getDefiningOp())) {
-    if (auto add1 =
-            dyn_cast<arith::AddIOp>(mod.getOperand(0).getDefiningOp())) {
-      uint32_t diff = getConstantIndexOrAssert(add1.getOperand(1));
-      uint32_t bdId = offset + diff;
-      return bdId;
-    }
-  }
-  return failure();
 };
 
 /// Assign BD ids to NPU dma operations using the BD generator.
@@ -197,8 +194,8 @@ LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
   // refactoring.
   const uint32_t channel = 0;
 
-  DenseMap<AMDAIE::TileOp, uint32_t> tileToBdIdOffsetMap;
   DenseMap<AMDAIE::TileOp, uint32_t> tileToBdIdSizeMap;
+  DenseMap<AMDAIE::BdIdOp, SmallVector<uint32_t>> bdIdOpToBdIdsMap;
   // Walk `amdaie.npu_dma_cpy_nd` and  `amdaie.dma_wait` operations and assign
   // and release BD IDs when encountering the respective operations using the
   // tile BD ID generators initialized earlier.
@@ -206,9 +203,9 @@ LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
   WalkResult res = controlCodeOp->walk([&](Operation *op) {
     if (auto npuDmaOp = dyn_cast<AMDAIE::NpuDmaCpyNdOp>(op)) {
       if (npuDmaOp.getSource()) {
-        FailureOr<AMDAIE::BdIdOp> bdIdOp =
-            getBdIdOp(rewriter, npuDmaOp, shimTileToGeneratorMap,
-                      tileToBdIdOffsetMap, tileToBdIdSizeMap, channel);
+        FailureOr<AMDAIE::BdIdOp> bdIdOp = getBdIdOp<CopyOpOperateOn::Source>(
+            rewriter, npuDmaOp, shimTileToGeneratorMap, tileToBdIdSizeMap,
+            bdIdOpToBdIdsMap, channel);
         if (failed(bdIdOp)) return WalkResult::interrupt();
         rewriter.setInsertionPoint(npuDmaOp);
         npuDmaOp = rewriter.replaceOpWithNewOp<AMDAIE::NpuDmaCpyNdOp>(
@@ -220,9 +217,9 @@ LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
             npuDmaOp.getSourceMixedStrides(), *bdIdOp);
       }
       if (npuDmaOp.getTarget()) {
-        FailureOr<AMDAIE::BdIdOp> bdIdOp =
-            getBdIdOp(rewriter, npuDmaOp, shimTileToGeneratorMap,
-                      tileToBdIdOffsetMap, tileToBdIdSizeMap, channel);
+        FailureOr<AMDAIE::BdIdOp> bdIdOp = getBdIdOp<CopyOpOperateOn::Target>(
+            rewriter, npuDmaOp, shimTileToGeneratorMap, tileToBdIdSizeMap,
+            bdIdOpToBdIdsMap, channel);
         if (failed(bdIdOp)) return WalkResult::interrupt();
         rewriter.setInsertionPoint(npuDmaOp);
         (void)rewriter.replaceOpWithNewOp<AMDAIE::NpuDmaCpyNdOp>(
@@ -263,12 +260,15 @@ LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
         ChannelBdIdGenerator &generator =
             shimTileToGeneratorMap[tileOp.getResult()];
         Value value = bdIdOp.getValue();
-        if (auto addOp = value.getDefiningOp<arith::AddIOp>()) {
-          // If the BD ID is a semi-affine expression, retrieve the BD ID for
-          // the first iteration.
-          FailureOr<uint32_t> bdId = retriveBdId(addOp);
-          if (failed(bdId)) return WalkResult::interrupt();
-          generator.releaseBdId(*bdId);
+        if (auto op = value.getDefiningOp<affine::AffineApplyOp>()) {
+          // If the BD ID is a semi-affine expression.
+          if (bdIdOpToBdIdsMap.contains(bdIdOp)) {
+            for (uint32_t bdId : bdIdOpToBdIdsMap[bdIdOp]) {
+              generator.releaseBdId(bdId);
+            }
+          } else {
+            return WalkResult::interrupt();
+          }
         } else {
           // Else, must be a constant BD ID.
           uint32_t bdId = getConstantIndexOrAssert(value);
@@ -287,7 +287,7 @@ class AMDAIEAssignNpuDmaBdIdsPass
     : public impl::AMDAIEAssignNpuDmaBdIdsBase<AMDAIEAssignNpuDmaBdIdsPass> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<AMDAIEDialect>();
+    registry.insert<AMDAIEDialect, affine::AffineDialect>();
   }
 
   AMDAIEAssignNpuDmaBdIdsPass() = default;
