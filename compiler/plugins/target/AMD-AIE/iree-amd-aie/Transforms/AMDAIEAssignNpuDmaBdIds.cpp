@@ -50,10 +50,10 @@ FailureOr<AMDAIE::TileOp> getGeneratorTileOp(
     }
   }
   Value tile = tiles[0];
-  if (!shimTileToGeneratorMap.contains(tile)) {
+  if (!shimTileToGeneratorMap.contains(tile))
     return npuDmaOp.emitOpError()
            << "no channel BD ID generator found for tile: " << tile;
-  }
+
   auto tileOp = dyn_cast_if_present<AMDAIE::TileOp>(tile.getDefiningOp());
   if (!tileOp) return npuDmaOp.emitOpError() << "no tile op found";
   return tileOp;
@@ -62,14 +62,11 @@ FailureOr<AMDAIE::TileOp> getGeneratorTileOp(
 // Check if the DMA operation is in the innermost loop of controlcode.
 bool isInMostInnerLoop(AMDAIE::NpuDmaCpyNdOp op) {
   auto parentLoop = op->getParentOfType<scf::ForOp>();
-  if (!parentLoop) {
-    return false;
-  }
+  if (!parentLoop) return false;
+
   bool hasNestedLoop = false;
   parentLoop.walk([&](scf::ForOp nestedLoop) {
-    if (nestedLoop != parentLoop) {
-      hasNestedLoop = true;
-    }
+    if (nestedLoop != parentLoop) hasNestedLoop = true;
   });
   return !hasNestedLoop;
 }
@@ -84,9 +81,7 @@ uint32_t countBdIdPerLoopIteration(
     if (dmaOp.getSource() || dmaOp.getTarget()) {
       FailureOr<AMDAIE::TileOp> tile =
           getGeneratorTileOp(dmaOp, shimTileToGeneratorMap);
-      if (succeeded(tile) && *tile == tileOp) {
-        count++;
-      }
+      if (succeeded(tile) && *tile == tileOp) count++;
     }
   });
   return count;
