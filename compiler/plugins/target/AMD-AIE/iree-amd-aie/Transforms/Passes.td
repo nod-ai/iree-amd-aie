@@ -288,10 +288,6 @@ def AMDAIEFuseConsumerIntoLoop :
     InterfacePass<"iree-amdaie-fuse-consumer-into-loop", "mlir::FunctionOpInterface"> {
   let summary = "Fuse the consumer operation into the innermost last scf loop.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFuseConsumerIntoLoopPass()";
-  let options = [
-    Option<"useSCFFor", "use-scf-for", "bool", /*default=*/"false",
-      "Set the innermost scf loop type to fuse consumer ops into">
-  ];
 }
 
 def AMDAIEFuseFillIntoForall :
