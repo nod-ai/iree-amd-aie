@@ -14,7 +14,6 @@
 #include "iree-amd-aie/Target/XCLBinGen.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Parser/Parser.h"
-#include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 
 using namespace mlir;

@@ -26,6 +26,16 @@ iree_cc_binary(
   TESTONLY
 )
 
+iree_cc_test(
+  NAME
+    AMDAIEXCLBinGenTest
+  SRCS
+    AMDAIEXCLBinGenTest.cpp
+  DEPS
+    gtest
+    iree::target::amd-aie::Target::AIETargets
+)
+
 file(GLOB _mlir_files *.mlir)
 
 iree_lit_test_suite(
@@ -42,3 +52,4 @@ iree_lit_test_suite(
   LABELS
     "hostonly"
 )
+

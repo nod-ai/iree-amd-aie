@@ -9,7 +9,6 @@
 
 #include <string>
 
-#include "aie/AIEDialect.h"
 #include "iree-amd-aie/Transforms/KernelDispatch.h"
 #include "iree/compiler/Dialect/HAL/Target/TargetBackend.h"
 #include "iree/compiler/Dialect/HAL/Target/TargetDevice.h"
@@ -29,8 +28,13 @@ struct AMDAIEOptions {
   // Dump system commands used during compilation
   bool showInvokedCommands{false};
 
-  // Use the legacy chess compiler.
+  // Use the chess compiler. The default is to use peano.
   bool useChess{false};
+
+  // Additional flags to run peano's opt with (if peano is the backend compiler
+  // selected). These are mostly appended on the end of the default flags, but
+  // some flags may replace existing flags if they conflict.
+  std::string additionalPeanoOptFlags;
 
   // Print IR after all MLIR passes run in aie2xclbin (to stderr).
   bool aie2xclbinPrintIrAfterAll{false};
@@ -63,6 +67,13 @@ struct AMDAIEOptions {
 
   void bindOptions(OptionsBinder &binder) {
     static llvm::cl::OptionCategory category("AMD AIE Options");
+
+    binder.opt<std::string>(
+        "iree-amd-aie-additional-peano-opt-flags", additionalPeanoOptFlags,
+        llvm::cl::cat(category),
+        llvm::cl::desc("Additional flags for peano's opt. Example: "
+                       "\"-O3 --magic-flag\"."));
+
     binder.opt<std::string>(
         "iree-amd-aie-install-dir", amdAieInstallDir, llvm::cl::cat(category),
         llvm::cl::desc("Path to AMDAIE installation directory (typically the "
