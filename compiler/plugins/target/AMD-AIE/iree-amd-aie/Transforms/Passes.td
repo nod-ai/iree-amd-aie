@@ -532,6 +532,12 @@ def AMDAIENormalizeLoopBounds :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIENormalizeLoopBoundsPass()";
 }
 
+def AMDAIENpuDmaToHalfDmaCpyNd :
+    Pass<"iree-amdaie-npu-dma-to-half-dma-cpy-nd", ""> {
+  let summary = "Lower DmaCpNd ops to HalfDmaCpyNd ops";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIENpuDmaToHalfDmaCpyNdPass()";
+}
+
 def AMDAIEObjFifoBufferization :
     Pass<"iree-amdaie-objfifo-bufferization", ""> {
   let summary = "Bufferize logical objectFifos.";

@@ -121,7 +121,8 @@ std::unique_ptr<Pass> createAMDAIEControlCodeForallToForPass();
 /// Pass to unroll the loops within the control code regions.
 std::unique_ptr<Pass> createAMDAIEControlCodeLoopUnrollPass();
 
-/// Pass to convert control code DMA operations into NPU writes and syncs.
+/// Pass to convert control code HalfDmaCpyNd into NPU WriteBd, AddressPatch,
+/// PushToQueue operations.
 std::unique_ptr<Pass> createAMDAIEControlCodeLoweringPass();
 
 /// Pass to convert control code into a transaction binary.
@@ -252,6 +253,9 @@ std::unique_ptr<Pass> createAMDAIENoneAccessToTemporaryBufferPass();
 
 /// Normalize the loop bounds of `scf.for` and `scf.forall`.
 std::unique_ptr<Pass> createAMDAIENormalizeLoopBoundsPass();
+
+/// Pass to convert control code DMA operations into HalfDmaCpyNd.
+std::unique_ptr<Pass> createAMDAIENpuDmaToHalfDmaCpyNdPass();
 
 /// Create a pass to bufferize logical objectFifos.
 std::unique_ptr<Pass> createAMDAIEObjFifoBufferizationPass();

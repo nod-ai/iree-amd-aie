@@ -18,80 +18,6 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
-struct DmaCpyNdToHalfDmaCpyNdConverter final
-    : OpConversionPattern<AMDAIE::NpuDmaCpyNdOp> {
-  using OpConversionPattern::OpConversionPattern;
-
-  LogicalResult matchAndRewrite(
-      AMDAIE::NpuDmaCpyNdOp dmaOp, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
-    LLVM_DEBUG(llvm::dbgs() << "matchAndRewrite[AMDAIE::NpuDmaCpyNdOp]\n");
-    AMDAIE::ConnectionOp connectionOp = dmaOp.getConnectionOp();
-    if (!connectionOp) {
-      return dmaOp.emitOpError()
-             << "should operate on an `amdaie.connection` op";
-    }
-    // Convert source half.
-    Value source =
-        dmaOp.getSource() ? dmaOp.getSource() : connectionOp.getSource();
-    if (connectionOp.getSourceChannels().size() != 1)
-      return connectionOp.emitOpError() << "expected a single source channel";
-    auto sourceChannelOp = dyn_cast<AMDAIE::ChannelOp>(
-        connectionOp.getSourceChannels()[0].getDefiningOp());
-    bool hasAsyncSourceToken =
-        llvm::any_of(dmaOp.getAsyncTokens(), [](Value token) {
-          return isa<AMDAIE::AsyncSourceTokenType>(token.getType());
-        });
-    SmallVector<Type> resultTypes = {
-        rewriter.getType<AMDAIE::AsyncTokenType>()};
-    TypeRange sourceResultTypes =
-        hasAsyncSourceToken ? TypeRange{resultTypes} : TypeRange{};
-    rewriter.setInsertionPoint(dmaOp);
-    auto sourceDma = rewriter.create<AMDAIE::NpuHalfDmaCpyNdOp>(
-        dmaOp.getLoc(), sourceResultTypes, connectionOp, source,
-        dmaOp.getSourceMixedOffsets(), dmaOp.getSourceMixedSizes(),
-        dmaOp.getSourceMixedStrides(), dmaOp.getSourceBdId(), sourceChannelOp);
-
-    // Convert target half.
-    Value target =
-        dmaOp.getTarget() ? dmaOp.getTarget() : connectionOp.getTarget();
-    if (connectionOp.getTargetChannels().size() != 1)
-      return connectionOp.emitOpError() << "expected a single target channel";
-    auto targetChannelOp = dyn_cast<AMDAIE::ChannelOp>(
-        connectionOp.getTargetChannels()[0].getDefiningOp());
-    bool hasAsyncTargetToken =
-        llvm::any_of(dmaOp.getAsyncTokens(), [](Value token) {
-          return isa<AMDAIE::AsyncTargetTokenType>(token.getType());
-        });
-    TypeRange targetResultTypes =
-        hasAsyncTargetToken ? TypeRange{resultTypes} : TypeRange{};
-    auto targetDma = rewriter.create<AMDAIE::NpuHalfDmaCpyNdOp>(
-        dmaOp.getLoc(), targetResultTypes, connectionOp, target,
-        dmaOp.getTargetMixedOffsets(), dmaOp.getTargetMixedSizes(),
-        dmaOp.getTargetMixedStrides(), dmaOp.getTargetBdId(), targetChannelOp);
-    if (dmaOp.getNumResults() == 1) {
-      if (sourceDma.getNumResults() == 1) {
-        rewriter.replaceUsesWithIf(
-            dmaOp.getResult(0), sourceDma.getResult(0), [&](OpOperand &use) {
-              return isa<AMDAIE::AsyncSourceTokenType>(use.get().getType()) &&
-                     isa<AMDAIE::NpuDmaWaitOp>(use.getOwner());
-            });
-      }
-      if (targetDma.getNumResults() == 1) {
-        rewriter.replaceUsesWithIf(
-            dmaOp.getResult(0), targetDma.getResult(0), [&](OpOperand &use) {
-              return isa<AMDAIE::AsyncTargetTokenType>(use.get().getType()) &&
-                     isa<AMDAIE::NpuDmaWaitOp>(use.getOwner());
-            });
-      }
-      if (!dmaOp.getResult(0).use_empty())
-        return dmaOp.emitOpError() << "should not have any uses anymore";
-    }
-    rewriter.eraseOp(dmaOp);
-    return success();
-  }
-};
-
 struct HalfDmaCpyNdToNpuConverter final
     : OpConversionPattern<AMDAIE::NpuHalfDmaCpyNdOp> {
   using OpConversionPattern::OpConversionPattern;
@@ -159,22 +85,18 @@ struct HalfDmaCpyNdToNpuConverter final
         if (stride == 0) {
           repeatCount = size;
         } else {
-          iterationStride =
-              std::max(stride * elemWidthInBits / minStrideBitWidth,
-                       (int64_t)1);
+          iterationStride = std::max(
+              stride * elemWidthInBits / minStrideBitWidth, (int64_t)1);
           iterationSize = size;
-          if (stride == 1)
-            size = (size * elemWidthInBits) / minStrideBitWidth;
+          if (stride == 1) size = (size * elemWidthInBits) / minStrideBitWidth;
           repeatCount = iterationSize;
         }
       } else {
         staticStrides.push_back(
-            std::max(stride * elemWidthInBits / minStrideBitWidth,
-                     (int64_t)1));
+            std::max(stride * elemWidthInBits / minStrideBitWidth, (int64_t)1));
         // Innermost size needs to account for addressing granularity.
         if (iter.index() == (sizes.size() - 1)) {
-          staticSizes.push_back(size * elemWidthInBits /
-                                minStrideBitWidth);
+          staticSizes.push_back(size * elemWidthInBits / minStrideBitWidth);
         } else {
           staticSizes.push_back(size);
         }
@@ -323,9 +245,7 @@ void AMDAIEControlCodeLoweringPass::runOnOperation() {
   RewritePatternSet patterns(context);
   ConversionTarget conversionTarget(*context);
   conversionTarget.addLegalDialect<AMDAIEDialect>();
-  conversionTarget
-      .addIllegalOp<AMDAIE::NpuHalfDmaCpyNdOp, AMDAIE::NpuDmaCpyNdOp>();
-  patterns.insert<DmaCpyNdToHalfDmaCpyNdConverter>(context);
+  conversionTarget.addIllegalOp<AMDAIE::NpuHalfDmaCpyNdOp>();
   patterns.insert<HalfDmaCpyNdToNpuConverter>(context, deviceModel);
   if (failed(applyPartialConversion(parentOp, conversionTarget,
                                     std::move(patterns)))) {

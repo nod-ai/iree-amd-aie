@@ -95,6 +95,7 @@ iree_cc_library(
     "AMDAIEMapForallToCores.cpp"
     "AMDAIENoneAccessToTemporaryBuffer.cpp"
     "AMDAIENormalizeLoopBounds.cpp"
+    "AMDAIENpuDmaToHalfDmaCpyNd.cpp"
     "AMDAIEObjFifoBufferization.cpp"
     "AMDAIEPackAndTranspose.cpp"
     "AMDAIEPad.cpp"
