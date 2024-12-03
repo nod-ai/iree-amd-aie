@@ -56,11 +56,10 @@ class ChannelBdIdGenerator {
     if (!channelToValidBdIds.contains(channel)) {
       return 0;
     } else {
-      uint32_t count = 0;
-      for (uint32_t bdId : channelToValidBdIds[channel]) {
-        if (!isBdIdAssigned(bdId)) count += 1;
-      }
-      return count;
+      return std::count_if(
+          channelToValidBdIds[channel].begin(),
+          channelToValidBdIds[channel].end(),
+          [&](uint32_t bdId) { return !isBdIdAssigned(bdId); });
     }
   }
 

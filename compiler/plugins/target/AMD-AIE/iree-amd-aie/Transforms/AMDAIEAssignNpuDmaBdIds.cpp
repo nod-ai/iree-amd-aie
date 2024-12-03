@@ -19,8 +19,8 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
-// Utility to retrieve a TileOp from a vector of tile values, while doing
-// appropriate verifications.
+/// Utility to retrieve a TileOp from a vector of tile values, while doing
+/// appropriate verifications.
 template <CopyOpOperateOn OperateOn>
 FailureOr<AMDAIE::TileOp> getGeneratorTileOp(
     AMDAIE::NpuDmaCpyNdOp &npuDmaOp,
@@ -75,28 +75,26 @@ std::optional<uint32_t> getNumberIterations(scf::ForOp loop) {
   }
 }
 
-// `bdIdCount` represents the upper bound on the number of BD IDs
-// needed between the current DMA copy and its corresponding DMA wait.
-//
-// Example:
-// %0 = dma_copy {bd_id = 0}   // Current DMA copy
-// scf.for %arg0 = %c0 to %c1 step %c2 {
-//   %1 = dma_copy {bd_id = %arg0 + 1}  // DMA copy inside a sub-loop
-//   dma_wait(%1)                       // Wait for the sub-loop DMA copy
-// }
-// dma_wait(%0)   // Current DMA wait
-//
-// In this example:
-// - The current DMA copy (%0) requires 1 BD ID.
-// - The sub-loop executes 2 iterations, each requiring 1 BD ID.
-// - Therefore, the upper bound for `bdIdCount` is:
-//  3 = 1 (current) + 2 * 1(sub-loop).
-//
-// The lower bound will be 2 instead, if the DMA copy inside the sub-loop uses
-// constant BD ID.
-//
-// To ensure the inner loop has access to more BD IDs, we compute
-// the upper bound and use it to allocate BD IDs effectively.
+/// Computes the number of BD IDs required between the current
+/// DMA copy operation and its corresponding DMA wait operation.
+/// If a sub-loop is encountered, it assumes that a BD ID expression will be
+/// used within the sub-loop. This approach ensures that the inner loop has
+/// access to a greater number of BD IDs, which is favorable for enabling
+/// efficient BD chaining in subsequent passes.
+///
+/// Example:
+/// %0 = dma_copy {bd_id = 0}   // Current DMA copy
+/// scf.for %arg0 = %c0 to %c1 step %c2 {
+///   %1 = dma_copy {bd_id = %arg0 + 1}  // DMA copy inside a sub-loop
+///   dma_wait(%1)                       // Wait for the sub-loop DMA copy
+/// }
+/// dma_wait(%0)   // Current DMA wait
+///
+/// In this example:
+/// - The current DMA copy (%0) requires 1 BD ID.
+/// - The sub-loop executes 2 iterations, each requiring 1 BD ID.
+/// - Therefore, the required number of BD IDs is:
+///  3 = 1 (current) + 2 * 1(sub-loop).
 void getNumRequiredBdIds(
     scf::ForOp loop, AMDAIE::NpuDmaCpyNdOp currDmaOp, AMDAIE::TileOp tileOp,
     DenseMap<Value, ChannelBdIdGenerator> &shimTileToGeneratorMap,
@@ -140,6 +138,10 @@ void getNumRequiredBdIds(
   }
 }
 
+/// Creates a BD ID operation for the given DMA copy operation.
+/// If the DMA copy operation is inside a loop, the BD ID operation will be
+/// created with a semi-affine expression to assign different BD IDs for each
+/// iteration. Otherwise, a constant BD ID will be assigned.
 template <CopyOpOperateOn OperateOn>
 FailureOr<AMDAIE::BdIdOp> getBdIdOp(
     IRRewriter &rewriter, AMDAIE::NpuDmaCpyNdOp &npuDmaOp,
@@ -154,7 +156,7 @@ FailureOr<AMDAIE::BdIdOp> getBdIdOp(
   rewriter.setInsertionPoint(npuDmaOp);
   if (scf::ForOp loop = npuDmaOp->getParentOfType<scf::ForOp>();
       loop && getNumberIterations(loop)) {
-    // If the DMA is in a loop, using the semi-affine expression:
+    // In a loop, using the semi-affine expression:
     // `iv % size + offset`,
     // `iv` is the loop induction variable,
     // `size` is the number of BD IDs assigned to each DMA op,
@@ -200,7 +202,7 @@ FailureOr<AMDAIE::BdIdOp> getBdIdOp(
   // Assign a constant BD ID.
   std::optional<uint32_t> bdId =
       generator.getAndAssignBdId(channel, BdIdAssignmentMode::Incremental);
-  if (!bdId) return failure();
+  if (!bdId) return npuDmaOp.emitOpError() << "no BD ID available";
   auto constant = rewriter.create<arith::ConstantOp>(
       rewriter.getUnknownLoc(), rewriter.getIndexAttr(bdId.value()));
   AMDAIE::BdIdOp bdIdOp = rewriter.create<AMDAIE::BdIdOp>(

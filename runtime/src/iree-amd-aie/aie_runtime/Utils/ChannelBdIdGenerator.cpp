@@ -23,7 +23,7 @@ std::optional<uint32_t> ChannelBdIdGenerator::getAndAssignBdId(
         return bdId;
       }
     }
-  } else {
+  } else if (mode == BdIdAssignmentMode::Incremental) {
     // Incremental: Find the first unassigned BD id greater than lastUsedBdId,
     for (uint32_t bdId : channelToValidBdIds[channel]) {
       if (bdId > lastUsedBdId && !isBdIdAssigned(bdId)) {
@@ -38,6 +38,8 @@ std::optional<uint32_t> ChannelBdIdGenerator::getAndAssignBdId(
         return bdId;
       }
     }
+  } else {
+    assert(false && "Unsupported BdIdAssignmentMode");
   }
 
   // No valid BD id found
