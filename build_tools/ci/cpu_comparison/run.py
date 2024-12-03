@@ -652,6 +652,29 @@ def shell_out(cmd: list, workdir=None, verbose: int = 0, raise_on_error=True, en
     return stdout_decode, stderr_decode
 
 
+def print_sizes_of_elfs(test_dir):
+
+    # Get all the .elf files in `test_dir`:
+    elfs = list(test_dir.glob("*.elf"))
+
+    # If the list of elf files is not empty:
+    if elfs:
+        elf_sizes = {elf_file: elf_file.stat().st_size / 1024 for elf_file in elfs}
+
+        largest_elf_size = max(elf_sizes.values())
+        largest_elf_size = f"{largest_elf_size:.2f}"
+
+        smallest_elf_size = min(elf_sizes.values())
+        smallest_elf_size = f"{smallest_elf_size:.2f}"
+
+        number_of_elfs = len(elfs)
+        print(
+            f"The sizes(s) of the {number_of_elfs} .elf file(s) are in range {smallest_elf_size} [KB] - {largest_elf_size} [KB]"
+        )
+    else:
+        print(f"There are no .elf files in {test_dir}")
+
+
 def generate_aie_vmfb(
     config,
     aie_compilation_flags,
@@ -715,6 +738,9 @@ def generate_aie_vmfb(
     aie_vmfb = test_dir / f"{name}_aie.vmfb"
     if not aie_vmfb.exists():
         raise RuntimeError(f"Failed to compile {test_file} to {aie_vmfb}")
+
+    if config.verbose:
+        print_sizes_of_elfs(test_dir)
 
     return aie_vmfb
 
