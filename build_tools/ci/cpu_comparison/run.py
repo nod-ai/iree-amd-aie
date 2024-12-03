@@ -693,7 +693,6 @@ def generate_aie_vmfb(
         f"--iree-amdaie-target-device={config.target_device}",
         f"--iree-amdaie-tile-pipeline={tile_pipeline}",
         f"--iree-amdaie-lower-to-aie-pipeline={lower_to_aie_pipeline}",
-        "--iree-amdaie-matmul-elementwise-fusion",
         f"--iree-amd-aie-peano-install-dir={config.peano_dir}",
         f"--iree-amd-aie-install-dir={config.iree_dir}",
         f"--iree-amd-aie-vitis-install-dir={config.vitis_dir}",

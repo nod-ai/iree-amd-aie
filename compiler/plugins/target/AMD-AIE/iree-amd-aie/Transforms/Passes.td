@@ -416,7 +416,7 @@ def AMDAIELowerExecutableTarget :
   let summary = "Perform lowering of executable target using one of the IREE::HAL::DispatchLoweringPassPipeline";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELowerExecutableTargetPass()";
   let options = [
-    Option<"usePassPipeline", "use-pass-pipeline",
+    Option<"useTilePipeline", "use-tile-pipeline",
       "mlir::iree_compiler::AMDAIE::TilePassPipeline",
       /*default=*/"mlir::iree_compiler::AMDAIE::TilePassPipeline::PackPeelPipeline",
       "Pass pipeline to use while lowering to AIR dialect",
@@ -439,7 +439,7 @@ def AMDAIELoweringStrategy :
   let summary = "Add lowering strategy configurations to be used";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELoweringStrategyPass()";
   let options = [
-    Option<"usePassPipeline", "use-pass-pipeline",
+    Option<"useTilePipeline", "use-tile-pipeline",
       "mlir::iree_compiler::AMDAIE::TilePassPipeline",
       /*default=*/"mlir::iree_compiler::AMDAIE::TilePassPipeline::PackPeelPipeline",
       "Pass pipeline to use while lowering to AIR dialect",

@@ -37,7 +37,7 @@ enum class PeelingType { First, Last, FirstLast };
 enum class BufferizeOperand { InputOutput, Input, Output, DefOp };
 
 LogicalResult initAIELaunchConfig(FunctionOpInterface funcOp,
-                                  TilePassPipeline usePassPipeline,
+                                  TilePassPipeline useTilePipeline,
                                   LowerToAIEPassPipeline useLowerToAIEPipeline,
                                   AMDAIEDevice targetDevice, uint32_t numRows,
                                   uint32_t numCols);
