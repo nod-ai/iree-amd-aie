@@ -39,7 +39,8 @@ enum class BufferizeOperand { InputOutput, Input, Output, DefOp };
 LogicalResult initAIELaunchConfig(FunctionOpInterface funcOp,
                                   TilePassPipeline usePassPipeline,
                                   LowerToAIEPassPipeline useLowerToAIEPipeline,
-                                  AMDAIEDevice targetDevice);
+                                  AMDAIEDevice targetDevice, uint32_t numRows,
+                                  uint32_t numCols);
 
 }  // namespace mlir::iree_compiler::AMDAIE
 

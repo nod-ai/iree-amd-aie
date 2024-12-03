@@ -1,4 +1,4 @@
-// RUN: iree-compile --iree-hal-target-backends=amd-aie --compile-to=executable-sources %s | iree-opt --pass-pipeline="builtin.module(hal.executable(hal.executable.variant(iree-hal-translate-target-executable-variants{target=amd-aie})))" --iree-amdaie-lower-to-aie-pipeline=air --iree-amdaie-tile-pipeline=pack-peel --iree-amdaie-matmul-elementwise-fusion --split-input-file | FileCheck %s
+// RUN: iree-compile --iree-hal-target-backends=amd-aie --compile-to=executable-targets --iree-amdaie-num-rows=2 --iree-amdaie-num-cols=2 --iree-amdaie-lower-to-aie-pipeline=air --iree-amdaie-tile-pipeline=pack-peel --iree-amdaie-matmul-elementwise-fusion --split-input-file %s | FileCheck %s
 
 func.func @matmul_elementwise_i32(%lhs: tensor<1024x512xi32>, %rhs: tensor<512x1024xi32>, %ele: tensor<1024x1024xi32>) -> tensor<1024x1024xi32>
 {
@@ -49,6 +49,7 @@ func.func @matmul_elementwise_bf16_f32(%arg0: tensor<1024x512xbf16>, %arg1: tens
 // CHECK-COUNT-3:   aie.shim_dma_allocation
 
 // -----
+
 func.func @matmul_elementwise_bf16(%arg0: tensor<512x512xbf16>, %arg1: tensor<512x16384xbf16>, %arg2: tensor<512xf32>) -> tensor<512x16384xbf16> {
   %cst = arith.constant 0.000000e+00 : f32
   %7 = tensor.empty() : tensor<512x16384xbf16>

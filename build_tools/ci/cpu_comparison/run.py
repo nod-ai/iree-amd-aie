@@ -289,33 +289,6 @@ class BaseMatmul(BaseTest):
         )
 
 
-class MatmulFullBias(BaseMatmul):
-    """
-    A test of the form matmul(A,B) + C where A:MxK, B:KxN, C:MxN
-    """
-
-    def __init__(self, M, N, K, input_type, acc_type, run_on_target=["npu1_4col"]):
-        super().__init__(
-            run_on_target=run_on_target,
-            aie_compilation_flags=None,
-            M=M,
-            N=N,
-            K=K,
-            input_type=input_type,
-            acc_type=acc_type,
-            lower_to_aie_pipeline="air",
-        )
-        self.labels.append("MatmulFullBias")
-        self.name = f"matmul_full_bias_{M}_{N}_{K}_{input_type}_{acc_type}"
-
-    def _execute(self, config):
-        matmul_template_dir = config.file_dir / "matmul_template"
-        template_name = matmul_template_dir / "matmul_bias_MxK_KxN_MxN.mlir"
-        self.generate(config, template_name)
-        self.vs_cpu(config)
-        return True
-
-
 class Matmul(BaseMatmul):
     """
     A test of the form matmul(A,B) where A:MxK, B:KxN
@@ -467,7 +440,48 @@ class MatmulThinBias(BaseMatmul):
         matmul_template_dir = config.file_dir / "matmul_template"
         template_name = matmul_template_dir / "matmul_bias_MxK_KxN_N.mlir"
         self.generate(config, template_name)
+        self.add_aie_compilation_flags(
+            [
+                "--iree-amdaie-matmul-elementwise-fusion",
+                "--iree-amdaie-num-rows=2",
+                "--iree-amdaie-num-cols=2",
+            ]
+        )
         return self.vs_cpu(config)
+
+
+class MatmulFullBias(BaseMatmul):
+    """
+    A test of the form matmul(A,B) + C where A:MxK, B:KxN, C:MxN
+    """
+
+    def __init__(self, M, N, K, input_type, acc_type, run_on_target=["npu1_4col"]):
+        super().__init__(
+            run_on_target=run_on_target,
+            aie_compilation_flags=None,
+            M=M,
+            N=N,
+            K=K,
+            input_type=input_type,
+            acc_type=acc_type,
+            lower_to_aie_pipeline="air",
+        )
+        self.labels.append("MatmulFullBias")
+        self.name = f"matmul_full_bias_{M}_{N}_{K}_{input_type}_{acc_type}"
+
+    def _execute(self, config):
+        matmul_template_dir = config.file_dir / "matmul_template"
+        template_name = matmul_template_dir / "matmul_bias_MxK_KxN_MxN.mlir"
+        self.generate(config, template_name)
+        self.add_aie_compilation_flags(
+            [
+                "--iree-amdaie-matmul-elementwise-fusion",
+                "--iree-amdaie-num-rows=2",
+                "--iree-amdaie-num-cols=2",
+            ]
+        )
+        self.vs_cpu(config)
+        return True
 
 
 class BatchMatmul(BaseMatmul):

@@ -59,6 +59,8 @@ struct AMDAIEOptions {
   bool insertLoopAroundCoreBlock{false};
   bool matmulElementwiseFusion{false};
   AMDAIEDevice AMDAIETargetDevice{AMDAIEDevice::npu1_4col};
+  int AMDAIENumRows{4};
+  int AMDAIENumCols{4};
   std::string enableAMDAIEUkernels{"none"};
   bool enablePacketFlow{false};
 
@@ -230,6 +232,14 @@ struct AMDAIEOptions {
                        "Phoenix NPU with four columns"),
             clEnumValN(AMDAIEDevice::npu4, "npu4",
                        "Strix B0 NPU with 8 columns and 6 rows")));
+
+    binder.opt<int>("iree-amdaie-num-rows", AMDAIENumRows,
+                    llvm::cl::cat(category),
+                    llvm::cl::desc("Number of rows used in an AIE core array"));
+
+    binder.opt<int>(
+        "iree-amdaie-num-cols", AMDAIENumCols, llvm::cl::cat(category),
+        llvm::cl::desc("Number of columns used in an AIE core array"));
 
     binder.opt<bool>("iree-amdaie-enable-packet-flow", enablePacketFlow,
                      llvm::cl::cat(category),

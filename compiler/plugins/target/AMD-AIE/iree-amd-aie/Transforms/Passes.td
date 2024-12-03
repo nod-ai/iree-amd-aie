@@ -470,7 +470,11 @@ def AMDAIELoweringStrategy :
                    "Compile for Phoenix NPU1_4col"),
         clEnumValN(mlir::iree_compiler::AMDAIE::AMDAIEDevice::npu4, "npu4",
                    "Compile for Strix NPU4")
-      )}]>
+      )}]>,
+    Option<"numRows", "num-rows", "uint32_t", /*default=*/"4",
+      "Number of rows used in an AIE core array">,
+    Option<"numCols", "num-cols", "uint32_t", /*default=*/"4",
+      "Number of columns used in an AIE core array">
   ];
 }
 

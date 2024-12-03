@@ -150,6 +150,39 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
     Builder b(context);
     SmallVector<NamedAttribute> configItems;
 
+    uint32_t maxCoreRows, maxCoreCols;
+    switch (options.AMDAIETargetDevice) {
+      case AMDAIEDevice::npu1:
+      case AMDAIEDevice::npu1_4col:
+        maxCoreRows = 4;
+        maxCoreCols = 4;
+        break;
+      case AMDAIEDevice::npu1_1col:
+        maxCoreRows = 4;
+        maxCoreCols = 1;
+        break;
+      case AMDAIEDevice::npu1_2col:
+        maxCoreRows = 4;
+        maxCoreCols = 2;
+        break;
+      case AMDAIEDevice::npu1_3col:
+        maxCoreRows = 4;
+        maxCoreCols = 3;
+        break;
+      case AMDAIEDevice::npu4:
+        maxCoreRows = 4;
+        maxCoreCols = 8;
+        break;
+      default:
+        llvm::errs() << "unhandled NPU partitioning.\n";
+    }
+    if (options.AMDAIENumRows <= 0 || options.AMDAIENumRows > maxCoreRows) {
+      llvm::report_fatal_error("option numRows is out of range\n");
+    }
+    if (options.AMDAIENumCols <= 0 || options.AMDAIENumCols > maxCoreCols) {
+      llvm::report_fatal_error("option numCols is out of range\n");
+    }
+
     // Add some configurations to the `hal.executable.target` attribute.
     auto addConfig = [&](StringRef name, Attribute value) {
       configItems.emplace_back(StringAttr::get(context, name), value);
@@ -161,6 +194,11 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
     // Set microkernel enabling flag.
     addConfig("ukernels",
               StringAttr::get(context, options.enableAMDAIEUkernels));
+    // Set number of rows/cols used in an AIE array.
+    addConfig("num_rows", IntegerAttr::get(IntegerType::get(context, 32),
+                                           options.AMDAIENumRows));
+    addConfig("num_cols", IntegerAttr::get(IntegerType::get(context, 32),
+                                           options.AMDAIENumCols));
     auto configAttr = b.getDictionaryAttr(configItems);
 
     switch (options.deviceHal) {
@@ -204,7 +242,8 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
   void buildTranslationPassPipeline(IREE::HAL::ExecutableTargetAttr,
                                     OpPassManager &passManager) override {
     buildAMDAIETransformPassPipeline(
-        passManager, options.AMDAIETargetDevice, options.useTilePipeline,
+        passManager, options.AMDAIETargetDevice, options.AMDAIENumRows,
+        options.AMDAIENumCols, options.useTilePipeline,
         options.useLowerToAIEPipeline, options.matmulElementwiseFusion,
         options.enableVectorizationPasses, options.pathToUkernels,
         options.enablePacketFlow, options.enableCoalescingLoops,
