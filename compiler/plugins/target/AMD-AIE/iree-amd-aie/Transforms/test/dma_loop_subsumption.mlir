@@ -31,7 +31,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %1 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
       amdaie.controlcode {
         scf.for %arg2 = %c1 to %c6 step %c2 {
-          %bd_id = amdaie.bd_id(%tile, 0)
+          %bd_id = amdaie.bd_id(%tile, %c0)
           amdaie.npu.dma_cpy_nd %0([%arg2] [16] [1] bd_id = %bd_id, [] [] [])
           amdaie.npu.dma_cpy_nd %1([%arg2] [16] [1], [] [] [])
         }

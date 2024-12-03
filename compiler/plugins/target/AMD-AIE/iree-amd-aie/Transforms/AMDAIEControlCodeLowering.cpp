@@ -62,7 +62,7 @@ struct HalfDmaCpyNdToNpuConverter final
       return bdIdOp.emitOpError() << "must operate on an `amdaie.tile`";
     int64_t col = getConstantIndexOrAssert(tileOp.getCol());
     int64_t row = getConstantIndexOrAssert(tileOp.getRow());
-    int32_t bdId = bdIdOp.getValue();
+    int32_t bdId = getConstantIndexOrAssert(bdIdOp.getValue());
     int32_t outOfOrderId{0};
 
     SmallVector<int32_t, 4> staticSizes;

@@ -9,19 +9,41 @@
 namespace mlir::iree_compiler::AMDAIE {
 
 std::optional<uint32_t> ChannelBdIdGenerator::getAndAssignBdId(
-    uint32_t channel) {
+    uint32_t channel, BdIdAssignmentMode mode) {
   if (!channelToValidBdIds.contains(channel) ||
       channelToValidBdIds[channel].empty()) {
     return std::nullopt;
   }
-  uint32_t bdId = channelToValidBdIds[channel][0];
-  size_t index{1};
-  while (isBdIdAssigned(bdId) && index < channelToValidBdIds[channel].size()) {
-    bdId = channelToValidBdIds[channel][index++];
+
+  if (mode == BdIdAssignmentMode::Smallest) {
+    // Smallest: Find the smallest unassigned BD id
+    for (uint32_t bdId : channelToValidBdIds[channel]) {
+      if (!isBdIdAssigned(bdId)) {
+        assignBdId(bdId);
+        return bdId;
+      }
+    }
+  } else if (mode == BdIdAssignmentMode::Incremental) {
+    // Incremental: Find the first unassigned BD id greater than lastUsedBdId,
+    for (uint32_t bdId : channelToValidBdIds[channel]) {
+      if (bdId > lastUsedBdId && !isBdIdAssigned(bdId)) {
+        assignBdId(bdId);
+        return bdId;
+      }
+    }
+    // If not found, wrap around and check again
+    for (uint32_t bdId : channelToValidBdIds[channel]) {
+      if (bdId <= lastUsedBdId && !isBdIdAssigned(bdId)) {
+        assignBdId(bdId);
+        return bdId;
+      }
+    }
+  } else {
+    assert(false && "Unsupported BdIdAssignmentMode");
   }
-  if (isBdIdAssigned(bdId)) return std::nullopt;
-  assignBdId(bdId);
-  return bdId;
+
+  // No valid BD id found
+  return std::nullopt;
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE

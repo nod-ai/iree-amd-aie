@@ -40,7 +40,6 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
     amdaie.workgroup {
       %tile = amdaie.tile(%c0, %c1)
       %tile_0 = amdaie.tile(%c0, %c0)
-      %bd_id = amdaie.bd_id(%tile_0, 0)
       %buffer = amdaie.buffer(%tile) : memref<2048xi32, 1 : i32>
       %buffer_1 = amdaie.buffer(%tile) : memref<2048xi32, 1 : i32>
       %lock = amdaie.lock(%tile(4), 4)
@@ -55,6 +54,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       amdaie.controlcode {
         %5 = amdaie.logicalobjectfifo.from_memref %1, {%tile_0} : memref<64x32xi32> -> !amdaie.logicalobjectfifo<memref<2048xi32>>
         memref.assume_alignment %1, 64 : memref<64x32xi32>
+        %bd_id = amdaie.bd_id(%tile_0, %c0)
 // CHECK: amdaie.npu.write_bd {bd_id = 0 : ui32, buffer_length = 0 : ui32, buffer_offset = 0 : ui32, col = 0 : ui32, enable_packet = true, iteration_current = 0 : ui32, iteration_size = 0 : ui32, iteration_stride = 0 : ui32, lock_acq_enable = false, lock_acq_id = 0 : ui32, lock_acq_val = 0 : i32, lock_rel_id = 0 : ui32, lock_rel_val = 0 : i32, next_bd = 0 : ui32, out_of_order_id = 0 : ui32, packet_id = 0 : ui32, packet_type = 0 : ui32, paddings_after = array<i32>, paddings_before = array<i32>, row = 0 : ui32, sizes = array<i32: 0, 0, 0>, strides = array<i32: 0, 0, 0>, use_next_bd = false, valid_bd = true}
 // CHECK: amdaie.npu.address_patch {arg_idx = 0 : ui32, bd_id = 0 : ui32, col = 0 : ui32, offset = 0 : ui32}
 // CHECK: amdaie.npu.push_to_queue {bd_id = 0 : ui32, channel = 0 : ui32, col = 0 : ui32, direction = 1 : i32, repeat_count = 1 : ui32, row = 0 : ui32}
@@ -91,7 +91,6 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
     amdaie.workgroup {
       %tile = amdaie.tile(%c0, %c1)
       %tile_0 = amdaie.tile(%c0, %c0)
-      %bd_id = amdaie.bd_id(%tile_0, 0)
       %buffer = amdaie.buffer(%tile) : memref<2048xbf16, 1 : i32>
       %buffer_1 = amdaie.buffer(%tile) : memref<2048xbf16, 1 : i32>
       %lock = amdaie.lock(%tile(4), 4)
@@ -106,6 +105,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       amdaie.controlcode {
         %5 = amdaie.logicalobjectfifo.from_memref %1, {%tile_0} : memref<64x32xi32> -> !amdaie.logicalobjectfifo<memref<2048xbf16>>
         memref.assume_alignment %1, 64 : memref<64x32xi32>
+        %bd_id = amdaie.bd_id(%tile_0, %c0)
 // CHECK: amdaie.npu.write_bd {bd_id = 0 : ui32, buffer_length = 0 : ui32, buffer_offset = 0 : ui32, col = 0 : ui32, enable_packet = true, iteration_current = 0 : ui32, iteration_size = 0 : ui32, iteration_stride = 0 : ui32, lock_acq_enable = false, lock_acq_id = 0 : ui32, lock_acq_val = 0 : i32, lock_rel_id = 0 : ui32, lock_rel_val = 0 : i32, next_bd = 0 : ui32, out_of_order_id = 0 : ui32, packet_id = 0 : ui32, packet_type = 0 : ui32, paddings_after = array<i32>, paddings_before = array<i32>, row = 0 : ui32, sizes = array<i32: 0, 0, 0>, strides = array<i32: 0, 0, 0>, use_next_bd = false, valid_bd = true}
 // CHECK: amdaie.npu.address_patch {arg_idx = 0 : ui32, bd_id = 0 : ui32, col = 0 : ui32, offset = 0 : ui32}
 // CHECK: amdaie.npu.push_to_queue {bd_id = 0 : ui32, channel = 0 : ui32, col = 0 : ui32, direction = 1 : i32, repeat_count = 1 : ui32, row = 0 : ui32}
