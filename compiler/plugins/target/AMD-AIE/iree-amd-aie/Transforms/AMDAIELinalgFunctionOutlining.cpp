@@ -50,7 +50,7 @@ Type getTypeWithoutLayout(Type type) {
 static FailureOr<func::FuncOp> outline(IRRewriter &rewriter, ModuleOp moduleOp,
                                        linalg::LinalgOp computeOp,
                                        const std::string &funcName) {
-  //  // Form outlined FunctionType.
+  // Form outlined FunctionType.
   SmallVector<Type> inputTypes;
   inputTypes.reserve(computeOp->getOperands().size());
   for (const auto &operand : computeOp->getOperands()) {
@@ -64,7 +64,7 @@ static FailureOr<func::FuncOp> outline(IRRewriter &rewriter, ModuleOp moduleOp,
   auto funcType =
       FunctionType::get(rewriter.getContext(), inputTypes, /*outputTypes=*/{});
 
-  // Form outlined FuncSignature
+  // Form outlined FuncSignature.
   rewriter.setInsertionPointToStart(moduleOp.getBody());
   auto func =
       rewriter.create<func::FuncOp>(moduleOp.getLoc(), funcName, funcType);
