@@ -161,20 +161,77 @@ func.func @elemwise_example(%A: memref<4xf32>, %C: memref<4xbf16>, %B: memref<4x
 
 // -----
 
-// This is an example of a linalg.generic which is not a 'known' op, it is
-// a pure reduction operation. This should be supported by the outlining pass.
-// Note that the first operand A has got an unknown offset, which is
-// supported by the outlining pass (the function signature drops the offset,
-// this is necessary for LLVM lowering).
-// CHECK: func.func private @generic_0_outlined(%arg0: memref<4x8xbf16>, %arg1: memref<bf16>) {
-// CHECK: linalg.generic
-// CHECK-SAME: iterator_types = ["reduction", "reduction"]
-// CHECK-SAME: ins(%arg0 : memref<4x8xbf16>) outs(%arg1 : memref<bf16>)
-// CHECK: return
-// CHECK: func.func @supported_linalg_op(%arg0: memref<4x8xbf16, strided<[8, 1], offset: ?>>, %arg1: memref<bf16>) {
-// CHECK: %[[CAST:.*]] = memref.cast %arg0 : memref<4x8xbf16, strided<[8, 1], offset: ?>> to memref<4x8xbf16>
-// CHECK: func.call @generic_0_outlined(%[[CAST]], %arg1) : (memref<4x8xbf16>, memref<bf16>) -> ()
-// CHECK: return
+// CHECK-LABEL: @linalg_fill_copy
+func.func @linalg_fill_copy(%A: memref<4xf32>, %B: memref<4xf32>) {
+  %c2 = arith.constant 2 : index
+  %c1 = arith.constant 1 : index
+  %cst = arith.constant 0.0 : f32
+  %tile = amdaie.tile(%c1, %c2)
+  %0 = amdaie.core(%tile, in : [], out : []) {
+    // CHECK:     linalg.fill
+    // CHECK-NOT: func.call @fill_elementwise_0_outlined
+    // CHECK:     linalg.copy
+    // CHECK-NOT: func.call @copy_elementwise_1_outlined
+    linalg.fill ins(%cst : f32) outs(%A : memref<4xf32>)
+    linalg.copy ins(%A : memref<4xf32>) outs(%B : memref<4xf32>)
+    amdaie.end
+  }
+  return
+}
+
+// -----
+
+// Test demonstrating the outlining of a linalg.generic operation other than
+// a matmul or elementwise operation. Specifically, one which has not been
+// 'blacklisted' like linalg.copy has (see test linalg_fill_copy above).
+// CHECK:       func.func private @generic_0_outlined
+// CHECK-SAME:    memref<4xbf16>,
+// CHECK-SAME:    memref<bf16>
+// CHECK:       linalg.generic
+// CHECK-SAME:    iterator_types = ["reduction"]
+// CHECK:       return
+// CHECK:       func.func @reduction
+// CHECK-SAME:    memref<4xbf16>
+// CHECK-SAME:    memref<bf16>
+// CHECK:       func.call @generic_0_outlined
+// CHECK-SAME:    (memref<4xbf16>, memref<bf16>) -> ()
+// CHECK:       return
+func.func @reduction(%A: memref<4xbf16>, %B: memref<bf16>) {
+  %c2 = arith.constant 2 : index
+  %tile = amdaie.tile(%c2, %c2)
+  %1 = amdaie.core(%tile, in : [], out : []) {
+    linalg.generic {
+      indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> ()>],
+      iterator_types = ["reduction"]
+    } ins(%A: memref<4xbf16>) outs(%B : memref<bf16>) {
+    ^bb0(%in: bf16, %out: bf16):
+      linalg.yield %in : bf16
+    }
+    amdaie.end
+  }
+  return
+}
+
+
+// -----
+
+// Test demonstrating the outlining of a linalg.generic where one
+// operand has an unkown offset. The memref is still contiguous, however.
+// CHECK:       func.func private @generic_0_outlined
+// CHECK-SAME:    memref<4x8xbf16>,
+// CHECK-SAME:    memref<bf16>
+// CHECK:       linalg.generic
+// CHECK-SAME:    iterator_types = ["reduction", "reduction"]
+// CHECK:       return
+// CHECK:       func.func @supported_linalg_op
+// CHECK-SAME:    memref<4x8xbf16, strided<[8, 1], offset: ?>>
+// CHECK-SAME:    memref<bf16>
+// CHECK:       %[[CAST:.*]] = memref.cast
+// CHECK-SAME:    memref<4x8xbf16, strided<[8, 1], offset: ?>>
+// CHECK-SAME:    to memref<4x8xbf16>
+// CHECK:       func.call @generic_0_outlined(%[[CAST]], %arg1) :
+// CHECK-SAME:    (memref<4x8xbf16>, memref<bf16>) -> ()
+// CHECK:       return
 func.func @supported_linalg_op(%A: memref<4x8xbf16, strided<[8,1], offset:?>>, %B: memref<bf16>) {
   %c2 = arith.constant 2 : index
   %tile = amdaie.tile(%c2, %c2)
@@ -195,42 +252,21 @@ func.func @supported_linalg_op(%A: memref<4x8xbf16, strided<[8,1], offset:?>>, %
 
 // -----
 
-// This is an example of a linalg.generic which cannot be outlined because
-// of the layout of one one of the operands. Strided layout is not supported
-// in lowering to llvm (AFAIK).
-func.func @unsupported_linalg_op(%A: memref<4x8xbf16, strided<[9,1], offset:?>>, %B: memref<bf16>) {
+// Test illustrating the error message when a linalg.generic operation has an
+// operand that is not contiguous. This is currently unsupported.
+func.func @unsupported_linalg_op(%A: memref<4x8xbf16, strided<[9,1]>>, %B: memref<bf16>) {
   %c2 = arith.constant 2 : index
   %tile = amdaie.tile(%c2, %c2)
   %1 = amdaie.core(%tile, in : [], out : []) {
-    // expected-error@+1 {{'linalg.generic' op has inputs with types that aren't compatible with outlining}}
+    // expected-error@+1 {{'linalg.generic' op has an operand of type 'memref<4x8xbf16, strided<[9, 1]>>' that isn't compatible with outlining.}}
     linalg.generic {
       indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>,
                        affine_map<(d0, d1) -> ()>],
       iterator_types = ["reduction", "reduction"]
-    } ins(%A: memref<4x8xbf16, strided<[9,1], offset:?>>) outs(%B : memref<bf16>) {
+    } ins(%A: memref<4x8xbf16, strided<[9,1]>>) outs(%B : memref<bf16>) {
     ^bb0(%in: bf16, %out: bf16):
       linalg.yield %in : bf16
     }
-    amdaie.end
-  }
-  return
-}
-
-// -----
-
-// CHECK-LABEL: @linalg_fill_copy
-func.func @linalg_fill_copy(%A: memref<4xf32>, %B: memref<4xf32>) {
-  %c2 = arith.constant 2 : index
-  %c1 = arith.constant 1 : index
-  %cst = arith.constant 0.0 : f32
-  %tile = amdaie.tile(%c1, %c2)
-  %0 = amdaie.core(%tile, in : [], out : []) {
-    // CHECK:     linalg.fill
-    // CHECK-NOT: func.call @fill_elementwise_0_outlined
-    // CHECK:     linalg.copy
-    // CHECK-NOT: func.call @copy_elementwise_1_outlined
-    linalg.fill ins(%cst : f32) outs(%A : memref<4xf32>)
-    linalg.copy ins(%A : memref<4xf32>) outs(%B : memref<4xf32>)
     amdaie.end
   }
   return
