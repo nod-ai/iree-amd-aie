@@ -164,6 +164,39 @@ FailureOr<AMDAIE::BdIdOp> getBdIdOp(
   return bdIdOp;
 };
 
+LogicalResult releaseBdId(
+    AMDAIE::BdIdOp bdIdOp,
+    DenseMap<Value, ChannelBdIdGenerator> &shimTileToGeneratorMap,
+    DenseMap<AMDAIE::BdIdOp, SmallVector<uint32_t>> &bdIdOpToBdIdsMap) {
+  auto tileOp =
+      dyn_cast_if_present<AMDAIE::TileOp>(bdIdOp.getTile().getDefiningOp());
+  if (!tileOp)
+    return bdIdOp.emitOpError()
+           << "doesn't operate on a `amdaie.tile` operation";
+
+  if (!shimTileToGeneratorMap.contains(tileOp.getResult()))
+    return bdIdOp.emitOpError()
+           << "no BD ID generator found for this BD ID op's tile";
+
+  ChannelBdIdGenerator &generator = shimTileToGeneratorMap[tileOp.getResult()];
+  Value value = bdIdOp.getValue();
+  if (auto op = value.getDefiningOp<affine::AffineApplyOp>()) {
+    // If the BD ID is a semi-affine expression.
+    if (bdIdOpToBdIdsMap.contains(bdIdOp)) {
+      for (uint32_t bdId : bdIdOpToBdIdsMap[bdIdOp]) {
+        generator.releaseBdId(bdId);
+      }
+    } else {
+      return bdIdOp.emitOpError() << "no BD IDs found for this expression";
+    }
+  } else {
+    // Else, must be a constant BD ID.
+    uint32_t bdId = getConstantIndexOrAssert(value);
+    generator.releaseBdId(bdId);
+  }
+  return success();
+}
+
 /// Assign BD ids to NPU dma operations using the BD generator.
 LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
   IRRewriter rewriter(workgroupOp->getContext());
@@ -238,41 +271,19 @@ LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
         if (npuDmaOp.getSourceBdId()) {
           bdIdOp = dyn_cast_if_present<AMDAIE::BdIdOp>(
               npuDmaOp.getSourceBdId().getDefiningOp());
-        } else if (npuDmaOp.getTargetBdId()) {
+          if (!bdIdOp) return WalkResult::advance();
+          if (failed(releaseBdId(bdIdOp, shimTileToGeneratorMap,
+                                 bdIdOpToBdIdsMap)))
+            return WalkResult::interrupt();
+        }
+
+        if (npuDmaOp.getTargetBdId()) {
           bdIdOp = dyn_cast_if_present<AMDAIE::BdIdOp>(
               npuDmaOp.getTargetBdId().getDefiningOp());
-        } else {
-          return WalkResult::advance();
-        }
-        if (!bdIdOp) return WalkResult::advance();
-        auto tileOp = dyn_cast_if_present<AMDAIE::TileOp>(
-            bdIdOp.getTile().getDefiningOp());
-        if (!tileOp) {
-          bdIdOp.emitOpError()
-              << "doesn't operate on a `amdaie.tile` operation";
-          return WalkResult::interrupt();
-        }
-        if (!shimTileToGeneratorMap.contains(tileOp.getResult())) {
-          bdIdOp.emitOpError()
-              << "no BD ID generator found for this BD ID op's tile";
-          return WalkResult::interrupt();
-        }
-        ChannelBdIdGenerator &generator =
-            shimTileToGeneratorMap[tileOp.getResult()];
-        Value value = bdIdOp.getValue();
-        if (auto op = value.getDefiningOp<affine::AffineApplyOp>()) {
-          // If the BD ID is a semi-affine expression.
-          if (bdIdOpToBdIdsMap.contains(bdIdOp)) {
-            for (uint32_t bdId : bdIdOpToBdIdsMap[bdIdOp]) {
-              generator.releaseBdId(bdId);
-            }
-          } else {
+          if (!bdIdOp) return WalkResult::advance();
+          if (failed(releaseBdId(bdIdOp, shimTileToGeneratorMap,
+                                 bdIdOpToBdIdsMap)))
             return WalkResult::interrupt();
-          }
-        } else {
-          // Else, must be a constant BD ID.
-          uint32_t bdId = getConstantIndexOrAssert(value);
-          generator.releaseBdId(bdId);
         }
       }
       return WalkResult::advance();
