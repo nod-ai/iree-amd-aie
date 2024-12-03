@@ -161,6 +161,63 @@ func.func @elemwise_example(%A: memref<4xf32>, %C: memref<4xbf16>, %B: memref<4x
 
 // -----
 
+// This is an example of a linalg.generic which is not a 'known' op, it is
+// a pure reduction operation. This should be supported by the outlining pass.
+// Note that the first operand A has got an unknown offset, which is
+// supported by the outlining pass (the function signature drops the offset,
+// this is necessary for LLVM lowering).
+// CHECK: func.func private @generic_0_outlined(%arg0: memref<4x8xbf16>, %arg1: memref<bf16>) {
+// CHECK: linalg.generic
+// CHECK-SAME: iterator_types = ["reduction", "reduction"]
+// CHECK-SAME: ins(%arg0 : memref<4x8xbf16>) outs(%arg1 : memref<bf16>)
+// CHECK: return
+// CHECK: func.func @supported_linalg_op(%arg0: memref<4x8xbf16, strided<[8, 1], offset: ?>>, %arg1: memref<bf16>) {
+// CHECK: %[[CAST:.*]] = memref.cast %arg0 : memref<4x8xbf16, strided<[8, 1], offset: ?>> to memref<4x8xbf16>
+// CHECK: func.call @generic_0_outlined(%[[CAST]], %arg1) : (memref<4x8xbf16>, memref<bf16>) -> ()
+// CHECK: return
+func.func @supported_linalg_op(%A: memref<4x8xbf16, strided<[8,1], offset:?>>, %B: memref<bf16>) {
+  %c2 = arith.constant 2 : index
+  %tile = amdaie.tile(%c2, %c2)
+  %1 = amdaie.core(%tile, in : [], out : []) {
+    linalg.generic {
+      indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>,
+                       affine_map<(d0, d1) -> ()>],
+      iterator_types = ["reduction", "reduction"]
+    } ins(%A: memref<4x8xbf16, strided<[8,1], offset:?>>) outs(%B : memref<bf16>) {
+    ^bb0(%in: bf16, %out: bf16):
+      linalg.yield %in : bf16
+    }
+    amdaie.end
+  }
+  return
+}
+
+
+// -----
+
+// This is an example of a linalg.generic which cannot be outlined because
+// of the layout of one one of the operands. Strided layout is not supported
+// in lowering to llvm (AFAIK).
+func.func @unsupported_linalg_op(%A: memref<4x8xbf16, strided<[9,1], offset:?>>, %B: memref<bf16>) {
+  %c2 = arith.constant 2 : index
+  %tile = amdaie.tile(%c2, %c2)
+  %1 = amdaie.core(%tile, in : [], out : []) {
+    // expected-error@+1 {{'linalg.generic' op has inputs with types that aren't compatible with outlining}}
+    linalg.generic {
+      indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>,
+                       affine_map<(d0, d1) -> ()>],
+      iterator_types = ["reduction", "reduction"]
+    } ins(%A: memref<4x8xbf16, strided<[9,1], offset:?>>) outs(%B : memref<bf16>) {
+    ^bb0(%in: bf16, %out: bf16):
+      linalg.yield %in : bf16
+    }
+    amdaie.end
+  }
+  return
+}
+
+// -----
+
 // CHECK-LABEL: @linalg_fill_copy
 func.func @linalg_fill_copy(%A: memref<4xf32>, %B: memref<4xf32>) {
   %c2 = arith.constant 2 : index
@@ -179,31 +236,3 @@ func.func @linalg_fill_copy(%A: memref<4xf32>, %B: memref<4xf32>) {
   return
 }
 
-// -----
-
-func.func @unsupported_linalg_op(%A: memref<4x8xbf16>, %B: memref<8x4xbf16>, %C: memref<4x4xf32>) {
-  %c2 = arith.constant 2 : index
-  %c1 = arith.constant 1 : index
-  %tile = amdaie.tile(%c1, %c2)
-  %1 = amdaie.core(%tile, in : [], out : []) {
-    // expected-error@+1 {{unsupported linalg op for outlining}}
-    linalg.generic {
-      indexing_maps = [affine_map<(d0, d1, d2) -> (d0, d2)>,
-                       affine_map<(d0, d1, d2) -> (d2, d1)>,
-                       affine_map<(d0, d1, d2) -> (d0, d1)>
-                      ],
-      iterator_types = ["parallel", "parallel", "reduction"]
-    } ins(%A, %B : memref<4x8xbf16>, memref<8x4xbf16>)
-      outs(%C : memref<4x4xf32>) {
-    ^bb0(%in: bf16, %in_17: bf16, %out: f32):
-      %1 = arith.extf %in : bf16 to f32
-      %2 = arith.extf %in_17 : bf16 to f32
-      %3 = arith.mulf %1, %2 : f32
-      %4 = arith.addf %out, %3 : f32
-      %5 = arith.addf %4, %4 : f32
-      linalg.yield %5  : f32
-    }
-    amdaie.end
-  }
-  return
-}
