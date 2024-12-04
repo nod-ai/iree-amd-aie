@@ -58,14 +58,14 @@ static iree_status_t iree_hal_xrt_lite_executable_populate_options(
         IREE_TRACE_ZONE_END(z0);
         return iree_make_status(
             IREE_STATUS_FAILED_PRECONDITION,
-            "Option 'xrt_lite_n_core_rows' expected to be int. Got: '%.*s'",
+            "Option 'xrt_lite_n_kernel_runs' expected to be int. Got: '%.*s'",
             (int)value.size, value.data);
       }
       if (ivalue <= 0) {
         IREE_TRACE_ZONE_END(z0);
         return iree_make_status(
             IREE_STATUS_FAILED_PRECONDITION,
-            "Option 'xrt_lite_n_core_rows' expected to be > 0. Got: '%.*s'",
+            "Option 'xrt_lite_n_kernel_runs' expected to be > 0. Got: '%.*s'",
             (int)value.size, value.data);
       }
       n_kernel_runs = ivalue;
