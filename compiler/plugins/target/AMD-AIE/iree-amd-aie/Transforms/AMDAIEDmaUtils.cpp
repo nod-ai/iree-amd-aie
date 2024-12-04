@@ -342,24 +342,51 @@ LogicalResult foldSingleDim(SmallVector<OpFoldResult> &offsets,
   return success();
 }
 
-/// Fold unit dimensions within a strided access pattern.
-LogicalResult foldUnitDims(const SmallVector<OpFoldResult> &offsets,
+/// Fold unit dimensions within a strided access pattern. There are two cases
+/// being handled here:
+/// 1. If a dimension has `size == 1` and `offset == 0`, the dimension can be
+/// folded entirely.
+/// 2. If a dimension has `size == 1` and `offset != 0`, it can be folded into
+/// another dimension with the same stride if that exists.
+LogicalResult foldUnitDims(MLIRContext *ctx,
+                           const SmallVector<OpFoldResult> &offsets,
                            const SmallVector<OpFoldResult> &sizes,
                            const SmallVector<OpFoldResult> &strides,
                            SmallVector<OpFoldResult> &newOffsets,
                            SmallVector<OpFoldResult> &newSizes,
                            SmallVector<OpFoldResult> &newStrides) {
   bool foldableUnitDimsFound = false;
-
+  DenseMap<int64_t, std::pair<size_t, int64_t>> strideToIndexAndOffset;
   for (int i = 0; i < offsets.size(); i++) {
-    // Dim can be folded if offset is 0 and size is 1
+    // If a dimension has `size == 1` and `offset == 0`, the dimension can be
+    /// folded entirely.
     if (isConstantIntValue(offsets[i], 0) && isConstantIntValue(sizes[i], 1)) {
       foldableUnitDimsFound = true;
       continue;
     }
+    std::optional<int64_t> maybeOffset = getConstantIntValue(offsets[i]);
+    std::optional<int64_t> maybeStride = getConstantIntValue(strides[i]);
+    if (maybeOffset && maybeStride) {
+      int64_t offset = maybeOffset.value();
+      int64_t stride = maybeStride.value();
+      if (isConstantIntValue(sizes[i], 1) &&
+          strideToIndexAndOffset.contains(stride)) {
+        foldableUnitDimsFound = true;
+        strideToIndexAndOffset[stride].second += offset;
+        // Continue to not add to newOffsets, newSizes, newStrides
+        continue;
+      } else {
+        strideToIndexAndOffset[stride] = {newOffsets.size(), offset};
+      }
+    }
     newOffsets.push_back(offsets[i]);
     newStrides.push_back(strides[i]);
     newSizes.push_back(sizes[i]);
+  }
+  // Update offsets
+  for (auto &&[stride, indexAndOffset] : strideToIndexAndOffset) {
+    newOffsets[indexAndOffset.first] =
+        getAsIndexOpFoldResult(ctx, indexAndOffset.second);
   }
   return success(foldableUnitDimsFound);
 }

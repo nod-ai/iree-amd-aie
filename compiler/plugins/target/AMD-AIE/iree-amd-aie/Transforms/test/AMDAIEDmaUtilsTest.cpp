@@ -271,9 +271,9 @@ TEST_F(AccessPatternCombinationTest, FailCombineAccessPatterns) {
                              {128, 1}, {32, 0}, {96, 64}, {128, 1}, 4, false);
 }
 
-class FoldLinearDimsTest : public ::testing::Test {
+class FoldTest : public ::testing::Test {
  protected:
-  FoldLinearDimsTest() : rewriter(&context), loc(UnknownLoc::get(&context)) {
+  FoldTest() : rewriter(&context), loc(UnknownLoc::get(&context)) {
     context.loadDialect<arith::ArithDialect>();
   }
 
@@ -317,12 +317,45 @@ class FoldLinearDimsTest : public ::testing::Test {
     EXPECT_EQ(newStrides, expectedStridesValues);
   }
 
+  void checkFoldUnitDims(const SmallVector<int64_t> offsets,
+                         const SmallVector<int64_t> sizes,
+                         const SmallVector<int64_t> strides,
+                         const SmallVector<int64_t> expectedOffsets,
+                         const SmallVector<int64_t> expectedSizes,
+                         const SmallVector<int64_t> expectedStrides,
+                         bool shouldSucceed = true) {
+    SmallVector<OpFoldResult> offsetsValues = toOpFoldResult(offsets);
+    SmallVector<OpFoldResult> sizesValues = toOpFoldResult(sizes);
+    SmallVector<OpFoldResult> stridesValues = toOpFoldResult(strides);
+    SmallVector<OpFoldResult> expectedOffsetsValues =
+        toOpFoldResult(expectedOffsets);
+    SmallVector<OpFoldResult> expectedSizesValues =
+        toOpFoldResult(expectedSizes);
+    SmallVector<OpFoldResult> expectedStridesValues =
+        toOpFoldResult(expectedStrides);
+    SmallVector<OpFoldResult> newOffsets;
+    SmallVector<OpFoldResult> newSizes;
+    SmallVector<OpFoldResult> newStrides;
+    if (shouldSucceed) {
+      EXPECT_TRUE(succeeded(foldUnitDims(&context, offsetsValues, sizesValues,
+                                         stridesValues, newOffsets, newSizes,
+                                         newStrides)));
+      EXPECT_EQ(newOffsets, expectedOffsetsValues);
+      EXPECT_EQ(newSizes, expectedSizesValues);
+      EXPECT_EQ(newStrides, expectedStridesValues);
+    } else {
+      EXPECT_TRUE(failed(foldUnitDims(&context, offsetsValues, sizesValues,
+                                      stridesValues, newOffsets, newSizes,
+                                      newStrides)));
+    }
+  }
+
   MLIRContext context;
   IRRewriter rewriter;
   Location loc;
 };
 
-TEST_F(FoldLinearDimsTest, NoFold) {
+TEST_F(FoldTest, NoLinearDimsFold) {
   checkFoldLinearDims({}, {}, {}, {}, {}, {}, {}, false);
   checkFoldLinearDims({0}, {8}, {1}, {}, {0}, {8}, {1}, false);
   checkFoldLinearDims({0, 0}, {16, 8}, {16, 1}, {}, {0, 0}, {16, 8}, {16, 1},
@@ -331,7 +364,7 @@ TEST_F(FoldLinearDimsTest, NoFold) {
                       false);
 }
 
-TEST_F(FoldLinearDimsTest, Fold) {
+TEST_F(FoldTest, FoldLinearDims) {
   checkFoldLinearDims({0, 0}, {16, 8}, {8, 1}, {}, {0}, {128}, {1}, true);
   checkFoldLinearDims({0, 8}, {16, 8}, {8, 1}, {}, {8}, {128}, {1}, true);
   checkFoldLinearDims({0, 0, 0}, {8, 16, 8}, {128, 8, 1}, {}, {0}, {1024}, {1},
@@ -342,7 +375,7 @@ TEST_F(FoldLinearDimsTest, Fold) {
                       {8, 0}, {512, 8}, {8, 1}, true);
 }
 
-TEST_F(FoldLinearDimsTest, FoldWithMax) {
+TEST_F(FoldTest, FoldLinearDimsWithMax) {
   checkFoldLinearDims({0, 0}, {16, 8}, {8, 1}, {127}, {0, 0}, {16, 8}, {8, 1},
                       false);
   checkFoldLinearDims({0, 0}, {16, 8}, {8, 1}, {127, 127}, {0, 0}, {16, 8},
@@ -356,6 +389,42 @@ TEST_F(FoldLinearDimsTest, FoldWithMax) {
   checkFoldLinearDims({0, 0, 8, 0}, {4, 8, 16, 8}, {1024, 128, 8, 1},
                       {511, 511, 511, 511}, {0, 8, 0}, {4, 128, 8},
                       {1024, 8, 1}, true);
+}
+
+TEST_F(FoldTest, NoUnitDimsFold) {
+  checkFoldUnitDims({}, {}, {}, {}, {}, {}, false);
+  checkFoldUnitDims({0}, {8}, {1}, {}, {}, {}, false);
+  checkFoldUnitDims({0, 0}, {16, 8}, {16, 1}, {}, {}, {}, false);
+  checkFoldUnitDims({2}, {1}, {1}, {}, {}, {}, false);
+}
+
+TEST_F(FoldTest, UnitDimsFullFold) {
+  checkFoldUnitDims({0}, {1}, {32}, {}, {}, {}, true);
+  checkFoldUnitDims({0, 0, 0}, {32, 1, 8}, {32, 1024, 1}, {0, 0}, {32, 8},
+                    {32, 1}, true);
+  checkFoldUnitDims({0, 0, 0, 0}, {1, 32, 1, 8}, {1024, 32, 1024, 1}, {0, 0},
+                    {32, 8}, {32, 1}, true);
+}
+
+TEST_F(FoldTest, UnitDimsMerge) {
+  checkFoldUnitDims({1, 1}, {1, 1}, {32, 32}, {2}, {1}, {32}, true);
+  checkFoldUnitDims({1, 2}, {1, 1}, {32, 32}, {3}, {1}, {32}, true);
+  checkFoldUnitDims({2, 1}, {1, 1}, {32, 32}, {3}, {1}, {32}, true);
+  checkFoldUnitDims({1, 0, 1, 0}, {1, 32, 1, 8}, {1024, 32, 1024, 1}, {2, 0, 0},
+                    {1, 32, 8}, {1024, 32, 1}, true);
+  checkFoldUnitDims({1, 0, 2, 0}, {1, 32, 1, 8}, {1024, 32, 1024, 1}, {3, 0, 0},
+                    {1, 32, 8}, {1024, 32, 1}, true);
+  checkFoldUnitDims({2, 0, 1, 0}, {1, 32, 1, 8}, {1024, 32, 1024, 1}, {3, 0, 0},
+                    {1, 32, 8}, {1024, 32, 1}, true);
+}
+
+TEST_F(FoldTest, UnitDimsFoldAndMerge) {
+  checkFoldUnitDims({1, 0, 1}, {1, 1, 1}, {32, 1024, 32}, {2}, {1}, {32}, true);
+  checkFoldUnitDims({1, 0, 1}, {1, 1, 1}, {32, 32, 32}, {2}, {1}, {32}, true);
+  checkFoldUnitDims({1, 0, 2, 0}, {1, 1, 1, 1}, {32, 32, 32, 32}, {3}, {1},
+                    {32}, true);
+  checkFoldUnitDims({1, 0, 1, 0}, {1, 1, 1, 8}, {1024, 32, 1024, 1}, {2, 0},
+                    {1, 8}, {1024, 1}, true);
 }
 
 }  // namespace

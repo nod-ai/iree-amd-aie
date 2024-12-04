@@ -153,8 +153,33 @@ LogicalResult foldSingleDim(SmallVector<OpFoldResult> &offsets,
                             SmallVector<OpFoldResult> &strides);
 
 /// Fold unit dimensions within a strided access pattern. Returns `success` if
-/// folding took place.
-LogicalResult foldUnitDims(const SmallVector<OpFoldResult> &offsets,
+/// folding took place. There are two cases being handled here:
+/// 1. If a dimension has `size == 1` and `offset == 0`, the dimension can be
+/// folded entirely.
+/// 2. If a dimension has `size == 1` and `offset != 0`, it can be folded into
+/// another dimension with the same stride if that exists.
+///
+/// Example for case 1:
+///
+/// offsets: [0, 0, 0], sizes: [32, 1, 8], strides: [32, 1024, 1]
+///
+/// will be transformed into:
+///
+/// offsets: [0, 0], sizes: [32, 8], strides: [32, 1]
+/// 
+/// Example for case 2:
+///
+/// offsets: [1, 0, 1, 0], sizes: [1, 32, 1, 8], strides: [1024, 32, 1024, 1]
+///
+/// will be transformed into:
+///
+/// offsets: [2, 0, 0], sizes: [1, 32, 8], strides: [1024, 32, 1]
+///
+/// Note that the dimensions are merged into the outermost one. Heuristically,
+/// this works out best with other strided access pattern transformations, but
+/// could be made an option in the future.
+LogicalResult foldUnitDims(MLIRContext *ctx,
+                           const SmallVector<OpFoldResult> &offsets,
                            const SmallVector<OpFoldResult> &strides,
                            const SmallVector<OpFoldResult> &sizes,
                            SmallVector<OpFoldResult> &newOffsets,
