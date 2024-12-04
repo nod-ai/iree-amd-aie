@@ -408,7 +408,7 @@ class MatmulBenchmark(BaseMatmul):
             K=K,
             input_type=input_type,
             acc_type=acc_type,
-            tile_pipeline="pack-peel",
+            tile_pipeline="pack-peel-is-not-a-pipeline",
             use_ukernel=use_ukernel,
             n_repeats=n_repeats,
             n_kernel_runs=n_kernel_runs,

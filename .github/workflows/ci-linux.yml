@@ -161,19 +161,6 @@ jobs:
           echo "XRT_LITE_N_CORE_COLS=$(python build_tools/ci/amdxdna_driver_utils/amdxdna_ioctl.py --num-cols)" >> $GITHUB_ENV
 
 
-      - name: E2E correctness matmul test
-        run: |
-          # https://stackoverflow.com/a/17567422
-          # shim_xdna::bo::map_drm_bo does an mmap with MAP_LOCKED
-          # which can fail if limit is to low
-          sudo prlimit -lunlimited --pid $$
-          source .venv/bin/activate
-          bash build_tools/ci/run_matmul_test.sh \
-            test_matmuls \
-            iree-install \
-            $PWD/llvm-aie
-
-
       - name : E2E comparison of AIE to llvm-cpu
         run: |
           sudo prlimit -lunlimited --pid $$
@@ -211,6 +198,20 @@ jobs:
 
           python build_tools/ci/cpu_comparison/performance_summarizer.py \
             performance.log
+
+      - name: E2E correctness matmul test
+        run: |
+          # https://stackoverflow.com/a/17567422
+          # shim_xdna::bo::map_drm_bo does an mmap with MAP_LOCKED
+          # which can fail if limit is to low
+          sudo prlimit -lunlimited --pid $$
+          source .venv/bin/activate
+          bash build_tools/ci/run_matmul_test.sh \
+            test_matmuls \
+            iree-install \
+            $PWD/llvm-aie
+
+
 
 
       - name: XRT-LITE tests
