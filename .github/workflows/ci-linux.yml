@@ -186,7 +186,8 @@ jobs:
             --target_device="npu1_4col" \
             --reset_npu_between_runs -v \
             --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
-            --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS
+            --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
+            --skip_tests=Performance
 
       - name : Performance benchmarks
         run: |
@@ -201,6 +202,12 @@ jobs:
             --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
             --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
             --tests=Performance > performance.log
+
+          # If there was an error, print the contents of the log to terminal:
+          if [ $? -ne 0 ]; then
+            cat performance.log
+            exit 1
+          fi
 
           python build_tools/ci/cpu_comparison/performance_summarizer.py \
             performance.log
