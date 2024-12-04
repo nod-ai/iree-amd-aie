@@ -904,8 +904,8 @@ LogicalResult AIEDeviceBuilder::workgroupToAIE(AMDAIE::WorkgroupOp workgroupOp,
 /// dialect operations to AIE dialect operations.
 LogicalResult AIEDeviceBuilder::lowerToAIE(ModuleOp moduleOp) {
   Block *moduleBlock = &moduleOp->getRegion(0).front();
-  xilinx::AIE::AIEDevice aieDevice =
-      static_cast<xilinx::AIE::AIEDevice>(static_cast<uint32_t>(device));
+  xilinx::AIE::AIEDevice aieDevice = static_cast<xilinx::AIE::AIEDevice>(
+      static_cast<uint32_t>(deviceModel.device));
 
   auto funcRes = moduleOp.walk([&](func::FuncOp funcOp) {
     if (funcOp.isPrivate()) {
@@ -1026,7 +1026,8 @@ class AMDAIELowerToAIEPass
           "is needed to lower to the AIE dialect.");
       return signalPassFailure();
     }
-    AIEDeviceBuilder builder(moduleOp.getContext(), maybeDevice.value());
+    AMDAIEDeviceModel deviceModel = getDeviceModel(maybeDevice.value());
+    AIEDeviceBuilder builder(moduleOp.getContext(), std::move(deviceModel));
     if (failed(builder.lowerToAIE(moduleOp))) return signalPassFailure();
   }
 };

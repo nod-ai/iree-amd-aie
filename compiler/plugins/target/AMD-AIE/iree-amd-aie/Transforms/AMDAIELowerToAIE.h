@@ -30,8 +30,8 @@ namespace mlir::iree_compiler::AMDAIE {
 /// `amdaie.workgroup`.
 class AIEDeviceBuilder {
  public:
-  AIEDeviceBuilder(MLIRContext *ctx, AMDAIEDevice device)
-      : rewriter(ctx), device(device), deviceModel(getDeviceModel(device)) {}
+  AIEDeviceBuilder(MLIRContext *ctx, AMDAIEDeviceModel deviceModel)
+      : rewriter(ctx), deviceModel(std::move(deviceModel)) {}
 
   LogicalResult lowerToAIE(ModuleOp moduleOp);
 
@@ -112,9 +112,7 @@ class AIEDeviceBuilder {
 
   IRRewriter rewriter;
   IRMapping mapper;
-  /// The device and device model. The device is needed separately to convert to
-  /// the `AIEDevice`.
-  AMDAIEDevice device;
+  /// The device model for looking up hardware parameters.
   AMDAIEDeviceModel deviceModel;
   /// Map from tile values to AIE memory op (`aie.mem` or `aie.memtile_dma`).
   /// This is used to look up and add new DMA patterns to those memory ops.
