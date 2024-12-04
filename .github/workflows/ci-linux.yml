@@ -179,6 +179,7 @@ jobs:
       - name : Performance benchmarks
         run: |
           source .venv/bin/activate
+          set +e # Allow script to continue even if a command fails
           python build_tools/ci/cpu_comparison/run.py \
             test_aie_vs_cpu \
             $PWD/iree-install \
@@ -189,9 +190,11 @@ jobs:
             --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
             --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
             --tests=Performance > performance.log
+          exit_code=$?  # Capture the exit code of run.py
+          set -e  # Re-enable exit on error for subsequent commands
 
           # If there was an error, print the contents of the log to terminal:
-          if [ $? -ne 0 ]; then
+          if [ $exit_code -ne 0 ]; then
             cat performance.log
             exit 1
           fi
