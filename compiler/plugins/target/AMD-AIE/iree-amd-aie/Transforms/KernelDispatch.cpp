@@ -216,13 +216,13 @@ FailureOr<ParameterSetting> ParameterSetting::create(
     // Develop a better way to select tile sizes to make the most use of
     // memory while taking all factors (double buffer, elementwise memory usage,
     // lhs/rhs element type, etc) into account.
-    auto maxL1SizeM = 16 * scaleFactor;
-    auto maxL1SizeN = 16 * scaleFactor;
+    uint32_t maxL1SizeM = 16 * scaleFactor;
+    uint32_t maxL1SizeN = 16 * scaleFactor;
     uint32_t M1 = findLargestFactor(M / m1Pack, maxL1SizeM / m1Pack, m1Pack);
     uint32_t N1 = findLargestFactor(N / n1Pack, maxL1SizeN / n1Pack, n1Pack);
 
-    auto maxL0SizeM = numRows * maxL1SizeM;
-    auto maxL0SizeN = numCols * maxL1SizeM;
+    uint32_t maxL0SizeM = numRows * maxL1SizeM;
+    uint32_t maxL0SizeN = numCols * maxL1SizeM;
     uint32_t M0 = findLargestFactor(M, maxL0SizeM, m1Pack * M1);
     uint32_t N0 = findLargestFactor(N, maxL0SizeN, n1Pack * N1);
 
@@ -230,7 +230,7 @@ FailureOr<ParameterSetting> ParameterSetting::create(
     // so set K1 = 0. The packed outer K dimension needs to be 1, so set K0 = 1.
     uint32_t K1 = 0;
     uint32_t K0 = 1;
-    auto maxL1SizeK = 16 * scaleFactor;
+    uint32_t maxL1SizeK = 16 * scaleFactor;
     uint32_t k0Pack = findLargestFactor(K, maxL1SizeK);
 
     // Instead of directly packing to (1, 1, M0, N0), the new strategy is making
@@ -248,13 +248,13 @@ FailureOr<ParameterSetting> ParameterSetting::create(
     // chosen empirically for large GEMM sizes, which are [64*s, 64*s, 256] for
     // the first level and [16*s, 16*s, 16*s] for the second level, where 's' is
     // the scaling factor based on the element type's bit width.
-    auto maxL1SizeM = 16 * scaleFactor;
-    auto maxL1SizeN = 16 * scaleFactor;
+    uint32_t maxL1SizeM = 16 * scaleFactor;
+    uint32_t maxL1SizeN = 16 * scaleFactor;
     uint32_t M1 = findLargestFactor(M, maxL1SizeM, m1Pack);
     uint32_t N1 = findLargestFactor(N, maxL1SizeN, n1Pack);
 
-    auto maxL0SizeM = numRows * maxL1SizeM;
-    auto maxL0SizeN = numCols * maxL1SizeM;
+    uint32_t maxL0SizeM = numRows * maxL1SizeM;
+    uint32_t maxL0SizeN = numCols * maxL1SizeM;
     uint32_t M0 = findLargestFactor(M, maxL0SizeM, M1);
     uint32_t N0 = findLargestFactor(N, maxL0SizeN, N1);
 

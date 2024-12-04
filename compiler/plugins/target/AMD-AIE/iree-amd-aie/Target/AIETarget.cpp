@@ -19,6 +19,7 @@
 #include "air/Dialect/AIRRt/AIRRtDialect.h"
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/Transforms/Passes.h"
+#include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "iree-amd-aie/schemas/pdi_executable_def_builder.h"
 #include "iree-amd-aie/schemas/xrt_executable_def_builder.h"
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenDialect.h"
@@ -150,32 +151,12 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
     Builder b(context);
     SmallVector<NamedAttribute> configItems;
 
-    uint32_t maxCoreRows, maxCoreCols;
-    switch (options.AMDAIETargetDevice) {
-      case AMDAIEDevice::npu1:
-      case AMDAIEDevice::npu1_4col:
-        maxCoreRows = 4;
-        maxCoreCols = 4;
-        break;
-      case AMDAIEDevice::npu1_1col:
-        maxCoreRows = 4;
-        maxCoreCols = 1;
-        break;
-      case AMDAIEDevice::npu1_2col:
-        maxCoreRows = 4;
-        maxCoreCols = 2;
-        break;
-      case AMDAIEDevice::npu1_3col:
-        maxCoreRows = 4;
-        maxCoreCols = 3;
-        break;
-      case AMDAIEDevice::npu4:
-        maxCoreRows = 4;
-        maxCoreCols = 8;
-        break;
-      default:
-        llvm::errs() << "unhandled NPU partitioning.\n";
-    }
+    // Make sure the input number of rows/cols is smaller or equal to the max
+    // number of rows/cols from the device.
+    AMDAIEDeviceModel deviceModel =
+        AMDAIE::getDeviceModel(options.AMDAIETargetDevice);
+    uint32_t maxCoreRows = deviceModel.getNumCoreRows();
+    uint32_t maxCoreCols = deviceModel.getNumCoreCols();
     if (options.AMDAIENumRows <= 0 || options.AMDAIENumRows > maxCoreRows) {
       llvm::report_fatal_error("option numRows is out of range\n");
     }
