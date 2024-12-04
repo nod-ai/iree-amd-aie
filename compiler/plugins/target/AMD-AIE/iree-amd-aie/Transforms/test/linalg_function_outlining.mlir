@@ -181,29 +181,96 @@ func.func @linalg_fill_copy(%A: memref<4xf32>, %B: memref<4xf32>) {
 
 // -----
 
-func.func @unsupported_linalg_op(%A: memref<4x8xbf16>, %B: memref<8x4xbf16>, %C: memref<4x4xf32>) {
+// Test demonstrating the outlining of a linalg.generic operation other than
+// a matmul or elementwise operation. Specifically, one which has not been
+// 'blacklisted' like linalg.copy has (see test linalg_fill_copy above).
+// CHECK:       func.func private @generic_0_outlined
+// CHECK-SAME:    memref<4xbf16>,
+// CHECK-SAME:    memref<bf16>
+// CHECK:       linalg.generic
+// CHECK-SAME:    iterator_types = ["reduction"]
+// CHECK:       return
+// CHECK:       func.func @reduction
+// CHECK-SAME:    memref<4xbf16>
+// CHECK-SAME:    memref<bf16>
+// CHECK:       func.call @generic_0_outlined
+// CHECK-SAME:    (memref<4xbf16>, memref<bf16>) -> ()
+// CHECK:       return
+func.func @reduction(%A: memref<4xbf16>, %B: memref<bf16>) {
   %c2 = arith.constant 2 : index
-  %c1 = arith.constant 1 : index
-  %tile = amdaie.tile(%c1, %c2)
+  %tile = amdaie.tile(%c2, %c2)
   %1 = amdaie.core(%tile, in : [], out : []) {
-    // expected-error@+1 {{unsupported linalg op for outlining}}
     linalg.generic {
-      indexing_maps = [affine_map<(d0, d1, d2) -> (d0, d2)>,
-                       affine_map<(d0, d1, d2) -> (d2, d1)>,
-                       affine_map<(d0, d1, d2) -> (d0, d1)>
-                      ],
-      iterator_types = ["parallel", "parallel", "reduction"]
-    } ins(%A, %B : memref<4x8xbf16>, memref<8x4xbf16>)
-      outs(%C : memref<4x4xf32>) {
-    ^bb0(%in: bf16, %in_17: bf16, %out: f32):
-      %1 = arith.extf %in : bf16 to f32
-      %2 = arith.extf %in_17 : bf16 to f32
-      %3 = arith.mulf %1, %2 : f32
-      %4 = arith.addf %out, %3 : f32
-      %5 = arith.addf %4, %4 : f32
-      linalg.yield %5  : f32
+      indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> ()>],
+      iterator_types = ["reduction"]
+    } ins(%A: memref<4xbf16>) outs(%B : memref<bf16>) {
+    ^bb0(%in: bf16, %out: bf16):
+      linalg.yield %in : bf16
     }
     amdaie.end
   }
   return
 }
+
+
+// -----
+
+// Test demonstrating the outlining of a linalg.generic where one
+// operand has an unkown offset. The memref is still contiguous, however.
+// CHECK:       func.func private @generic_0_outlined
+// CHECK-SAME:    memref<4x8xbf16>,
+// CHECK-SAME:    memref<bf16>
+// CHECK:       linalg.generic
+// CHECK-SAME:    iterator_types = ["reduction", "reduction"]
+// CHECK:       return
+// CHECK:       func.func @supported_linalg_op
+// CHECK-SAME:    memref<4x8xbf16, strided<[8, 1], offset: ?>>
+// CHECK-SAME:    memref<bf16>
+// CHECK:       %[[CAST:.*]] = memref.cast
+// CHECK-SAME:    memref<4x8xbf16, strided<[8, 1], offset: ?>>
+// CHECK-SAME:    to memref<4x8xbf16>
+// CHECK:       func.call @generic_0_outlined(%[[CAST]], %arg1) :
+// CHECK-SAME:    (memref<4x8xbf16>, memref<bf16>) -> ()
+// CHECK:       return
+func.func @supported_linalg_op(%A: memref<4x8xbf16, strided<[8,1], offset:?>>, %B: memref<bf16>) {
+  %c2 = arith.constant 2 : index
+  %tile = amdaie.tile(%c2, %c2)
+  %1 = amdaie.core(%tile, in : [], out : []) {
+    linalg.generic {
+      indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>,
+                       affine_map<(d0, d1) -> ()>],
+      iterator_types = ["reduction", "reduction"]
+    } ins(%A: memref<4x8xbf16, strided<[8,1], offset:?>>) outs(%B : memref<bf16>) {
+    ^bb0(%in: bf16, %out: bf16):
+      linalg.yield %in : bf16
+    }
+    amdaie.end
+  }
+  return
+}
+
+
+// -----
+
+// Test illustrating the that when a linalg.generic operation has an
+// operand that is not contiguous, it is not outlined.
+
+// CHECK-COUNT-1: func.func
+// CHECK-NOT:     func.func
+func.func @unsupported_linalg_op(%A: memref<4x8xbf16, strided<[9,1]>>, %B: memref<bf16>) {
+  %c2 = arith.constant 2 : index
+  %tile = amdaie.tile(%c2, %c2)
+  %1 = amdaie.core(%tile, in : [], out : []) {
+    linalg.generic {
+      indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>,
+                       affine_map<(d0, d1) -> ()>],
+      iterator_types = ["reduction", "reduction"]
+    } ins(%A: memref<4x8xbf16, strided<[9,1]>>) outs(%B : memref<bf16>) {
+    ^bb0(%in: bf16, %out: bf16):
+      linalg.yield %in : bf16
+    }
+    amdaie.end
+  }
+  return
+}
+
