@@ -30,7 +30,8 @@ namespace mlir::iree_compiler::AMDAIE {
 /// `amdaie.workgroup`.
 class AIEDeviceBuilder {
  public:
-  AIEDeviceBuilder(MLIRContext *ctx) : rewriter(ctx) {}
+  AIEDeviceBuilder(MLIRContext *ctx, AMDAIEDevice device)
+      : rewriter(ctx), device(device), deviceModel(getDeviceModel(device)) {}
 
   LogicalResult lowerToAIE(ModuleOp moduleOp);
 
@@ -67,7 +68,7 @@ class AIEDeviceBuilder {
   /// `AIE::BDDimLayoutArrayAttr`.
   AIE::BDDimLayoutArrayAttr convertSizeStrideToBDDimLayoutArrayAttr(
       const SmallVector<OpFoldResult> &sizes,
-      const SmallVector<OpFoldResult> &strides);
+      const SmallVector<OpFoldResult> &strides, uint8_t memSpace);
 
   /// Utility to create DMA blocks and add them to `memOp`.
   void createDMA(Operation *memOp, AIE::DMAChannelDir channelDir,
@@ -102,7 +103,7 @@ class AIEDeviceBuilder {
                 const SmallVector<OpFoldResult> &strides,
                 SmallVector<OpFoldResult> &newOffsets,
                 SmallVector<OpFoldResult> &newSizes,
-                SmallVector<OpFoldResult> &newStrides);
+                SmallVector<OpFoldResult> &newStrides, uint8_t memSpace);
 
   /// Utility to remap the provided operation's operands.
   void remapOperands(Operation *op);
@@ -111,6 +112,10 @@ class AIEDeviceBuilder {
 
   IRRewriter rewriter;
   IRMapping mapper;
+  /// The device and device model. The device is needed separately to convert to
+  /// the `AIEDevice`.
+  AMDAIEDevice device;
+  AMDAIEDeviceModel deviceModel;
   /// Map from tile values to AIE memory op (`aie.mem` or `aie.memtile_dma`).
   /// This is used to look up and add new DMA patterns to those memory ops.
   DenseMap<Value, Operation *> tileToMemOpMap;
