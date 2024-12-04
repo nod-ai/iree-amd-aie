@@ -20,30 +20,13 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
-/// Return true if the strides of `type` make it a contiguous memref.
-bool isContiguousMemRef(MemRefType type) {
-  ArrayRef<int64_t> shape = type.getShape();
-  SmallVector<int64_t, 4> strides;
-  int64_t ignoredOffset;
-  if (failed(getStridesAndOffset(type, strides, ignoredOffset))) return false;
-  int64_t expectedStride = 1;
-  for (int i = shape.size() - 1; i >= 0; --i) {
-    if (shape[i] == ShapedType::kDynamic) return false;
-    if (strides[i] != expectedStride) return false;
-    expectedStride *= shape[i];
-  }
-  return true;
-}
-
-/// If `type` is a contiguous memref, return an equivalent memref without any
-/// layout attribute. Otherwise, return nullptr.
-Type getTypeWithoutLayout(Type type) {
+/// Return if `type` is a memref with an identity layout.
+bool isMemRefWithIdentityLayout(Type type) {
   auto memRefType = dyn_cast<MemRefType>(type);
-  if (!memRefType) return {};
-  if (!isContiguousMemRef(memRefType)) return {};
-  return MemRefType::get(memRefType.getShape(), memRefType.getElementType(),
-                         MemRefLayoutAttrInterface{},
-                         memRefType.getMemorySpace());
+  if (!memRefType) return false;
+  MemRefLayoutAttrInterface layout = memRefType.getLayout();
+  if (!layout) return true;
+  return layout.isIdentity();
 }
 
 /// Utility to outline the linalg compute op.
@@ -51,17 +34,15 @@ static FailureOr<func::FuncOp> outline(IRRewriter &rewriter, ModuleOp moduleOp,
                                        linalg::LinalgOp computeOp,
                                        const std::string &funcName) {
   // Form outlined FunctionType.
-  SmallVector<Type> inputTypes;
-  inputTypes.reserve(computeOp->getOperands().size());
   for (const auto &operand : computeOp->getOperands()) {
-    Type withoutLayout = getTypeWithoutLayout(operand.getType());
-    // The op has an operand with a layout that isn't compatible with outlining.
-    // We currently don't support strided layouts.
-    if (!withoutLayout) return failure();
-    inputTypes.push_back(withoutLayout);
+    // Function signatures where the memrefs have layouts (strides / offsets)
+    // do not lower from the func dialect to the llvm dialect. So for now,
+    // we just do not try to outline ops with operands with non-identity
+    // layouts, because the resulting functions won't lower to LLVM.
+    if (!isMemRefWithIdentityLayout(operand.getType())) return failure();
   }
-  auto funcType =
-      FunctionType::get(rewriter.getContext(), inputTypes, /*outputTypes=*/{});
+  auto funcType = FunctionType::get(
+      rewriter.getContext(), computeOp->getOperandTypes(), /*outputTypes=*/{});
 
   // Form outlined FuncSignature.
   rewriter.setInsertionPointToStart(moduleOp.getBody());
@@ -95,7 +76,6 @@ static FailureOr<func::FuncOp> outline(IRRewriter &rewriter, ModuleOp moduleOp,
 static bool mustOutline(linalg::LinalgOp linalgOp) {
   if (isa<linalg::CopyOp, linalg::FillOp>(linalgOp)) return false;
   if (isElementwise(linalgOp)) return false;
-
   // TODO(newling) not all remaining ops should be outlined, not even all
   // remaining matmuls: below some threshold on size (m*n*k) it's not worth
   // outlining (function call overhead). We should extend the set of ops that
@@ -124,8 +104,6 @@ class AMDAIELinalgFunctionOutliningPass
   static std::string getSpecializedName(linalg::LinalgOp computeOp) {
     // Will result in a function name like `generic_matmul_0_outlined`:
     if (isMatmul(computeOp)) return "_matmul_";
-    // Will result in a function name like `generic_elementwise_0_outlined`:
-    if (isElementwise(computeOp)) return "_elementwise_";
     // Will result in a function name like `generic_0_outlined`:
     return "_";
   }
@@ -183,21 +161,9 @@ void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
     if (failed(maybeFunc)) return WalkResult::interrupt();
     func::FuncOp func = maybeFunc.value();
 
-    // Create a call into the outlined function. The operands of the compute op
-    // might need to be cast to a different type to match the outlined function.
-    {
-      SmallVector<Value> castOperands;
-      castOperands.reserve(computeOp->getOperands().size());
-      rewriter.setInsertionPoint(computeOp);
-      Location loc = computeOp.getLoc();
-      for (auto iter : llvm::enumerate(computeOp->getOperands())) {
-        Type type = func.getArgumentTypes()[iter.index()];
-        Value cast =
-            rewriter.createOrFold<memref::CastOp>(loc, type, iter.value());
-        castOperands.push_back(cast);
-      }
-      rewriter.create<func::CallOp>(loc, func, castOperands);
-    }
+    rewriter.setInsertionPoint(computeOp);
+    rewriter.create<func::CallOp>(computeOp.getLoc(), func,
+                                  computeOp->getOperands());
 
     // We cannot immediately erase the compute op because it'd be used for
     // equivalence check.
