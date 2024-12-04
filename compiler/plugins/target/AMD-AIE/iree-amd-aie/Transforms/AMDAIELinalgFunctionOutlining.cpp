@@ -55,10 +55,9 @@ static FailureOr<func::FuncOp> outline(IRRewriter &rewriter, ModuleOp moduleOp,
   inputTypes.reserve(computeOp->getOperands().size());
   for (const auto &operand : computeOp->getOperands()) {
     Type withoutLayout = getTypeWithoutLayout(operand.getType());
-    if (!withoutLayout) {
-      return computeOp.emitOpError("has an operand of type ")
-             << operand.getType() << " that isn't compatible with outlining.";
-    }
+    // The op has an operand with a layout that isn't compatible with outlining.
+    // We currently don't support strided layouts.
+    if (!withoutLayout) return failure();
     inputTypes.push_back(withoutLayout);
   }
   auto funcType =
@@ -172,7 +171,7 @@ void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
   IRRewriter rewriter(context);
 
   SmallVector<Operation *> toBeErased;
-  WalkResult walkResult = moduleOp.walk([&](linalg::LinalgOp computeOp) {
+  moduleOp.walk([&](linalg::LinalgOp computeOp) {
     if (mustNotOutline(computeOp)) return WalkResult::skip();
 
     FailureOr<func::FuncOp> maybeFunc =
@@ -201,7 +200,6 @@ void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
     toBeErased.push_back(computeOp);
     return WalkResult::advance();
   });
-  if (walkResult.wasInterrupted()) return signalPassFailure();
   for (Operation *op : toBeErased) {
     op->dropAllUses();
     rewriter.eraseOp(op);

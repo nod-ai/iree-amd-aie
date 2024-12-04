@@ -252,13 +252,15 @@ func.func @supported_linalg_op(%A: memref<4x8xbf16, strided<[8,1], offset:?>>, %
 
 // -----
 
-// Test illustrating the error message when a linalg.generic operation has an
-// operand that is not contiguous. This is currently unsupported.
+// Test illustrating the that when a linalg.generic operation has an
+// operand that is not contiguous, it is not outlined.
+
+// CHECK-COUNT-1: func.func
+// CHECK-NOT:     func.func
 func.func @unsupported_linalg_op(%A: memref<4x8xbf16, strided<[9,1]>>, %B: memref<bf16>) {
   %c2 = arith.constant 2 : index
   %tile = amdaie.tile(%c2, %c2)
   %1 = amdaie.core(%tile, in : [], out : []) {
-    // expected-error@+1 {{'linalg.generic' op has an operand of type 'memref<4x8xbf16, strided<[9, 1]>>' that isn't compatible with outlining.}}
     linalg.generic {
       indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>,
                        affine_map<(d0, d1) -> ()>],
