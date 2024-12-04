@@ -556,17 +556,9 @@ class MatmulTruncf(BaseMatmul):
             filename, self.get_dir(config), 1, {1: self.lhs, 2: self.rhs}
         )
         """
-        currently without enabling loop coalescing and unit dimension collapsing
-        we run out of program memory, this is under investigation. We also 
-        enable function outlining.
+        Currently without function outlining, we run out of program memory.
         """
-        self.add_aie_compilation_flags(
-            [
-                "--iree-amdaie-enable-coalescing-loops",
-                "--iree-amdaie-enable-collapsing-unit-dims",
-                "--iree-amdaie-enable-function-outlining",
-            ]
-        )
+        self.add_aie_compilation_flags(["--iree-amdaie-enable-function-outlining"])
         aie_vs_baseline(
             config=config,
             aie_compilation_flags=self.aie_compilation_flags,

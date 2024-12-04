@@ -494,10 +494,10 @@ LogicalResult DMABDOp::verify() {
                << "exceeds memref size "
                << std::to_string(bufferType.getNumElements());
       }
-      if (dim.getSize() >= (1UL << 9) + 1) {
-        return emitOpError() << "Size may not exceed 1023.";
+      if (dim.getSize() >= ((1UL << 10) - 1)) {
+        return emitOpError() << "Size may not exceed " << ((1UL << 10) - 1);
       }
-      if (dim.getStride() >= (1UL << 19)) {
+      if (dim.getStride() >= (1UL << 20)) {
         return emitOpError() << "Stride may not exceed " << (1 << 20);
       }
     }
