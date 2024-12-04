@@ -165,8 +165,8 @@ func.func @reduction(%A: memref<4xbf16>, %B: memref<bf16>) {
 
 // -----
 
-// Test illustrating that when a linalg.generic operation has an operand that 
-// is has an offset on the layout, it is not outlined.
+// Test illustrating that when a linalg.generic operation has an operand that
+// has an offset on the layout, it is not outlined.
 
 // CHECK-COUNT-1: func.func
 // CHECK-NOT:     func.func
@@ -190,7 +190,7 @@ func.func @unoutlineable_layout_with_offset(%A: memref<4x8xbf16, strided<[8,1], 
 
 // -----
 
-// Test illustrating that when a linalg.generic operation has an operand that 
+// Test illustrating that when a linalg.generic operation has an operand that
 // is not contiguous, it is not outlined.
 
 // CHECK-COUNT-1: func.func

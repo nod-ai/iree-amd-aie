@@ -20,7 +20,7 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
-/// Return if `type` is a memref with an identity layout.
+/// Return true if `type` is a memref with an identity layout.
 bool isMemRefWithIdentityLayout(Type type) {
   auto memRefType = dyn_cast<MemRefType>(type);
   if (!memRefType) return false;
