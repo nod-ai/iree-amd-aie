@@ -11,7 +11,7 @@
 // CHECK-SAME:          outs(%[[OUT]] :
 // CHECK:           return
 // CHECK:        }
-// CHECK-LABEL:  func.func @matmul_example
+// CHECK-LABEL:  func.func @repeated_identical_matmul
 // CHECK-SAME:   (%[[A:.*]]: memref<4x8xbf16>,
 // CHECK-SAME:    %[[B:.*]]: memref<8x4xbf16>,
 // CHECK-SAME:    %[[C:.*]]: memref<4x4xf32>) {
@@ -27,7 +27,7 @@
 // CHECK:            }
 // CHECK:            return
 // CHECK:        }
-func.func @matmul_example(%A: memref<4x8xbf16>, %B: memref<8x4xbf16>, %C: memref<4x4xf32>) {
+func.func @repeated_identical_matmul(%A: memref<4x8xbf16>, %B: memref<8x4xbf16>, %C: memref<4x4xf32>) {
   %c2 = arith.constant 2 : index
   %c1 = arith.constant 1 : index
   %tile = amdaie.tile(%c1, %c2)
@@ -79,7 +79,7 @@ func.func @matmul_example(%A: memref<4x8xbf16>, %B: memref<8x4xbf16>, %C: memref
 // CHECK-DAG:  func.func private @[[MATMUL_K6:.*]]({{.*}}memref<4x6xbf16>, {{.*}}memref<6x4xbf16>, {{.*}}memref<4x4xf32>)
 // CHECK-DAG:  func.func private @[[MATMUL_K4:.*]]({{.*}}memref<4x4xbf16>, {{.*}}memref<4x4xbf16>, {{.*}}memref<4x4xf32>)
 // CHECK-NOT:  func.func private
-// CHECK:      func.func @matmul_example_2(
+// CHECK:      func.func @distinct_matmul_shapes(
 // CHECK-SAME:  %[[A0:.*]]: memref<4x4xbf16>, %[[B0:.*]]: memref<4x4xbf16>,
 // CHECK-SAME:  %[[A1:.*]]: memref<4x6xbf16>, %[[B1:.*]]: memref<6x4xbf16>,
 // CHECK-SAME:   %[[C:.*]]: memref<4x4xf32>) {
@@ -90,7 +90,7 @@ func.func @matmul_example(%A: memref<4x8xbf16>, %B: memref<8x4xbf16>, %C: memref
 // CHECK-NEXT: func.call @[[MATMUL_K6]](%[[A1]], %[[B1]], %[[C]])
 // CHECK-NEXT: amdaie.end
 // CHECK:      return
-func.func @matmul_example_2(%A0: memref<4x4xbf16>, %B0: memref<4x4xbf16>,
+func.func @distinct_matmul_shapes(%A0: memref<4x4xbf16>, %B0: memref<4x4xbf16>,
                             %A1: memref<4x6xbf16>, %B1: memref<6x4xbf16>,
                             %C: memref<4x4xf32>) {
   %c2 = arith.constant 2 : index
@@ -173,7 +173,7 @@ func.func @reduction(%A: memref<4xbf16>, %B: memref<bf16>) {
 // CHECK:       linalg.generic
 // CHECK-SAME:    iterator_types = ["reduction", "reduction"]
 // CHECK:       return
-// CHECK:       func.func @supported_linalg_op
+// CHECK:       func.func @outlineable_linalg_op
 // CHECK-SAME:    memref<4x8xbf16, strided<[8, 1], offset: ?>>
 // CHECK-SAME:    memref<bf16>
 // CHECK:       %[[CAST:.*]] = memref.cast
@@ -182,7 +182,7 @@ func.func @reduction(%A: memref<4xbf16>, %B: memref<bf16>) {
 // CHECK:       func.call @generic_0_outlined(%[[CAST]], %arg1) :
 // CHECK-SAME:    (memref<4x8xbf16>, memref<bf16>) -> ()
 // CHECK:       return
-func.func @supported_linalg_op(%A: memref<4x8xbf16, strided<[8,1], offset:?>>, %B: memref<bf16>) {
+func.func @outlineable_linalg_op(%A: memref<4x8xbf16, strided<[8,1], offset:?>>, %B: memref<bf16>) {
   %c2 = arith.constant 2 : index
   %tile = amdaie.tile(%c2, %c2)
   %1 = amdaie.core(%tile, in : [], out : []) {
@@ -207,7 +207,7 @@ func.func @supported_linalg_op(%A: memref<4x8xbf16, strided<[8,1], offset:?>>, %
 
 // CHECK-COUNT-1: func.func
 // CHECK-NOT:     func.func
-func.func @unsupported_linalg_op(%A: memref<4x8xbf16, strided<[9,1]>>, %B: memref<bf16>) {
+func.func @unoutlineable_linalg_op(%A: memref<4x8xbf16, strided<[9,1]>>, %B: memref<bf16>) {
   %c2 = arith.constant 2 : index
   %tile = amdaie.tile(%c2, %c2)
   %1 = amdaie.core(%tile, in : [], out : []) {
