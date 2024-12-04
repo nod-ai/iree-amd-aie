@@ -98,9 +98,9 @@ static bool mustOutline(linalg::LinalgOp linalgOp) {
 
   // TODO(newling) not all remaining ops should be outlined, not even all
   // remaining matmuls: below some threshold on size (m*n*k) it's not worth
-  // outlining (function call overhead). We should extend the blacklist
-  // here.
-  //
+  // outlining (function call overhead). We should extend the set of ops that
+  // are not outlined here.
+
   return true;
 };
 
