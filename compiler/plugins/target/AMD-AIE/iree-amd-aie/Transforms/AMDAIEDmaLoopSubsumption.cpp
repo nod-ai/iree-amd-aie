@@ -56,7 +56,8 @@ struct SubsumeLoopIntoDMA
     : public OpInterfaceRewritePattern<AMDAIE::DoublyStridedOpInterface> {
   using OpInterfaceRewritePattern::OpInterfaceRewritePattern;
 
-  SubsumeLoopIntoDMA(MLIRContext *context, const AMDAIE::AMDAIEDeviceModel &model,
+  SubsumeLoopIntoDMA(MLIRContext *context,
+                     const AMDAIE::AMDAIEDeviceModel &model,
                      bool onlyZeroStrideOnOuterDim)
       : OpInterfaceRewritePattern(context),
         deviceModel(model),
@@ -501,25 +502,6 @@ struct SubsumeLoopIntoDMA
       return false;
     };
 
-    auto hasCircularUsersInSameScope =
-        [&](SmallVector<AMDAIE::DoublyStridedOpInterface> users) -> bool {
-      bool currentCircularDma = false;
-      for (AMDAIE::DoublyStridedOpInterface userOp : llvm::reverse(users)) {
-        // Check if there is other circular dma user in the same scope.
-        if (isa<AMDAIE::NpuCircularDmaCpyNdOp>(userOp) &&
-            userOp != op.getOperation()) {
-          return true;
-        }
-        // Check if there is other user before the current in the same scope.
-        if (userOp == op.getOperation()) {
-          currentCircularDma = true;
-          continue;
-        }
-        if (currentCircularDma) return true;
-      }
-      return false;
-    };
-
     std::optional<uint8_t> sourceMemspaceInt;
     std::optional<uint8_t> targetMemspaceInt;
     if (auto npuDmaOp = dyn_cast<AMDAIE::NpuDmaCpyNdOp>(op.getOperation())) {
@@ -556,33 +538,18 @@ struct SubsumeLoopIntoDMA
       // TODO(jornt): Consolidate with `NpuDmaCpyNdOp`.
       sourceMemspaceInt = npuCircularDmaOp.getSourceMemorySpaceAsUInt();
       targetMemspaceInt = npuCircularDmaOp.getTargetMemorySpaceAsUInt();
-
-      // Check that the connection this `amdaie.npu.circular_dma_cpy_nd` op is
-      // operating on, satisfies the following conditions:
-      // 1) No other users of the connection has the Circular trait in the same
-      // scope; 2) No other users of the connection before this circular dma op
-      // in the same scope. Otherwise, the rewrite is not valid in general as it
-      // would be changing the temporal usage of the source connection.
-      AMDAIE::ConnectionOp connectionOp = npuCircularDmaOp.getConnectionOp();
-      if (!connectionOp) {
+      FailureOr<bool> hasBlockingUsers =
+          doesCircularDmaHaveUsersBlockingSubsumption(npuCircularDmaOp);
+      if (failed(hasBlockingUsers)) {
         return rewriter.notifyMatchFailure(
-            op, "should operate on an `amdaie.connection` op");
+            op, "failed checking for user blocking subsumption");
       }
-      // Walk all dma ops in order and get those which are the users of the
-      // current connection op.
-      SmallVector<AMDAIE::DoublyStridedOpInterface> dmaUsers;
-      parentOp->walk([&](AMDAIE::DoublyStridedOpInterface op) {
-        auto dmaConnection = dyn_cast_if_present<AMDAIE::ConnectionOp>(
-            op->getOperand(0).getDefiningOp());
-        if (dmaConnection && dmaConnection == connectionOp) {
-          dmaUsers.push_back(op);
-        }
-      });
-      if (hasCircularUsersInSameScope(dmaUsers)) {
+      if (hasBlockingUsers.value()) {
         return rewriter.notifyMatchFailure(
             op,
-            "Has users of same DMA in scope, analysis to check validity of "
-            "subsumption unimplemented");
+            "Has users of the same connection blocking subsumption of the "
+            "loop. The analysis to check validity of subsumption in this case "
+            "might have to be implemented");
       }
     } else {
       return rewriter.notifyMatchFailure(
@@ -621,6 +588,42 @@ struct SubsumeLoopIntoDMA
     if (dependsOnInductionValue(dynamicTargetOffsets)) return true;
     return false;
   }
+
+  /// Check whether any of the other users of the same connection blocks
+  /// subsumption of circular DMA operations. This function checks for the
+  /// following cases:
+  /// 1. Check whether there is another user of any type before the current one
+  /// in the same scope. If so, the rewrite is not valid in general as it
+  /// would be changing the temporal usage of the source connection.
+  /// 2. Check whether there is any other user with the `Circular` trait within
+  /// the same scope.
+  static FailureOr<bool> doesCircularDmaHaveUsersBlockingSubsumption(
+      AMDAIE::NpuCircularDmaCpyNdOp op) {
+    AMDAIE::ConnectionOp connectionOp = op.getConnectionOp();
+    if (!connectionOp) return failure();
+    // Walk all doubly strided ops in order and get those which are the users of
+    // the current connection op.
+    SmallVector<AMDAIE::DoublyStridedOpInterface> connectionUsers;
+    Block *parentBlock = op->getBlock();
+    parentBlock->walk([&](AMDAIE::DoublyStridedOpInterface stridedOp) {
+      auto stridedOpConnection = dyn_cast_if_present<AMDAIE::ConnectionOp>(
+          stridedOp->getOperand(0).getDefiningOp());
+      if (stridedOpConnection && stridedOpConnection == connectionOp)
+        connectionUsers.push_back(stridedOp);
+    });
+    bool currentCircularDma = false;
+    for (AMDAIE::DoublyStridedOpInterface userOp :
+         llvm::reverse(connectionUsers)) {
+      if (userOp == op.getOperation()) {
+        currentCircularDma = true;
+        continue;
+      }
+      Operation *ancestor = getAncestorInBlock(userOp, op->getBlock());
+      if (ancestor && currentCircularDma) return true;
+      if (ancestor && userOp->hasTrait<CircularDmaOp>()) return true;
+    }
+    return false;
+  };
 
   // The device model to use for the DMA operation.
   const AMDAIE::AMDAIEDeviceModel &deviceModel;
@@ -683,9 +686,9 @@ void AMDAIEDmaLoopSubsumptionPass::runOnOperation() {
 
 }  // namespace
 
-void populateDmaLoopSubsumptionPattern(RewritePatternSet &patterns,
-                                       const AMDAIE::AMDAIEDeviceModel &deviceModel,
-                                       bool onlyZeroStrideOnOuterDim) {
+void populateDmaLoopSubsumptionPattern(
+    RewritePatternSet &patterns, const AMDAIE::AMDAIEDeviceModel &deviceModel,
+    bool onlyZeroStrideOnOuterDim) {
   SubsumeLoopIntoDMA pattern(patterns.getContext(), std::move(deviceModel),
                              onlyZeroStrideOnOuterDim);
   patterns.insert<SubsumeLoopIntoDMA>(std::move(pattern));
