@@ -14,7 +14,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
-#define DEBUG_TYPE "iree-amdaie-controlcode-to-npu"
+#define DEBUG_TYPE "iree-amdaie-controlcode-lowering"
 
 namespace mlir::iree_compiler::AMDAIE {
 
@@ -240,8 +240,9 @@ struct HalfDmaCpyNdToNpuConverter final
 };
 
 namespace {
-class AMDAIEControlCodeToNpuPass
-    : public impl::AMDAIEControlCodeToNpuBase<AMDAIEControlCodeToNpuPass> {
+class AMDAIEControlCodeLoweringPass
+    : public impl::AMDAIEControlCodeLoweringBase<
+          AMDAIEControlCodeLoweringPass> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<AMDAIEDialect>();
@@ -249,7 +250,7 @@ class AMDAIEControlCodeToNpuPass
   void runOnOperation() override;
 };
 
-void AMDAIEControlCodeToNpuPass::runOnOperation() {
+void AMDAIEControlCodeLoweringPass::runOnOperation() {
   Operation *parentOp = getOperation();
   MLIRContext *context = &getContext();
 
@@ -278,8 +279,8 @@ void AMDAIEControlCodeToNpuPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<Pass> createAMDAIEControlCodeToNpuPass() {
-  return std::make_unique<AMDAIEControlCodeToNpuPass>();
+std::unique_ptr<Pass> createAMDAIEControlCodeLoweringPass() {
+  return std::make_unique<AMDAIEControlCodeLoweringPass>();
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE

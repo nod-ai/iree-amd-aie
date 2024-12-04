@@ -50,15 +50,16 @@ class ChannelBdIdGenerator {
   /// reused.
   void releaseBdId(uint32_t bdId) { assignedBdIds.erase(bdId); }
 
-  uint32_t getAvailableBdIdNum(uint32_t channel) {
+  /// Returns the number of available BD ids yet to be assigned for the provided
+  /// channel.
+  uint32_t getNumAvailableBdIds(uint32_t channel) {
     if (!channelToValidBdIds.contains(channel)) {
       return 0;
     } else {
-      uint32_t count = 0;
-      for (uint32_t bdId : channelToValidBdIds[channel]) {
-        if (!isBdIdAssigned(bdId)) count += 1;
-      }
-      return count;
+      return std::count_if(
+          channelToValidBdIds[channel].begin(),
+          channelToValidBdIds[channel].end(),
+          [&](uint32_t bdId) { return !isBdIdAssigned(bdId); });
     }
   }
 

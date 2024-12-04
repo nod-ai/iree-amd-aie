@@ -696,7 +696,6 @@ def generate_aie_vmfb(
         "--iree-scheduling-optimize-bindings=false",
         "--iree-hal-memoization=false",
         "--iree-hal-indirect-command-buffers=false",
-        f"--mlir-disable-threading",
         "--mlir-elide-resource-strings-if-larger=10",
     ]
 
