@@ -115,7 +115,7 @@ struct FoldDmaOpSingleDims
   }
 };
 
-/// Fold unit dimensions (size == 1) with within a strided access pattern.
+/// Fold unit dimensions (size == 1) within a strided access pattern.
 struct FoldDmaOpUnitDims
     : public OpInterfaceRewritePattern<AMDAIE::DoublyStridedOpInterface> {
   using OpInterfaceRewritePattern::OpInterfaceRewritePattern;
