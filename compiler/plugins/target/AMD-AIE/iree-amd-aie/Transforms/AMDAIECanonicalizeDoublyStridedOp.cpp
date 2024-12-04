@@ -115,7 +115,7 @@ struct FoldDmaOpSingleDims
   }
 };
 
-/// Fold unit dimensions within a strided access pattern.
+/// Fold unit dimensions (size == 1) with within a strided access pattern.
 struct FoldDmaOpUnitDims
     : public OpInterfaceRewritePattern<AMDAIE::DoublyStridedOpInterface> {
   using OpInterfaceRewritePattern::OpInterfaceRewritePattern;
@@ -132,10 +132,10 @@ struct FoldDmaOpUnitDims
     SmallVector<OpFoldResult> newSourceOffsets, newSourceSizes,
         newSourceStrides, newTargetOffsets, newTargetSizes, newTargetStrides;
     LogicalResult sourceRes =
-        foldUnitDims(sourceOffsets, sourceSizes, sourceStrides,
+        foldUnitDims(op.getContext(), sourceOffsets, sourceSizes, sourceStrides,
                      newSourceOffsets, newSourceSizes, newSourceStrides);
     LogicalResult targetRes =
-        foldUnitDims(targetOffsets, targetSizes, targetStrides,
+        foldUnitDims(op.getContext(), targetOffsets, targetSizes, targetStrides,
                      newTargetOffsets, newTargetSizes, newTargetStrides);
     if (failed(sourceRes) && failed(targetRes)) {
       return failure();

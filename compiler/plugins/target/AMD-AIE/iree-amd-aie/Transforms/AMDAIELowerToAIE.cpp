@@ -226,7 +226,8 @@ void AIEDeviceBuilder::foldDims(const SmallVector<OpFoldResult> &offsets,
   SmallVector<OpFoldResult> tmpOffsets;
   SmallVector<OpFoldResult> tmpSizes;
   SmallVector<OpFoldResult> tmpStrides;
-  (void)foldUnitDims(offsets, sizes, strides, tmpOffsets, tmpSizes, tmpStrides);
+  (void)foldUnitDims(rewriter.getContext(), offsets, sizes, strides, tmpOffsets,
+                     tmpSizes, tmpStrides);
   (void)foldLinearDims(rewriter.getContext(), tmpOffsets, tmpSizes, tmpStrides,
                        newOffsets, newSizes, newStrides);
   (void)foldSingleDim(newOffsets, newSizes, newStrides);
