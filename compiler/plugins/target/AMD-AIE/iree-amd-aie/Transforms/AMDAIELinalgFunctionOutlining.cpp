@@ -91,13 +91,17 @@ static FailureOr<func::FuncOp> outline(IRRewriter &rewriter, ModuleOp moduleOp,
   return func;
 }
 
-/// Utility to check if the linalg op is one we know should not be outlined.
-static bool mustNotOutline(linalg::LinalgOp linalgOp) {
-  return isa<linalg::CopyOp, linalg::FillOp>(linalgOp);
+/// Utility to check if the linalg op is one we know should be outlined.
+static bool mustOutline(linalg::LinalgOp linalgOp) {
+  if (isa<linalg::CopyOp, linalg::FillOp>(linalgOp)) return false;
+  if (isElementwise(linalgOp)) return false;
+
   // TODO(newling) not all remaining ops should be outlined, not even all
   // remaining matmuls: below some threshold on size (m*n*k) it's not worth
   // outlining (function call overhead). We should extend the blacklist
   // here.
+  //
+  return true;
 };
 
 class AMDAIELinalgFunctionOutliningPass
@@ -172,7 +176,7 @@ void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
 
   SmallVector<Operation *> toBeErased;
   moduleOp.walk([&](linalg::LinalgOp computeOp) {
-    if (mustNotOutline(computeOp)) return WalkResult::skip();
+    if (!mustOutline(computeOp)) return WalkResult::skip();
 
     FailureOr<func::FuncOp> maybeFunc =
         retrieveOrCreate(rewriter, moduleOp, computeOp);
