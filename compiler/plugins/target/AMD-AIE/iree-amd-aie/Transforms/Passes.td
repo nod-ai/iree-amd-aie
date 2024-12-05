@@ -284,6 +284,12 @@ def AMDAIELinalgFunctionOutlining :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELinalgFunctionOutliningPass()";
 }
 
+def AMDAIEFoldDmaWaits :
+  Pass<"iree-amdaie-fold-dma-waits", ""> {
+  let summary = "Remove redundant dma wait operations in controlcode.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFoldDmaWaitsPass()";
+}
+
 def AMDAIEFuseConsumerIntoLoop :
     InterfacePass<"iree-amdaie-fuse-consumer-into-loop", "mlir::FunctionOpInterface"> {
   let summary = "Fuse the consumer operation into the innermost last scf loop.";
@@ -661,12 +667,6 @@ def AMDAIERemoveMemorySpace : Pass<"iree-amdaie-remove-memoryspace"> {
     should be run somewhere between tiling and lowering to the aie dialect.
   }];
   let constructor =  "mlir::iree_compiler::AMDAIE::createAMDAIERemoveMemorySpacePass()";
-}
-
-def AMDAIESimplifyDmaWaits :
-  Pass<"iree-amdaie-simplify-dma-waits", ""> {
-  let summary = "Remove redundant dma wait operations in controlcode.";
-  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIESimplifyDmaWaitsPass()";
 }
 
 def AMDAIESinkIntoCore :

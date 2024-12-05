@@ -10,7 +10,7 @@
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "mlir/IR/Iterators.h"
-#define DEBUG_TYPE "iree-amdaie-simplify-dma-waits"
+#define DEBUG_TYPE "iree-amdaie-fold-dma-waits"
 
 namespace mlir::iree_compiler::AMDAIE {
 
@@ -18,12 +18,13 @@ namespace {
 
 /// Traverses the control code in reverse, ensuring that for each connection,
 /// only one DMA wait op is retained for every maximum queue size.
-LogicalResult simplifyDmaWaits(AMDAIE::AMDAIEDeviceModel deviceModel,
-                               AMDAIE::WorkgroupOp workgroupOp) {
-  IRRewriter rewriter(workgroupOp->getContext());
+LogicalResult foldDmaWaits(AMDAIE::AMDAIEDeviceModel deviceModel,
+                           AMDAIE::ControlCodeOp controlCodeOp) {
+  IRRewriter rewriter(controlCodeOp->getContext());
   std::vector<AMDAIE::NpuDmaWaitOp> waitOpsToErase;
-  DenseMap<AMDAIE::ConnectionOp, SmallVector<uint32_t>> connectionToBdIdQueues;
-  AMDAIE::ControlCodeOp controlCodeOp = workgroupOp.getControlCode();
+  DenseMap<std::pair<AMDAIE::TileOp, AMDAIE::ConnectionOp>,
+           SmallVector<uint32_t>>
+      tileConnectionToBdIdQueueMap;
   WalkResult res = controlCodeOp->walk<WalkOrder::PostOrder, ReverseIterator>(
       [&](AMDAIE::NpuDmaWaitOp waitOp) {
         bool toErase = true;
@@ -70,17 +71,21 @@ LogicalResult simplifyDmaWaits(AMDAIE::AMDAIEDeviceModel deviceModel,
             uint32_t col = getConstantIndexOrAssert(tileOp.getCol());
             uint32_t row = getConstantIndexOrAssert(tileOp.getRow());
             uint32_t maxQueueSize = deviceModel.getDmaMaxQueueSize(col, row);
-            // Keep wait op if reaches the maximum queue size or there is a
-            // duplicate BD ID.
+            // Keep wait op if, either reaches the maximum queue size, or there
+            // is a duplicate BD ID in the same tile.
             uint32_t bdId = getConstantIndexOrAssert(bdIdOp.getValue());
-            auto &bdIdQueue = connectionToBdIdQueues[connectionOp];
-            if (bdIdQueue.size() >= maxQueueSize) bdIdQueue.clear();
-            if (bdIdQueue.empty() || llvm::is_contained(bdIdQueue, bdId)) {
-              toErase = false;
-              bdIdQueue = {bdId};
-            } else {
-              bdIdQueue.push_back(bdId);
-            }
+            bool isDuplicateBdId = llvm::any_of(
+                tileConnectionToBdIdQueueMap, [&](const auto &entry) {
+                  return entry.first.first == tileOp &&
+                         llvm::is_contained(entry.second, bdId);
+                });
+            SmallVector<uint32_t> &bdIdQueue =
+                tileConnectionToBdIdQueueMap[std::make_pair(tileOp,
+                                                            connectionOp)];
+            if (bdIdQueue.size() >= maxQueueSize || isDuplicateBdId)
+              bdIdQueue.clear();
+            if (bdIdQueue.empty()) toErase = false;
+            bdIdQueue.push_back(bdId);
           }
         }
         // Erase later to avoid invalidating the iterator.
@@ -113,19 +118,19 @@ LogicalResult simplifyDmaWaits(AMDAIE::AMDAIEDeviceModel deviceModel,
   return success();
 }
 
-class AMDAIESimplifyDmaWaitsPass
-    : public impl::AMDAIESimplifyDmaWaitsBase<AMDAIESimplifyDmaWaitsPass> {
+class AMDAIEFoldDmaWaitsPass
+    : public impl::AMDAIEFoldDmaWaitsBase<AMDAIEFoldDmaWaitsPass> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<AMDAIEDialect>();
   }
 
-  AMDAIESimplifyDmaWaitsPass() = default;
-  AMDAIESimplifyDmaWaitsPass(const AMDAIESimplifyDmaWaitsPass &pass){};
+  AMDAIEFoldDmaWaitsPass() = default;
+  AMDAIEFoldDmaWaitsPass(const AMDAIEFoldDmaWaitsPass &pass){};
   void runOnOperation() override;
 };
 
-void AMDAIESimplifyDmaWaitsPass::runOnOperation() {
+void AMDAIEFoldDmaWaitsPass::runOnOperation() {
   Operation *parentOp = getOperation();
 
   auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(parentOp);
@@ -133,7 +138,7 @@ void AMDAIESimplifyDmaWaitsPass::runOnOperation() {
   if (!maybeDevice) {
     parentOp->emitOpError()
         << "has no AMDAIEDevice in the target attribute configuration. This "
-           "device-specific information is required to simplify DMA wait "
+           "device-specific information is required to fold DMA wait "
            "ops.";
     return signalPassFailure();
   }
@@ -141,7 +146,8 @@ void AMDAIESimplifyDmaWaitsPass::runOnOperation() {
       AMDAIE::getDeviceModel(maybeDevice.value());
 
   WalkResult res = parentOp->walk([&](AMDAIE::WorkgroupOp workgroupOp) {
-    if (failed(simplifyDmaWaits(deviceModel, workgroupOp))) {
+    AMDAIE::ControlCodeOp controlCodeOp = workgroupOp.getControlCode();
+    if (failed(foldDmaWaits(deviceModel, controlCodeOp))) {
       return WalkResult::interrupt();
     }
     return WalkResult::advance();
@@ -151,8 +157,8 @@ void AMDAIESimplifyDmaWaitsPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<Pass> createAMDAIESimplifyDmaWaitsPass() {
-  return std::make_unique<AMDAIESimplifyDmaWaitsPass>();
+std::unique_ptr<Pass> createAMDAIEFoldDmaWaitsPass() {
+  return std::make_unique<AMDAIEFoldDmaWaitsPass>();
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE

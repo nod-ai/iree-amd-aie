@@ -1,4 +1,4 @@
-// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-simplify-dma-waits)" --split-input-file --verify-diagnostics %s | FileCheck %s
+// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-fold-dma-waits)" --split-input-file --verify-diagnostics %s | FileCheck %s
 
 // expected-error @+1 {{op has no AMDAIEDevice in the target attribute configuration}}
 module {
@@ -29,7 +29,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
-// CHECK-LABEL: @simplify_dma_waits_same_bd_id
+// CHECK-LABEL: @fold_dma_waits_same_bd_id
 // CHECK:       %[[OBJECT_FIFO_0:.+]] = amdaie.logicalobjectfifo.from_buffers
 // CHECK:       %[[CHANNEL_0:.+]] = amdaie.channel
 // CHECK:       %[[CHANNEL_1:.+]] = amdaie.channel
@@ -43,7 +43,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 #pipeline_layout = #hal.pipeline.layout<bindings = [#hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, Indirect>], flags = Indirect>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
-  func.func @simplify_dma_waits_same_bd_id() {
+  func.func @fold_dma_waits_same_bd_id() {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     amdaie.workgroup {
@@ -77,7 +77,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
-// CHECK-LABEL: @simplify_dma_waits_max_queue_size
+// CHECK-LABEL: @fold_dma_waits_max_queue_size
 // CHECK:       %[[OBJECT_FIFO_0:.+]] = amdaie.logicalobjectfifo.from_buffers
 // CHECK:       %[[CHANNEL_0:.+]] = amdaie.channel
 // CHECK:       %[[CHANNEL_1:.+]] = amdaie.channel
@@ -98,7 +98,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 #pipeline_layout = #hal.pipeline.layout<bindings = [#hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, Indirect>], flags = Indirect>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
-  func.func @simplify_dma_waits_max_queue_size() {
+  func.func @fold_dma_waits_max_queue_size() {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %c2 = arith.constant 2 : index
@@ -145,7 +145,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
-// CHECK-LABEL: @simplify_dma_waits_two_connections
+// CHECK-LABEL: @fold_dma_waits_two_connections
 // CHECK:       %[[OBJECT_FIFO_0:.+]] = amdaie.logicalobjectfifo.from_buffers
 // CHECK:       %[[OBJECT_FIFO_1:.+]] = amdaie.logicalobjectfifo.from_buffers
 // CHECK:       %[[CHANNEL_0:.+]] = amdaie.channel
@@ -169,7 +169,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 #pipeline_layout = #hal.pipeline.layout<bindings = [#hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, Indirect>], flags = Indirect>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
-  func.func @simplify_dma_waits_two_connections() {
+  func.func @fold_dma_waits_two_connections() {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %c2 = arith.constant 2 : index

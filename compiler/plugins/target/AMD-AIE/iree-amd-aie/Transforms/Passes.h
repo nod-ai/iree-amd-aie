@@ -204,6 +204,9 @@ std::unique_ptr<Pass> createAMDAIEHoistLogicalObjFifoPass();
 std::unique_ptr<Pass> createAMDAIEInsertLoopsForVectorizationPass(
     AMDAIEInsertLoopsForVectorizationOptions options = {});
 
+/// Create a pass to remove redundant DMA wait operations.
+std::unique_ptr<Pass> createAMDAIEFoldDmaWaitsPass();
+
 /// Create a pass to fuse the pack operations into the for loops.
 std::unique_ptr<Pass> createAMDAIEFusePackIntoLoopPass(
     AMDAIEFusePackIntoLoopOptions options = {});
@@ -278,9 +281,6 @@ std::unique_ptr<Pass> createAMDAIEPeelForLoopPass(
 
 /// Create a pass to remove memory space annotation from all types.
 std::unique_ptr<Pass> createAMDAIERemoveMemorySpacePass();
-
-/// Create a pass to remove redundant DMA wait operations.
-std::unique_ptr<Pass> createAMDAIESimplifyDmaWaitsPass();
 
 /// Create a pass to sink all dependencies into `amdaie.core` operations.
 std::unique_ptr<Pass> createAMDAIESinkIntoCorePass();
