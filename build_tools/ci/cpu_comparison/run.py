@@ -1440,14 +1440,31 @@ class Tests:
         )
 
         # Some bf16 Performance tests:
-        for M, N, K, use_ukernel in [
-            (512, 512, 4096, False),
-            (512, 512, 4096, True),
-            (512, 4096, 512, False),
-            (512, 4096, 512, True),
-            (4096, 512, 512, False),
-            (4096, 512, 512, True),
+        for M, N, K, use_ukernel, opt_level, outline in [
+            (512, 512, 4096, False, 2, False),
+            (512, 512, 4096, False, 2, True),
+            (512, 512, 4096, False, 3, False),
+            (512, 512, 4096, False, 3, True),
+            (512, 512, 4096, True, 3, True),
+            (512, 4096, 512, False, 3, True),
+            (512, 4096, 512, True, 3, True),
+            (4096, 512, 512, False, 3, True),
+            (4096, 512, 512, True, 3, True),
         ]:
+
+            outlining_string = "--iree-amdaie-enable-function-outlining=" + str(
+                int(outline)
+            )
+            opt_level_string = f'"-O{opt_level}"'
+            aie_compilation_flags = [
+                outlining_string,
+                f"--iree-amd-aie-additional-peano-opt-flags={opt_level_string}",
+            ]
+
+            name_suffix = "O" + str(opt_level)
+            if outline:
+                name_suffix += "_outline"
+
             self.register(
                 Matmul(
                     M,
@@ -1457,8 +1474,12 @@ class Tests:
                     "f32",
                     use_ukernel=use_ukernel,
                     n_repeats=2,
+                    aie_compilation_flags=aie_compilation_flags,
+                    name_suffix=name_suffix,
+                    additional_labels=["PerformanceCorrectness"],
                 )
             )
+
             self.register(
                 MatmulBenchmark(
                     M,
@@ -1470,6 +1491,8 @@ class Tests:
                     use_ukernel=use_ukernel,
                     n_repeats=5,
                     n_kernel_runs=100,
+                    aie_compilation_flags=aie_compilation_flags,
+                    name_suffix=name_suffix,
                 )
             )
 

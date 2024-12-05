@@ -56,7 +56,7 @@ struct AMDAIEOptions {
   bool enableVectorizationPasses{true};
   bool enableCoalescingLoops{false};
   bool enableCollapsingUnitDims{false};
-  bool enableFunctionOutlining{false};
+  bool enableFunctionOutlining{true};
   bool insertLoopAroundCoreBlock{false};
   bool matmulElementwiseFusion{false};
   AMDAIEDevice AMDAIETargetDevice{AMDAIEDevice::npu1_4col};
