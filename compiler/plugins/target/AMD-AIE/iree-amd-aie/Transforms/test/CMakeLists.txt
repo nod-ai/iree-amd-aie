@@ -74,6 +74,7 @@ iree_lit_test_suite(
     "peel_for_loop.mlir"
     "propagate_data_layout.mlir"
     "remove_memory_space.mlir"
+    "simplify_dma_waits.mlir"
     "sink_into_core.mlir"
     "split_logicalobjfifos.mlir"
     "split_logicalobjfifos_for_connection_reuse.mlir"

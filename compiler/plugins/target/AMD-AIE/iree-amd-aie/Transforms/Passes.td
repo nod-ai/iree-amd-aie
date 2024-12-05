@@ -663,6 +663,12 @@ def AMDAIERemoveMemorySpace : Pass<"iree-amdaie-remove-memoryspace"> {
   let constructor =  "mlir::iree_compiler::AMDAIE::createAMDAIERemoveMemorySpacePass()";
 }
 
+def AMDAIESimplifyDmaWaits :
+  Pass<"iree-amdaie-simplify-dma-waits", ""> {
+  let summary = "Remove redundant dma wait operations in controlcode.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIESimplifyDmaWaitsPass()";
+}
+
 def AMDAIESinkIntoCore :
   Pass<"iree-amdaie-sink-into-core", "ModuleOp"> {
   let summary = "Clone constants and other ops into amdaie.cores";

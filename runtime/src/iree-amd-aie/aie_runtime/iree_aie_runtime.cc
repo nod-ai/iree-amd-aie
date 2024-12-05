@@ -495,6 +495,13 @@ AMDAIEDeviceModel::getChannelToValidBdIds(AMDAIETileType tileType) const {
   llvm::report_fatal_error("Unhandled AMDAIETileType case");
 }
 
+uint8_t AMDAIEDeviceModel::getDmaMaxQueueSize(uint8_t col, uint8_t row) {
+  uint8_t maxQueueSize = 0;
+  TRY_XAIE_API_FATAL_ERROR(XAie_DmaGetMaxQueueSize, &devInst,
+                           XAie_TileLoc(col, row), &maxQueueSize);
+  return maxQueueSize;
+}
+
 struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
   switch (device) {
     case AMDAIEDevice::xcvc1902: {

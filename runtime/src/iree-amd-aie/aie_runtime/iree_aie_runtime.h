@@ -375,6 +375,8 @@ struct AMDAIEDeviceModel {
   DenseMap<uint32_t, SmallVector<uint32_t>> getChannelToValidBdIds(
       AMDAIETileType tileType) const;
 
+  uint8_t getDmaMaxQueueSize(uint8_t col, uint8_t row);
+
   AMDAIEDevice device;
 
   // mlir-air legacy
