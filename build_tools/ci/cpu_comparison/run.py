@@ -1184,6 +1184,7 @@ def aie_vs_baseline(
         # Check if "enable-chess=1" is a substring of any of the compilation flags:
         uses_chess = any("enable-chess=1" in flag for flag in aie_compilation_flags)
         if not uses_chess:
+            test_dir = config.get_test_dir(name)
             print_program_memory_size(test_dir)
 
 
