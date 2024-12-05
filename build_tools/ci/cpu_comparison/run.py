@@ -775,12 +775,6 @@ def generate_aie_vmfb(
     if not aie_vmfb.exists():
         raise RuntimeError(f"Failed to compile {test_file} to {aie_vmfb}")
 
-    if config.verbose:
-        # Check if "enable-chess=1" is a substring of any of the compilation flags:
-        uses_chess = any("enable-chess=1" in flag for flag in aie_compilation_flags)
-        if not uses_chess:
-            print_program_memory_size(test_dir)
-
     return aie_vmfb
 
 
@@ -1185,6 +1179,11 @@ def aie_vs_baseline(
         if summary_string:
             print(summary_string)
             raise RuntimeError("Test failed, exiting.")
+
+    # Check if "enable-chess=1" is a substring of any of the compilation flags:
+    uses_chess = any("enable-chess=1" in flag for flag in aie_compilation_flags)
+    if not uses_chess:
+        print_program_memory_size(test_dir)
 
 
 def benchmark_aie(
