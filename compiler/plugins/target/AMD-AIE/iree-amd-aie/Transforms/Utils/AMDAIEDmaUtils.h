@@ -166,7 +166,7 @@ LogicalResult foldSingleDim(SmallVector<OpFoldResult> &offsets,
 /// will be transformed into:
 ///
 /// offsets: [0, 0], sizes: [32, 8], strides: [32, 1]
-/// 
+///
 /// Example for case 2:
 ///
 /// offsets: [1, 0, 1, 0], sizes: [1, 32, 1, 8], strides: [1024, 32, 1024, 1]
