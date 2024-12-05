@@ -165,24 +165,12 @@ func.func @reduction(%A: memref<4xbf16>, %B: memref<bf16>) {
 
 // -----
 
-// Test demonstrating the outlining of a linalg.generic where one
-// operand has an unkown offset. The memref is still contiguous, however.
-// CHECK:       func.func private @generic_0_outlined
-// CHECK-SAME:    memref<4x8xbf16>,
-// CHECK-SAME:    memref<bf16>
-// CHECK:       linalg.generic
-// CHECK-SAME:    iterator_types = ["reduction", "reduction"]
-// CHECK:       return
-// CHECK:       func.func @outlineable_linalg_op
-// CHECK-SAME:    memref<4x8xbf16, strided<[8, 1], offset: ?>>
-// CHECK-SAME:    memref<bf16>
-// CHECK:       %[[CAST:.*]] = memref.cast
-// CHECK-SAME:    memref<4x8xbf16, strided<[8, 1], offset: ?>>
-// CHECK-SAME:    to memref<4x8xbf16>
-// CHECK:       func.call @generic_0_outlined(%[[CAST]], %arg1) :
-// CHECK-SAME:    (memref<4x8xbf16>, memref<bf16>) -> ()
-// CHECK:       return
-func.func @outlineable_linalg_op(%A: memref<4x8xbf16, strided<[8,1], offset:?>>, %B: memref<bf16>) {
+// Test illustrating that when a linalg.generic operation has an operand that
+// has an offset on the layout, it is not outlined.
+
+// CHECK-COUNT-1: func.func
+// CHECK-NOT:     func.func
+func.func @unoutlineable_layout_with_offset(%A: memref<4x8xbf16, strided<[8,1], offset:?>>, %B: memref<bf16>) {
   %c2 = arith.constant 2 : index
   %tile = amdaie.tile(%c2, %c2)
   %1 = amdaie.core(%tile, in : [], out : []) {
@@ -202,12 +190,12 @@ func.func @outlineable_linalg_op(%A: memref<4x8xbf16, strided<[8,1], offset:?>>,
 
 // -----
 
-// Test illustrating the that when a linalg.generic operation has an
-// operand that is not contiguous, it is not outlined.
+// Test illustrating that when a linalg.generic operation has an operand that
+// is not contiguous, it is not outlined.
 
 // CHECK-COUNT-1: func.func
 // CHECK-NOT:     func.func
-func.func @unoutlineable_linalg_op(%A: memref<4x8xbf16, strided<[9,1]>>, %B: memref<bf16>) {
+func.func @unoutlineable_strided_layout(%A: memref<4x8xbf16, strided<[9,1]>>, %B: memref<bf16>) {
   %c2 = arith.constant 2 : index
   %tile = amdaie.tile(%c2, %c2)
   %1 = amdaie.core(%tile, in : [], out : []) {
