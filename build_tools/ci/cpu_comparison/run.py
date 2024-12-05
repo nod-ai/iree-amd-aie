@@ -652,27 +652,35 @@ def shell_out(cmd: list, workdir=None, verbose: int = 0, raise_on_error=True, en
     return stdout_decode, stderr_decode
 
 
-def print_sizes_of_elfs(test_dir):
+def print_program_memory_size(test_dir):
 
-    # Get all the .elf files in `test_dir`:
+    # Get all the .elf files in `test_dir`.
+    # These elfs contain many sections, one of which is the program memory. Some digging into the elf format
+    # see https://github.com/newling/aie-rt/commit/d0f08bc4a37092a919d6a0d51a44d9f0ae274bb9
+    # revealed that the size of the program memory is stored at byte 72 of the elf.
+    # This might change in the future, but for now this works reliably.
     elfs = list(test_dir.glob("*.elf"))
+    number_of_elfs = len(elfs)
 
-    # If the list of elf files is not empty:
-    if elfs:
-        elf_sizes = {elf_file: elf_file.stat().st_size / 1024 for elf_file in elfs}
-
-        largest_elf_size = max(elf_sizes.values())
-        largest_elf_size = f"{largest_elf_size:.2f}"
-
-        smallest_elf_size = min(elf_sizes.values())
-        smallest_elf_size = f"{smallest_elf_size:.2f}"
-
-        number_of_elfs = len(elfs)
+    if number_of_elfs == 0:
         print(
-            f"The sizes(s) of the {number_of_elfs} .elf file(s) are in range {smallest_elf_size} [KB] - {largest_elf_size} [KB]"
+            f"There are no .elf files in {test_dir}, cannot determine program memory size"
         )
-    else:
-        print(f"There are no .elf files in {test_dir}")
+        return
+
+    magic_byte = 72
+
+    max_pm_size = 0
+    for elf_file in elfs:
+        with open(elf_file, "rb") as f:
+            elf = f.read()
+            pm = int.from_bytes(elf[magic_byte : magic_byte + 4], "little")
+            max_pm_size = max(max_pm_size, pm)
+
+    print(f"There are {number_of_elfs} .elf file(s) in {test_dir}")
+    print(
+        f"The largest program memory size (read from byte {magic_byte} of elf files) is {max_pm_size} bytes"
+    )
 
 
 def generate_aie_vmfb(
@@ -740,7 +748,7 @@ def generate_aie_vmfb(
         raise RuntimeError(f"Failed to compile {test_file} to {aie_vmfb}")
 
     if config.verbose:
-        print_sizes_of_elfs(test_dir)
+        print_program_memory_size(test_dir)
 
     return aie_vmfb
 
