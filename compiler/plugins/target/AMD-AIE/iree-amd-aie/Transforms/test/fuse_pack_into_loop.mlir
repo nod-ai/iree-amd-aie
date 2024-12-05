@@ -63,13 +63,13 @@ func.func @fuse_multilevel_pack_into_for(%arg0: tensor<2048x2048xi32>, %arg1: te
     %3 = tensor.empty() : tensor<64x1x32x64xi32>
     %pack_2 = tensor.pack %extracted_slice_0 outer_dims_perm = [0, 1] inner_dims_pos = [0, 1] inner_tiles = [32, 64] into %3 : tensor<2048x64xi32> -> tensor<64x1x32x64xi32>
     %alloc = memref.alloc() : memref<1x1x64x64xi32, 1 : i32>
-    %4 = bufferization.to_tensor %alloc restrict writable : memref<1x1x64x64xi32, 1 : i32>
+    %4 = bufferization.to_tensor %alloc restrict writable : memref<1x1x64x64xi32, 1 : i32> to tensor<1x1x64x64xi32>
     %5 = tensor.empty() : tensor<1x64x4x16x4x8xi32>
     %pack_3 = tensor.pack %pack outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %5 : tensor<1x64x64x32xi32> -> tensor<1x64x4x16x4x8xi32>
     %6 = tensor.empty() : tensor<64x1x16x4x8x4xi32>
     %pack_4 = tensor.pack %pack_2 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [8, 4] into %6 : tensor<64x1x32x64xi32> -> tensor<64x1x16x4x8x4xi32>
     %alloc_5 = memref.alloc() : memref<1x1x16x16x4x4xi32, 2 : i32>
-    %7 = bufferization.to_tensor %alloc_5 restrict writable : memref<1x1x16x16x4x4xi32, 2 : i32>
+    %7 = bufferization.to_tensor %alloc_5 restrict writable : memref<1x1x16x16x4x4xi32, 2 : i32> to tensor<1x1x16x16x4x4xi32>
     %8 = linalg.fill ins(%c0_i32 : i32) outs(%7 : tensor<1x1x16x16x4x4xi32>) -> tensor<1x1x16x16x4x4xi32>
     %9 = scf.for %arg5 = %c0 to %c64 step %c1 iter_args(%arg6 = %8) -> (tensor<1x1x16x16x4x4xi32>) {
       %extracted_slice_7 = tensor.extract_slice %pack_3[0, %arg5, 0, 0, 0, 0] [1, 1, 4, 16, 4, 8] [1, 1, 1, 1, 1, 1] : tensor<1x64x4x16x4x8xi32> to tensor<1x1x4x16x4x8xi32>
@@ -140,11 +140,11 @@ func.func @fuse_multilevel_pack_into_forall(%arg0: tensor<2048x2048xi32>, %arg1:
     %2 = tensor.empty() : tensor<1x64x64x32xi32>
     %3 = tensor.empty() : tensor<64x1x32x64xi32>
     %alloc = memref.alloc() : memref<1x1x64x64xi32, 1 : i32>
-    %4 = bufferization.to_tensor %alloc restrict writable : memref<1x1x64x64xi32, 1 : i32>
+    %4 = bufferization.to_tensor %alloc restrict writable : memref<1x1x64x64xi32, 1 : i32> to tensor<1x1x64x64xi32>
     %5 = tensor.empty() : tensor<1x64x4x16x4x8xi32>
     %6 = tensor.empty() : tensor<64x1x16x4x8x4xi32>
     %alloc_2 = memref.alloc() : memref<1x1x16x16x4x4xi32, 2 : i32>
-    %7 = bufferization.to_tensor %alloc_2 restrict writable : memref<1x1x16x16x4x4xi32, 2 : i32>
+    %7 = bufferization.to_tensor %alloc_2 restrict writable : memref<1x1x16x16x4x4xi32, 2 : i32> to tensor<1x1x16x16x4x4xi32>
     %8 = linalg.fill ins(%c0_i32 : i32) outs(%7 : tensor<1x1x16x16x4x4xi32>) -> tensor<1x1x16x16x4x4xi32>
     %9 = scf.for %arg5 = %c0 to %c64 step %c1 iter_args(%arg6 = %8) -> (tensor<1x1x16x16x4x4xi32>) {
       %10 = affine.apply #map(%arg5)
