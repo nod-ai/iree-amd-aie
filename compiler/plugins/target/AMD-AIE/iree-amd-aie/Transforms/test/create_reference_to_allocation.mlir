@@ -8,7 +8,7 @@
 // CHECK:  memref.dealloc %[[ALLOC]] : memref<8x16xi32, 2 : i32>
 func.func @single_alloc(%arg0: tensor<8x16xi32>) -> tensor<8x16xi32> {
   %alloc = memref.alloc() : memref<8x16xi32, 2 : i32>
-  %0 = bufferization.to_tensor %alloc restrict writable : memref<8x16xi32, 2 : i32>
+  %0 = bufferization.to_tensor %alloc restrict writable : memref<8x16xi32, 2 : i32> to tensor<8x16xi32>
   %1 = linalg.copy ins(%arg0 : tensor<8x16xi32>) outs(%0 : tensor<8x16xi32>) -> tensor<8x16xi32>
   memref.dealloc %alloc : memref<8x16xi32, 2 : i32>
   return %1 : tensor<8x16xi32>
@@ -39,15 +39,15 @@ func.func @multiple_alloc(%arg0: tensor<8x16xi32>, %arg1: tensor<16x8xi32>) -> t
   %0 = tensor.empty() : tensor<8x8xi32>
   %1 = bufferization.alloc_tensor() : tensor<8x16xi32>
   %alloc = memref.alloc() : memref<8x16xi32, 2 : i32>
-  %2 = bufferization.to_tensor %alloc restrict writable : memref<8x16xi32, 2 : i32>
+  %2 = bufferization.to_tensor %alloc restrict writable : memref<8x16xi32, 2 : i32> to tensor<8x16xi32>
   %3 = linalg.copy ins(%arg0 : tensor<8x16xi32>) outs(%2 : tensor<8x16xi32>) -> tensor<8x16xi32>
   %4 = bufferization.alloc_tensor() : tensor<16x8xi32>
   %alloc_0 = memref.alloc() : memref<16x8xi32, 2 : i32>
-  %5 = bufferization.to_tensor %alloc_0 restrict writable : memref<16x8xi32, 2 : i32>
+  %5 = bufferization.to_tensor %alloc_0 restrict writable : memref<16x8xi32, 2 : i32> to tensor<16x8xi32>
   %6 = linalg.copy ins(%arg1 : tensor<16x8xi32>) outs(%5 : tensor<16x8xi32>) -> tensor<16x8xi32>
   %7 = bufferization.alloc_tensor() : tensor<8x8xi32>
   %alloc_1 = memref.alloc() : memref<8x8xi32, 2 : i32>
-  %8 = bufferization.to_tensor %alloc_1 restrict writable : memref<8x8xi32, 2 : i32>
+  %8 = bufferization.to_tensor %alloc_1 restrict writable : memref<8x8xi32, 2 : i32> to tensor<8x8xi32>
   %9 = linalg.fill ins(%c0_i32 : i32) outs(%8 : tensor<8x8xi32>) -> tensor<8x8xi32>
   %10 = linalg.matmul ins(%3, %6 : tensor<8x16xi32>, tensor<16x8xi32>) outs(%9 : tensor<8x8xi32>) -> tensor<8x8xi32>
   %11 = linalg.copy ins(%10 : tensor<8x8xi32>) outs(%0 : tensor<8x8xi32>) -> tensor<8x8xi32>
@@ -63,7 +63,7 @@ func.func @multiple_alloc(%arg0: tensor<8x16xi32>, %arg1: tensor<16x8xi32>) -> t
 // CHECK-NOT:   amdaie.reference_to
 func.func @alloc_in_L2(%arg0: tensor<8x16xi32>) -> tensor<8x16xi32> {
   %alloc = memref.alloc() : memref<8x16xi32, 1 : i32>
-  %0 = bufferization.to_tensor %alloc restrict writable : memref<8x16xi32, 1 : i32>
+  %0 = bufferization.to_tensor %alloc restrict writable : memref<8x16xi32, 1 : i32> to tensor<8x16xi32>
   %1 = linalg.copy ins(%arg0 : tensor<8x16xi32>) outs(%0 : tensor<8x16xi32>) -> tensor<8x16xi32>
   memref.dealloc %alloc : memref<8x16xi32, 1 : i32>
   return %1 : tensor<8x16xi32>
@@ -118,9 +118,9 @@ func.func @matmul_example(%arg0: tensor<128x256xi32>, %arg1: tensor<256x128xi32>
     %extracted_slice_0 = tensor.extract_slice %arg1[0, %arg3] [256, 64] [1, 1] : tensor<256x128xi32> to tensor<256x64xi32>
     %extracted_slice_1 = tensor.extract_slice %arg4[%arg2, %arg3] [64, 64] [1, 1] : tensor<128x128xi32> to tensor<64x64xi32>
     %alloc = memref.alloc() : memref<2x2x32x32xi32, 1 : i32>
-    %2 = bufferization.to_tensor %alloc restrict writable : memref<2x2x32x32xi32, 1 : i32>
+    %2 = bufferization.to_tensor %alloc restrict writable : memref<2x2x32x32xi32, 1 : i32> to tensor<2x2x32x32xi32>
     %alloc_2 = memref.alloc() : memref<2x2x8x8x4x4xi32, 2 : i32>
-    %3 = bufferization.to_tensor %alloc_2 restrict writable : memref<2x2x8x8x4x4xi32, 2 : i32>
+    %3 = bufferization.to_tensor %alloc_2 restrict writable : memref<2x2x8x8x4x4xi32, 2 : i32> to tensor<2x2x8x8x4x4xi32>
     %4 = linalg.fill ins(%c0_i32 : i32) outs(%3 : tensor<2x2x8x8x4x4xi32>) -> tensor<2x2x8x8x4x4xi32>
     %5 = tensor.empty() : tensor<2x1x4x8x4x8xi32>
     %6 = tensor.empty() : tensor<1x2x8x4x8x4xi32>
@@ -128,22 +128,22 @@ func.func @matmul_example(%arg0: tensor<128x256xi32>, %arg1: tensor<256x128xi32>
       %8 = affine.apply #map(%arg5)
       %extracted_slice_4 = tensor.extract_slice %extracted_slice[0, %8] [64, 32] [1, 1] : tensor<64x256xi32> to tensor<64x32xi32>
       %alloc_5 = memref.alloc() : memref<2x1x32x32xi32, 1 : i32>
-      %9 = bufferization.to_tensor %alloc_5 restrict writable : memref<2x1x32x32xi32, 1 : i32>
+      %9 = bufferization.to_tensor %alloc_5 restrict writable : memref<2x1x32x32xi32, 1 : i32> to tensor<2x1x32x32xi32>
       %pack = tensor.pack %extracted_slice_4 inner_dims_pos = [0, 1] inner_tiles = [32, 32] into %9 : tensor<64x32xi32> -> tensor<2x1x32x32xi32>
       %extracted_slice_6 = tensor.extract_slice %extracted_slice_0[%8, 0] [32, 64] [1, 1] : tensor<256x64xi32> to tensor<32x64xi32>
       %alloc_7 = memref.alloc() : memref<1x2x32x32xi32, 1 : i32>
-      %10 = bufferization.to_tensor %alloc_7 restrict writable : memref<1x2x32x32xi32, 1 : i32>
+      %10 = bufferization.to_tensor %alloc_7 restrict writable : memref<1x2x32x32xi32, 1 : i32> to tensor<1x2x32x32xi32>
       %pack_8 = tensor.pack %extracted_slice_6 outer_dims_perm = [0, 1] inner_dims_pos = [0, 1] inner_tiles = [32, 32] into %10 : tensor<32x64xi32> -> tensor<1x2x32x32xi32>
       %11 = scf.forall (%arg7, %arg8) in (2, 2) shared_outs(%arg9 = %arg6) -> (tensor<2x2x8x8x4x4xi32>) {
         %extracted_slice_9 = tensor.extract_slice %pack[%arg7, 0, 0, 0] [1, 1, 32, 32] [1, 1, 1, 1] : tensor<2x1x32x32xi32> to tensor<1x1x32x32xi32>
         %extracted_slice_10 = tensor.extract_slice %5[%arg7, 0, 0, 0, 0, 0] [1, 1, 4, 8, 4, 8] [1, 1, 1, 1, 1, 1] : tensor<2x1x4x8x4x8xi32> to tensor<1x1x4x8x4x8xi32>
         %alloc_11 = memref.alloc() : memref<1x1x4x8x4x8xi32, 2 : i32>
-        %12 = bufferization.to_tensor %alloc_11 restrict writable : memref<1x1x4x8x4x8xi32, 2 : i32>
+        %12 = bufferization.to_tensor %alloc_11 restrict writable : memref<1x1x4x8x4x8xi32, 2 : i32> to tensor<1x1x4x8x4x8xi32>
         %pack_12 = tensor.pack %extracted_slice_9 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %12 : tensor<1x1x32x32xi32> -> tensor<1x1x4x8x4x8xi32>
         %extracted_slice_13 = tensor.extract_slice %pack_8[0, %arg8, 0, 0] [1, 1, 32, 32] [1, 1, 1, 1] : tensor<1x2x32x32xi32> to tensor<1x1x32x32xi32>
         %extracted_slice_14 = tensor.extract_slice %6[0, %arg8, 0, 0, 0, 0] [1, 1, 8, 4, 8, 4] [1, 1, 1, 1, 1, 1] : tensor<1x2x8x4x8x4xi32> to tensor<1x1x8x4x8x4xi32>
         %alloc_15 = memref.alloc() : memref<1x1x8x4x8x4xi32, 2 : i32>
-        %13 = bufferization.to_tensor %alloc_15 restrict writable : memref<1x1x8x4x8x4xi32, 2 : i32>
+        %13 = bufferization.to_tensor %alloc_15 restrict writable : memref<1x1x8x4x8x4xi32, 2 : i32> to tensor<1x1x8x4x8x4xi32>
         %pack_16 = tensor.pack %extracted_slice_13 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [8, 4] into %13 : tensor<1x1x32x32xi32> -> tensor<1x1x8x4x8x4xi32>
         %extracted_slice_17 = tensor.extract_slice %arg9[%arg7, %arg8, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1, 1, 1, 1, 1, 1] : tensor<2x2x8x8x4x4xi32> to tensor<1x1x8x8x4x4xi32>
         %14 = linalg.generic {indexing_maps = [#map1, #map2, #map3], iterator_types = ["parallel", "parallel", "reduction", "parallel", "parallel", "reduction", "parallel", "parallel", "reduction"]} ins(%pack_12, %pack_16 : tensor<1x1x4x8x4x8xi32>, tensor<1x1x8x4x8x4xi32>) outs(%extracted_slice_17 : tensor<1x1x8x8x4x4xi32>) {
