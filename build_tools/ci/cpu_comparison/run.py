@@ -677,6 +677,17 @@ def print_program_memory_size(test_dir):
             pm = int.from_bytes(elf[magic_byte : magic_byte + 4], "little")
             max_pm_size = max(max_pm_size, pm)
 
+    # Sanity check on the magic byte. If this really is the program memory,
+    # it should not exceed 16384 bytes here.
+    if max_pm_size > 16384:
+        raise RuntimeError(
+            f"Program memory size determined to be {max_pm_size} bytes, which is too large. This is likely not the program memory size, because if it were then an error would have been raised earlier."
+        )
+    if max_pm_size < 100:
+        raise RuntimeError(
+            f"Program memory size determined to be {max_pm_size} bytes, which is too small. This is likely not the program memory size and the 'magic byte' approach isn't valid."
+        )
+
     print(f"There are {number_of_elfs} .elf file(s) in {test_dir}")
     print(
         f"The largest program memory size (read from byte {magic_byte} of elf files) is {max_pm_size} bytes"
