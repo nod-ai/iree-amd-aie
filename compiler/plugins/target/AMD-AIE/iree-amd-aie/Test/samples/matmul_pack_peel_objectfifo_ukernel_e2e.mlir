@@ -1,5 +1,5 @@
-// RUN: iree-compile --iree-hal-target-backends=amd-aie --compile-to=executable-sources --iree-amdaie-enable-ukernels=all %s | iree-opt --pass-pipeline="builtin.module(hal.executable(hal.executable.variant(iree-hal-translate-target-executable-variants{target=amd-aie})))" --iree-amdaie-lower-to-aie-pipeline=objectFifo --iree-amdaie-tile-pipeline=pack-peel --split-input-file | FileCheck %s --check-prefix=PHOENIX
-// RUN: iree-compile --iree-hal-target-backends=amd-aie --compile-to=executable-sources --iree-amdaie-target-device=npu4 --iree-amdaie-enable-ukernels=all %s | iree-opt --pass-pipeline="builtin.module(hal.executable(hal.executable.variant(iree-hal-translate-target-executable-variants{target=amd-aie})))" --iree-amdaie-target-device=npu4 --iree-amdaie-lower-to-aie-pipeline=objectFifo --iree-amdaie-tile-pipeline=pack-peel --split-input-file | FileCheck %s --check-prefix=STRIX
+// RUN: iree-compile --iree-hal-target-backends=amd-aie --compile-to=executable-targets --iree-amdaie-enable-ukernels=all --split-input-file %s | FileCheck %s --check-prefix=PHOENIX
+// RUN: iree-compile --iree-hal-target-backends=amd-aie --compile-to=executable-targets --iree-amdaie-target-device=npu4 --iree-amdaie-enable-ukernels=all --split-input-file %s | FileCheck %s --check-prefix=STRIX
 
 // PHOENIX-LABEL: hal.executable.export public @matmul_dispatch_0_matmul_128x128x256_bf16xbf16xf32
 // PHOENIX:       aie.device(npu1_4col) {
