@@ -498,8 +498,8 @@ void addConvDecomposePassPipeline(OpPassManager &funcPassManager,
 }
 
 void buildAMDAIETransformPassPipeline(
-    OpPassManager &variantPassManager, AMDAIEDevice device, int numRows,
-    int numCols, TilePassPipeline useTilePipeline,
+    OpPassManager &variantPassManager, AMDAIEDevice device, uint32_t numRows,
+    uint32_t numCols, TilePassPipeline useTilePipeline,
     LowerToAIEPassPipeline useLowerToAIEPipeline, bool matmulElementwiseFusion,
     bool enableVectorizationPasses, const std::string &pathToUkernels,
     bool enablePacketFlow, bool enableCoalescingLoops,
