@@ -20,15 +20,6 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
-/// Return true if `type` is a memref with an identity layout.
-bool isMemRefWithIdentityLayout(Type type) {
-  auto memRefType = dyn_cast<MemRefType>(type);
-  if (!memRefType) return false;
-  MemRefLayoutAttrInterface layout = memRefType.getLayout();
-  if (!layout) return true;
-  return layout.isIdentity();
-}
-
 /// Utility to outline the linalg compute op.
 static FailureOr<func::FuncOp> outline(IRRewriter &rewriter, ModuleOp moduleOp,
                                        linalg::LinalgOp computeOp,
@@ -39,7 +30,16 @@ static FailureOr<func::FuncOp> outline(IRRewriter &rewriter, ModuleOp moduleOp,
     // do not lower from the func dialect to the llvm dialect. So for now,
     // we just do not try to outline ops with operands with non-identity
     // layouts, because the resulting functions won't lower to LLVM.
-    if (!isMemRefWithIdentityLayout(operand.getType())) return failure();
+    // identity layouts:
+    // clang-format off
+    // https://github.com/llvm/llvm-project/blob/6b0785390d02193d81d8db7fb12279ffa4651afe/mlir/include/mlir/IR/BuiltinAttributeInterfaces.td#L475
+    // clang-format on
+    auto type = dyn_cast<MemRefType>(operand.getType());
+    assert(type && "we've already checked that all operands are memrefs");
+    MemRefLayoutAttrInterface layout = type.getLayout();
+    assert(layout &&
+           "MemRefType layout attribute interface should always be present");
+    if (!layout.isIdentity()) return failure();
   }
   auto funcType = FunctionType::get(
       rewriter.getContext(), computeOp->getOperandTypes(), /*outputTypes=*/{});
@@ -155,6 +155,14 @@ void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
   SmallVector<Operation *> toBeErased;
   moduleOp.walk([&](linalg::LinalgOp computeOp) {
     if (!mustOutline(computeOp)) return WalkResult::skip();
+
+    // Assert that we're in reference semantics, ie that all operands of
+    // computeOp have MemRefType:
+    if (!llvm::all_of(computeOp->getOperandTypes(),
+                      [](Type t) { return isa<MemRefType>(t); })) {
+      computeOp->emitError("expected all operands to be of MemRefType");
+      return WalkResult::interrupt();
+    }
 
     FailureOr<func::FuncOp> maybeFunc =
         retrieveOrCreate(rewriter, moduleOp, computeOp);
