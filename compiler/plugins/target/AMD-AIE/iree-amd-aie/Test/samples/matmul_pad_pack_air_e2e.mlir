@@ -1,12 +1,10 @@
-// RUN: iree-compile --iree-hal-target-backends=amd-aie --compile-to=executable-sources %s | iree-opt --pass-pipeline="builtin.module(hal.executable(hal.executable.variant(iree-hal-translate-target-executable-variants{target=amd-aie})))" --iree-amdaie-tile-pipeline=pad-pack --iree-amdaie-lower-to-aie-pipeline=air --split-input-file | FileCheck %s --check-prefix=CPP
+// RUN: iree-compile --iree-hal-target-backends=amd-aie --compile-to=executable-targets --iree-amdaie-tile-pipeline=pad-pack --iree-amdaie-lower-to-aie-pipeline=air --split-input-file %s | FileCheck %s
 
 // This test demonstrates Pad-Pack pipeline based e2e lowering.
 
-// CPP-LABEL: hal.executable.export public @matmul_small_dispatch_0_matmul_8x32x16_i32
-//       CPP:    aie.device(npu1_4col)
-//       CPP:    aie.shim_dma_allocation
-//       CPP:    aie.shim_dma_allocation
-//       CPP:    aie.shim_dma_allocation
+//   CHECK-LABEL: hal.executable.export public @matmul_small_dispatch_0_matmul_8x32x16_i32
+//         CHECK:    aie.device(npu1_4col)
+// CHECK-COUNT-3:    aie.shim_dma_allocation
 func.func @matmul_small(%lhs : tensor<8x16xi32>,
     %rhs : tensor<16x32xi32>) -> tensor<8x32xi32> {
   %empty = tensor.empty() : tensor<8x32xi32>
@@ -19,11 +17,9 @@ func.func @matmul_small(%lhs : tensor<8x16xi32>,
 
 // -----
 
-// CPP-LABEL: hal.executable.export public @matmul_large_dispatch_0_matmul_2048x2048x2048_i32
-//       CPP:    aie.device(npu1_4col)
-//       CPP:    aie.shim_dma_allocation
-//       CPP:    aie.shim_dma_allocation
-//       CPP:    aie.shim_dma_allocation
+//   CHECK-LABEL: hal.executable.export public @matmul_large_dispatch_0_matmul_2048x2048x2048_i32
+//         CHECK:    aie.device(npu1_4col)
+// CHECK-COUNT-3:    aie.shim_dma_allocation
 func.func @matmul_large(%lhs: tensor<2048x2048xi32>, %rhs: tensor<2048x2048xi32>) -> tensor<2048x2048xi32> {
   %empty = tensor.empty() : tensor<2048x2048xi32>
   %cst = arith.constant 0 : i32
@@ -38,11 +34,9 @@ func.func @matmul_large(%lhs: tensor<2048x2048xi32>, %rhs: tensor<2048x2048xi32>
 // This test demonstrates Pad-Pack pipeline based e2e lowering for a linalg.generic implementing
 // a linalg.matmul_transpose_b.
 
-// CPP-LABEL: hal.executable.export public @generic_matmul_transpose_static_dispatch_0_matmul_like_8x32x16_i32
-//       CPP:    aie.device(npu1_4col)
-//       CPP:    aie.shim_dma_allocation
-//       CPP:    aie.shim_dma_allocation
-//       CPP:    aie.shim_dma_allocation
+//   CHECK-LABEL: hal.executable.export public @generic_matmul_transpose_static_dispatch_0_matmul_like_8x32x16_i32
+//         CHECK:    aie.device(npu1_4col)
+// CHECK-COUNT-3:    aie.shim_dma_allocation
 func.func @generic_matmul_transpose_static(%lhs : tensor<8x16xi32>,
     %rhs : tensor<32x16xi32>) -> tensor<8x32xi32> {
   %cst = arith.constant 0 : i32
@@ -61,11 +55,9 @@ func.func @generic_matmul_transpose_static(%lhs : tensor<8x16xi32>,
 
 // This test demonstrates Pad-Pack pipeline based e2e lowering for a linalg.matmul_transpose_b.
 
-// CPP-LABEL: hal.executable.export public @matmul_transpose_b_static_dispatch_0_matmul_transpose_b_8x32x16_i32
-//       CPP:    aie.device(npu1_4col)
-//       CPP:    aie.shim_dma_allocation
-//       CPP:    aie.shim_dma_allocation
-//       CPP:    aie.shim_dma_allocation
+//   CHECK-LABEL: hal.executable.export public @matmul_transpose_b_static_dispatch_0_matmul_transpose_b_8x32x16_i32
+//         CHECK:    aie.device(npu1_4col)
+// CHECK-COUNT-3:    aie.shim_dma_allocation
 func.func @matmul_transpose_b_static(%lhs : tensor<8x16xi32>,
     %rhs : tensor<32x16xi32>) -> tensor<8x32xi32> {
   %cst = arith.constant 0 : i32
