@@ -207,7 +207,7 @@ class BaseMatmul(BaseTest):
     ):
         """
         Base class for all variants of dispatches with a matmul, currently
-        vanilla matmuls, and matmuls with fused elementwise operations.
+        matmuls, and matmuls with fused elementwise operations.
         """
         super().__init__(run_on_target, aie_compilation_flags, use_chess)
         self.labels.append("BaseMatmul")
@@ -327,7 +327,7 @@ class Matmul(BaseMatmul):
         )
         self.labels.append("Matmul")
 
-        self.name = f"vanilla_matmul_{M}_{N}_{K}_{input_type}_{acc_type}"
+        self.name = f"matmul_{M}_{N}_{K}_{input_type}_{acc_type}"
         if name_suffix:
             self.name += f"_{name_suffix}"
         if use_ukernel:
@@ -387,7 +387,7 @@ class MatmulBenchmark(BaseMatmul):
             n_kernel_runs=n_kernel_runs,
         )
 
-        self.name = f"vanilla_matmul_benchmark_{M}_{N}_{K}_{input_type}_{acc_type}"
+        self.name = f"matmul_benchmark_{M}_{N}_{K}_{input_type}_{acc_type}"
         if name_suffix:
             self.name += f"_{name_suffix}"
         if use_ukernel:
@@ -774,12 +774,6 @@ def generate_aie_vmfb(
     aie_vmfb = test_dir / f"{name}_aie.vmfb"
     if not aie_vmfb.exists():
         raise RuntimeError(f"Failed to compile {test_file} to {aie_vmfb}")
-
-    if config.verbose:
-        # Check if "enable-chess=1" is a substring of any of the compilation flags:
-        uses_chess = any("enable-chess=1" in flag for flag in aie_compilation_flags)
-        if not uses_chess:
-            print_program_memory_size(test_dir)
 
     return aie_vmfb
 
@@ -1186,6 +1180,12 @@ def aie_vs_baseline(
             print(summary_string)
             raise RuntimeError("Test failed, exiting.")
 
+    if config.verbose:
+        # Check if "enable-chess=1" is a substring of any of the compilation flags:
+        uses_chess = any("enable-chess=1" in flag for flag in aie_compilation_flags)
+        if not uses_chess:
+            print_program_memory_size(test_dir)
+
 
 def benchmark_aie(
     config,
@@ -1265,6 +1265,12 @@ def benchmark_aie(
         n_repeats,
         n_kernel_runs,
     )
+
+    if config.verbose:
+        # Check if "enable-chess=1" is a substring of any of the compilation flags:
+        uses_chess = any("enable-chess=1" in flag for flag in aie_compilation_flags)
+        if not uses_chess:
+            print_program_memory_size(test_dir)
 
 
 def aie_vs_llvm_cpu(

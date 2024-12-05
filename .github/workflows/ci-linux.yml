@@ -160,7 +160,6 @@ jobs:
           echo "XRT_LITE_N_CORE_ROWS=$(python build_tools/ci/amdxdna_driver_utils/amdxdna_ioctl.py --num-rows)" >> $GITHUB_ENV
           echo "XRT_LITE_N_CORE_COLS=$(python build_tools/ci/amdxdna_driver_utils/amdxdna_ioctl.py --num-cols)" >> $GITHUB_ENV
 
-
       - name: E2E correctness matmul test
         run: |
           # https://stackoverflow.com/a/17567422
@@ -186,11 +185,15 @@ jobs:
             --target_device="npu1_4col" \
             --reset_npu_between_runs -v \
             --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
-            --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS
+            --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
+            --skip_tests=Performance
 
+      # Run the 'Performance' tests. These do not check numerical correctness,
+      # just measure the time to run some workloads.
       - name : Performance benchmarks
         run: |
           source .venv/bin/activate
+          set +e # Allow script to continue even if a command fails
           python build_tools/ci/cpu_comparison/run.py \
             test_aie_vs_cpu \
             $PWD/iree-install \
@@ -200,11 +203,20 @@ jobs:
             --reset_npu_between_runs -v \
             --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
             --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
-            --tests=Performance > performance.log
+            --tests=Performance > performance.log 2>&1
+          exit_code=$?  # Capture the exit code of run.py
+          set -e  # Re-enable exit on error for subsequent commands
 
+          # If there was an error, print the contents of the log to terminal and
+          # exit.
+          if [ $exit_code -ne 0 ]; then
+            cat performance.log
+            exit 1
+          fi
+
+          # Print a summary of the findings.
           python build_tools/ci/cpu_comparison/performance_summarizer.py \
             performance.log
-
 
       - name: XRT-LITE tests
         run: |

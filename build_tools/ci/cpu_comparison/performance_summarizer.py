@@ -11,15 +11,16 @@ if __name__ == "__main__":
         )
         sys.exit(1)
     path = sys.argv[1]
+    single_dash_line = ""
     with open(path, "r") as f:
         lines = f.readlines()
-    print("============================")
     for line in lines:
         if "Performance benchmark:" in line:
             print("\n")
-            print(line.split()[-1])
+            print(line.split()[-1].split("/")[-1])
         if "----------------------" in line:
-            print(line.strip())
+            single_dash_line = line.strip()
+            print(single_dash_line)
         if "Benchmark" in line:
             print(line.strip())
         if "real_time_mean" in line:
@@ -29,5 +30,5 @@ if __name__ == "__main__":
         if "real_time_stddev" in line:
             print(line.strip())
         if "The largest program memory size" in line:
-            print(line.strip())
-    print("============================")
+            print(single_dash_line)
+            print(line)
