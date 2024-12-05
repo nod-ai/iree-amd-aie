@@ -416,7 +416,7 @@ def AMDAIELowerExecutableTarget :
   let summary = "Perform lowering of executable target using one of the IREE::HAL::DispatchLoweringPassPipeline";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELowerExecutableTargetPass()";
   let options = [
-    Option<"usePassPipeline", "use-pass-pipeline",
+    Option<"useTilePipeline", "use-tile-pipeline",
       "mlir::iree_compiler::AMDAIE::TilePassPipeline",
       /*default=*/"mlir::iree_compiler::AMDAIE::TilePassPipeline::PackPeelPipeline",
       "Pass pipeline to use while lowering to AIR dialect",
@@ -439,7 +439,7 @@ def AMDAIELoweringStrategy :
   let summary = "Add lowering strategy configurations to be used";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELoweringStrategyPass()";
   let options = [
-    Option<"usePassPipeline", "use-pass-pipeline",
+    Option<"useTilePipeline", "use-tile-pipeline",
       "mlir::iree_compiler::AMDAIE::TilePassPipeline",
       /*default=*/"mlir::iree_compiler::AMDAIE::TilePassPipeline::PackPeelPipeline",
       "Pass pipeline to use while lowering to AIR dialect",
@@ -470,7 +470,11 @@ def AMDAIELoweringStrategy :
                    "Compile for Phoenix NPU1_4col"),
         clEnumValN(mlir::iree_compiler::AMDAIE::AMDAIEDevice::npu4, "npu4",
                    "Compile for Strix NPU4")
-      )}]>
+      )}]>,
+    Option<"numRows", "num-rows", "uint32_t", /*default=*/"4",
+      "Number of rows used in an AIE core array">,
+    Option<"numCols", "num-cols", "uint32_t", /*default=*/"4",
+      "Number of columns used in an AIE core array">
   ];
 }
 
