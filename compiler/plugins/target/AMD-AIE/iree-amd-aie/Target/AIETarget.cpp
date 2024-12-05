@@ -19,7 +19,6 @@
 #include "air/Dialect/AIRRt/AIRRtDialect.h"
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/Transforms/Passes.h"
-#include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "iree-amd-aie/schemas/pdi_executable_def_builder.h"
 #include "iree-amd-aie/schemas/xrt_executable_def_builder.h"
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenDialect.h"
@@ -158,10 +157,18 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
     uint32_t maxCoreRows = deviceModel.getNumCoreRows();
     uint32_t maxCoreCols = deviceModel.getNumCoreCols();
     if (options.AMDAIENumRows <= 0 || options.AMDAIENumRows > maxCoreRows) {
-      llvm::report_fatal_error("option numRows is out of range\n");
+      llvm::report_fatal_error(llvm::Twine("Invalid number of core rows (") +
+                               std::to_string(options.AMDAIENumRows) +
+                               "), must be in the range [1, " +
+                               std::to_string(maxCoreRows) + "] for device " +
+                               stringifyEnum(deviceModel.device));
     }
     if (options.AMDAIENumCols <= 0 || options.AMDAIENumCols > maxCoreCols) {
-      llvm::report_fatal_error("option numCols is out of range\n");
+      llvm::report_fatal_error(llvm::Twine("Invalid number of core cols (") +
+                               std::to_string(options.AMDAIENumCols) +
+                               "), must be in the range [1, " +
+                               std::to_string(maxCoreCols) + "] for device " +
+                               stringifyEnum(deviceModel.device));
     }
 
     // Add some configurations to the `hal.executable.target` attribute.

@@ -368,7 +368,7 @@ struct AMDAIEDeviceModel {
     return deviceConfig.maxVectorSizeBits;
   }
 
-  uint32_t getNumCoreRows() const { return rows() - 2; }
+  uint32_t getNumCoreRows() const { return configPtr.AieTileNumRows; }
   uint32_t getNumCoreCols() const { return columns(); }
 
   uint32_t getShiftOperandBits() const { return deviceConfig.shiftOperandBits; }

@@ -10,6 +10,7 @@
 #include <string>
 
 #include "iree-amd-aie/Transforms/KernelDispatch.h"
+#include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "iree/compiler/Dialect/HAL/Target/TargetBackend.h"
 #include "iree/compiler/Dialect/HAL/Target/TargetDevice.h"
 #include "iree/compiler/Utils/OptionUtils.h"
@@ -59,8 +60,8 @@ struct AMDAIEOptions {
   bool insertLoopAroundCoreBlock{false};
   bool matmulElementwiseFusion{false};
   AMDAIEDevice AMDAIETargetDevice{AMDAIEDevice::npu1_4col};
-  int AMDAIENumRows{4};
-  int AMDAIENumCols{4};
+  unsigned AMDAIENumRows{getDeviceModel(AMDAIETargetDevice).getNumCoreRows()};
+  unsigned AMDAIENumCols{getDeviceModel(AMDAIETargetDevice).getNumCoreCols()};
   std::string enableAMDAIEUkernels{"none"};
   bool enablePacketFlow{false};
 
@@ -233,13 +234,21 @@ struct AMDAIEOptions {
             clEnumValN(AMDAIEDevice::npu4, "npu4",
                        "Strix B0 NPU with 8 columns and 6 rows")));
 
-    binder.opt<int>("iree-amdaie-num-rows", AMDAIENumRows,
-                    llvm::cl::cat(category),
-                    llvm::cl::desc("Number of rows used in an AIE core array"));
+    binder.opt<unsigned>(
+        "iree-amdaie-num-rows", AMDAIENumRows, llvm::cl::cat(category),
+        llvm::cl::desc(
+            "Number of rows used in an AIE core array. The compiler will "
+            "choose a tiling strategy that uses no more than this number of "
+            "rows. However, some workloads (like convolution) currently ignore "
+            "this flag, and use a hardcoded number of rows."));
 
-    binder.opt<int>(
+    binder.opt<unsigned>(
         "iree-amdaie-num-cols", AMDAIENumCols, llvm::cl::cat(category),
-        llvm::cl::desc("Number of columns used in an AIE core array"));
+        llvm::cl::desc(
+            "Number of columns used in an AIE core array. The compiler will "
+            "choose a tiling strategy that uses no more than this number of "
+            "columns. However, some workloads (like convolution) currently "
+            "ignore this flag, and use a hardcoded number of cols."));
 
     binder.opt<bool>("iree-amdaie-enable-packet-flow", enablePacketFlow,
                      llvm::cl::cat(category),
