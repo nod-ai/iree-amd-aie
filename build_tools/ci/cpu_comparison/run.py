@@ -659,6 +659,10 @@ def print_program_memory_size(test_dir):
     # see https://github.com/newling/aie-rt/commit/d0f08bc4a37092a919d6a0d51a44d9f0ae274bb9
     # revealed that the size of the program memory is stored at byte 72 of the elf.
     # This might change in the future, but for now this works reliably.
+    #
+    # Note that if the elfs are created with chess, then there are 2 sections of program memory, the second
+    # is at byte 108. For now we ignore this case, this function should not be called if the
+    # elfs are created with chess.
     elfs = list(test_dir.glob("*.elf"))
     number_of_elfs = len(elfs)
 
@@ -759,7 +763,10 @@ def generate_aie_vmfb(
         raise RuntimeError(f"Failed to compile {test_file} to {aie_vmfb}")
 
     if config.verbose:
-        print_program_memory_size(test_dir)
+        # Check if "enable-chess=1" is a substring of any of the compilation flags:
+        uses_chess = any("enable-chess=1" in flag for flag in aie_compilation_flags)
+        if not uses_chess:
+            print_program_memory_size(test_dir)
 
     return aie_vmfb
 
