@@ -66,20 +66,28 @@ bool areAccessPatternsCombinable(const SmallVector<OpFoldResult> &offsetsA,
   // min(sizeA, sizeB) results in some simple cases in which the access
   // patterns are combinable. Note that abs(sizeB - sizeA) should <= 1 and this
   // is checked for earlier, so just asserted here.
-  if (offsetsA.size() <= offsetsB.size()) {
-    assert(
-        offsetsB.size() - offsetsA.size() <= 1 &&
-        "The distance between the indices should be smaller or equal to one.");
-    size_t indexA = 0;
-    size_t indexB = offsetsB.size() > offsetsA.size() ? 1 : 0;
-    if (areAccessPatternsEqualFromIndices(offsetsA, sizesA, stridesA, offsetsB,
-                                          sizesB, stridesB, indexA, indexB)) {
-      if (offsetsA.size() == offsetsB.size()) {
-        return true;
-      } else {
-        // offsetsB.size() > offsetsA.size()
-        return isConstantIntValue(offsetsB[0], 1);
-      }
+  assert(std::abs((ssize_t)offsetsB.size() - (ssize_t)offsetsA.size()) <= 1 &&
+         "The distance between the indices should be smaller or equal to one.");
+  size_t indexA = offsetsA.size() > offsetsB.size() ? 1 : 0;
+  size_t indexB = offsetsB.size() > offsetsA.size() ? 1 : 0;
+  if (areAccessPatternsEqualFromIndices(offsetsA, sizesA, stridesA, offsetsB,
+                                        sizesB, stridesB, indexA, indexB)) {
+    if (offsetsA.size() == offsetsB.size()) {
+      return true;
+    } else if (offsetsA.size() > offsetsB.size()) {
+      // The access pattern A has N repetitions of access pattern B, so they can
+      // be combined together into N+1 repetitions.
+      return isConstantIntValue(stridesA[0], 0);
+    } else {
+      // offsetsB.size() > offsetsA.size()
+      // The access pattern B has N repetitions of access pattern A, so they can
+      // be combined together into N+1 repetitions.
+      if (isConstantIntValue(stridesB[0], 0)) return true;
+      // The access pattern of B is the same as the access pattern of A, but at
+      // a different offset. They can be combined by reducing the offset of B to
+      // zero.
+      if (isConstantIntValue(offsetsB[0], 1)) return true;
+      return false;
     }
   }
 

@@ -127,6 +127,13 @@ TEST_F(AccessPatternCombinationTest, CombinableAccessPatterns) {
       {0, 0, 32}, {2, 16, 32}, {32, 64, 1}, {0, 96}, {16, 32}, {64, 1}, 4));
   EXPECT_TRUE(checkAreAccessPatternsCombinable(
       {0, 2, 0}, {2, 16, 32}, {32, 16, 1}, {6, 0}, {16, 32}, {16, 1}, 4));
+  // size(A) > size(B) Same access pattern
+  EXPECT_TRUE(checkAreAccessPatternsCombinable({0, 0}, {0, 32}, {0, 1}, {0},
+                                               {32}, {1}, 2));
+  EXPECT_TRUE(checkAreAccessPatternsCombinable({0, 0}, {7, 32}, {0, 1}, {0},
+                                               {32}, {1}, 2));
+  EXPECT_TRUE(checkAreAccessPatternsCombinable(
+      {1, 0, 0}, {8, 16, 32}, {0, 64, 1}, {0, 0}, {16, 32}, {64, 1}, 4));
   // size(B) > size(A)
   EXPECT_TRUE(checkAreAccessPatternsCombinable(
       {0, 0}, {16, 32}, {64, 1}, {0, 0, 32}, {2, 16, 32}, {32, 64, 1}, 4));
@@ -244,6 +251,13 @@ TEST_F(AccessPatternCombinationTest, CombineAccessPatterns) {
   checkCombineAccessPatterns({0, 1, 32}, {2, 16, 32}, {32, 64, 1}, {2, 32},
                              {16, 32}, {64, 1}, {0, 1, 32}, {3, 16, 32},
                              {32, 64, 1}, 4);
+  // size(A) > size(B) Same access pattern
+  checkCombineAccessPatterns({0, 0}, {7, 32}, {0, 1}, {0}, {32}, {1}, {0, 0},
+                             {8, 32}, {0, 1}, 3);
+  checkCombineAccessPatterns({1, 0}, {7, 32}, {0, 1}, {0}, {32}, {1}, {1, 0},
+                             {8, 32}, {0, 1}, 3);
+  checkCombineAccessPatterns({1, 0}, {0, 32}, {0, 1}, {0}, {32}, {1}, {1, 0},
+                             {1, 32}, {0, 1}, 3);
   // size(B) > size(A)
   checkCombineAccessPatterns({0}, {32}, {1}, {0, 64}, {2, 32}, {64, 1}, {0, 0},
                              {3, 32}, {64, 1}, 3);
