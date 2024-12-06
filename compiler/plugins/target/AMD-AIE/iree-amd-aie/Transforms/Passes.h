@@ -163,9 +163,6 @@ std::unique_ptr<Pass> createAMDAIEDistributeCoresAndObjectFifosPass();
 /// memory
 std::unique_ptr<Pass> createAMDAIEDistributeL1AllocationsPass();
 
-/// Create pass to chain DMA BDs and reduce the number of DMA waits.
-std::unique_ptr<Pass> createAMDAIEDmaBdChainPass();
-
 /// Create a pass to compose more complex DMA operations, e.g. by combining DMA
 /// operations and/or subsuming loop iterations into the strided access
 /// patterns.
@@ -201,6 +198,9 @@ std::unique_ptr<Pass> createAMDAIEHoistForLoopAffineApplyPass();
 /// Create a pass to hoist logical objectFifo operations to the scope of its
 /// operands.
 std::unique_ptr<Pass> createAMDAIEHoistLogicalObjFifoPass();
+
+/// Create pass to chain DMA BD IDs by updating next_bd operands.
+std::unique_ptr<Pass> createAMDAIEInsertDmaBdChainPass();
 
 /// Create a pass to transform linalg.generics into a form which benefits later
 /// vectorization passes (to vector and aievec dialects).

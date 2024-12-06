@@ -11,14 +11,14 @@
 #include "iree-amd-aie/aie_runtime/Utils/ChannelBdIdGenerator.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "mlir/IR/Iterators.h"
-#define DEBUG_TYPE "iree-amdaie-dma-bd-chain"
+#define DEBUG_TYPE "iree-amdaie-insert-dma-bd-chain"
 
 namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
-LogicalResult dmaBdChain(AMDAIE::AMDAIEDeviceModel deviceModel,
-                         AMDAIE::WorkgroupOp workgroupOp) {
+LogicalResult insertDmaBdChain(AMDAIE::AMDAIEDeviceModel deviceModel,
+                               AMDAIE::WorkgroupOp workgroupOp) {
   IRRewriter rewriter(workgroupOp->getContext());
 
   // TODO(Zhewen): to get rid of tileArgIdxToAssignedBdIdOps and
@@ -308,19 +308,19 @@ LogicalResult dmaBdChain(AMDAIE::AMDAIEDeviceModel deviceModel,
   return success();
 }
 
-class AMDAIEDmaBdChainPass
-    : public impl::AMDAIEDmaBdChainBase<AMDAIEDmaBdChainPass> {
+class AMDAIEInsertDmaBdChainPass
+    : public impl::AMDAIEInsertDmaBdChainBase<AMDAIEInsertDmaBdChainPass> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<AMDAIEDialect>();
   }
 
-  AMDAIEDmaBdChainPass() = default;
-  AMDAIEDmaBdChainPass(const AMDAIEDmaBdChainPass &pass){};
+  AMDAIEInsertDmaBdChainPass() = default;
+  AMDAIEInsertDmaBdChainPass(const AMDAIEInsertDmaBdChainPass &pass){};
   void runOnOperation() override;
 };
 
-void AMDAIEDmaBdChainPass::runOnOperation() {
+void AMDAIEInsertDmaBdChainPass::runOnOperation() {
   Operation *parentOp = getOperation();
 
   auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(parentOp);
@@ -336,7 +336,7 @@ void AMDAIEDmaBdChainPass::runOnOperation() {
       AMDAIE::getDeviceModel(maybeDevice.value());
 
   WalkResult res = parentOp->walk([&](AMDAIE::WorkgroupOp workgroupOp) {
-    if (failed(dmaBdChain(deviceModel, workgroupOp))) {
+    if (failed(insertDmaBdChain(deviceModel, workgroupOp))) {
       return WalkResult::interrupt();
     }
     return WalkResult::advance();
@@ -346,8 +346,8 @@ void AMDAIEDmaBdChainPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<Pass> createAMDAIEDmaBdChainPass() {
-  return std::make_unique<AMDAIEDmaBdChainPass>();
+std::unique_ptr<Pass> createAMDAIEInsertDmaBdChainPass() {
+  return std::make_unique<AMDAIEInsertDmaBdChainPass>();
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE

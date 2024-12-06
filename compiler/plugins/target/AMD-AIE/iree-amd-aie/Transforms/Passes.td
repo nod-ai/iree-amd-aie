@@ -233,12 +233,6 @@ def AMDAIEDistributeL1Allocations :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDistributeL1AllocationsPass()";
 }
 
-def AMDAIEDmaBdChain :
-    Pass<"iree-amdaie-dma-bd-chain"> {
-  let summary = "Chain the DMA BDs to reduce the number of DMA wait.";
-  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDmaBdChainPass()";
-}
-
 def AMDAIEDmaComposition :
   Pass<"iree-amdaie-dma-composition"> {
   let summary = "Compose DMA operations by DMA combination and loop subsumption.";
@@ -333,6 +327,13 @@ def AMDAIEInsertCores :
                 "`scf.forall` operations selected for parallel execution.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEInsertCoresPass()";
 }
+
+def AMDAIEInsertDmaBdChain :
+    Pass<"iree-amdaie-insert-dma-bd-chain"> {
+  let summary = "Chain DMA BD IDs by updating next_bd operands.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEInsertDmaBdChainPass()";
+}
+
 
 def AMDAIEInsertInfiniteLoopAroundCoreBlock :
     Pass<"iree-amdaie-insert-infinite-loop-around-core-block", ""> {

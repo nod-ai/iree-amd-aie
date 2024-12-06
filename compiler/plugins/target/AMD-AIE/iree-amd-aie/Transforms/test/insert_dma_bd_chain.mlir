@@ -1,4 +1,4 @@
-// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-dma-bd-chain)" --split-input-file --verify-diagnostics %s | FileCheck %s
+// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-insert-dma-bd-chain)" --split-input-file --verify-diagnostics %s | FileCheck %s
 
 // CHECK-LABEL: @single_bd_chain
 // CHECK: %[[BD_ID_0:.+]] = amdaie.bd_id
