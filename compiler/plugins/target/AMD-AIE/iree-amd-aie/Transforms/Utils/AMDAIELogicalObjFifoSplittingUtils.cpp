@@ -8,7 +8,7 @@
 
 #include <numeric>
 
-#include "iree-amd-aie/Transforms/AMDAIEUtils.h"
+#include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -583,7 +583,7 @@ LogicalResult splitLogicalObjectFifo(IRRewriter &rewriter,
   SmallVector<int64_t> memrefShape =
       llvm::to_vector(op.getMemrefType().getShape());
   int64_t splitFactor = maybeSplitFactor.has_value() ? maybeSplitFactor.value()
-                                                : memrefShape[splitDim];
+                                                     : memrefShape[splitDim];
   assert(
       memrefShape[splitDim] % splitFactor == 0 &&
       "the target size for splitting is not divisible by the splitting factor");
