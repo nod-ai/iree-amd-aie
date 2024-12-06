@@ -220,9 +220,9 @@ LogicalResult convertOp(AMDAIE::NpuDmaWaitOp op, TransactionBuilder &builder) {
 LogicalResult convertOp(AMDAIE::NpuPushToQueueOp op,
                         TransactionBuilder &builder) {
   uint32_t repeatCount = op.getRepeatCount() - 1;
-  if (failed(builder.appendPushToQueueOp(op.getCol(), op.getRow(),
-                                         op.getDirection(), op.getChannel(),
-                                         op.getBdId(), repeatCount, true))) {
+  if (failed(builder.appendPushToQueueOp(
+          op.getCol(), op.getRow(), op.getDirection(), op.getChannel(),
+          op.getBdId(), repeatCount, static_cast<bool>(op.getAsyncToken())))) {
     return failure();
   }
   return success();
