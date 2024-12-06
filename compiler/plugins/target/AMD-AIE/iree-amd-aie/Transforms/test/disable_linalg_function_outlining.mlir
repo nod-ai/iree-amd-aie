@@ -1,14 +1,13 @@
 // This test demonstrates enabling / disabling function outlining in the default
-// pipeline (note that below the pipeline is not specified explicitly with
-// the flag --iree-amdaie-tile-pipeline). We check 3 paths:
+// pipeline. We check 3 paths:
 //
 // 1) Explicitly disabling linalg function outlining with
-//             --iree-amdaie-enable-function-outlining=0
+//              --iree-amdaie-enable-function-outlining=0
 //
 // 2) Explicitly enabling linalg function outlining with
-//             --iree-amdaie-enable-function-outlining=1
+//              --iree-amdaie-enable-function-outlining=1
 //
-// 3) Not specifying the flag at all, which should use the default value (0).
+// 3) Not specifying the flag at all, which should use the default value (1).
 
 
 // 1) Explicitly disabled:
@@ -36,4 +35,4 @@ func.func @matmul(%lhs: tensor<64x64xbf16>,
 
 // CHECK-DISABLED-NOT: func.call
 // CHECK-ENABLED:      func.call
-// CHECK-DEFAULT-NOT:  func.call
+// CHECK-DEFAULT:      func.call
