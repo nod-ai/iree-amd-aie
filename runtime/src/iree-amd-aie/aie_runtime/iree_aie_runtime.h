@@ -8,8 +8,6 @@
 #define IREE_AIE_RUNTIME_H
 
 #include <optional>
-#include <ostream>
-#include <sstream>
 #include <tuple>
 #include <type_traits>
 
@@ -166,6 +164,11 @@ enum class XAie_TxnOpcode : uint8_t {
   XAIE_IO_BLOCKSET,
   XAIE_IO_MASKWRITE,
   XAIE_IO_MASKPOLL,
+  XAIE_IO_NOOP,
+  XAIE_IO_PREEMPT,
+  XAIE_IO_MASKPOLL_BUSY,
+  XAIE_IO_LOADPDI,
+  XAIE_IO_LOAD_PM_START,
   XAIE_CONFIG_SHIMDMA_BD,
   XAIE_CONFIG_SHIMDMA_DMABUF_BD,
   XAIE_IO_CUSTOM_OP_BEGIN = ::XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_BEGIN,
