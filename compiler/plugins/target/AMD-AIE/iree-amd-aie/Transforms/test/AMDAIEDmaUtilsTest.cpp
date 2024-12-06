@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "gtest/gtest.h"
-#include "iree-amd-aie/Transforms/AMDAIEDmaUtils.h"
+#include "iree-amd-aie/Transforms/Utils/AMDAIEDmaUtils.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/SmallVectorExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"

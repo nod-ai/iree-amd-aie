@@ -7,7 +7,7 @@
 #include "AMDAIEDmaUtils.h"
 
 #include "AMDAIEUtils.h"
-#include "iree-amd-aie/Transforms/AMDAIEUtils.h"
+#include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 
