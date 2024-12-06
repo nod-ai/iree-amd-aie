@@ -101,6 +101,16 @@ struct RetrieveScaleAndBias
 // DMAs have a single inter-iteration dimension (at least in AIE2 and AIE2p).
 static const size_t kAMDAIEDmaNbInterDims = 1;
 
+/// Check whether two access patterns are equal in value, starting from
+/// specified indices.
+bool areAccessPatternsEqualFromIndices(ArrayRef<OpFoldResult> offsetsA,
+                                       ArrayRef<OpFoldResult> sizesA,
+                                       ArrayRef<OpFoldResult> stridesA,
+                                       ArrayRef<OpFoldResult> offsetsB,
+                                       ArrayRef<OpFoldResult> sizesB,
+                                       ArrayRef<OpFoldResult> stridesB,
+                                       size_t indexA = 0, size_t indexB = 0);
+
 /// Check whether the two access patterns of strided operations can be combined
 /// into one. Takes a `maxNbDims` argument to check whether a combined access
 /// pattern would not exceed the maximum number of dimensions.
