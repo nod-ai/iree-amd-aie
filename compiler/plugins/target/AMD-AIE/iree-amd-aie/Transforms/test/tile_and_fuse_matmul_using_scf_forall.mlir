@@ -29,15 +29,15 @@ func.func @matmul_static(%arg0: tensor<8x16xi32>, %arg1 : tensor<16x8xi32>) -> t
     %extracted_slice_1 = tensor.extract_slice %arg2[%iv0, %iv1] [8, 8] [1, 1] : tensor<8x8xi32> to tensor<8x8xi32>
     %7 = bufferization.alloc_tensor() : tensor<8x16xi32>
     %alloc = memref.alloc() : memref<8x16xi32, 1 : i32>
-    %8 = bufferization.to_tensor %alloc restrict writable : memref<8x16xi32, 1 : i32>
+    %8 = bufferization.to_tensor %alloc restrict writable : memref<8x16xi32, 1 : i32> to tensor<8x16xi32>
     %9 = linalg.copy ins(%extracted_slice : tensor<8x16xi32>) outs(%8 : tensor<8x16xi32>) -> tensor<8x16xi32>
     %10 = bufferization.alloc_tensor() : tensor<16x8xi32>
     %alloc_2 = memref.alloc() : memref<16x8xi32, 1 : i32>
-    %11 = bufferization.to_tensor %alloc_2 restrict writable : memref<16x8xi32, 1 : i32>
+    %11 = bufferization.to_tensor %alloc_2 restrict writable : memref<16x8xi32, 1 : i32> to tensor<16x8xi32>
     %12 = linalg.copy ins(%extracted_slice_0 : tensor<16x8xi32>) outs(%11 : tensor<16x8xi32>) -> tensor<16x8xi32>
     %13 = bufferization.alloc_tensor() : tensor<8x8xi32>
     %alloc_3 = memref.alloc() : memref<8x8xi32, 1 : i32>
-    %14 = bufferization.to_tensor %alloc_3 restrict writable : memref<8x8xi32, 1 : i32>
+    %14 = bufferization.to_tensor %alloc_3 restrict writable : memref<8x8xi32, 1 : i32> to tensor<8x8xi32>
     %15 = linalg.fill ins(%c0_i32 : i32) outs(%14 : tensor<8x8xi32>) -> tensor<8x8xi32>
     %16 = linalg.matmul {lowering_config = #iree_codegen.lowering_config<tile_sizes = [[8, 8], [4, 4], [0, 0, 4]]>} ins(%9, %12 : tensor<8x16xi32>, tensor<16x8xi32>) outs(%15 : tensor<8x8xi32>) -> tensor<8x8xi32>
     %17 = linalg.copy ins(%16 : tensor<8x8xi32>) outs(%extracted_slice_1 : tensor<8x8xi32>) -> tensor<8x8xi32>

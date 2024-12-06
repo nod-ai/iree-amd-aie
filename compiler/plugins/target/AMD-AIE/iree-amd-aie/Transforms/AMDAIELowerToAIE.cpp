@@ -44,7 +44,7 @@ namespace mlir::iree_compiler::AMDAIE {
 AIE::BDDimLayoutArrayAttr
 AIEDeviceBuilder::convertSizeStrideToBDDimLayoutArrayAttr(
     const SmallVector<OpFoldResult> &sizes,
-    const SmallVector<OpFoldResult> &strides) {
+    const SmallVector<OpFoldResult> &strides, uint8_t memSpace) {
   assert(sizes.size() == strides.size() &&
          "expected stride and size vectors of same size");
   // Fold remaining dimensions, assuming zero offsets as offsets should be taken
@@ -54,7 +54,7 @@ AIEDeviceBuilder::convertSizeStrideToBDDimLayoutArrayAttr(
   SmallVector<OpFoldResult> newOffsets;
   SmallVector<OpFoldResult> newSizes;
   SmallVector<OpFoldResult> newStrides;
-  foldDims(offsets, sizes, strides, newOffsets, newSizes, newStrides);
+  foldDims(offsets, sizes, strides, newOffsets, newSizes, newStrides, memSpace);
 
   SmallVector<AIE::BDDimLayoutAttr, 4> bdDimLayoutAttr;
   // If the access pattern (strides/sizes) have a single dimension, make it
@@ -222,14 +222,18 @@ void AIEDeviceBuilder::foldDims(const SmallVector<OpFoldResult> &offsets,
                                 const SmallVector<OpFoldResult> &strides,
                                 SmallVector<OpFoldResult> &newOffsets,
                                 SmallVector<OpFoldResult> &newSizes,
-                                SmallVector<OpFoldResult> &newStrides) {
+                                SmallVector<OpFoldResult> &newStrides,
+                                uint8_t memSpace) {
   SmallVector<OpFoldResult> tmpOffsets;
   SmallVector<OpFoldResult> tmpSizes;
   SmallVector<OpFoldResult> tmpStrides;
   (void)foldUnitDims(rewriter.getContext(), offsets, sizes, strides, tmpOffsets,
                      tmpSizes, tmpStrides);
+  AMDAIE::DmaDimConfig dmaDimConfig(deviceModel, memSpace, memSpace);
+  SmallVector<int64_t> maxSizes =
+      dmaDimConfig.getMaxSizes<CopyOpOperateOn::Source>();
   (void)foldLinearDims(rewriter.getContext(), tmpOffsets, tmpSizes, tmpStrides,
-                       newOffsets, newSizes, newStrides);
+                       newOffsets, newSizes, newStrides, maxSizes);
   (void)foldSingleDim(newOffsets, newSizes, newStrides);
 }
 
@@ -500,9 +504,16 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
       return maybeNpuDmaUserOp->emitOpError()
              << "could not compute a static base offset for source";
     }
+    std::optional<uint8_t> maybeSourceMemSpace =
+        maybeNpuDmaUserOp->getSourceMemorySpaceAsUInt();
+    if (!maybeSourceMemSpace) {
+      return maybeNpuDmaUserOp->emitOpError()
+             << "expected to have a source memory space";
+    }
     AIE::BDDimLayoutArrayAttr dims = convertSizeStrideToBDDimLayoutArrayAttr(
         maybeNpuDmaUserOp->getSourceMixedSizes(),
-        maybeNpuDmaUserOp->getSourceMixedStrides());
+        maybeNpuDmaUserOp->getSourceMixedStrides(),
+        maybeSourceMemSpace.value());
     SmallVector<CopyOpInterface> objFifoProducers =
         sourceObjFifo.getCopyLikeProducers();
     SmallVector<CopyOpInterface> objFifoConsumers =
@@ -589,9 +600,16 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
       return maybeNpuDmaUserOp->emitOpError()
              << "could not compute a static base offset for source";
     }
+    std::optional<uint8_t> maybeTargetMemSpace =
+        maybeNpuDmaUserOp->getTargetMemorySpaceAsUInt();
+    if (!maybeTargetMemSpace) {
+      return maybeNpuDmaUserOp->emitOpError()
+             << "expected to have a target memory space";
+    }
     AIE::BDDimLayoutArrayAttr dims = convertSizeStrideToBDDimLayoutArrayAttr(
         maybeNpuDmaUserOp->getTargetMixedSizes(),
-        maybeNpuDmaUserOp->getTargetMixedStrides());
+        maybeNpuDmaUserOp->getTargetMixedStrides(),
+        maybeTargetMemSpace.value());
     SmallVector<CopyOpInterface> objFifoProducers =
         targetObjFifo.getCopyLikeProducers();
     SmallVector<CopyOpInterface> objFifoConsumers =
@@ -886,15 +904,8 @@ LogicalResult AIEDeviceBuilder::workgroupToAIE(AMDAIE::WorkgroupOp workgroupOp,
 /// dialect operations to AIE dialect operations.
 LogicalResult AIEDeviceBuilder::lowerToAIE(ModuleOp moduleOp) {
   Block *moduleBlock = &moduleOp->getRegion(0).front();
-
-  // Retrieve the AMDAIEDevice from the executable target attribute.
-  auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(moduleOp);
-  std::optional<AMDAIEDevice> device = getConfigAMDAIEDevice(targetAttr);
-  if (!device)
-    return moduleOp.emitOpError()
-           << "No AMDAIEDevice found in the target attribute configuration";
   xilinx::AIE::AIEDevice aieDevice = static_cast<xilinx::AIE::AIEDevice>(
-      static_cast<uint32_t>(device.value()));
+      static_cast<uint32_t>(deviceModel.device));
 
   auto funcRes = moduleOp.walk([&](func::FuncOp funcOp) {
     if (funcOp.isPrivate()) {
@@ -1007,7 +1018,16 @@ class AMDAIELowerToAIEPass
     // Main function call to convert all operations into AIE dialect
     // operations inside an AIE device.
     ModuleOp moduleOp = getOperation();
-    AIEDeviceBuilder builder(moduleOp.getContext());
+    auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(moduleOp);
+    std::optional<AMDAIEDevice> maybeDevice = getConfigAMDAIEDevice(targetAttr);
+    if (!maybeDevice.has_value()) {
+      moduleOp->emitOpError(
+          "No AMDAIEDevice found in the target attribute configuration. This "
+          "is needed to lower to the AIE dialect.");
+      return signalPassFailure();
+    }
+    AMDAIEDeviceModel deviceModel = getDeviceModel(maybeDevice.value());
+    AIEDeviceBuilder builder(moduleOp.getContext(), std::move(deviceModel));
     if (failed(builder.lowerToAIE(moduleOp))) return signalPassFailure();
   }
 };

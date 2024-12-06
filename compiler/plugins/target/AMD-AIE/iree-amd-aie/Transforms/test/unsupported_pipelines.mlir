@@ -1,4 +1,4 @@
-// RUN: iree-opt %s --pass-pipeline='builtin.module(iree-amdaie-lowering-strategy{use-pass-pipeline=pad-pack use-lower-to-aie-pipeline=objectFifo})' --verify-diagnostics
+// RUN: iree-opt %s --pass-pipeline='builtin.module(iree-amdaie-lowering-strategy{use-tile-pipeline=pad-pack use-lower-to-aie-pipeline=objectFifo})' --verify-diagnostics
 
 // expected-error@below {{Unsupported pair of pipelines, TilePassPipeline::PadPack and LowerToAIEPassPipeline::ObjectFifo. Did you mean to use TilePassPipeline::PackPeelPipeline instead?}}
 #pipeline_layout = #hal.pipeline.layout<push_constants = 0, sets = [

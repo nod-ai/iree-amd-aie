@@ -150,6 +150,27 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
     Builder b(context);
     SmallVector<NamedAttribute> configItems;
 
+    // Make sure the input number of rows/cols is smaller or equal to the max
+    // number of rows/cols from the device.
+    AMDAIEDeviceModel deviceModel =
+        AMDAIE::getDeviceModel(options.AMDAIETargetDevice);
+    uint32_t maxCoreRows = deviceModel.getNumCoreRows();
+    uint32_t maxCoreCols = deviceModel.getNumCoreCols();
+    if (options.AMDAIENumRows <= 0 || options.AMDAIENumRows > maxCoreRows) {
+      llvm::report_fatal_error(llvm::Twine("Invalid number of core rows (") +
+                               std::to_string(options.AMDAIENumRows) +
+                               "), must be in the range [1, " +
+                               std::to_string(maxCoreRows) + "] for device " +
+                               stringifyEnum(deviceModel.device));
+    }
+    if (options.AMDAIENumCols <= 0 || options.AMDAIENumCols > maxCoreCols) {
+      llvm::report_fatal_error(llvm::Twine("Invalid number of core cols (") +
+                               std::to_string(options.AMDAIENumCols) +
+                               "), must be in the range [1, " +
+                               std::to_string(maxCoreCols) + "] for device " +
+                               stringifyEnum(deviceModel.device));
+    }
+
     // Add some configurations to the `hal.executable.target` attribute.
     auto addConfig = [&](StringRef name, Attribute value) {
       configItems.emplace_back(StringAttr::get(context, name), value);
@@ -161,6 +182,11 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
     // Set microkernel enabling flag.
     addConfig("ukernels",
               StringAttr::get(context, options.enableAMDAIEUkernels));
+    // Set number of rows/cols used in an AIE array.
+    addConfig("num_rows", IntegerAttr::get(IntegerType::get(context, 32),
+                                           options.AMDAIENumRows));
+    addConfig("num_cols", IntegerAttr::get(IntegerType::get(context, 32),
+                                           options.AMDAIENumCols));
     auto configAttr = b.getDictionaryAttr(configItems);
 
     switch (options.deviceHal) {
@@ -204,7 +230,8 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
   void buildTranslationPassPipeline(IREE::HAL::ExecutableTargetAttr,
                                     OpPassManager &passManager) override {
     buildAMDAIETransformPassPipeline(
-        passManager, options.AMDAIETargetDevice, options.useTilePipeline,
+        passManager, options.AMDAIETargetDevice, options.AMDAIENumRows,
+        options.AMDAIENumCols, options.useTilePipeline,
         options.useLowerToAIEPipeline, options.matmulElementwiseFusion,
         options.enableVectorizationPasses, options.pathToUkernels,
         options.enablePacketFlow, options.enableCoalescingLoops,

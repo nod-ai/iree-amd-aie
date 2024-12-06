@@ -289,33 +289,6 @@ class BaseMatmul(BaseTest):
         )
 
 
-class MatmulFullBias(BaseMatmul):
-    """
-    A test of the form matmul(A,B) + C where A:MxK, B:KxN, C:MxN
-    """
-
-    def __init__(self, M, N, K, input_type, acc_type, run_on_target=["npu1_4col"]):
-        super().__init__(
-            run_on_target=run_on_target,
-            aie_compilation_flags=None,
-            M=M,
-            N=N,
-            K=K,
-            input_type=input_type,
-            acc_type=acc_type,
-            lower_to_aie_pipeline="air",
-        )
-        self.labels.append("MatmulFullBias")
-        self.name = f"matmul_full_bias_{M}_{N}_{K}_{input_type}_{acc_type}"
-
-    def _execute(self, config):
-        matmul_template_dir = config.file_dir / "matmul_template"
-        template_name = matmul_template_dir / "matmul_bias_MxK_KxN_MxN.mlir"
-        self.generate(config, template_name)
-        self.vs_cpu(config)
-        return True
-
-
 class Matmul(BaseMatmul):
     """
     A test of the form matmul(A,B) where A:MxK, B:KxN
@@ -467,7 +440,48 @@ class MatmulThinBias(BaseMatmul):
         matmul_template_dir = config.file_dir / "matmul_template"
         template_name = matmul_template_dir / "matmul_bias_MxK_KxN_N.mlir"
         self.generate(config, template_name)
+        self.add_aie_compilation_flags(
+            [
+                "--iree-amdaie-matmul-elementwise-fusion",
+                "--iree-amdaie-num-rows=2",
+                "--iree-amdaie-num-cols=2",
+            ]
+        )
         return self.vs_cpu(config)
+
+
+class MatmulFullBias(BaseMatmul):
+    """
+    A test of the form matmul(A,B) + C where A:MxK, B:KxN, C:MxN
+    """
+
+    def __init__(self, M, N, K, input_type, acc_type, run_on_target=["npu1_4col"]):
+        super().__init__(
+            run_on_target=run_on_target,
+            aie_compilation_flags=None,
+            M=M,
+            N=N,
+            K=K,
+            input_type=input_type,
+            acc_type=acc_type,
+            lower_to_aie_pipeline="air",
+        )
+        self.labels.append("MatmulFullBias")
+        self.name = f"matmul_full_bias_{M}_{N}_{K}_{input_type}_{acc_type}"
+
+    def _execute(self, config):
+        matmul_template_dir = config.file_dir / "matmul_template"
+        template_name = matmul_template_dir / "matmul_bias_MxK_KxN_MxN.mlir"
+        self.generate(config, template_name)
+        self.add_aie_compilation_flags(
+            [
+                "--iree-amdaie-matmul-elementwise-fusion",
+                "--iree-amdaie-num-rows=2",
+                "--iree-amdaie-num-cols=2",
+            ]
+        )
+        self.vs_cpu(config)
+        return True
 
 
 class BatchMatmul(BaseMatmul):
@@ -556,17 +570,9 @@ class MatmulTruncf(BaseMatmul):
             filename, self.get_dir(config), 1, {1: self.lhs, 2: self.rhs}
         )
         """
-        currently without enabling loop coalescing and unit dimension collapsing
-        we run out of program memory, this is under investigation. We also 
-        enable function outlining.
+        Currently without function outlining, we run out of program memory.
         """
-        self.add_aie_compilation_flags(
-            [
-                "--iree-amdaie-enable-coalescing-loops",
-                "--iree-amdaie-enable-collapsing-unit-dims",
-                "--iree-amdaie-enable-function-outlining",
-            ]
-        )
+        self.add_aie_compilation_flags(["--iree-amdaie-enable-function-outlining"])
         aie_vs_baseline(
             config=config,
             aie_compilation_flags=self.aie_compilation_flags,
@@ -660,6 +666,52 @@ def shell_out(cmd: list, workdir=None, verbose: int = 0, raise_on_error=True, en
     return stdout_decode, stderr_decode
 
 
+def print_program_memory_size(test_dir):
+
+    # Get all the .elf files in `test_dir`.
+    # These elfs contain many sections, one of which is the program memory. Some digging into the elf format
+    # see https://github.com/newling/aie-rt/commit/d0f08bc4a37092a919d6a0d51a44d9f0ae274bb9
+    # revealed that the size of the program memory is stored at byte 72 of the elf.
+    # This might change in the future, but for now this works reliably.
+    #
+    # Note that if the elfs are created with chess, then there are 2 sections of program memory, the second
+    # is at byte 108. For now we ignore this case, this function should not be called if the
+    # elfs are created with chess.
+    elfs = list(test_dir.glob("*.elf"))
+    number_of_elfs = len(elfs)
+
+    if number_of_elfs == 0:
+        print(
+            f"There are no .elf files in {test_dir}, cannot determine program memory size"
+        )
+        return
+
+    magic_byte = 72
+
+    max_pm_size = 0
+    for elf_file in elfs:
+        with open(elf_file, "rb") as f:
+            elf = f.read()
+            pm = int.from_bytes(elf[magic_byte : magic_byte + 4], "little")
+            max_pm_size = max(max_pm_size, pm)
+
+    # Sanity check on the magic byte. If this really is the program memory,
+    # it should not exceed 16384 bytes here.
+    if max_pm_size > 16384:
+        raise RuntimeError(
+            f"Program memory size determined to be {max_pm_size} bytes, which is too large. This is likely not the program memory size, because if it were then an error would have been raised earlier."
+        )
+    if max_pm_size < 100:
+        raise RuntimeError(
+            f"Program memory size determined to be {max_pm_size} bytes, which is too small. This is likely not the program memory size and the 'magic byte' approach isn't valid."
+        )
+
+    print(f"There are {number_of_elfs} .elf file(s) in {test_dir}")
+    print(
+        f"The largest program memory size (read from byte {magic_byte} of elf files) is {max_pm_size} bytes"
+    )
+
+
 def generate_aie_vmfb(
     config,
     aie_compilation_flags,
@@ -687,7 +739,6 @@ def generate_aie_vmfb(
         f"--iree-amdaie-target-device={config.target_device}",
         f"--iree-amdaie-tile-pipeline={tile_pipeline}",
         f"--iree-amdaie-lower-to-aie-pipeline={lower_to_aie_pipeline}",
-        "--iree-amdaie-matmul-elementwise-fusion",
         f"--iree-amd-aie-peano-install-dir={config.peano_dir}",
         f"--iree-amd-aie-install-dir={config.iree_dir}",
         f"--iree-amd-aie-vitis-install-dir={config.vitis_dir}",
@@ -723,6 +774,12 @@ def generate_aie_vmfb(
     aie_vmfb = test_dir / f"{name}_aie.vmfb"
     if not aie_vmfb.exists():
         raise RuntimeError(f"Failed to compile {test_file} to {aie_vmfb}")
+
+    if config.verbose:
+        # Check if "enable-chess=1" is a substring of any of the compilation flags:
+        uses_chess = any("enable-chess=1" in flag for flag in aie_compilation_flags)
+        if not uses_chess:
+            print_program_memory_size(test_dir)
 
     return aie_vmfb
 

@@ -498,8 +498,8 @@ void addConvDecomposePassPipeline(OpPassManager &funcPassManager,
 }
 
 void buildAMDAIETransformPassPipeline(
-    OpPassManager &variantPassManager, AMDAIEDevice device,
-    TilePassPipeline useTilePipeline,
+    OpPassManager &variantPassManager, AMDAIEDevice device, uint32_t numRows,
+    uint32_t numCols, TilePassPipeline useTilePipeline,
     LowerToAIEPassPipeline useLowerToAIEPipeline, bool matmulElementwiseFusion,
     bool enableVectorizationPasses, const std::string &pathToUkernels,
     bool enablePacketFlow, bool enableCoalescingLoops,
@@ -513,16 +513,18 @@ void buildAMDAIETransformPassPipeline(
   modulePassManager.addPass(createMaterializeUserConfigsPass());
   {
     AMDAIELoweringStrategyOptions options;
-    options.usePassPipeline = useTilePipeline;
+    options.useTilePipeline = useTilePipeline;
     options.useLowerToAIEPipeline = useLowerToAIEPipeline;
     options.targetDevice = device;
+    options.numRows = numRows;
+    options.numCols = numCols;
     modulePassManager.addPass(createAMDAIELoweringStrategyPass(options));
   }
   modulePassManager.addPass(createLowerExecutableUsingTransformDialectPass());
   {
     FunctionLikeNest funcPassManager(modulePassManager);
     AMDAIELowerExecutableTargetOptions options;
-    options.usePassPipeline = useTilePipeline;
+    options.useTilePipeline = useTilePipeline;
     options.enableVectorizationPasses = enableVectorizationPasses;
     options.pathToUkernels = pathToUkernels;
     funcPassManager.addPass(

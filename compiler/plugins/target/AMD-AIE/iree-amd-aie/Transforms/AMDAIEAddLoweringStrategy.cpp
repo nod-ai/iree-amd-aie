@@ -52,7 +52,7 @@ void AMDAIELoweringStrategyPass::runOnOperation() {
 
   // Detect unsupported pipeline combinations.
   {
-    bool padPack = usePassPipeline == TilePassPipeline::PadPackPipeline;
+    bool padPack = useTilePipeline == TilePassPipeline::PadPackPipeline;
     bool objectFifo =
         useLowerToAIEPipeline == LowerToAIEPassPipeline::ObjectFifo;
     if (padPack && objectFifo) {
@@ -66,8 +66,9 @@ void AMDAIELoweringStrategyPass::runOnOperation() {
 
   for (auto funcOp : moduleOp.getOps<FunctionOpInterface>()) {
     // Set the strategy with default heuristics.
-    if (failed(initAIELaunchConfig(funcOp, usePassPipeline,
-                                   useLowerToAIEPipeline, targetDevice))) {
+    if (failed(initAIELaunchConfig(funcOp, useTilePipeline,
+                                   useLowerToAIEPipeline, targetDevice, numRows,
+                                   numCols))) {
       funcOp.emitOpError("failed to have a lowering configuration set for it.");
       return signalPassFailure();
     }
