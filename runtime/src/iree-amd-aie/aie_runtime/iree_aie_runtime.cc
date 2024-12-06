@@ -225,6 +225,14 @@ bool AMDAIEDeviceModel::isShimTile(uint8_t col, uint8_t row) const {
   return row == configPtr.ShimRowNum;
 }
 
+uint8_t AMDAIEDeviceModel::getDmaMaxQueueSize(uint8_t col, uint8_t row) const {
+  uint8_t maxQueueSize = 0;
+  TRY_XAIE_API_FATAL_ERROR(XAie_DmaGetMaxQueueSize,
+                           const_cast<XAie_DevInst *>(&devInst),
+                           XAie_TileLoc(col, row), &maxQueueSize);
+  return maxQueueSize;
+}
+
 // TODO(max): these should be optionals instead of returning 0.
 uint32_t AMDAIEDeviceModel::getNumLocks(uint8_t col, uint8_t row) const {
   AMDAIETileType tileType = getTileType(col, row);
@@ -493,13 +501,6 @@ AMDAIEDeviceModel::getChannelToValidBdIds(AMDAIETileType tileType) const {
       break;
   }
   llvm::report_fatal_error("Unhandled AMDAIETileType case");
-}
-
-uint8_t AMDAIEDeviceModel::getDmaMaxQueueSize(uint8_t col, uint8_t row) {
-  uint8_t maxQueueSize = 0;
-  TRY_XAIE_API_FATAL_ERROR(XAie_DmaGetMaxQueueSize, &devInst,
-                           XAie_TileLoc(col, row), &maxQueueSize);
-  return maxQueueSize;
 }
 
 struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {

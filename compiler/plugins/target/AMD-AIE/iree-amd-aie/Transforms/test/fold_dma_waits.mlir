@@ -29,6 +29,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
+// Expect no DMA waits to be folded, since the same BD ID is used.
 // CHECK-LABEL: @fold_dma_waits_same_bd_id
 // CHECK:       %[[OBJECT_FIFO_0:.+]] = amdaie.logicalobjectfifo.from_buffers
 // CHECK:       %[[CHANNEL_0:.+]] = amdaie.channel
@@ -77,6 +78,9 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
+// DMA queue has a maximum size of 4. To optimize, starting from 
+// the end of the control code, retain every 4th DMA wait operation 
+// while folding the others.
 // CHECK-LABEL: @fold_dma_waits_max_queue_size
 // CHECK:       %[[OBJECT_FIFO_0:.+]] = amdaie.logicalobjectfifo.from_buffers
 // CHECK:       %[[CHANNEL_0:.+]] = amdaie.channel
@@ -145,6 +149,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
+// Two circuit connections are used, corresponding to two separate channels.
+// Each channel operates with its own independent queue.
 // CHECK-LABEL: @fold_dma_waits_two_connections
 // CHECK:       %[[OBJECT_FIFO_0:.+]] = amdaie.logicalobjectfifo.from_buffers
 // CHECK:       %[[OBJECT_FIFO_1:.+]] = amdaie.logicalobjectfifo.from_buffers

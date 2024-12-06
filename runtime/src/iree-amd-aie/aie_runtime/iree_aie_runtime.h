@@ -312,6 +312,8 @@ struct AMDAIEDeviceModel {
     return *((const T *)(dmaBdMod + static_cast<uint8_t>(dmaBdProp)));
   }
 
+  uint8_t getDmaMaxQueueSize(uint8_t col, uint8_t row) const;
+
   uint32_t getNumLocks(uint8_t col, uint8_t row) const;
 
   std::optional<TileLoc> getMemWest(TileLoc src) const;
@@ -374,8 +376,6 @@ struct AMDAIEDeviceModel {
   /// TODO(jornt): find these ranges in the device model.
   DenseMap<uint32_t, SmallVector<uint32_t>> getChannelToValidBdIds(
       AMDAIETileType tileType) const;
-
-  uint8_t getDmaMaxQueueSize(uint8_t col, uint8_t row);
 
   AMDAIEDevice device;
 
