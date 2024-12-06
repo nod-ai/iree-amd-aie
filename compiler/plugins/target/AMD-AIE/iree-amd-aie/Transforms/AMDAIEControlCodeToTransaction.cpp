@@ -5,9 +5,9 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "iree-amd-aie/IR/AMDAIEOps.h"
-#include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-amd-aie/Transforms/Transforms.h"
+#include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 #include "mlir/IR/AsmState.h"
 #include "mlir/IR/Iterators.h"
 #include "mlir/Transforms/DialectConversion.h"

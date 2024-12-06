@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "gtest/gtest.h"
-#include "iree-amd-aie/Transforms/AMDAIEDmaUtils.h"
+#include "iree-amd-aie/Transforms/Utils/AMDAIEDmaUtils.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/SmallVectorExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -113,6 +113,11 @@ TEST_F(AccessPatternCombinationTest, CombinableAccessPatterns) {
                                                {16, 16, 32}, {32, 64, 1}, 4));
   EXPECT_TRUE(checkAreAccessPatternsCombinable({32, 0}, {64, 64}, {128, 1},
                                                {96, 0}, {32, 64}, {128, 1}, 4));
+  // Same access patterns
+  EXPECT_TRUE(
+      checkAreAccessPatternsCombinable({0}, {32}, {1}, {0}, {32}, {1}, 2));
+  EXPECT_TRUE(checkAreAccessPatternsCombinable({0, 0}, {16, 32}, {64, 1},
+                                               {0, 0}, {16, 32}, {64, 1}, 4));
   // size(A) > size(B)
   EXPECT_TRUE(checkAreAccessPatternsCombinable(
       {0, 0, 0}, {2, 16, 32}, {32, 64, 1}, {0, 64}, {16, 32}, {64, 1}, 4));
@@ -122,6 +127,13 @@ TEST_F(AccessPatternCombinationTest, CombinableAccessPatterns) {
       {0, 0, 32}, {2, 16, 32}, {32, 64, 1}, {0, 96}, {16, 32}, {64, 1}, 4));
   EXPECT_TRUE(checkAreAccessPatternsCombinable(
       {0, 2, 0}, {2, 16, 32}, {32, 16, 1}, {6, 0}, {16, 32}, {16, 1}, 4));
+  // size(A) > size(B) Same access pattern
+  EXPECT_TRUE(checkAreAccessPatternsCombinable({0, 0}, {0, 32}, {0, 1}, {0},
+                                               {32}, {1}, 2));
+  EXPECT_TRUE(checkAreAccessPatternsCombinable({0, 0}, {7, 32}, {0, 1}, {0},
+                                               {32}, {1}, 2));
+  EXPECT_TRUE(checkAreAccessPatternsCombinable(
+      {1, 0, 0}, {8, 16, 32}, {0, 64, 1}, {0, 0}, {16, 32}, {64, 1}, 4));
   // size(B) > size(A)
   EXPECT_TRUE(checkAreAccessPatternsCombinable(
       {0, 0}, {16, 32}, {64, 1}, {0, 0, 32}, {2, 16, 32}, {32, 64, 1}, 4));
@@ -143,14 +155,11 @@ TEST_F(AccessPatternCombinationTest, NonCombinableAccessPatterns) {
                                                 {}, {}, 3));
   EXPECT_FALSE(checkAreAccessPatternsCombinable(
       {0, 0, 32}, {2, 16, 32}, {128, 64, 1}, {0}, {32}, {1}, 3));
-  // Same access patterns
-  EXPECT_FALSE(
-      checkAreAccessPatternsCombinable({0}, {32}, {1}, {0}, {32}, {1}, 2));
-  EXPECT_FALSE(checkAreAccessPatternsCombinable({0, 0}, {16, 32}, {64, 1},
-                                                {0, 0}, {16, 32}, {64, 1}, 4));
   // Too few dimensions
   EXPECT_FALSE(
       checkAreAccessPatternsCombinable({0}, {16}, {1}, {32}, {16}, {1}, 1));
+  EXPECT_FALSE(
+      checkAreAccessPatternsCombinable({0}, {32}, {1}, {0}, {32}, {1}, 1));
   EXPECT_FALSE(checkAreAccessPatternsCombinable({0, 0}, {16, 32}, {64, 1},
                                                 {0, 32}, {16, 32}, {64, 1}, 2));
   EXPECT_FALSE(checkAreAccessPatternsCombinable({0, 0, 0}, {16, 16, 32},
@@ -163,6 +172,15 @@ TEST_F(AccessPatternCombinationTest, NonCombinableAccessPatterns) {
       {0, 0, 0}, {2, 16, 32}, {32, 64, 1}, {0, 128}, {16, 32}, {64, 1}, 4));
   EXPECT_FALSE(checkAreAccessPatternsCombinable(
       {0, 0, 0}, {2, 16, 32}, {32, 64, 1}, {64, 0}, {16, 32}, {64, 1}, 4));
+  // size(A) > size(B) Same access pattern
+  EXPECT_FALSE(checkAreAccessPatternsCombinable({0, 0}, {32, 64}, {128, 1}, {0},
+                                                {64}, {1}, 4));
+  EXPECT_FALSE(checkAreAccessPatternsCombinable({1, 0}, {32, 64}, {128, 1}, {0},
+                                                {64}, {1}, 4));
+  EXPECT_FALSE(checkAreAccessPatternsCombinable(
+      {0, 0, 0}, {32, 64, 128}, {32, 128, 1}, {0, 0}, {64, 128}, {128, 1}, 4));
+  EXPECT_FALSE(checkAreAccessPatternsCombinable(
+      {2, 0, 0}, {32, 64, 128}, {32, 128, 1}, {0, 0}, {64, 128}, {128, 1}, 4));
   // size(B) > size(A) Incompatible offset
   EXPECT_FALSE(checkAreAccessPatternsCombinable(
       {0, 0}, {16, 32}, {64, 1}, {0, 0, 16}, {2, 16, 32}, {32, 64, 1}, 4));
@@ -170,8 +188,12 @@ TEST_F(AccessPatternCombinationTest, NonCombinableAccessPatterns) {
       {0, 0}, {16, 32}, {64, 1}, {0, 0, 96}, {2, 16, 32}, {32, 64, 1}, 4));
   EXPECT_FALSE(checkAreAccessPatternsCombinable(
       {0, 0}, {16, 32}, {64, 1}, {0, 1, 0}, {2, 16, 32}, {32, 64, 1}, 4));
-
-  // size(A) == size(B) Incompatible offset
+  // size(B) > size(A) Same access pattern
+  EXPECT_FALSE(checkAreAccessPatternsCombinable({0}, {32}, {1}, {0, 0}, {2, 32},
+                                                {8, 1}, 4));
+  EXPECT_FALSE(checkAreAccessPatternsCombinable({0}, {32}, {1}, {2, 0}, {2, 32},
+                                                {8, 1}, 4));
+  // size(A) == size(B)
   EXPECT_FALSE(checkAreAccessPatternsCombinable(
       {32, 0}, {64, 64}, {128, 1}, {32, 0}, {32, 64}, {128, 1}, 4));
   EXPECT_FALSE(checkAreAccessPatternsCombinable(
@@ -207,6 +229,11 @@ TEST_F(AccessPatternCombinationTest, CombineAccessPatterns) {
                              {2, 16, 8, 16}, {512, 16, 8, 1}, 4);
   checkCombineAccessPatterns({32, 0}, {64, 64}, {128, 1}, {96, 0}, {32, 64},
                              {128, 1}, {32, 0}, {96, 64}, {128, 1}, 4);
+  // size(A) == size(B) Same access pattern
+  checkCombineAccessPatterns({0}, {32}, {1}, {0}, {32}, {1}, {0, 0}, {2, 32},
+                             {0, 1}, 2);
+  checkCombineAccessPatterns({0, 0}, {16, 32}, {16, 1}, {0, 0}, {16, 32},
+                             {16, 1}, {0, 0, 0}, {2, 16, 32}, {0, 16, 1}, 3);
   // size(A) > size(B)
   checkCombineAccessPatterns({0, 0}, {2, 32}, {64, 1}, {128}, {32}, {1}, {0, 0},
                              {3, 32}, {64, 1}, 3);
@@ -224,6 +251,13 @@ TEST_F(AccessPatternCombinationTest, CombineAccessPatterns) {
   checkCombineAccessPatterns({0, 1, 32}, {2, 16, 32}, {32, 64, 1}, {2, 32},
                              {16, 32}, {64, 1}, {0, 1, 32}, {3, 16, 32},
                              {32, 64, 1}, 4);
+  // size(A) > size(B) Same access pattern
+  checkCombineAccessPatterns({0, 0}, {7, 32}, {0, 1}, {0}, {32}, {1}, {0, 0},
+                             {8, 32}, {0, 1}, 3);
+  checkCombineAccessPatterns({1, 0}, {7, 32}, {0, 1}, {0}, {32}, {1}, {1, 0},
+                             {8, 32}, {0, 1}, 3);
+  checkCombineAccessPatterns({1, 0}, {0, 32}, {0, 1}, {0}, {32}, {1}, {1, 0},
+                             {1, 32}, {0, 1}, 3);
   // size(B) > size(A)
   checkCombineAccessPatterns({0}, {32}, {1}, {0, 64}, {2, 32}, {64, 1}, {0, 0},
                              {3, 32}, {64, 1}, 3);
@@ -241,6 +275,14 @@ TEST_F(AccessPatternCombinationTest, CombineAccessPatterns) {
   checkCombineAccessPatterns({2, 32}, {16, 32}, {16, 1}, {0, 6, 32},
                              {2, 16, 32}, {64, 16, 1}, {0, 2, 32}, {3, 16, 32},
                              {64, 16, 1}, 4);
+  checkCombineAccessPatterns({0}, {32}, {1}, {1, 0}, {2, 32}, {64, 1}, {0, 0},
+                             {3, 32}, {64, 1}, 3);
+  // size(B) > size(A) Same access pattern
+  checkCombineAccessPatterns({0}, {32}, {1}, {1, 0}, {3, 32}, {16, 1}, {0, 0},
+                             {4, 32}, {16, 1}, 3);
+  checkCombineAccessPatterns({0, 0}, {16, 32}, {16, 1}, {1, 0, 0}, {3, 16, 32},
+                             {64, 16, 1}, {0, 0, 0}, {4, 16, 32}, {64, 16, 1},
+                             3);
 }
 
 TEST_F(AccessPatternCombinationTest, FailCombineAccessPatterns) {
@@ -249,9 +291,6 @@ TEST_F(AccessPatternCombinationTest, FailCombineAccessPatterns) {
                              3, false);
   checkCombineAccessPatterns({0, 0}, {16, 32}, {16, 1}, {}, {}, {}, {}, {}, {},
                              3, false);
-  // Same access pattern
-  checkCombineAccessPatterns({0, 0}, {16, 32}, {16, 1}, {0, 0}, {16, 32},
-                             {16, 1}, {}, {}, {}, 3, false);
   // Too few dimensions
   checkCombineAccessPatterns({0, 0}, {16, 32}, {16, 1}, {0, 32}, {16, 32},
                              {16, 1}, {}, {}, {}, 2, false);
@@ -260,6 +299,13 @@ TEST_F(AccessPatternCombinationTest, FailCombineAccessPatterns) {
                              {3, 32}, {64, 1}, 3, false);
   checkCombineAccessPatterns({0, 0}, {2, 32}, {64, 1}, {256}, {32}, {1}, {0, 0},
                              {3, 32}, {64, 1}, 3, false);
+  // size(B) > size(A) Same access pattern
+  checkCombineAccessPatterns({0, 0}, {16, 32}, {16, 1}, {0, 0, 0}, {3, 16, 32},
+                             {64, 16, 1}, {0, 0, 0}, {4, 16, 32}, {64, 16, 1},
+                             3, false);
+  checkCombineAccessPatterns({0, 0}, {16, 32}, {16, 1}, {2, 0, 0}, {3, 16, 32},
+                             {64, 16, 1}, {0, 0, 0}, {4, 16, 32}, {64, 16, 1},
+                             3, false);
   // size(B) > size(A) Incompatible offset
   checkCombineAccessPatterns({0}, {32}, {1}, {0, 32}, {2, 32}, {64, 1}, {0, 0},
                              {3, 32}, {64, 1}, 3, false);

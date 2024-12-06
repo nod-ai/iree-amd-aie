@@ -1,6 +1,5 @@
 #include "gtest/gtest.h"
-
-#include "iree-amd-aie/Transforms/AMDAIEUtils.h"
+#include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 
 namespace {
 
