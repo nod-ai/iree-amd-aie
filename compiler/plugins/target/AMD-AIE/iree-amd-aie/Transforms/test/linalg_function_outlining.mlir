@@ -11,7 +11,7 @@
 // CHECK-SAME:          outs(%[[OUT]] :
 // CHECK:           return
 // CHECK:        }
-// CHECK-LABEL:  func.func @matmul_example
+// CHECK-LABEL:  func.func @repeated_identical_matmul
 // CHECK-SAME:   (%[[A:.*]]: memref<4x8xbf16>,
 // CHECK-SAME:    %[[B:.*]]: memref<8x4xbf16>,
 // CHECK-SAME:    %[[C:.*]]: memref<4x4xf32>) {
@@ -27,7 +27,7 @@
 // CHECK:            }
 // CHECK:            return
 // CHECK:        }
-func.func @matmul_example(%A: memref<4x8xbf16>, %B: memref<8x4xbf16>, %C: memref<4x4xf32>) {
+func.func @repeated_identical_matmul(%A: memref<4x8xbf16>, %B: memref<8x4xbf16>, %C: memref<4x4xf32>) {
   %c2 = arith.constant 2 : index
   %c1 = arith.constant 1 : index
   %tile = amdaie.tile(%c1, %c2)
@@ -72,88 +72,38 @@ func.func @matmul_example(%A: memref<4x8xbf16>, %B: memref<8x4xbf16>, %C: memref
 
 // -----
 
-// Test demonstrating different kind of elementwise operations being mapped to a
+
+// Test demonstrating different kind of matmul operations being mapped to a
 // unique corresponding outlined function.
 
-// CHECK-LABEL: func.func private @generic_elementwise_1_outlined
-// CHECK-SAME:  (%[[INPUT:.*]]: memref<4xf32>,
-// CHECK-SAME:   %[[OUTPUT:.*]]: memref<4xbf16>) {
-// CHECK:           linalg.generic
-// CHECK-SAME:          ins(%[[INPUT]] :
-// CHECK-SAME:          outs(%[[OUTPUT]] :
-// CHECK:           arith.truncf
-// CHECK:           arith.addf
-// CHECK:           return
-// CHECK:        }
-// CHECK:       func.func private @generic_elementwise_0_outlined
-// CHECK-SAME:  (%[[INPUT:.*]]: memref<4xf32>,
-// CHECK-SAME:   %[[OUTPUT:.*]]: memref<4xbf16>) {
-// CHECK:           linalg.generic
-// CHECK-SAME:          ins(%[[INPUT]] :
-// CHECK-SAME:          outs(%[[OUTPUT]] :
-// CHECK:           arith.truncf
-// CHECK:           return
-// CHECK:        }
-// CHECK-LABEL:  func.func @elemwise_example
-// CHECK-SAME:   (%[[A:.*]]: memref<4xf32>,
-// CHECK-SAME:    %[[C:.*]]: memref<4xbf16>,
-// CHECK-SAME:    %[[B:.*]]: memref<4xf32>) {
-// CHECK:            amdaie.core
-// CHECK:               func.call @generic_elementwise_0_outlined(%[[A]], %[[C]])
-// CHECK-NOT:           linalg.generic
-// CHECK:               amdaie.end
-// CHECK:            }
-// CHECK:            amdaie.core
-// CHECK:               func.call @generic_elementwise_0_outlined(%[[B]], %[[C]])
-// CHECK-NOT:           linalg.generic
-// CHECK:               amdaie.end
-// CHECK:            }
-// CHECK:            amdaie.core
-// CHECK:               func.call @generic_elementwise_1_outlined(%[[A]], %[[C]])
-// CHECK-NOT:           linalg.generic
-// CHECK:               amdaie.end
-// CHECK:            }
-// CHECK:            return
-// CHECK:        }
-func.func @elemwise_example(%A: memref<4xf32>, %C: memref<4xbf16>, %B: memref<4xf32>) {
+// CHECK-DAG:  func.func private @[[MATMUL_K6:.*]]({{.*}}memref<4x6xbf16>, {{.*}}memref<6x4xbf16>, {{.*}}memref<4x4xf32>)
+// CHECK-DAG:  func.func private @[[MATMUL_K4:.*]]({{.*}}memref<4x4xbf16>, {{.*}}memref<4x4xbf16>, {{.*}}memref<4x4xf32>)
+// CHECK-NOT:  func.func private
+// CHECK:      func.func @distinct_matmul_shapes(
+// CHECK-SAME:  %[[A0:.*]]: memref<4x4xbf16>, %[[B0:.*]]: memref<4x4xbf16>,
+// CHECK-SAME:  %[[A1:.*]]: memref<4x6xbf16>, %[[B1:.*]]: memref<6x4xbf16>,
+// CHECK-SAME:   %[[C:.*]]: memref<4x4xf32>) {
+// CHECK:      amdaie.core
+// CHECK-NEXT: func.call @[[MATMUL_K4]](%[[A0]], %[[B0]], %[[C]])
+// CHECK-NEXT: func.call @[[MATMUL_K4]](%[[A0]], %[[B0]], %[[C]])
+// CHECK-NEXT: func.call @[[MATMUL_K4]](%[[B0]], %[[A0]], %[[C]])
+// CHECK-NEXT: func.call @[[MATMUL_K6]](%[[A1]], %[[B1]], %[[C]])
+// CHECK-NEXT: amdaie.end
+// CHECK:      return
+func.func @distinct_matmul_shapes(%A0: memref<4x4xbf16>, %B0: memref<4x4xbf16>,
+                            %A1: memref<4x6xbf16>, %B1: memref<6x4xbf16>,
+                            %C: memref<4x4xf32>) {
   %c2 = arith.constant 2 : index
-  %c1 = arith.constant 1 : index
-  %tile = amdaie.tile(%c1, %c2)
+  %tile = amdaie.tile(%c2, %c2)
   %0 = amdaie.core(%tile, in : [], out : []) {
-    linalg.generic {
-      indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>],
-      iterator_types = ["parallel"]
-    } ins(%A : memref<4xf32>)
-      outs(%C : memref<4xbf16>) {
-    ^bb0(%in: f32, %out: bf16):
-      %1 = arith.truncf %in : f32 to bf16
-      linalg.yield %1 : bf16
-    }
-    amdaie.end
-  }
-  %2 = amdaie.core(%tile, in : [], out : []) {
-    linalg.generic {
-      indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>],
-      iterator_types = ["parallel"]
-    } ins(%B : memref<4xf32>)
-      outs(%C : memref<4xbf16>) {
-    ^bb0(%in: f32, %out: bf16):
-      %3 = arith.truncf %in : f32 to bf16
-      linalg.yield %3 : bf16
-    }
-    amdaie.end
-  }
-  %4 = amdaie.core(%tile, in : [], out : []) {
-    linalg.generic {
-      indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>],
-      iterator_types = ["parallel"]
-    } ins(%A : memref<4xf32>)
-      outs(%C : memref<4xbf16>) {
-    ^bb0(%in: f32, %out: bf16):
-      %5 = arith.truncf %in : f32 to bf16
-      %6 = arith.addf %5, %out : bf16
-      linalg.yield %6 : bf16
-    }
+    linalg.matmul ins(%A0, %B0 : memref<4x4xbf16>, memref<4x4xbf16>)
+                  outs(%C : memref<4x4xf32>)
+    linalg.matmul ins(%A0, %B0 : memref<4x4xbf16>, memref<4x4xbf16>)
+                  outs(%C : memref<4x4xf32>)
+    linalg.matmul ins(%B0, %A0 : memref<4x4xbf16>, memref<4x4xbf16>)
+                  outs(%C : memref<4x4xf32>)
+    linalg.matmul ins(%A1, %B1 : memref<4x6xbf16>, memref<6x4xbf16>)
+                  outs(%C : memref<4x4xf32>)
     amdaie.end
   }
   return
@@ -181,29 +131,84 @@ func.func @linalg_fill_copy(%A: memref<4xf32>, %B: memref<4xf32>) {
 
 // -----
 
-func.func @unsupported_linalg_op(%A: memref<4x8xbf16>, %B: memref<8x4xbf16>, %C: memref<4x4xf32>) {
+// Test demonstrating the outlining of a linalg.generic operation other than
+// a matmul or elementwise operation. Specifically, one which has not been
+// 'blacklisted' like linalg.copy has (see test linalg_fill_copy above).
+// CHECK:       func.func private @generic_0_outlined
+// CHECK-SAME:    memref<4xbf16>,
+// CHECK-SAME:    memref<bf16>
+// CHECK:       linalg.generic
+// CHECK-SAME:    iterator_types = ["reduction"]
+// CHECK:       return
+// CHECK:       func.func @reduction
+// CHECK-SAME:    memref<4xbf16>
+// CHECK-SAME:    memref<bf16>
+// CHECK:       func.call @generic_0_outlined
+// CHECK-SAME:    (memref<4xbf16>, memref<bf16>) -> ()
+// CHECK:       return
+func.func @reduction(%A: memref<4xbf16>, %B: memref<bf16>) {
   %c2 = arith.constant 2 : index
-  %c1 = arith.constant 1 : index
-  %tile = amdaie.tile(%c1, %c2)
+  %tile = amdaie.tile(%c2, %c2)
   %1 = amdaie.core(%tile, in : [], out : []) {
-    // expected-error@+1 {{unsupported linalg op for outlining}}
     linalg.generic {
-      indexing_maps = [affine_map<(d0, d1, d2) -> (d0, d2)>,
-                       affine_map<(d0, d1, d2) -> (d2, d1)>,
-                       affine_map<(d0, d1, d2) -> (d0, d1)>
-                      ],
-      iterator_types = ["parallel", "parallel", "reduction"]
-    } ins(%A, %B : memref<4x8xbf16>, memref<8x4xbf16>)
-      outs(%C : memref<4x4xf32>) {
-    ^bb0(%in: bf16, %in_17: bf16, %out: f32):
-      %1 = arith.extf %in : bf16 to f32
-      %2 = arith.extf %in_17 : bf16 to f32
-      %3 = arith.mulf %1, %2 : f32
-      %4 = arith.addf %out, %3 : f32
-      %5 = arith.addf %4, %4 : f32
-      linalg.yield %5  : f32
+      indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> ()>],
+      iterator_types = ["reduction"]
+    } ins(%A: memref<4xbf16>) outs(%B : memref<bf16>) {
+    ^bb0(%in: bf16, %out: bf16):
+      linalg.yield %in : bf16
     }
     amdaie.end
   }
   return
 }
+
+
+// -----
+
+// Test illustrating that when a linalg.generic operation has an operand that
+// has an offset on the layout, it is not outlined.
+
+// CHECK-COUNT-1: func.func
+// CHECK-NOT:     func.func
+func.func @unoutlineable_layout_with_offset(%A: memref<4x8xbf16, strided<[8,1], offset:?>>, %B: memref<bf16>) {
+  %c2 = arith.constant 2 : index
+  %tile = amdaie.tile(%c2, %c2)
+  %1 = amdaie.core(%tile, in : [], out : []) {
+    linalg.generic {
+      indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>,
+                       affine_map<(d0, d1) -> ()>],
+      iterator_types = ["reduction", "reduction"]
+    } ins(%A: memref<4x8xbf16, strided<[8,1], offset:?>>) outs(%B : memref<bf16>) {
+    ^bb0(%in: bf16, %out: bf16):
+      linalg.yield %in : bf16
+    }
+    amdaie.end
+  }
+  return
+}
+
+
+// -----
+
+// Test illustrating that when a linalg.generic operation has an operand that
+// is not contiguous, it is not outlined.
+
+// CHECK-COUNT-1: func.func
+// CHECK-NOT:     func.func
+func.func @unoutlineable_strided_layout(%A: memref<4x8xbf16, strided<[9,1]>>, %B: memref<bf16>) {
+  %c2 = arith.constant 2 : index
+  %tile = amdaie.tile(%c2, %c2)
+  %1 = amdaie.core(%tile, in : [], out : []) {
+    linalg.generic {
+      indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>,
+                       affine_map<(d0, d1) -> ()>],
+      iterator_types = ["reduction", "reduction"]
+    } ins(%A: memref<4x8xbf16, strided<[9,1]>>) outs(%B : memref<bf16>) {
+    ^bb0(%in: bf16, %out: bf16):
+      linalg.yield %in : bf16
+    }
+    amdaie.end
+  }
+  return
+}
+

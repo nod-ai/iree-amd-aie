@@ -1,6 +1,4 @@
-// RUN: iree-opt --split-input-file --pass-pipeline='builtin.module(iree-amdaie-lowering-strategy{use-pass-pipeline=conv-decompose})' %s | FileCheck %s
-
-
+// RUN: iree-opt --split-input-file --pass-pipeline='builtin.module(iree-amdaie-lowering-strategy{use-tile-pipeline=conv-decompose})' %s | FileCheck %s
 
 // CHECK{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[1, 4, 4, 4, 0, 0, 0], [1, 1, 4, 4, 0, 0, 0], [0, 0, 0, 0, 1, 1, 1, 0, 0]]>
 // CHECK{LITERAL}: #packingConfig = #amdaie.packing_config<packing_config = [{packedSizes = [0, 0, 0, 4, 0, 0, 8], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[], [1, 0], []], outerPerm = [[0, 1, 3, 2], [], [0, 1, 2, 3]]}]>

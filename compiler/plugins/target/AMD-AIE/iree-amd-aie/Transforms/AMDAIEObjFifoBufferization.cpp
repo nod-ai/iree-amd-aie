@@ -5,8 +5,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "iree-amd-aie/IR/AMDAIEOps.h"
-#include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
+#include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 #include "iree-amd-aie/aie_runtime/Utils/LockIdGenerator.h"
 
 #define DEBUG_TYPE "iree-amdaie-obj-fifo-bufferization"

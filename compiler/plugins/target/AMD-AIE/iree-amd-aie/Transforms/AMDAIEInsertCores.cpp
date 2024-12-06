@@ -16,8 +16,8 @@
 
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/IR/AMDAIEOps.h"
-#include "iree-amd-aie/Transforms/AMDAIEOpUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
+#include "iree-amd-aie/Transforms/Utils/AMDAIEOpUtils.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"

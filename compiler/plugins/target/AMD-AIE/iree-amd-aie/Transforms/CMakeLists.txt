@@ -38,10 +38,7 @@ iree_cc_library(
     "KernelDispatch.h"
     "Passes.h"
     "AMDAIECreateAIEWorkgroup.h"
-    "AMDAIEDmaUtils.h"
     "AMDAIELowerToAIE.h"
-    "AMDAIEOpUtils.h"
-    "AMDAIEUtils.h"
     "Transforms.h"
   SRCS
     "AMDAIEAccessToAcquireRelease.cpp"
@@ -72,7 +69,6 @@ iree_cc_library(
     "AMDAIEDmaComposition.cpp"
     "AMDAIEDmaLoopSubsumption.cpp"
     "AMDAIEDmaToCircularDma.cpp"
-    "AMDAIEDmaUtils.cpp"
     "AMDAIEFlattenLogicalObjectFifo.cpp"
     "AMDAIELinalgFunctionOutlining.cpp"
     "AMDAIEFuseConsumerIntoLoop.cpp"
@@ -87,7 +83,6 @@ iree_cc_library(
     "AMDAIELinkExecutables.cpp"
     "AMDAIELocalizeLogicalObjectFifo.cpp"
     "AMDAIELoadAlignmentReset.cpp"
-    "AMDAIELogicalObjFifoSplittingUtils.cpp"
     "AMDAIELowerExecutableTarget.cpp"
     "AMDAIELowerFuncArgs.cpp"
     "AMDAIELowerToAIE.cpp"
@@ -109,7 +104,6 @@ iree_cc_library(
     "AMDAIETemporaryAllocBufferization.cpp"
     "AMDAIETile.cpp"
     "AMDAIETileAndFuse.cpp"
-    "AMDAIEUtils.cpp"
     "AMDAIEVectorization.cpp"
     "BridgeToAIRPass.cpp"
     "DecomposeLinalgExtPackUnPackToAIR.cpp"
@@ -136,6 +130,7 @@ iree_cc_library(
     iree::target::amd-aie::aievec::AIEVecConvertToLLVM
     iree::target::amd-aie::air::AIRConversionPasses
     iree::target::amd-aie::air::AIRTransformPasses
+    iree::target::amd-aie::Transforms::Utils
     IREELinalgTransformDialectPasses
     MLIRFuncAllExtensions
     MLIRFuncDialect

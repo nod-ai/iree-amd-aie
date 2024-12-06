@@ -4,11 +4,11 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree-amd-aie/IR/AMDAIEOps.h"
-#include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
+#include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
 #include "mlir/Dialect/Linalg/Transforms/Hoisting.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
@@ -20,63 +20,69 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
-/// Utility to check if the linalg op is a known op we know we want to be able
-/// to outline.
-static bool mustOutline(linalg::LinalgOp linalgOp) {
-  return isMatmul(linalgOp) || isElementwise(linalgOp);
-}
-
-/// Utility to check if the linalg op is a known op we know should not be
-/// outlined.
-static bool mustNotOutline(linalg::LinalgOp linalgOp) {
-  return isa<linalg::CopyOp, linalg::FillOp>(linalgOp);
-}
-
 /// Utility to outline the linalg compute op.
-static FailureOr<func::FuncOp> outlinedToAFunction(
-    IRRewriter &rewriter, ModuleOp moduleOp, linalg::LinalgOp computeOp,
-    std::string outlineFuncName) {
-  if (auto outlinedFuncOp = dyn_cast_if_present<func::FuncOp>(
-          moduleOp.lookupSymbol(outlineFuncName))) {
-    return outlinedFuncOp;
-  }
-
+static FailureOr<func::FuncOp> outline(IRRewriter &rewriter, ModuleOp moduleOp,
+                                       linalg::LinalgOp computeOp,
+                                       const std::string &funcName) {
   // Form outlined FunctionType.
-  SmallVector<Type> inputTypes = llvm::map_to_vector(
-      computeOp.getDpsInputs(), [](Value v) { return v.getType(); });
-  for (Value val : computeOp.getDpsInits()) inputTypes.push_back(val.getType());
-  auto outlinedFuncType =
-      FunctionType::get(rewriter.getContext(), inputTypes, /*outputTypes=*/{});
+  for (const auto &operand : computeOp->getOperands()) {
+    // Function signatures where the memrefs have layouts (strides / offsets)
+    // do not lower from the func dialect to the llvm dialect. So for now,
+    // we just do not try to outline ops with operands with non-identity
+    // layouts, because the resulting functions won't lower to LLVM.
+    // identity layouts:
+    // clang-format off
+    // https://github.com/llvm/llvm-project/blob/6b0785390d02193d81d8db7fb12279ffa4651afe/mlir/include/mlir/IR/BuiltinAttributeInterfaces.td#L475
+    // clang-format on
+    auto type = dyn_cast<MemRefType>(operand.getType());
+    assert(type && "we've already checked that all operands are memrefs");
+    MemRefLayoutAttrInterface layout = type.getLayout();
+    assert(layout &&
+           "MemRefType layout attribute interface should always be present");
+    if (!layout.isIdentity()) return failure();
+  }
+  auto funcType = FunctionType::get(
+      rewriter.getContext(), computeOp->getOperandTypes(), /*outputTypes=*/{});
 
-  // Form outlined FuncSignature
+  // Form outlined FuncSignature.
   rewriter.setInsertionPointToStart(moduleOp.getBody());
-  auto outlinedFunc = rewriter.create<func::FuncOp>(
-      moduleOp.getLoc(), outlineFuncName, outlinedFuncType);
-  outlinedFunc.setPrivate();
+  auto func =
+      rewriter.create<func::FuncOp>(moduleOp.getLoc(), funcName, funcType);
+  func.setPrivate();
 
   // Create an entry func block and map the original operands of the compute
   // op to the block arguments.
-  Block *outlinedFuncBody = outlinedFunc.addEntryBlock();
-  rewriter.setInsertionPointToStart(outlinedFuncBody);
-  SmallVector<BlockArgument> outlinedFuncArgs = llvm::map_to_vector(
-      outlinedFunc.getArguments(), [&](BlockArgument bbArg) { return bbArg; });
+  Block *funcBody = func.addEntryBlock();
+  rewriter.setInsertionPointToStart(funcBody);
+  SmallVector<BlockArgument> funcArgs = llvm::map_to_vector(
+      func.getArguments(), [&](BlockArgument bbArg) { return bbArg; });
   unsigned bbArgIndex = 0;
   IRMapping operandMap;
-  for (Value origOperand : computeOp.getDpsInputs())
-    operandMap.map(origOperand, outlinedFuncArgs[bbArgIndex++]);
-  for (Value origOperand : computeOp.getDpsInits())
-    operandMap.map(origOperand, outlinedFuncArgs[bbArgIndex++]);
+  for (Value origOperand : computeOp->getOperands())
+    operandMap.map(origOperand, funcArgs[bbArgIndex++]);
 
   // Clone the compute op while mapping the operand to the function block
   // arguments.
   Operation *clonedComputeOp = rewriter.clone(*computeOp, operandMap);
 
   // Create terminator op returning the cloned compute op's results.
-  rewriter.setInsertionPointToEnd(outlinedFuncBody);
+  rewriter.setInsertionPointToEnd(funcBody);
   rewriter.create<func::ReturnOp>(clonedComputeOp->getLoc(), ValueRange({}));
 
-  return outlinedFunc;
+  return func;
 }
+
+/// Utility to check if the linalg op is one we know should be outlined.
+static bool mustOutline(linalg::LinalgOp linalgOp) {
+  if (isa<linalg::CopyOp, linalg::FillOp>(linalgOp)) return false;
+  if (isElementwise(linalgOp)) return false;
+  // TODO(newling) not all remaining ops should be outlined, not even all
+  // remaining matmuls: below some threshold on size (m*n*k) it's not worth
+  // outlining (function call overhead). We should extend the set of ops that
+  // are not outlined here.
+
+  return true;
+};
 
 class AMDAIELinalgFunctionOutliningPass
     : public impl::AMDAIELinalgFunctionOutliningBase<
@@ -84,10 +90,61 @@ class AMDAIELinalgFunctionOutliningPass
  public:
   AMDAIELinalgFunctionOutliningPass() = default;
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<AMDAIEDialect, linalg::LinalgDialect>();
+    registry.insert<linalg::LinalgDialect>();
   }
 
   void runOnOperation() override;
+
+ private:
+  // Used for unique-ifing ID for generating new function names.
+  unsigned outlineCounter = 0;
+
+  DenseMap<Operation *, func::FuncOp> computeOpToOutlinedFuncMap;
+
+  static std::string getSpecializedName(linalg::LinalgOp computeOp) {
+    // Will result in a function name like `generic_matmul_0_outlined`:
+    if (isMatmul(computeOp)) return "_matmul_";
+    // Will result in a function name like `generic_0_outlined`:
+    return "_";
+  }
+
+  std::string generateFuncName(linalg::LinalgOp computeOp) {
+    std::string name = computeOp->getName().stripDialect().str() +
+                       getSpecializedName(computeOp) +
+                       std::to_string(outlineCounter) + "_outlined";
+    ++outlineCounter;
+    return name;
+  }
+
+  FailureOr<func::FuncOp> retrieveOrCreate(IRRewriter &rewriter,
+                                           ModuleOp moduleOp,
+                                           linalg::LinalgOp computeOp) {
+    // Check if the compute op is equivalent to a previously outlined compute
+    // op. If it is, retrieve and return the function generated for the previous
+    // compute op.
+    for (auto &[op, func] : computeOpToOutlinedFuncMap) {
+      if (OperationEquivalence::isEquivalentTo(
+              computeOp.getOperation(), op,
+              OperationEquivalence::ignoreValueEquivalence, /*flags=*/nullptr,
+              OperationEquivalence::IgnoreLocations)) {
+        return func;
+      }
+    }
+
+    std::string funcName = generateFuncName(computeOp);
+    while (moduleOp.lookupSymbol(funcName)) {
+      funcName = generateFuncName(computeOp);
+    }
+
+    FailureOr<func::FuncOp> maybeFunc =
+        outline(rewriter, moduleOp, computeOp, funcName);
+
+    if (succeeded(maybeFunc)) {
+      computeOpToOutlinedFuncMap[computeOp] = maybeFunc.value();
+    }
+
+    return maybeFunc;
+  }
 };
 
 void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
@@ -95,53 +152,27 @@ void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
   MLIRContext *context = &getContext();
   IRRewriter rewriter(context);
 
-  unsigned uniqueOutlinedMatmul = 0;
-  unsigned uniqueOutlinedElementwise = 0;
-  DenseMap<Operation *, std::string> computeOpToOutlinedFuncMap;
   SmallVector<Operation *> toBeErased;
   moduleOp.walk([&](linalg::LinalgOp computeOp) {
-    if (mustNotOutline(computeOp)) {
-      return WalkResult::skip();
-    } else if (!mustOutline(computeOp)) {
-      computeOp->emitOpError() << "unsupported linalg op for outlining";
+    if (!mustOutline(computeOp)) return WalkResult::skip();
+
+    // Assert that we're in reference semantics, ie that all operands of
+    // computeOp have MemRefType:
+    if (!llvm::all_of(computeOp->getOperandTypes(),
+                      [](Type t) { return isa<MemRefType>(t); })) {
+      computeOp->emitError("expected all operands to be of MemRefType");
       return WalkResult::interrupt();
     }
-    // Form outlined function name for matmul/elementwise compute ops.
-    std::string outlineFuncName = "";
-    // Check if the compute op is equivalent to a previously outlined compute
-    // op. If yes, we replace the `outlineFuncName` of the current compute op to
-    // be same as the previous equivalent outlined compute op in order to lookup
-    // the Symbol table.
-    for (auto &[op, funcName] : computeOpToOutlinedFuncMap) {
-      if (OperationEquivalence::isEquivalentTo(
-              computeOp.getOperation(), op,
-              OperationEquivalence::ignoreValueEquivalence, /*flags=*/nullptr,
-              OperationEquivalence::IgnoreLocations)) {
-        outlineFuncName = funcName;
-        break;
-      }
-    }
-    if (outlineFuncName == "") {
-      std::string computeName = "";
-      if (isMatmul(computeOp)) {
-        computeName = "_matmul_" + std::to_string(uniqueOutlinedMatmul++);
-      } else if (isElementwise(computeOp)) {
-        computeName =
-            "_elementwise_" + std::to_string(uniqueOutlinedElementwise++);
-      } else {
-        return WalkResult::skip();
-      }
-      outlineFuncName =
-          computeOp->getName().stripDialect().str() + computeName + "_outlined";
-      computeOpToOutlinedFuncMap[computeOp] = outlineFuncName;
-    }
 
-    FailureOr<func::FuncOp> outlinedFuncOp =
-        outlinedToAFunction(rewriter, moduleOp, computeOp, outlineFuncName);
-    if (failed(outlinedFuncOp)) return WalkResult::interrupt();
+    FailureOr<func::FuncOp> maybeFunc =
+        retrieveOrCreate(rewriter, moduleOp, computeOp);
+    if (failed(maybeFunc)) return WalkResult::interrupt();
+    func::FuncOp func = maybeFunc.value();
+
     rewriter.setInsertionPoint(computeOp);
-    rewriter.create<func::CallOp>(computeOp.getLoc(), *outlinedFuncOp,
+    rewriter.create<func::CallOp>(computeOp.getLoc(), func,
                                   computeOp->getOperands());
+
     // We cannot immediately erase the compute op because it'd be used for
     // equivalence check.
     toBeErased.push_back(computeOp);

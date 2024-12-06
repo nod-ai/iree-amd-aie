@@ -107,15 +107,15 @@ void AMDAIELowerExecutableTargetPass::runOnOperation() {
       return;
     case IREE::Codegen::DispatchLoweringPassPipeline::Custom: {
       TilingConfig tilingConfig = getTilingConfigForPipeline(funcOp);
-      if (usePassPipeline == TilePassPipeline::PackPeelPipeline) {
+      if (useTilePipeline == TilePassPipeline::PackPeelPipeline) {
         addPackPeelBasedPassPipeline(executableLoweringPipeline, tilingConfig,
                                      pathToUkernels, enableVectorizationPasses,
                                      TilePassPipeline::PackPeelPipeline);
-      } else if (usePassPipeline == TilePassPipeline::PadPackPipeline) {
+      } else if (useTilePipeline == TilePassPipeline::PadPackPipeline) {
         addPadPackBasedPassPipeline(executableLoweringPipeline, tilingConfig,
                                     pathToUkernels, enableVectorizationPasses,
                                     TilePassPipeline::PadPackPipeline);
-      } else if (usePassPipeline == TilePassPipeline::ConvDecomposePipeline) {
+      } else if (useTilePipeline == TilePassPipeline::ConvDecomposePipeline) {
         addConvDecomposePassPipeline(executableLoweringPipeline, tilingConfig,
                                      enableVectorizationPasses,
                                      TilePassPipeline::ConvDecomposePipeline);

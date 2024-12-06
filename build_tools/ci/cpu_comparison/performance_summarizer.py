@@ -28,4 +28,6 @@ if __name__ == "__main__":
             print(line.strip())
         if "real_time_stddev" in line:
             print(line.strip())
+        if "The largest program memory size" in line:
+            print(line.strip())
     print("============================")

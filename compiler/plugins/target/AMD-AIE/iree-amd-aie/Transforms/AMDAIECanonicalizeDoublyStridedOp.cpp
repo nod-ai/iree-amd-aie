@@ -5,10 +5,10 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
-#include "iree-amd-aie/Transforms/AMDAIEDmaUtils.h"
-#include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-amd-aie/Transforms/Transforms.h"
+#include "iree-amd-aie/Transforms/Utils/AMDAIEDmaUtils.h"
+#include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -115,7 +115,7 @@ struct FoldDmaOpSingleDims
   }
 };
 
-/// Fold unit dimensions within a strided access pattern.
+/// Fold unit dimensions (size == 1) within a strided access pattern.
 struct FoldDmaOpUnitDims
     : public OpInterfaceRewritePattern<AMDAIE::DoublyStridedOpInterface> {
   using OpInterfaceRewritePattern::OpInterfaceRewritePattern;
@@ -132,10 +132,10 @@ struct FoldDmaOpUnitDims
     SmallVector<OpFoldResult> newSourceOffsets, newSourceSizes,
         newSourceStrides, newTargetOffsets, newTargetSizes, newTargetStrides;
     LogicalResult sourceRes =
-        foldUnitDims(sourceOffsets, sourceSizes, sourceStrides,
+        foldUnitDims(op.getContext(), sourceOffsets, sourceSizes, sourceStrides,
                      newSourceOffsets, newSourceSizes, newSourceStrides);
     LogicalResult targetRes =
-        foldUnitDims(targetOffsets, targetSizes, targetStrides,
+        foldUnitDims(op.getContext(), targetOffsets, targetSizes, targetStrides,
                      newTargetOffsets, newTargetSizes, newTargetStrides);
     if (failed(sourceRes) && failed(targetRes)) {
       return failure();

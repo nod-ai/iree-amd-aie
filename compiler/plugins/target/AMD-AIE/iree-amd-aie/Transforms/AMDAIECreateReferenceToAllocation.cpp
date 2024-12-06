@@ -6,8 +6,8 @@
 
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/IR/AMDAIEOps.h"
-#include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
+#include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 #include "mlir/IR/Iterators.h"
 #include "mlir/Pass/Pass.h"
 

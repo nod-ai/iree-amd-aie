@@ -6,8 +6,8 @@
 
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
 #include "iree-amd-aie/IR/AMDAIEOps.h"
-#include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
+#include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 
 #define DEBUG_TYPE "iree-amdaie-access-to-acquire-release"
 
