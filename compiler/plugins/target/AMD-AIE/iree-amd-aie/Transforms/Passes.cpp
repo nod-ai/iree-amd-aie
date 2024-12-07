@@ -68,7 +68,7 @@ static LogicalResult aieComprehensiveBufferizeCopyFn(OpBuilder &builder,
   // post-bufferization copies do not trigger properly.
   // So we keep using `createLinalgCopyOp` which builds a GenericOp.
   // builder.create<linalg::CopyOp>(loc, from, to);
-  // mlir::iree_compiler::createLinalgCopyOp(builder, loc, from, to);
+  mlir::iree_compiler::createLinalgCopyOp(builder, loc, from, to);
   return success();
 }
 
@@ -182,14 +182,14 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   funcPassManager.addPass(createCanonicalizerPass());
   funcPassManager.addPass(createCSEPass());
 
-  // Promote the matmul output to local memory
-  {
-    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
-    bufferizeOptions.memorySpace = 2;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::Output;
-    funcPassManager.addPass(
-        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
-  }
+//  // Promote the matmul output to local memory
+//  {
+//    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
+//    bufferizeOptions.memorySpace = 2;
+//    bufferizeOptions.bufferizeOperand = BufferizeOperand::Output;
+//    funcPassManager.addPass(
+//        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
+//  }
 
   {
     AMDAIETileAndFuseOptions tileFuseOptions;

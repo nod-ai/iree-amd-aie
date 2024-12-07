@@ -56,17 +56,17 @@ MemRefType getDistributedType(memref::AllocOp alloc,
       // Check that all offsets are either constants or thread ids. We assume
       // that if a subview has an offset which is not a constant and not a
       // thread id, it's not 'distributing'.
-      Operation::operand_range offsets = subview.getOffsets();
-      int nIndVars{0};
-      for (Value offset : offsets) {
-        bool isConst = matchPattern(offset, m_Constant());
-        bool isIndVar = llvm::is_contained(indVars, offset);
-        nIndVars += isIndVar;
-        if (!isConst && !isIndVar) return {};
-      }
-
-      // If there are no thread ids, this subview is not distributing.
-      if (nIndVars == 0) return {};
+//      Operation::operand_range offsets = subview.getOffsets();
+//      int nIndVars{0};
+//      for (Value offset : offsets) {
+//        bool isConst = matchPattern(offset, m_Constant());
+//        bool isIndVar = llvm::is_contained(indVars, offset);
+//        nIndVars += isIndVar;
+//        if (!isConst && !isIndVar) return {};
+//      }
+//
+//      // If there are no thread ids, this subview is not distributing.
+//      if (nIndVars == 0) return {};
 
       auto nextType = cast<MemRefType>(subview.getResult().getType());
       if (!type) {
