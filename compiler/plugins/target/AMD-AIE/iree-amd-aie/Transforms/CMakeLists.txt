@@ -77,6 +77,7 @@ iree_cc_library(
     "AMDAIEHoistForAffineApply.cpp"
     "AMDAIEHoistLogicalObjFifo.cpp"
     "AMDAIEInsertCores.cpp"
+    "AMDAIEInsertDmaBdChain.cpp"
     "AMDAIEInsertInfiniteLoopAroundCoreBlock.cpp"
     "AMDAIEInsertLoopsForVectorization.cpp"
     "AMDAIELinkExecutables.cpp"

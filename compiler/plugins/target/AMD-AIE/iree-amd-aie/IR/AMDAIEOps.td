@@ -591,6 +591,19 @@ def AMDAIE_NpuHalfDmaCpyNdOp
     ShapedType::kDynamic encodes that the corresponding entry has a dynamic
     value.
 
+    It also supports the representation of DMA BD chaining using the `use_next_bd`, 
+    `next_bd`, and `start_bd` operands. The `use_next_bd` operand indicates 
+    whether another DMA operation is chained to follow this one. 
+    If `use_next_bd` is `true`, the `next_bd` operand specifies the BD ID of 
+    the next DMA operation in the chain. 
+    
+    The `start_bd` operand specifies the BD ID of the first DMA operation in a sequence.
+    - If `start_bd` is the same as `bd_id`, it marks the start of a chain.
+    - If `start_bd` differs from `bd_id` and `use_next_bd` is `true`, it represents 
+      an intermediate operation in the chain.
+    - If `start_bd` differs from `bd_id` and `use_next_bd` is `false`, it represents 
+      the end of the chain.
+      
     Example:
 
     ```mlir
@@ -604,7 +617,7 @@ def AMDAIE_NpuHalfDmaCpyNdOp
       %5 = amdaie.logicalobjectfifo.from_memref %0, {%tile_0_0} 
         : memref<32x1024xi32> -> !amdaie.logicalobjectfifo<memref<32768xi32>>
       %4 = amdaie.npu.half_dma_cpy_nd async %2(%0[0, 0] [32, 64] [1024, 1]
-        bd_id = %bd_id channel = %channel)
+        bd_id = %bd_id channel = %channel use_next_bd = false start_bd = %bd_id)
       ...
     }
     ```
@@ -620,7 +633,10 @@ def AMDAIE_NpuHalfDmaCpyNdOp
         DenseI64ArrayAttr:$static_sizes,
         DenseI64ArrayAttr:$static_strides,
         Optional<Index>:$bd_id,
-        Optional<Index>:$channel
+        Optional<Index>:$channel,
+        OptionalAttr<BoolAttr>:$use_next_bd,
+        Optional<Index>:$next_bd,
+        Optional<Index>:$start_bd
   );
 
   let results = (outs Optional<AMDAIE_AsyncTokenType>:$async_token);
@@ -635,6 +651,9 @@ def AMDAIE_NpuHalfDmaCpyNdOp
     custom<DynamicIndexList>($strides, $static_strides)
     (`bd_id` `=` $bd_id^)?
     (`channel` `=` $channel^)?
+    (`use_next_bd` `=` $use_next_bd^)?
+    (`next_bd` `=` $next_bd^)?
+    (`start_bd` `=` $start_bd^)?
     `)`
     attr-dict 
     `:` type($input)
@@ -645,16 +664,19 @@ def AMDAIE_NpuHalfDmaCpyNdOp
     OpBuilder<(ins "::mlir::TypeRange":$result_types, "Value":$connection,
       "::mlir::Value":$input, "ArrayRef<OpFoldResult>":$offsets,
       "ArrayRef<OpFoldResult>":$sizes, "ArrayRef<OpFoldResult>":$strides,
-      "::mlir::Value":$bd_id, "::mlir::Value":$channel)>,
+      "::mlir::Value":$bd_id, "::mlir::Value":$channel,
+      "::mlir::BoolAttr":$use_next_bd, "::mlir::Value":$next_bd, "::mlir::Value":$start_bd)>,
     // Build a NpuHalfDmaCpyNdOp with static entries.
     OpBuilder<(ins "::mlir::TypeRange":$result_types, "Value":$connection,
       "::mlir::Value":$target, "ArrayRef<int64_t>":$offsets,
       "ArrayRef<int64_t>":$sizes, "ArrayRef<int64_t>":$strides,
-      "::mlir::Value":$bd_id, "::mlir::Value":$channel)>,
+      "::mlir::Value":$bd_id, "::mlir::Value":$channel,
+      "::mlir::BoolAttr":$use_next_bd, "::mlir::Value":$next_bd, "::mlir::Value":$start_bd)>,
     // Build a NpuHalfDmaCpyNdOp with dynamic entries.
     OpBuilder<(ins "::mlir::TypeRange":$result_types, "Value":$connection,
       "::mlir::Value":$input, "ValueRange":$offsets, "ValueRange":$sizes,
-      "ValueRange":$strides, "::mlir::Value":$bd_id, "::mlir::Value":$channel)>
+      "ValueRange":$strides, "::mlir::Value":$bd_id, "::mlir::Value":$channel,
+      "::mlir::BoolAttr":$use_next_bd, "::mlir::Value":$next_bd, "::mlir::Value":$start_bd)>,
   ];
 
   let extraClassDeclaration = [{
@@ -670,7 +692,18 @@ def AMDAIE_NpuHalfDmaCpyNdOp
     }
 
     std::optional<BdIdOp> getBdIdOp() {
+      if (!getBdId()) return std::nullopt;
       return dyn_cast_if_present<BdIdOp>(getBdId().getDefiningOp());
+    }
+
+    std::optional<BdIdOp> getNextBdIdOp() {
+      if (!getNextBd()) return std::nullopt;
+      return dyn_cast_if_present<BdIdOp>(getNextBd().getDefiningOp());
+    }
+
+    std::optional<BdIdOp> getStartBdIdOp() {
+      if (!getStartBd()) return std::nullopt;
+      return dyn_cast_if_present<BdIdOp>(getStartBd().getDefiningOp());
     }
 
     // Return the input `amdaie.connection` operation.
