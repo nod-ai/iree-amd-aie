@@ -43,14 +43,11 @@ struct CombineStridedOps
     Block *block = op->getBlock();
     if (!block) return failure();
 
-    size_t sourceMaxNbDims{0};
-    size_t targetMaxNbDims{0};
     SmallVector<Operation *> userOpsToBeErased;
     AMDAIE::DoublyStridedOpInterface nextStridedOp;
-
     if (auto npuDmaOp = dyn_cast<AMDAIE::NpuDmaCpyNdOp>(op.getOperation())) {
+      LLVM_DEBUG(llvm::dbgs() << "npuDmaOp: " << npuDmaOp << "\n");
       // Fail if any non-wait user operations.
-      SmallVector<AMDAIE::NpuDmaWaitOp> waitUserOps;
       for (Operation *userOp : npuDmaOp->getUsers()) {
         if (isa<AMDAIE::NpuDmaWaitOp>(userOp)) {
           userOpsToBeErased.push_back(userOp);
@@ -58,37 +55,38 @@ struct CombineStridedOps
           return failure();
         }
       }
-
-      // Find next NPU DMA op.
-      Block::iterator begin = std::next(npuDmaOp->getIterator());
-      block->walk(begin, block->end(), [&](AMDAIE::NpuDmaCpyNdOp other) {
-        if (npuDmaOp.getConnection() != other.getConnection())
-          return WalkResult::advance();
-        Block *otherBlock = other->getBlock();
-        if (!otherBlock) return WalkResult::advance();
-        if (otherBlock != block) return WalkResult::interrupt();
-        nextStridedOp =
-            cast<AMDAIE::DoublyStridedOpInterface>(other.getOperation());
-        return WalkResult::interrupt();
-      });
-
-      std::optional<uint8_t> sourceMemspaceInt =
-          npuDmaOp.getSourceMemorySpaceAsUInt();
-      std::optional<uint8_t> targetMemspaceInt =
-          npuDmaOp.getTargetMemorySpaceAsUInt();
-      if (!sourceMemspaceInt || !targetMemspaceInt) {
-        return rewriter.notifyMatchFailure(
-            npuDmaOp, "expected a source and target memory space");
-      }
-      AMDAIE::DmaDimConfig dmaDimConfig(deviceModel, sourceMemspaceInt.value(),
-                                        targetMemspaceInt.value());
-      sourceMaxNbDims = dmaDimConfig.sourceMaxNbDims;
-      targetMaxNbDims = dmaDimConfig.targetMaxNbDims;
+      FailureOr<AMDAIE::NpuDmaCpyNdOp> maybeNextNpuDmaOp =
+          findNextDmaOpWithSameConnection(npuDmaOp, block);
+      if (failed(maybeNextNpuDmaOp)) return failure();
+      nextStridedOp = cast<AMDAIE::DoublyStridedOpInterface>(
+          maybeNextNpuDmaOp->getOperation());
+    } else if (auto npuCircularDmaOp =
+                   dyn_cast<AMDAIE::NpuCircularDmaCpyNdOp>(op.getOperation())) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "npuCircularDmaOp: " << npuCircularDmaOp << "\n");
+      FailureOr<AMDAIE::NpuCircularDmaCpyNdOp> maybeNextNpuCircDmaOp =
+          findNextDmaOpWithSameConnection(npuCircularDmaOp, block);
+      if (failed(maybeNextNpuCircDmaOp)) return failure();
+      nextStridedOp = cast<AMDAIE::DoublyStridedOpInterface>(
+          maybeNextNpuCircDmaOp->getOperation());
     } else {
       return failure();
     }
 
     if (!nextStridedOp) return failure();
+
+    std::optional<uint8_t> sourceMemspaceInt =
+        nextStridedOp.getSourceMemorySpaceAsUInt();
+    std::optional<uint8_t> targetMemspaceInt =
+        nextStridedOp.getTargetMemorySpaceAsUInt();
+    if (!sourceMemspaceInt || !targetMemspaceInt) {
+      return rewriter.notifyMatchFailure(
+          nextStridedOp, "expected a source and target memory space");
+    }
+    AMDAIE::DmaDimConfig dmaDimConfig(deviceModel, sourceMemspaceInt.value(),
+                                      targetMemspaceInt.value());
+    size_t sourceMaxNbDims = dmaDimConfig.sourceMaxNbDims;
+    size_t targetMaxNbDims = dmaDimConfig.targetMaxNbDims;
 
     SmallVector<OpFoldResult> sourceOffsetsA = op.getSourceMixedOffsets();
     SmallVector<OpFoldResult> sourceSizesA = op.getSourceMixedSizes();
@@ -147,6 +145,23 @@ struct CombineStridedOps
       rewriter.eraseOp(op);
       return success();
     }
+    return failure();
+  }
+
+  template <typename T>
+  static FailureOr<T> findNextDmaOpWithSameConnection(T dmaOp, Block *block) {
+    T nextDmaOp;
+    Block::iterator begin = std::next(dmaOp->getIterator());
+    block->walk(begin, block->end(), [&](T other) {
+      if (dmaOp.getConnection() != other.getConnection())
+        return WalkResult::advance();
+      Block *otherBlock = other->getBlock();
+      if (!otherBlock) return WalkResult::advance();
+      if (otherBlock != block) return WalkResult::interrupt();
+      nextDmaOp = other;
+      return WalkResult::interrupt();
+    });
+    if (nextDmaOp) return nextDmaOp;
     return failure();
   }
 };

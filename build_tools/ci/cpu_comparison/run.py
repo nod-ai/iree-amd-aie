@@ -207,7 +207,7 @@ class BaseMatmul(BaseTest):
     ):
         """
         Base class for all variants of dispatches with a matmul, currently
-        vanilla matmuls, and matmuls with fused elementwise operations.
+        matmuls, and matmuls with fused elementwise operations.
         """
         super().__init__(run_on_target, aie_compilation_flags, use_chess)
         self.labels.append("BaseMatmul")
@@ -327,7 +327,7 @@ class Matmul(BaseMatmul):
         )
         self.labels.append("Matmul")
 
-        self.name = f"vanilla_matmul_{M}_{N}_{K}_{input_type}_{acc_type}"
+        self.name = f"matmul_{M}_{N}_{K}_{input_type}_{acc_type}"
         if name_suffix:
             self.name += f"_{name_suffix}"
         if use_ukernel:
@@ -387,7 +387,7 @@ class MatmulBenchmark(BaseMatmul):
             n_kernel_runs=n_kernel_runs,
         )
 
-        self.name = f"vanilla_matmul_benchmark_{M}_{N}_{K}_{input_type}_{acc_type}"
+        self.name = f"matmul_benchmark_{M}_{N}_{K}_{input_type}_{acc_type}"
         if name_suffix:
             self.name += f"_{name_suffix}"
         if use_ukernel:
@@ -774,12 +774,6 @@ def generate_aie_vmfb(
     aie_vmfb = test_dir / f"{name}_aie.vmfb"
     if not aie_vmfb.exists():
         raise RuntimeError(f"Failed to compile {test_file} to {aie_vmfb}")
-
-    if config.verbose:
-        # Check if "enable-chess=1" is a substring of any of the compilation flags:
-        uses_chess = any("enable-chess=1" in flag for flag in aie_compilation_flags)
-        if not uses_chess:
-            print_program_memory_size(test_dir)
 
     return aie_vmfb
 
@@ -1186,6 +1180,13 @@ def aie_vs_baseline(
             print(summary_string)
             raise RuntimeError("Test failed, exiting.")
 
+    if config.verbose:
+        # Check if "enable-chess=1" is a substring of any of the compilation flags:
+        uses_chess = any("enable-chess=1" in flag for flag in aie_compilation_flags)
+        if not uses_chess:
+            test_dir = config.get_test_dir(name)
+            print_program_memory_size(test_dir)
+
 
 def benchmark_aie(
     config,
@@ -1265,6 +1266,12 @@ def benchmark_aie(
         n_repeats,
         n_kernel_runs,
     )
+
+    if config.verbose:
+        # Check if "enable-chess=1" is a substring of any of the compilation flags:
+        uses_chess = any("enable-chess=1" in flag for flag in aie_compilation_flags)
+        if not uses_chess:
+            print_program_memory_size(test_dir)
 
 
 def aie_vs_llvm_cpu(
@@ -1439,15 +1446,103 @@ class Tests:
             )
         )
 
+        performance_tests = [
+            {
+                "M": 512,
+                "N": 512,
+                "K": 4096,
+                "use_ukernel": False,
+                "peano_opt_level": 2,
+                "outline": False,
+            },
+            {
+                "M": 512,
+                "N": 512,
+                "K": 4096,
+                "use_ukernel": False,
+                "peano_opt_level": 2,
+                "outline": True,
+            },
+            {
+                "M": 512,
+                "N": 512,
+                "K": 4096,
+                "use_ukernel": False,
+                "peano_opt_level": 3,
+                "outline": False,
+            },
+            {
+                "M": 512,
+                "N": 512,
+                "K": 4096,
+                "use_ukernel": False,
+                "peano_opt_level": 3,
+                "outline": True,
+            },
+            {
+                "M": 512,
+                "N": 512,
+                "K": 4096,
+                "use_ukernel": True,
+                "peano_opt_level": 3,
+                "outline": True,
+            },
+            {
+                "M": 512,
+                "N": 4096,
+                "K": 512,
+                "use_ukernel": False,
+                "peano_opt_level": 3,
+                "outline": True,
+            },
+            {
+                "M": 512,
+                "N": 4096,
+                "K": 512,
+                "use_ukernel": True,
+                "peano_opt_level": 3,
+                "outline": True,
+            },
+            {
+                "M": 4096,
+                "N": 512,
+                "K": 512,
+                "use_ukernel": False,
+                "peano_opt_level": 3,
+                "outline": True,
+            },
+            {
+                "M": 4096,
+                "N": 512,
+                "K": 512,
+                "use_ukernel": True,
+                "peano_opt_level": 3,
+                "outline": True,
+            },
+        ]
+
         # Some bf16 Performance tests:
-        for M, N, K, use_ukernel in [
-            (512, 512, 4096, False),
-            (512, 512, 4096, True),
-            (512, 4096, 512, False),
-            (512, 4096, 512, True),
-            (4096, 512, 512, False),
-            (4096, 512, 512, True),
-        ]:
+        for test in performance_tests:
+            M = test["M"]
+            N = test["N"]
+            K = test["K"]
+            use_ukernel = test["use_ukernel"]
+            peano_opt_level = test["peano_opt_level"]
+            outline = test["outline"]
+
+            outlining_string = "--iree-amdaie-enable-function-outlining=" + str(
+                int(outline)
+            )
+            peano_opt_level_string = f'"-O{peano_opt_level}"'
+            aie_compilation_flags = [
+                outlining_string,
+                f"--iree-amd-aie-additional-peano-opt-flags={peano_opt_level_string}",
+            ]
+
+            name_suffix = "O" + str(peano_opt_level)
+            if outline:
+                name_suffix += "_outline"
+
             self.register(
                 Matmul(
                     M,
@@ -1457,8 +1552,12 @@ class Tests:
                     "f32",
                     use_ukernel=use_ukernel,
                     n_repeats=2,
+                    aie_compilation_flags=aie_compilation_flags,
+                    name_suffix=name_suffix,
+                    additional_labels=["PerformanceCorrectness"],
                 )
             )
+
             self.register(
                 MatmulBenchmark(
                     M,
@@ -1470,6 +1569,8 @@ class Tests:
                     use_ukernel=use_ukernel,
                     n_repeats=5,
                     n_kernel_runs=100,
+                    aie_compilation_flags=aie_compilation_flags,
+                    name_suffix=name_suffix,
                 )
             )
 
