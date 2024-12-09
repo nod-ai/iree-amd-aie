@@ -60,7 +60,18 @@ MemRefType getDistributedType(memref::AllocOp alloc,
       int nIndVars{0};
       for (Value offset : offsets) {
         bool isConst = matchPattern(offset, m_Constant());
-        bool isIndVar = llvm::is_contained(indVars, offset);
+        bool isIndVar = false;
+        if (!isConst &&
+            isa_and_present<affine::AffineApplyOp>(offset.getDefiningOp())) {
+          auto applyOp = cast<affine::AffineApplyOp>(offset.getDefiningOp());
+          for (auto operand : applyOp.getSymbolOperands()) {
+            isIndVar = llvm::is_contained(indVars, operand);
+            if (isIndVar) break;
+          }
+        } else {
+          isIndVar = llvm::is_contained(indVars, offset);
+        }
+
         nIndVars += isIndVar;
         if (!isConst && !isIndVar) return {};
       }

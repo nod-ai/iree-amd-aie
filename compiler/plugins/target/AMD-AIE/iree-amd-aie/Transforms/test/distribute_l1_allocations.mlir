@@ -32,6 +32,30 @@ func.func @distribute_l1_memory_test_0() {
 
 // -----
 
+// CHECK-LABEL: distribute_l1_memory_nested_loops
+// CHECK: %[[L2ALLOC:.+]] = memref.alloc() : memref<1x1x32x32xi32, 2>
+// CHECK: linalg.fill
+// CHECK-SAME: outs(%[[L2ALLOC]] : memref<1x1x32x32xi32, 2>)
+// CHECK: memref.dealloc %[[L2ALLOC]] : memref<1x1x32x32xi32, 2>
+
+#map = affine_map<()[s0, s1] -> (s0 + s1)>
+func.func @distribute_l1_memory_nested_loops() {
+  %c0_i32 = arith.constant 0 : i32
+  %alloc = memref.alloc() : memref<4x4x32x32xi32, 2>
+  scf.forall (%arg0, %arg1) = (0, 0) to (4, 4) step (2, 2) {
+    scf.forall (%arg2, %arg3) in (2, 2) {
+      %0 = affine.apply #map()[%arg0, %arg2]
+      %1 = affine.apply #map()[%arg1, %arg3]
+      %subview = memref.subview %alloc[%0, %1, 0, 0] [1, 1, 32, 32] [1, 1, 1, 1] : memref<4x4x32x32xi32, 2> to memref<1x1x32x32xi32, strided<[4096, 1024, 32, 1], offset: ?>, 2>
+      linalg.fill ins(%c0_i32 : i32) outs(%subview : memref<1x1x32x32xi32, strided<[4096, 1024, 32, 1], offset: ?>, 2>)
+    } {mapping = [#gpu.thread<y>, #gpu.thread<x>]}
+  } {mapping = [#gpu.block<y>, #gpu.block<x>]}
+  memref.dealloc %alloc : memref<4x4x32x32xi32, 2>
+  return
+}
+
+// -----
+
 // CHECK-LABEL: @transfer_read_test()
 // CHECK: %[[ALLOC:.+]] = memref.alloc() : memref<1x8xbf16, 2>
 // CHECK: vector.transfer_read %[[ALLOC]]
