@@ -71,10 +71,8 @@ LogicalResult configureLocksAndBd(Block &block, const TileLoc &tileLoc,
                                   const AMDAIEDeviceModel &deviceModel) {
   FailureOr<XAie_DmaDesc> dmaTileBd = initDMADesc(deviceModel, tileLoc);
   if (failed(dmaTileBd)) return failure();
-  assert(!block.getOps<UseLockOp>().empty() && "BD block has no lock-usage");
   std::optional<int> acqValue, relValue, acqLockId, relLockId;
   bool acqEn;
-  // switch (lock->getAc)
   for (auto op : block.getOps<UseLockOp>()) {
     // Only dyn_cast if you are going to check if it was of the type
     // expected; if you aren't checking use cast instead as it will at
@@ -95,6 +93,16 @@ LogicalResult configureLocksAndBd(Block &block, const TileLoc &tileLoc,
         relValue = op.getValue().value_or(1);
         break;
     }
+  }
+  // Disable acquire and release locks if not set.
+  if (!acqLockId) {
+    acqLockId = 0;
+    acqValue = 0;
+    acqEn = false;
+  }
+  if (!relLockId) {
+    relLockId = 0;
+    relValue = 0;
   }
   assert(acqValue && relValue && acqLockId && relLockId &&
          "expected both use_lock(acquire) and use_lock(release) with bd");

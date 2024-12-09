@@ -52,4 +52,3 @@ iree_lit_test_suite(
   LABELS
     "hostonly"
 )
-
