@@ -1,4 +1,4 @@
-// RUN: iree-opt --split-input-file --pass-pipeline='builtin.module(iree-amdaie-lowering-strategy{use-tile-pipeline=pack-peel use-lower-to-aie-pipeline=objectFifo target-device=npu4})' %s | FileCheck %s
+// RUN: iree-opt --split-input-file --pass-pipeline='builtin.module(iree-amdaie-lowering-strategy{target-device=npu4})' %s | FileCheck %s
 
 // CHECK:       #config = #iree_codegen.lowering_config<tile_sizes = [
 // CHECK-SAME:                [128, 128], [0, 0, 1], [1, 1, 0, 0, 0, 0]

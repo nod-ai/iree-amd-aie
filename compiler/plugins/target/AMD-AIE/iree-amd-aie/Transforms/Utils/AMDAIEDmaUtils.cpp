@@ -7,11 +7,34 @@
 #include "AMDAIEDmaUtils.h"
 
 #include "AMDAIEUtils.h"
-#include "iree-amd-aie/Transforms/AMDAIEUtils.h"
+#include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 
 namespace mlir::iree_compiler::AMDAIE {
+
+static bool isEqualConstantIntOrValueArrayFromIndices(
+    ArrayRef<OpFoldResult> ofrsA, ArrayRef<OpFoldResult> ofrsB,
+    size_t indexA = 0, size_t indexB = 0) {
+  if ((ofrsA.size() - indexA) != (ofrsB.size() - indexB)) return false;
+  return isEqualConstantIntOrValueArray(ofrsA.drop_front(indexA),
+                                        ofrsB.drop_front(indexB));
+}
+
+bool areAccessPatternsEqualFromIndices(ArrayRef<OpFoldResult> offsetsA,
+                                       ArrayRef<OpFoldResult> sizesA,
+                                       ArrayRef<OpFoldResult> stridesA,
+                                       ArrayRef<OpFoldResult> offsetsB,
+                                       ArrayRef<OpFoldResult> sizesB,
+                                       ArrayRef<OpFoldResult> stridesB,
+                                       size_t indexA, size_t indexB) {
+  return isEqualConstantIntOrValueArrayFromIndices(offsetsA, offsetsB, indexA,
+                                                   indexB) &&
+         isEqualConstantIntOrValueArrayFromIndices(sizesA, sizesB, indexA,
+                                                   indexB) &&
+         isEqualConstantIntOrValueArrayFromIndices(stridesA, stridesB, indexA,
+                                                   indexB);
+}
 
 bool areAccessPatternsCombinable(const SmallVector<OpFoldResult> &offsetsA,
                                  const SmallVector<OpFoldResult> &sizesA,
@@ -38,6 +61,35 @@ bool areAccessPatternsCombinable(const SmallVector<OpFoldResult> &offsetsA,
   // dimensions.
   if (offsetsA.size() == offsetsB.size() && offsetsA.size() + 1 > maxNbDims)
     return false;
+
+  // Equality of the last N elements of the access patterns of A and B with N =
+  // min(sizeA, sizeB) results in some simple cases in which the access
+  // patterns are combinable. Note that abs(sizeB - sizeA) should <= 1 and this
+  // is checked for earlier, so just asserted here.
+  assert(std::abs((ssize_t)offsetsB.size() - (ssize_t)offsetsA.size()) <= 1 &&
+         "The distance between the indices should be smaller or equal to one.");
+  size_t indexA = offsetsA.size() > offsetsB.size() ? 1 : 0;
+  size_t indexB = offsetsB.size() > offsetsA.size() ? 1 : 0;
+  if (areAccessPatternsEqualFromIndices(offsetsA, sizesA, stridesA, offsetsB,
+                                        sizesB, stridesB, indexA, indexB)) {
+    if (offsetsA.size() == offsetsB.size()) {
+      return true;
+    } else if (offsetsA.size() > offsetsB.size()) {
+      // The access pattern A has N repetitions of access pattern B, so they can
+      // be combined together into N+1 repetitions.
+      return isConstantIntValue(stridesA[0], 0);
+    } else {
+      // offsetsB.size() > offsetsA.size()
+      // The access pattern B has N repetitions of access pattern A, so they can
+      // be combined together into N+1 repetitions.
+      if (isConstantIntValue(stridesB[0], 0)) return true;
+      // The access pattern of B is the same as the access pattern of A, but at
+      // a different offset. They can be combined by reducing the offset of B to
+      // zero.
+      if (isConstantIntValue(offsetsB[0], 1)) return true;
+      return false;
+    }
+  }
 
   for (auto &&[strideA, strideB] :
        llvm::zip(llvm::reverse(stridesA), llvm::reverse(stridesB))) {
@@ -162,10 +214,18 @@ LogicalResult combineAccessPatterns(RewriterBase &rewriter,
     newOffsets = offsetsB;
     newSizes = sizesB;
     newStrides = stridesB;
-    for (int i = 1; i <= offsetsA.size(); i++) {
-      if (offsetsA[offsetsA.size() - i] != offsetsB[offsetsB.size() - i]) {
-        newOffsets[newOffsets.size() - i] = offsetsA[offsetsA.size() - i];
-        break;
+    // If the offset on the first dimension of B is larger than zero, we can
+    // just decrease that one by one to accomplish the access pattern merge.
+    // Otherwise, we check for and update the other differing offsets.
+    std::optional<int64_t> offset = getConstantIntValue(newOffsets[0]);
+    if (offset && offset.value() > 0) {
+      newOffsets[0] = rewriter.getI64IntegerAttr(offset.value() - 1);
+    } else {
+      for (int i = 1; i <= offsetsA.size(); i++) {
+        if (offsetsA[offsetsA.size() - i] != offsetsB[offsetsB.size() - i]) {
+          newOffsets[newOffsets.size() - i] = offsetsA[offsetsA.size() - i];
+          break;
+        }
       }
     }
     std::optional<int64_t> size = getConstantIntValue(newSizes[0]);
@@ -192,8 +252,8 @@ LogicalResult combineAccessPatterns(RewriterBase &rewriter,
       // All dims of sizes are the same, so add a new dimension with
       // 'offset == 0', 'size == 2' and 'stride == offsetDiff'.
       newOffsets.push_back(rewriter.getI64IntegerAttr(0));
-      int64_t offsetDiff;
-      int64_t strideMultiplier;
+      int64_t offsetDiff{0};
+      int64_t strideMultiplier{0};
       for (auto iter : llvm::enumerate(llvm::zip(offsetsA, offsetsB))) {
         const OpFoldResult &offsetA = std::get<0>(iter.value());
         const OpFoldResult &offsetB = std::get<1>(iter.value());

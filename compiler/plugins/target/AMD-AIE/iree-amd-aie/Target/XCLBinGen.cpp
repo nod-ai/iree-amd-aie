@@ -92,7 +92,7 @@ FailureOr<std::vector<std::string>> makePeanoOptArgs(
       // Extend the max limit of the search depth in BasicAA
       "-basic-aa-max-lookup-search-depth=10",
       //
-      "-O2",
+      "-O3",
       //
       "--inline-threshold=10",
       // missing from libc
