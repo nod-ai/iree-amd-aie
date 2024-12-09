@@ -315,6 +315,8 @@ struct AMDAIEDeviceModel {
     return *((const T *)(dmaBdMod + static_cast<uint8_t>(dmaBdProp)));
   }
 
+  uint8_t getDmaMaxQueueSize(uint8_t col, uint8_t row) const;
+
   uint32_t getNumLocks(uint8_t col, uint8_t row) const;
 
   std::optional<TileLoc> getMemWest(TileLoc src) const;

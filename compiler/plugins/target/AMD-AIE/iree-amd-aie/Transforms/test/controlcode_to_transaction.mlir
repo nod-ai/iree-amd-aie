@@ -75,7 +75,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:       0x00000000
 // CHECK:       0x0001D214
 // CHECK:       0x00000000
-// CHECK:       0x80000000
+// CHECK:       0x00000000
 // CHECK:       0x00000018
 // CHECK-LABEL: @push_to_queue_default_values
 // CHECK:       npu_instructions = dense_resource<npu_instructions> : tensor<10xui32>
@@ -102,7 +102,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:       0x00000000
 // CHECK:       0x0601D21C
 // CHECK:       0x00000000
-// CHECK:       0x803F0002
+// CHECK:       0x003F0002
 // CHECK:       0x00000018
 // CHECK-LABEL: @push_to_queue
 // CHECK:       npu_instructions = dense_resource<npu_instructions> : tensor<10xui32>

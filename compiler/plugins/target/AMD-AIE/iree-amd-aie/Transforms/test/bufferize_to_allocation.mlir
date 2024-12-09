@@ -1,7 +1,7 @@
 // RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-bufferize-to-allocation{memory-space=2 bufferize-operand=input-output}))' --split-input-file %s | FileCheck %s --check-prefix=INPUT-OUTPUT
 // RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-bufferize-to-allocation{memory-space=2 bufferize-operand=input}))' --split-input-file %s | FileCheck %s --check-prefix=INPUT
 // RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-bufferize-to-allocation{memory-space=2 bufferize-operand=output}))' --split-input-file %s | FileCheck %s --check-prefix=OUTPUT
-// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-bufferize-to-allocation{memory-space=1 bufferize-operand=def-op}))' --split-input-file %s | FileCheck %s --check-prefix=DEF-OP
+// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-bufferize-to-allocation{memory-space=1 bufferize-operand=pack-input pack-depth=2}))' --split-input-file %s | FileCheck %s --check-prefix=PACK
 // RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-bufferize-to-allocation{memory-space=2 bufferize-elementwise=true bufferize-operand=input}))' --split-input-file %s | FileCheck %s --check-prefix=ELEMENTWISE-INPUT
 // RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-bufferize-to-allocation{memory-space=2 bufferize-elementwise=true bufferize-operand=input-output}))' --split-input-file %s | FileCheck %s --check-prefix=ELEMENTWISE-INPUT-OUTPUT
 
@@ -77,19 +77,19 @@ func.func @matmul_static(%arg0 : tensor<1024x2048xi32>, %arg1 : tensor<2048x512x
 //     OUTPUT:  linalg.fill
 //     OUTPUT:  linalg.generic
 
-//     DEF-OP:  memref.alloc() : memref<16x32x64x64xi32, 1 : i32>
-//     DEF-OP:  bufferization.to_tensor
-//     DEF-OP:  tensor.pack
-//     DEF-OP:  memref.alloc() : memref<32x8x64x64xi32, 1 : i32>
-//     DEF-OP:  bufferization.to_tensor
-//     DEF-OP:  tensor.pack
-// DEF-OP-NOT:  memref.alloc
-//     DEF-OP:  tensor.pack
-// DEF-OP-NOT:  memref.alloc
-//     DEF-OP:  tensor.pack
-// DEF-OP-NOT:  memref.alloc
-//     DEF-OP:  linalg.fill
-//     DEF-OP:  linalg.generic
+// PACK:      memref.alloc() : memref<16x32x64x64xi32, 1 : i32>
+// PACK:      bufferization.to_tensor
+// PACK:      tensor.pack
+// PACK:      memref.alloc() : memref<32x8x64x64xi32, 1 : i32>
+// PACK:      bufferization.to_tensor
+// PACK:      tensor.pack
+// PACK-NOT:  memref.alloc
+// PACK:      tensor.pack
+// PACK-NOT:  memref.alloc
+// PACK:      tensor.pack
+// PACK-NOT:  memref.alloc
+// PACK:      linalg.fill
+// PACK:      linalg.generic
 
 // -----
 
