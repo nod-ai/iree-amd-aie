@@ -287,6 +287,12 @@ def AMDAIELinalgFunctionOutlining :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELinalgFunctionOutliningPass()";
 }
 
+def AMDAIEFoldDmaWaits :
+  Pass<"iree-amdaie-fold-dma-waits", ""> {
+  let summary = "Remove redundant dma wait operations in controlcode.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFoldDmaWaitsPass()";
+}
+
 def AMDAIEFuseConsumerIntoLoop :
     InterfacePass<"iree-amdaie-fuse-consumer-into-loop", "mlir::FunctionOpInterface"> {
   let summary = "Fuse the consumer operation into the innermost last scf loop.";

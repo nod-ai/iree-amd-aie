@@ -41,6 +41,7 @@ iree_lit_test_suite(
     "dma_loop_subsumption_circular.mlir"
     "dma_loop_subsumption.mlir"
     "dma_to_circular_dma.mlir"
+    "fold_dma_waits.mlir"
     "flatten_logical_objectfifo.mlir"
     "linalg_function_outlining.mlir"
     "fuse_consumer_into_loop.mlir"
