@@ -31,7 +31,7 @@ struct NpuDmaToHalfDmaCpyNdConverter final
       return dmaOp.emitOpError()
              << "should operate on an `amdaie.connection` op";
     }
-    bool useNextBd{false};
+    BoolAttr useNextBd = rewriter.getBoolAttr(false);
     Value nextBd{nullptr};
     // Convert source half.
     Value source =

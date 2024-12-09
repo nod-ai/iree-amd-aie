@@ -171,7 +171,6 @@ def AMDAIEControlCodeLowering :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEControlCodeLoweringPass()";
 }
 
-
 def AMDAIEControlCodeToTransaction :
     Pass<"iree-amdaie-controlcode-to-transaction", ""> {
   let summary = "Convert controlcode instructions into a NPU instruction transaction.";
@@ -232,6 +231,7 @@ def AMDAIEDistributeL1Allocations :
   }];
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDistributeL1AllocationsPass()";
 }
+
 
 def AMDAIEDmaComposition :
   Pass<"iree-amdaie-dma-composition"> {

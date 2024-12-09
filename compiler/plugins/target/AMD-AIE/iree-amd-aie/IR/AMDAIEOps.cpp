@@ -1101,7 +1101,7 @@ void NpuHalfDmaCpyNdOp::build(OpBuilder &b, OperationState &result,
                               Value input, ArrayRef<OpFoldResult> offsets,
                               ArrayRef<OpFoldResult> sizes,
                               ArrayRef<OpFoldResult> strides, Value bdId,
-                              Value channel, bool useNextBd, Value nextBd,
+                              Value channel, BoolAttr useNextBd, Value nextBd,
                               Value startBd) {
   SmallVector<int64_t> staticOffsets, staticSizes, staticStrides;
   SmallVector<Value> dynamicOffsets, dynamicSizes, dynamicStrides;
@@ -1119,7 +1119,7 @@ void NpuHalfDmaCpyNdOp::build(OpBuilder &b, OperationState &result,
                               Value input, ArrayRef<int64_t> offsets,
                               ArrayRef<int64_t> sizes,
                               ArrayRef<int64_t> strides, mlir::Value bdId,
-                              Value channel, bool useNextBd, Value nextBd,
+                              Value channel, BoolAttr useNextBd, Value nextBd,
                               Value startBd) {
   SmallVector<OpFoldResult> offsetValues = llvm::to_vector<4>(llvm::map_range(
       offsets,
@@ -1140,7 +1140,7 @@ void NpuHalfDmaCpyNdOp::build(OpBuilder &b, OperationState &result,
                               TypeRange resultTypes, Value connection,
                               Value input, ValueRange offsets, ValueRange sizes,
                               ValueRange strides, mlir::Value bdId,
-                              Value channel, bool useNextBd, Value nextBd,
+                              Value channel, BoolAttr useNextBd, Value nextBd,
                               Value startBd) {
   SmallVector<OpFoldResult> offsetValues = llvm::to_vector<4>(
       llvm::map_range(offsets, [](Value v) -> OpFoldResult { return v; }));

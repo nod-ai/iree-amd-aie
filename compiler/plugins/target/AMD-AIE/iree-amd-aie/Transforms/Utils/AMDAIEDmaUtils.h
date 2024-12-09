@@ -344,10 +344,6 @@ struct DmaDimConfig {
 LogicalResult moveNpuDmaSyncUsersAfterAncestorInSameBlock(
     RewriterBase &rewriter, Operation *parentOp);
 
-/// Utility to move the source dma synchronization after the target dma copy.
-LogicalResult moveNpuSourceDmaSyncAfterTargetDmaCpy(RewriterBase &rewriter,
-                                                    Operation *parentOp);
-
 }  // namespace mlir::iree_compiler::AMDAIE
 
 #endif

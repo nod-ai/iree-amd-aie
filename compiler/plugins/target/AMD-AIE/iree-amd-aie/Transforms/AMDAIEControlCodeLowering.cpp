@@ -109,7 +109,7 @@ struct HalfDmaCpyNdToNpuConverter final
     staticStrides.insert(staticStrides.begin(),
                          numIntraAddrDim - staticStrides.size(), 0);
 
-    bool useNextBd = op.getUseNextBd();
+    bool useNextBd = op.getUseNextBd().value_or(false);
     int32_t nextBd{0};
     if (useNextBd) {
       std::optional<AMDAIE::BdIdOp> nextBdIdOp = op.getNextBdIdOp();
@@ -216,19 +216,18 @@ struct HalfDmaCpyNdToNpuConverter final
     if (failed(npuPushToQueueOp)) return failure();
     rewriter.replaceOp(op, *npuPushToQueueOp);
 
-    bool useNextBd = op.getUseNextBd();
-    if (useNextBd)
-      // Erase if not end of chain.
+    bool useNextBd = op.getUseNextBd().value_or(false);
+    if (useNextBd) {
+      // `useNextBd` is true, so either at the beginning or middle of a chain.
+      // No need to push to the queue, just erase the op.
       rewriter.eraseOp(*npuPushToQueueOp);
-    else {
+    } else {
       std::optional<AMDAIE::BdIdOp> maybeStartBdIdOp = op.getStartBdIdOp();
       if (maybeStartBdIdOp) {
-        // Update the BD ID with the start of the chain.
-        uint32_t startBdId =
-            getConstantIndexOrAssert(maybeStartBdIdOp.value().getValue());
-        uint32_t bdId =
-            getConstantIndexOrAssert(maybeBdIdOp.value().getValue());
-        if (startBdId != bdId) npuPushToQueueOp->setBdId(startBdId);
+        // Update with the BD ID at the start of the chain.
+        AMDAIE::BdIdOp startBdIdOp = maybeStartBdIdOp.value();
+        uint32_t startBdId = getConstantIndexOrAssert(startBdIdOp.getValue());
+        npuPushToQueueOp->setBdId(startBdId);
       }
     }
     return success();

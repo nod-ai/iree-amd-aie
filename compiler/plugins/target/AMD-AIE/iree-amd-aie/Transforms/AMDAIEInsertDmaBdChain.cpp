@@ -5,9 +5,9 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "iree-amd-aie/IR/AMDAIEOps.h"
-#include "iree-amd-aie/Transforms/AMDAIEDmaUtils.h"
-#include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
+#include "iree-amd-aie/Transforms/Utils/AMDAIEDmaUtils.h"
+#include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 #include "iree-amd-aie/aie_runtime/Utils/ChannelBdIdGenerator.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "mlir/IR/Iterators.h"
@@ -17,30 +17,88 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
-LogicalResult insertDmaBdChain(AMDAIE::AMDAIEDeviceModel deviceModel,
-                               AMDAIE::WorkgroupOp workgroupOp) {
-  IRRewriter rewriter(workgroupOp->getContext());
+using TileConnect = std::pair<AMDAIE::TileOp, AMDAIE::ConnectionOp>;
 
-  // TODO(Zhewen): to get rid of tileArgIdxToAssignedBdIdOps and
-  // tileArgIdxToDmaCount, integrate BD ID assignment and (partial) control code
-  // loop unrolling into this pass.
+/// Utility function to update `use_next_bd`, `next_bd` and `start_bd` operands.
+void updateChainOperands(IRRewriter &rewriter,
+                         SmallVector<AMDAIE::NpuHalfDmaCpyNdOp> &dmaChain) {
+  if (dmaChain.size() < 2) return;
 
-  // BD ID that are currenly assigned to DMA operations
-  DenseMap<std::pair<AMDAIE::TileOp, uint32_t>, SmallVector<AMDAIE::BdIdOp>>
-      tileArgIdxToAssignedBdIdOps;
-  // Counter for the number of DMA operations, helping determine the dependency
-  DenseMap<std::pair<AMDAIE::TileOp, uint32_t>, uint32_t> tileArgIdxToDmaCount;
+  // Chain the DMA ops.
+  Value startBdId = dmaChain[0].getBdId();
+  for (unsigned i = 0; i < dmaChain.size() - 1; ++i) {
+    AMDAIE::NpuHalfDmaCpyNdOp currDmaOp = dmaChain[i];
+    Value nextBd = dmaChain[i + 1].getBdId();
+    BoolAttr useNextBd = rewriter.getBoolAttr(true);
+    // No token is produced at the beginning or middle of a chain.
+    TypeRange token = TypeRange{};
+    rewriter.setInsertionPointAfter(currDmaOp);
+    rewriter.create<AMDAIE::NpuHalfDmaCpyNdOp>(
+        currDmaOp.getLoc(), token, currDmaOp.getConnection(),
+        currDmaOp.getInput(), currDmaOp.getMixedOffsets(),
+        currDmaOp.getMixedSizes(), currDmaOp.getMixedStrides(),
+        currDmaOp.getBdId(), currDmaOp.getChannel(), useNextBd, nextBd,
+        startBdId);
+    for (auto &use : currDmaOp->getUses()) {
+      rewriter.eraseOp(use.getOwner());
+    }
+    rewriter.eraseOp(currDmaOp);
+  }
+  // Last DMA op in the chain.
+  AMDAIE::NpuHalfDmaCpyNdOp lastDmaOp = dmaChain.back();
+  Value nextBd = nullptr;
+  BoolAttr useNextBd = rewriter.getBoolAttr(false);
+  rewriter.setInsertionPointAfter(lastDmaOp);
+  auto lastDmaOpChained = rewriter.create<AMDAIE::NpuHalfDmaCpyNdOp>(
+      lastDmaOp.getLoc(), lastDmaOp.getResultTypes(), lastDmaOp.getConnection(),
+      lastDmaOp.getInput(), lastDmaOp.getMixedOffsets(),
+      lastDmaOp.getMixedSizes(), lastDmaOp.getMixedStrides(),
+      lastDmaOp.getBdId(), lastDmaOp.getChannel(), useNextBd, nextBd,
+      startBdId);
+  rewriter.replaceOp(lastDmaOp, lastDmaOpChained.getResults());
+}
 
-  // Last DMA operation encountered, no matter if it is chained or not
-  DenseMap<std::pair<AMDAIE::TileOp, uint32_t>, AMDAIE::NpuHalfDmaCpyNdOp>
-      tileArgIdxToLastDmaOp;
-  // Last DMA operation that has been chained
-  DenseMap<std::pair<AMDAIE::TileOp, uint32_t>, AMDAIE::NpuHalfDmaCpyNdOp>
-      tileArgIdxToLastChainedDmaOp;
-  // Black list of tile argument index pairs that should not be chained
-  SmallVector<std::pair<AMDAIE::TileOp, uint32_t>> tileArgIdxsBlackList;
+/// Utility function to determine if chains can grow further
+/// or require breaking.
+///
+/// Example:
+/// - Chain X currently holds BD IDs: [4, 5, 6, 7]
+/// - Chain Y currently holds BD IDs: [0, 1, 2, 3]
+/// - A new BD ID (0) needs to be added to the front (due to reverse
+/// traversing) of chain X.
+///
+/// Conflict resolution:
+/// - Chain Y must be broken because BD ID 0 is already assigned to it
+/// and must be released.
+/// - Chain X is also broken to prevent the new added BD ID (0) from
+/// invalidating chain Y.
+///
+/// Result:
+/// - Break both chains X and Y.
+///   - Chain X: [0] (the newly added BD ID).
+///   - Chain Y: [] (emptied after breaking).
+void canChainGrowFurther(
+    const uint32_t bdId, const TileConnect &currTileConnect,
+    const DenseMap<TileConnect, SmallVector<uint32_t>> &tileConnectToBdIds,
+    SmallVector<TileConnect> &chainsToBreak) {
+  for (auto &[entry, bdIds] : tileConnectToBdIds) {
+    if (entry.first == currTileConnect.first &&
+        llvm::is_contained(bdIds, bdId)) {
+      // Break the chain that contains the duplicate BD ID.
+      chainsToBreak.push_back(entry);
+      if (entry != currTileConnect) {
+        // Break the current chain as well.
+        chainsToBreak.push_back(currTileConnect);
+      }
+      break;
+    }
+  }
+}
 
-  AMDAIE::ControlCodeOp controlCodeOp = workgroupOp.getControlCode();
+/// Traverse the control code in reverse order to create DMA BD chains.
+LogicalResult insertDmaBdChain(const AMDAIE::AMDAIEDeviceModel &deviceModel,
+                               AMDAIE::ControlCodeOp controlCodeOp) {
+  IRRewriter rewriter(controlCodeOp->getContext());
 
   // Move all BdIdOps to the beginning of the control code.
   // This is to avoid dominance issues when chaining BD IDs.
@@ -55,254 +113,106 @@ LogicalResult insertDmaBdChain(AMDAIE::AMDAIEDeviceModel deviceModel,
     op->moveBefore(&controlCodeOp.front());
   }
 
-  // Find `NpuHalfDmaCpyNdOp` operations and chain BD IDs.
-  res = controlCodeOp->walk([&](Operation *op) {
-    if (auto npuHalfDmaCpyNdOp = dyn_cast<AMDAIE::NpuHalfDmaCpyNdOp>(op)) {
-      // not shim, no need to chain, since it will be earsed when lowering to
-      // NPU instructions
-      if (npuHalfDmaCpyNdOp.getMemorySpaceAsUInt() != 0) {
-        return WalkResult::advance();
-      }
+  // BD ID that are have been assigned in each tile.
+  DenseMap<TileConnect, SmallVector<uint32_t>> tileConnectToBdIds;
+  // Buffers the DMA ops that will be chained.
+  DenseMap<TileConnect, SmallVector<AMDAIE::NpuHalfDmaCpyNdOp>>
+      tileConnectToDmaChain;
 
-      bool chaining = true;
-      // packet mode is enabled, do not chain BDs
-      std::optional<AMDAIE::ConnectionOp> maybeConnectionOp =
-          npuHalfDmaCpyNdOp.getConnectionOp();
-      if (!maybeConnectionOp) {
-        npuHalfDmaCpyNdOp.emitOpError()
-            << "expected to operate on an `amdaie.connection`";
-        return WalkResult::interrupt();
-      }
-      std::optional<AMDAIE::FlowOp> maybeFlowOp =
-          maybeConnectionOp->getFlowOp();
-      if (!maybeFlowOp) {
-        maybeConnectionOp->emitOpError()
-            << "expected to operate on an `amdaie.flow`";
-        return WalkResult::interrupt();
-      }
-      bool enablePacket = maybeFlowOp->getIsPacketFlow();
-      if (enablePacket) {
-        chaining = false;
-      }
-
-      // repeat count > 1, do not chain BDs
-      int32_t repeatCount = 1;
-      uint8_t numIntraAddrDim = deviceModel.getDmaProp<uint8_t>(
-          AMDAIE::AMDAIETileType::SHIMNOC, AMDAIE::AMDAIEDmaProp::NumAddrDim);
-      uint8_t numAddrDim = numIntraAddrDim + kAMDAIEDmaNbInterDims;
-      auto sizes = npuHalfDmaCpyNdOp.getMixedSizes();
-      auto strides = npuHalfDmaCpyNdOp.getMixedStrides();
-      if (!sizes.empty() && !strides.empty()) {
-        int64_t size = getConstantIndexOrAssert(sizes[0]);
-        int64_t stride = getConstantIndexOrAssert(strides[0]);
-        if (sizes.size() == numAddrDim || stride == 0) {
-          repeatCount = size;
-        }
-      }
-      if (repeatCount > 1) {
-        chaining = false;
-      }
-
-      // get current BD ID and tile
-      std::optional<AMDAIE::BdIdOp> maybeBdIdOp = npuHalfDmaCpyNdOp.getBdIdOp();
-      if (!maybeBdIdOp) {
-        npuHalfDmaCpyNdOp.emitOpError() << "must have a BD ID op";
-        return WalkResult::interrupt();
-      }
-      AMDAIE::BdIdOp bdIdOp = maybeBdIdOp.value();
-      AMDAIE::TileOp tileOp =
-          dyn_cast_if_present<AMDAIE::TileOp>(bdIdOp.getTile().getDefiningOp());
-      if (!tileOp) {
-        bdIdOp.emitOpError() << "must operate on an `amdaie.tile`";
-        return WalkResult::interrupt();
-      }
-
-      // get arg index
-      auto logicalObjFifo =
-          dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-              npuHalfDmaCpyNdOp.getInput().getDefiningOp());
-      if (!logicalObjFifo) {
-        npuHalfDmaCpyNdOp.emitOpError()
-            << "expected input to be an "
-               "`amdaie.logicalobjectfifo.from_memref`";
-        return WalkResult::interrupt();
-      }
-      auto subspanOp =
-          dyn_cast_if_present<IREE::HAL::InterfaceBindingSubspanOp>(
-              logicalObjFifo.getMemref().getDefiningOp());
-      if (!subspanOp) {
-        logicalObjFifo.emitOpError()
-            << "must operate on an `hal.interface.binding.subspan`";
-        return WalkResult::interrupt();
-      }
-      uint32_t argIdx = subspanOp.getBinding().getZExtValue();
-
-      // If the current DMA operation was previously part of the outer loop in
-      // the control code, force all DMA operations in the inner loop to be
-      // synchronized, by adding them to the black list.
-      tileArgIdxToDmaCount[{tileOp, argIdx}]++;
-      for (auto &[pair, count] : tileArgIdxToDmaCount) {
-        if (pair.first == tileOp &&
-            count > tileArgIdxToDmaCount[{tileOp, argIdx}] + 1) {
-          if (!llvm::is_contained(tileArgIdxsBlackList, pair)) {
-            tileArgIdxsBlackList.push_back(pair);
+  res = controlCodeOp->walk<WalkOrder::PostOrder, ReverseIterator>(
+      [&](Operation *op) {
+        if (auto npuHalfDmaCpyNdOp = dyn_cast<AMDAIE::NpuHalfDmaCpyNdOp>(op)) {
+          // Not shim, will be earsed at ControlcodeLowering, ignore.
+          if (npuHalfDmaCpyNdOp.getMemorySpaceAsUInt() != 0) {
+            return WalkResult::advance();
           }
-        }
-      }
 
-      // If the BD ID is currently used by another DMA op, stop the chain
-      // for that DMA op from further growing, by adding it to the black list
-      for (auto &[pair, bdIdOps] : tileArgIdxToAssignedBdIdOps) {
-        if (pair.first == tileOp && llvm::is_contained(bdIdOps, bdIdOp)) {
-          if (!llvm::is_contained(tileArgIdxsBlackList, pair)) {
-            tileArgIdxsBlackList.push_back(pair);
+          // Get the connection op.
+          std::optional<AMDAIE::ConnectionOp> maybeConnectionOp =
+              npuHalfDmaCpyNdOp.getConnectionOp();
+          if (!maybeConnectionOp) {
+            npuHalfDmaCpyNdOp.emitOpError()
+                << "expected to operate on an `amdaie.connection`";
+            return WalkResult::interrupt();
           }
-          break;
-        }
-      }
+          AMDAIE::ConnectionOp connectionOp = maybeConnectionOp.value();
 
-      // If the black list is not empty, there will be a synchronization.
-      // Make sure all other DMA chains also break at this point to avoid
-      // dependency issues.
-      if (tileArgIdxsBlackList.size() > 0) {
-        for (auto &[pair, bdIdOps] : tileArgIdxToAssignedBdIdOps) {
-          if (pair.first == tileOp && bdIdOps.size() > 1) {
-            if (!llvm::is_contained(tileArgIdxsBlackList, pair)) {
-              tileArgIdxsBlackList.push_back(pair);
+          // Packet flow, do not chain BDs.
+          std::optional<AMDAIE::FlowOp> maybeFlowOp = connectionOp.getFlowOp();
+          if (!maybeFlowOp) {
+            connectionOp->emitOpError()
+                << "expected to operate on an `amdaie.flow`";
+            return WalkResult::interrupt();
+          }
+          AMDAIE::FlowOp flowOp = maybeFlowOp.value();
+          bool isPacketFlow = flowOp.getIsPacketFlow();
+          if (isPacketFlow) return WalkResult::advance();
+
+          // Repeat count > 1, do not chain BDs.
+          int32_t repeatCount = 1;
+          uint8_t numIntraAddrDim = deviceModel.getDmaProp<uint8_t>(
+              AMDAIE::AMDAIETileType::SHIMNOC,
+              AMDAIE::AMDAIEDmaProp::NumAddrDim);
+          uint8_t numAddrDim = numIntraAddrDim + kAMDAIEDmaNbInterDims;
+          auto sizes = npuHalfDmaCpyNdOp.getMixedSizes();
+          auto strides = npuHalfDmaCpyNdOp.getMixedStrides();
+          if (!sizes.empty() && !strides.empty()) {
+            int64_t size = getConstantIndexOrAssert(sizes[0]);
+            int64_t stride = getConstantIndexOrAssert(strides[0]);
+            if (sizes.size() == numAddrDim || stride == 0) {
+              repeatCount = size;
             }
           }
+          if (repeatCount > 1) return WalkResult::advance();
+
+          // Get the BD ID and tile op.
+          std::optional<AMDAIE::BdIdOp> maybeBdIdOp =
+              npuHalfDmaCpyNdOp.getBdIdOp();
+          if (!maybeBdIdOp) {
+            npuHalfDmaCpyNdOp.emitOpError() << "must have a BD ID op";
+            return WalkResult::interrupt();
+          }
+          AMDAIE::BdIdOp bdIdOp = maybeBdIdOp.value();
+          uint32_t bdId = getConstantIndexOrAssert(bdIdOp.getValue());
+          AMDAIE::TileOp tileOp = dyn_cast_if_present<AMDAIE::TileOp>(
+              bdIdOp.getTile().getDefiningOp());
+          if (!tileOp) {
+            bdIdOp.emitOpError() << "must operate on an `amdaie.tile`";
+            return WalkResult::interrupt();
+          }
+
+          // Any duplicate BD ID from the same tile indicates the chain cannot
+          // grow further and requires breaking to release the conflicting BD
+          // ID.
+          SmallVector<TileConnect> chainsToBreak;
+          TileConnect currTileConnect = {tileOp, connectionOp};
+          canChainGrowFurther(bdId, currTileConnect, tileConnectToBdIds,
+                              chainsToBreak);
+
+          // If the chains are not to be continued, update DMA operands using
+          // the `updateChainOperands` function.
+          if (!chainsToBreak.empty()) {
+            for (auto &entry : chainsToBreak) {
+              updateChainOperands(rewriter, tileConnectToDmaChain[entry]);
+              tileConnectToBdIds[entry].clear();
+              tileConnectToDmaChain[entry].clear();
+            }
+          }
+
+          // Insert at the front, as we are walking in reverse order.
+          tileConnectToBdIds[currTileConnect].insert(
+              tileConnectToBdIds[currTileConnect].begin(), bdId);
+          tileConnectToDmaChain[currTileConnect].insert(
+              tileConnectToDmaChain[currTileConnect].begin(),
+              npuHalfDmaCpyNdOp);
         }
-      }
+        return WalkResult::advance();
+      });
 
-      // When current DMA has not been blacklisted and a previous DMA with same
-      // argIdx exists, chain them together
-      chaining &= !llvm::is_contained(tileArgIdxsBlackList,
-                                      std::make_pair(tileOp, argIdx)) &&
-                  tileArgIdxToLastDmaOp.contains({tileOp, argIdx});
-      if (chaining) {
-        // update the previous DMA op by changing its useNextBd and
-        // nextBd
-        AMDAIE::NpuHalfDmaCpyNdOp lastDmaOp =
-            tileArgIdxToLastDmaOp[{tileOp, argIdx}];
-        rewriter.setInsertionPointAfter(lastDmaOp);
-        auto chainedDmaOp = rewriter.create<AMDAIE::NpuHalfDmaCpyNdOp>(
-            lastDmaOp.getLoc(), lastDmaOp.getResultTypes(),
-            lastDmaOp.getConnection(), lastDmaOp.getInput(),
-            lastDmaOp.getMixedOffsets(), lastDmaOp.getMixedSizes(),
-            lastDmaOp.getMixedStrides(), lastDmaOp.getBdId(),
-            lastDmaOp.getChannel(), true, bdIdOp, lastDmaOp.getStartBd());
-        rewriter.replaceOp(lastDmaOp, chainedDmaOp.getResults());
-        tileArgIdxToLastChainedDmaOp[{tileOp, argIdx}] = chainedDmaOp;
-        // update the current DMA op by changing its startBd
-        rewriter.setInsertionPoint(npuHalfDmaCpyNdOp);
-        auto npuHalfDmaCpyNdOpNew = rewriter.create<AMDAIE::NpuHalfDmaCpyNdOp>(
-            npuHalfDmaCpyNdOp.getLoc(), npuHalfDmaCpyNdOp.getResultTypes(),
-            npuHalfDmaCpyNdOp.getConnection(), npuHalfDmaCpyNdOp.getInput(),
-            npuHalfDmaCpyNdOp.getMixedOffsets(),
-            npuHalfDmaCpyNdOp.getMixedSizes(),
-            npuHalfDmaCpyNdOp.getMixedStrides(), npuHalfDmaCpyNdOp.getBdId(),
-            npuHalfDmaCpyNdOp.getChannel(), npuHalfDmaCpyNdOp.getUseNextBd(),
-            npuHalfDmaCpyNdOp.getNextBd(), chainedDmaOp.getStartBd());
-        rewriter.replaceOp(npuHalfDmaCpyNdOp,
-                           npuHalfDmaCpyNdOpNew.getResults());
-        npuHalfDmaCpyNdOp = npuHalfDmaCpyNdOpNew;
-      }
-
-      // Update BD ID assignment, if it is chaining, safely release the BD IDs
-      // since a synchronization will happen
-      if (chaining && tileArgIdxToAssignedBdIdOps.contains({tileOp, argIdx})) {
-        tileArgIdxToAssignedBdIdOps[{tileOp, argIdx}].push_back(bdIdOp);
-      } else {
-        tileArgIdxToAssignedBdIdOps[{tileOp, argIdx}] = {bdIdOp};
-      }
-
-      // The current DMA op is not chained with the previous DMA op (i.e.
-      // synchroizaiton will happen between these two ops), removing from the
-      // black list
-      if (!chaining) {
-        auto it =
-            std::find(tileArgIdxsBlackList.begin(), tileArgIdxsBlackList.end(),
-                      std::make_pair(tileOp, argIdx));
-        if (it != tileArgIdxsBlackList.end()) {
-          tileArgIdxsBlackList.erase(it);
-        }
-      }
-      // Update the last encountered DMA op
-      tileArgIdxToLastDmaOp[{tileOp, argIdx}] = npuHalfDmaCpyNdOp;
-
-    } else if (auto npuDmaWaitOp = dyn_cast<AMDAIE::NpuDmaWaitOp>(op)) {
-      // Handle the special case where there are multiple DMA ops preceding any
-      // Wait op. In such a case, some DMA ops may be chained first, before they
-      // are put onto the black list. Therefore, go over the black list and
-      // unchain the DMA ops when required.
-
-      for (auto &[tileOp, argIdx] : tileArgIdxsBlackList) {
-        if (tileArgIdxToLastChainedDmaOp.contains({tileOp, argIdx}) &&
-            tileArgIdxToLastDmaOp.contains({tileOp, argIdx})) {
-          // break the chain lastChainedDmaOp -> lastDmaOp
-          AMDAIE::NpuHalfDmaCpyNdOp lastChainedDmaOp =
-              tileArgIdxToLastChainedDmaOp[{tileOp, argIdx}];
-          AMDAIE::NpuHalfDmaCpyNdOp lastDmaOp =
-              tileArgIdxToLastDmaOp[{tileOp, argIdx}];
-          // revert useNextBd and nextBd in lastChainedDmaOp
-          bool useNextBd{false};
-          Value nextBd{nullptr};
-          rewriter.setInsertionPointAfter(lastChainedDmaOp);
-          auto unchainedDmaOp = rewriter.create<AMDAIE::NpuHalfDmaCpyNdOp>(
-              lastChainedDmaOp.getLoc(), lastChainedDmaOp.getResultTypes(),
-              lastChainedDmaOp.getConnection(), lastChainedDmaOp.getInput(),
-              lastChainedDmaOp.getMixedOffsets(),
-              lastChainedDmaOp.getMixedSizes(),
-              lastChainedDmaOp.getMixedStrides(), lastChainedDmaOp.getBdId(),
-              lastChainedDmaOp.getChannel(), useNextBd, nextBd,
-              lastChainedDmaOp.getStartBd());
-          rewriter.replaceOp(lastChainedDmaOp, unchainedDmaOp.getResults());
-          tileArgIdxToLastChainedDmaOp.erase({tileOp, argIdx});
-          // revert startBd in lastDmaOp
-          auto startBd = lastDmaOp.getBdId();
-          rewriter.setInsertionPoint(lastDmaOp);
-          unchainedDmaOp = rewriter.create<AMDAIE::NpuHalfDmaCpyNdOp>(
-              lastDmaOp.getLoc(), lastDmaOp.getResultTypes(),
-              lastDmaOp.getConnection(), lastDmaOp.getInput(),
-              lastDmaOp.getMixedOffsets(), lastDmaOp.getMixedSizes(),
-              lastDmaOp.getMixedStrides(), lastDmaOp.getBdId(),
-              lastDmaOp.getChannel(), lastDmaOp.getUseNextBd(),
-              lastDmaOp.getNextBd(), startBd);
-          tileArgIdxToAssignedBdIdOps[{tileOp, argIdx}] = {
-              lastDmaOp.getBdIdOp().value()};
-          rewriter.replaceOp(lastDmaOp, unchainedDmaOp.getResults());
-          tileArgIdxToLastDmaOp[{tileOp, argIdx}] = unchainedDmaOp;
-        } else {
-          npuDmaWaitOp.emitError() << "unhandled situation in DMA BD chaining, "
-                                      "please try to disable this pass";
-          return WalkResult::interrupt();
-        }
-      }
-
-      tileArgIdxsBlackList.clear();
-    }
-    return WalkResult::advance();
-  });
-
-  // Only keep DMA Wait Ops if at the end of a chain, erase others
-  res = controlCodeOp->walk([&](Operation *op) {
-    if (auto npuDmaWaitOp = dyn_cast<AMDAIE::NpuDmaWaitOp>(op)) {
-      bool toErase = true;
-      for (Value token : npuDmaWaitOp.getAsyncTokens()) {
-        auto npuHalfDmaCpyNdOp = dyn_cast_if_present<AMDAIE::NpuHalfDmaCpyNdOp>(
-            token.getDefiningOp());
-        bool chaining = npuHalfDmaCpyNdOp && npuHalfDmaCpyNdOp.getUseNextBd();
-        if (!chaining) {
-          toErase = false;
-          break;
-        }
-      }
-      if (toErase) {
-        rewriter.eraseOp(npuDmaWaitOp);
-      }
-    }
-    return WalkResult::advance();
-  });
+  // Build the remaining chains.
+  for (auto &[entry, _] : tileConnectToBdIds) {
+    updateChainOperands(rewriter, tileConnectToDmaChain[entry]);
+  }
 
   if (res.wasInterrupted()) return failure();
   return success();
@@ -336,7 +246,8 @@ void AMDAIEInsertDmaBdChainPass::runOnOperation() {
       AMDAIE::getDeviceModel(maybeDevice.value());
 
   WalkResult res = parentOp->walk([&](AMDAIE::WorkgroupOp workgroupOp) {
-    if (failed(insertDmaBdChain(deviceModel, workgroupOp))) {
+    AMDAIE::ControlCodeOp controlCodeOp = workgroupOp.getControlCode();
+    if (failed(insertDmaBdChain(deviceModel, controlCodeOp))) {
       return WalkResult::interrupt();
     }
     return WalkResult::advance();

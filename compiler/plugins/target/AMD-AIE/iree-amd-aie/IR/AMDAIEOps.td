@@ -595,10 +595,15 @@ def AMDAIE_NpuHalfDmaCpyNdOp
     `next_bd`, and `start_bd` operands. The `use_next_bd` operand indicates 
     whether another DMA operation is chained to follow this one. 
     If `use_next_bd` is `true`, the `next_bd` operand specifies the BD ID of 
-    the next DMA operation in the chain. Within a chain, the `start_bd` operand
-    identifies the BD ID of the first DMA operation in the sequence. 
-    When `use_next_bd` is `false`, the `start_bd` is set to the same value as `bd_id`.
-
+    the next DMA operation in the chain. 
+    
+    The `start_bd` operand specifies the BD ID of the first DMA operation in a sequence.
+    - If `start_bd` is the same as `bd_id`, it marks the start of a chain.
+    - If `start_bd` differs from `bd_id` and `use_next_bd` is `true`, it represents 
+      an intermediate operation in the chain.
+    - If `start_bd` differs from `bd_id` and `use_next_bd` is `false`, it represents 
+      the end of the chain.
+      
     Example:
 
     ```mlir
@@ -629,7 +634,7 @@ def AMDAIE_NpuHalfDmaCpyNdOp
         DenseI64ArrayAttr:$static_strides,
         Optional<Index>:$bd_id,
         Optional<Index>:$channel,
-        BoolAttr:$use_next_bd,
+        OptionalAttr<BoolAttr>:$use_next_bd,
         Optional<Index>:$next_bd,
         Optional<Index>:$start_bd
   );
@@ -646,7 +651,7 @@ def AMDAIE_NpuHalfDmaCpyNdOp
     custom<DynamicIndexList>($strides, $static_strides)
     (`bd_id` `=` $bd_id^)?
     (`channel` `=` $channel^)?
-    `use_next_bd` `=` $use_next_bd
+    (`use_next_bd` `=` $use_next_bd^)?
     (`next_bd` `=` $next_bd^)?
     (`start_bd` `=` $start_bd^)?
     `)`
@@ -660,18 +665,18 @@ def AMDAIE_NpuHalfDmaCpyNdOp
       "::mlir::Value":$input, "ArrayRef<OpFoldResult>":$offsets,
       "ArrayRef<OpFoldResult>":$sizes, "ArrayRef<OpFoldResult>":$strides,
       "::mlir::Value":$bd_id, "::mlir::Value":$channel,
-      "bool":$use_next_bd, "::mlir::Value":$next_bd, "::mlir::Value":$start_bd)>,
+      "::mlir::BoolAttr":$use_next_bd, "::mlir::Value":$next_bd, "::mlir::Value":$start_bd)>,
     // Build a NpuHalfDmaCpyNdOp with static entries.
     OpBuilder<(ins "::mlir::TypeRange":$result_types, "Value":$connection,
       "::mlir::Value":$target, "ArrayRef<int64_t>":$offsets,
       "ArrayRef<int64_t>":$sizes, "ArrayRef<int64_t>":$strides,
       "::mlir::Value":$bd_id, "::mlir::Value":$channel,
-      "bool":$use_next_bd, "::mlir::Value":$next_bd, "::mlir::Value":$start_bd)>,
+      "::mlir::BoolAttr":$use_next_bd, "::mlir::Value":$next_bd, "::mlir::Value":$start_bd)>,
     // Build a NpuHalfDmaCpyNdOp with dynamic entries.
     OpBuilder<(ins "::mlir::TypeRange":$result_types, "Value":$connection,
       "::mlir::Value":$input, "ValueRange":$offsets, "ValueRange":$sizes,
       "ValueRange":$strides, "::mlir::Value":$bd_id, "::mlir::Value":$channel,
-      "bool":$use_next_bd, "::mlir::Value":$next_bd, "::mlir::Value":$start_bd)>,
+      "::mlir::BoolAttr":$use_next_bd, "::mlir::Value":$next_bd, "::mlir::Value":$start_bd)>,
   ];
 
   let extraClassDeclaration = [{
@@ -687,6 +692,7 @@ def AMDAIE_NpuHalfDmaCpyNdOp
     }
 
     std::optional<BdIdOp> getBdIdOp() {
+      if (!getBdId()) return std::nullopt;
       return dyn_cast_if_present<BdIdOp>(getBdId().getDefiningOp());
     }
 

@@ -67,12 +67,6 @@ void AMDAIEDmaCompositionPass::runOnOperation() {
                                "after strided op composition";
     return signalPassFailure();
   }
-
-  if (failed(moveNpuSourceDmaSyncAfterTargetDmaCpy(rewriter, parentOp))) {
-    parentOp->emitOpError()
-        << "failed to move source DMA sync after target DMA copy";
-    return signalPassFailure();
-  }
 }
 
 }  // namespace
