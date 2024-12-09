@@ -182,15 +182,6 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   funcPassManager.addPass(createCanonicalizerPass());
   funcPassManager.addPass(createCSEPass());
 
-  // Promote the matmul output to local memory
-  {
-    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
-    bufferizeOptions.memorySpace = 2;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::Output;
-    funcPassManager.addPass(
-        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
-  }
-
   // Tile the reduction dimension using scf.for
   {
     AMDAIETileAndFuseOptions tileFuseOptions;
