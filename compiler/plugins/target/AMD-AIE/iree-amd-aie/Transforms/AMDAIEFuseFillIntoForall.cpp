@@ -40,7 +40,8 @@ void AMDAIEFuseFillIntoForallPass::runOnOperation() {
   linalg::FillOp fillOp = fillOps[0];
   if (fillOp.getResults().size() != 1) return;
 
-  // Confirm that there is a unique user that is a forall. Else return
+  // Confirm that there is a unique user that is a forall, and match
+  // the block argument that is used by the fill op, or return.
   ResultRange::use_range fillUses = fillOp->getUses();
   if (std::distance(fillUses.begin(), fillUses.end()) != 1) return;
   OpOperand &fillUse = *fillUses.begin();
@@ -57,20 +58,23 @@ void AMDAIEFuseFillIntoForallPass::runOnOperation() {
     }
   }
 
+  // Locate the correct tensor to fill. This is either the block argument
+  // (if there is no extract_slice op), or the output of the extract_slice op.
   Value toFill;
+  // In the case where there are no extract_slice ops, we create the fill
+  // at the beginning of the forall body.
   if (!extractSliceOp) {
-    // In the case where there are no extract_slice ops, we create the fill
-    // at the beginning of the forall body.
     toFill = bbArg;
     rewriter.setInsertionPointToStart(forallOp.getBody());
-  } else {
-    // In the case where there is exactly one extract_slice op, we create
-    // the new fill on the output of the extract_slice op.
+  }
+  // In the case where there is exactly one extract_slice op, we create
+  // the new fill on the output of the extract_slice op.
+  else {
     toFill = extractSliceOp.getResult();
     rewriter.setInsertionPointAfter(extractSliceOp);
   }
 
-  // Create new fill:
+  // Create the new fill operation.
   Value scalar = fillOp.value();
   Location loc = fillOp.getLoc();
   auto fusedFill = rewriter.create<linalg::FillOp>(loc, scalar, toFill);
@@ -83,7 +87,7 @@ void AMDAIEFuseFillIntoForallPass::runOnOperation() {
         return true;
       });
 
-  // Unuse old fill:
+  // Do not use the result of the old fill.
   rewriter.replaceAllUsesWith(fillOp.getResults()[0], fillOp.getOutputs()[0]);
 }
 
