@@ -7,6 +7,7 @@
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Pass/Pass.h"
 
 #define DEBUG_TYPE "iree-amdaie-fuse-fill-into-forall"
@@ -32,58 +33,58 @@ void AMDAIEFuseFillIntoForallPass::runOnOperation() {
   mlir::FunctionOpInterface funcOp = getOperation();
   IRRewriter rewriter(context);
 
-  // Find the producer op, in this case is linalg.fill.
-  TilingInterface tileableProducer;
-  funcOp->walk([&](TilingInterface op) {
-    if (isa<linalg::FillOp>(op)) {
-      tileableProducer = op;
-      return WalkResult::interrupt();
+  // Find a unique FillOp with a single output, or return.
+  SmallVector<linalg::FillOp> fillOps;
+  funcOp->walk([&](linalg::FillOp fillOp) { fillOps.push_back(fillOp); });
+  if (fillOps.size() != 1) return;
+  linalg::FillOp fillOp = fillOps[0];
+  if (fillOp.getResults().size() != 1) return;
+
+  // Confirm that there is a unique user that is a forall. Else return
+  ResultRange::use_range fillUses = fillOp->getUses();
+  if (std::distance(fillUses.begin(), fillUses.end()) != 1) return;
+  OpOperand &fillUse = *fillUses.begin();
+  auto forallOp = dyn_cast<scf::ForallOp>(fillUse.getOwner());
+  if (!forallOp) return;
+  BlockArgument bbArg = forallOp.getTiedBlockArgument(&fillUse);
+
+  // Find 0 or 1 ExtractSliceOps that use the fill result, or return.
+  tensor::ExtractSliceOp extractSliceOp;
+  for (Operation *user : bbArg.getUsers()) {
+    if (auto nxt = dyn_cast<tensor::ExtractSliceOp>(user)) {
+      if (extractSliceOp) return;
+      extractSliceOp = nxt;
     }
-    return WalkResult::advance();
-  });
-
-  if (!tileableProducer) {
-    LLVM_DEBUG(llvm::dbgs() << "There is no producer op to be fused.\n");
-    return;
   }
 
-  // Search the first use by a scf::ForallOp user.
-  scf::ForallOp forallOp;
-  auto itProducerUses =
-      llvm::find_if(tileableProducer->getUses(), [&](OpOperand &use) {
-        forallOp = dyn_cast<scf::ForallOp>(use.getOwner());
-        return forallOp;
+  Value toFill;
+  if (!extractSliceOp) {
+    // In the case where there are no extract_slice ops, we create the fill
+    // at the beginning of the forall body.
+    toFill = bbArg;
+    rewriter.setInsertionPointToStart(forallOp.getBody());
+  } else {
+    // In the case where there is exactly one extract_slice op, we create
+    // the new fill on the output of the extract_slice op.
+    toFill = extractSliceOp.getResult();
+    rewriter.setInsertionPointAfter(extractSliceOp);
+  }
+
+  // Create new fill:
+  Value scalar = fillOp.value();
+  Location loc = fillOp.getLoc();
+  auto fusedFill = rewriter.create<linalg::FillOp>(loc, scalar, toFill);
+  rewriter.replaceUsesWithIf(
+      toFill, fusedFill.getResult(0), [&](OpOperand &operand) {
+        if (operand.getOwner() == fusedFill) return false;
+        if (isa<tensor::ParallelInsertSliceOp>(operand.getOwner())) {
+          return false;
+        }
+        return true;
       });
-  if (!forallOp) {
-    LLVM_DEBUG(llvm::dbgs() << "There is no forall Op.\n");
-    return;
-  }
 
-  // Search the producer slices accessed within the Forall op.
-  OpOperand *pUse = &(*itProducerUses);
-  BlockArgument bbArg = forallOp.getTiedBlockArgument(pUse);
-
-  auto itBBArgUsers = llvm::find_if(bbArg.getUsers(), [&](Operation *user) {
-    auto sliceOp = dyn_cast<tensor::ExtractSliceOp>(user);
-    return sliceOp;
-  });
-  if (itBBArgUsers == bbArg.getUsers().end()) {
-    funcOp->emitOpError("There is no extract tensor slice.");
-    return signalPassFailure();
-  }
-  auto sliceOpToTile = cast<tensor::ExtractSliceOp>(*itBBArgUsers);
-
-  LoopLikeOpInterface loops =
-      cast<LoopLikeOpInterface>(forallOp.getOperation());
-
-  // Materialize the slice of the producer in place.
-  std::optional<scf::SCFFuseProducerOfSliceResult> fusedProducer =
-      scf::tileAndFuseProducerOfSlice(rewriter, sliceOpToTile,
-                                      MutableArrayRef(&loops, 1));
-  if (!fusedProducer) {
-    funcOp->emitOpError("Failed to fuse fill op into forall loop.");
-    return signalPassFailure();
-  }
+  // Unuse old fill:
+  rewriter.replaceAllUsesWith(fillOp.getResults()[0], fillOp.getOutputs()[0]);
 }
 
 }  // namespace
