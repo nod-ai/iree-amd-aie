@@ -16,7 +16,7 @@
 
 #include "Passes.h"
 #include "aievec/AIEVecOps.h"
-#include "iree-amd-aie/Transforms/AMDAIEUtils.h"
+#include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
