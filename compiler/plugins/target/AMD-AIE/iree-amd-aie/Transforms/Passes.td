@@ -99,9 +99,12 @@ def AMDAIEBufferizeToAllocation :
                    "Create new allocations for lhs, rhs of a linalg op."),
         clEnumValN(mlir::iree_compiler::AMDAIE::BufferizeOperand::Output, "output",
                    "Create new allocations for output of a linalg op."),
-        clEnumValN(mlir::iree_compiler::AMDAIE::BufferizeOperand::DefOp, "def-op",
-                   "Create new allocations for operands from the def ops of a linalg op.")
-    )}]>
+        clEnumValN(mlir::iree_compiler::AMDAIE::BufferizeOperand::PackInput, "pack-input",
+                   "Create new allocations for operands from the pack op inputs of a linalg op.")
+    )}]>,
+    Option<"packDepth", "pack-depth", "int64_t", /*default=*/"1",
+      "Set the depth of the pack operands to look for. Default is `1` to operate"
+      " on the first level of pack operations.">,
   ];
 }
 
@@ -340,7 +343,7 @@ def AMDAIEInsertInfiniteLoopAroundCoreBlock :
     This pass is meant for developers to allow retrieval of granular performance
     statistics and is not meant to be enabled by default. With this pass enabled,
     you can put a loop around the hardware queue command submission, for example:
-    
+
     ```
     for (int i = 0; i < N; i++) {
       ebuf.m_cmd_pkt->state = ERT_CMD_STATE_NEW;
