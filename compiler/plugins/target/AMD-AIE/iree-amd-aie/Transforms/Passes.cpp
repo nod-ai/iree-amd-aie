@@ -213,11 +213,13 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   funcPassManager.addPass(createCanonicalizerPass());
   funcPassManager.addPass(createCSEPass());
 
-  // Promote the matmul inputs to shared memory
+  // Promote the operands of pack at depth 2 from the linalg ops to shared
+  // memory.
   {
     AMDAIEBufferizeToAllocationOptions bufferizeOptions;
     bufferizeOptions.memorySpace = 1;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::DefOp;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::PackInput;
+    bufferizeOptions.packDepth = 2;
     funcPassManager.addPass(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }
