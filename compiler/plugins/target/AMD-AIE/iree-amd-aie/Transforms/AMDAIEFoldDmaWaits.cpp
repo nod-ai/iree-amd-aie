@@ -16,15 +16,98 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
+/// Utility function to determine whether a DMA wait op can be folded based on
+/// its half DMA copy operation.
+FailureOr<bool> canFoldBasedOnHalfDmaCpy(
+    const AMDAIE::AMDAIEDeviceModel &deviceModel,
+    AMDAIE::NpuHalfDmaCpyNdOp &npuHalfDmaCpyNdOp,
+    DenseMap<std::pair<AMDAIE::TileOp, AMDAIE::ConnectionOp>,
+             SmallVector<uint32_t>> &tileConnectToBdIdQueue) {
+  // Retrieve the connection op.
+  std::optional<AMDAIE::ConnectionOp> maybeConnectionOp =
+      npuHalfDmaCpyNdOp.getConnectionOp();
+  if (!maybeConnectionOp) {
+    return npuHalfDmaCpyNdOp.emitOpError()
+           << "expected to operate on an `amdaie.connection`";
+  }
+  AMDAIE::ConnectionOp connectionOp = maybeConnectionOp.value();
+
+  // Retrieve the flow op.
+  std::optional<AMDAIE::FlowOp> maybeFlowOp = connectionOp.getFlowOp();
+  if (!maybeFlowOp) {
+    return connectionOp->emitOpError()
+           << "expected to operate on an `amdaie.flow`";
+  }
+  AMDAIE::FlowOp flowOp = maybeFlowOp.value();
+  bool isPacketFlow = flowOp.getIsPacketFlow();
+
+  // Retrieve the BD ID op.
+  std::optional<AMDAIE::BdIdOp> maybeBdIdOp = npuHalfDmaCpyNdOp.getBdIdOp();
+  if (!maybeBdIdOp) {
+    return npuHalfDmaCpyNdOp.emitOpError()
+           << "must have a BD ID op to lower to "
+              "`amdaie.npu.write_bd`";
+  }
+  AMDAIE::BdIdOp bdIdOp = maybeBdIdOp.value();
+
+  // Retrieve the tile op.
+  AMDAIE::TileOp tileOp =
+      dyn_cast_if_present<AMDAIE::TileOp>(bdIdOp.getTile().getDefiningOp());
+  if (!tileOp) {
+    return bdIdOp.emitOpError() << "must operate on an `amdaie.tile`";
+  }
+
+  // Get the maximum queue size.
+  uint32_t col = getConstantIndexOrAssert(tileOp.getCol());
+  uint32_t row = getConstantIndexOrAssert(tileOp.getRow());
+  uint32_t maxQueueSize = deviceModel.getDmaMaxQueueSize(col, row);
+
+  // Keep wait op if, either reaches the maximum queue size, or a
+  // duplicate BD ID in the same tile, or packet flow, or the queue is
+  // empty
+  uint32_t bdId = getConstantIndexOrAssert(bdIdOp.getValue());
+  bool isDuplicateBdId =
+      llvm::any_of(tileConnectToBdIdQueue, [&](const auto &entry) {
+        return entry.first.first == tileOp &&
+               llvm::is_contained(entry.second, bdId);
+      });
+  SmallVector<uint32_t> &bdIdQueue =
+      tileConnectToBdIdQueue[{tileOp, connectionOp}];
+  bool canFold = true;
+  if (isDuplicateBdId || isPacketFlow || bdIdQueue.size() >= maxQueueSize ||
+      bdIdQueue.empty()) {
+    bdIdQueue.clear();
+    canFold = false;
+  }
+  bdIdQueue.push_back(bdId);
+  return canFold;
+}
+
 /// Traverses the control code in reverse, ensuring that for each connection,
 /// only one DMA wait op is retained for every maximum queue size.
+///
+/// Example Output: assuming a maximum queue size of 4.
+///   dma_cpy_nd
+///   %0 = dma_cpy_nd
+///   dma_wait(%0)
+///   dma_cpy_nd
+///   dma_cpy_nd
+///   dma_cpy_nd
+///   %1 = dma_cpy_nd
+///   dma_wait(%1)
+/// From the bottom up, for every four DMA copy operations, only one DMA wait
+/// operation is retained.
+///
+/// Reverse traversal simplifies handling duplicate BD IDs, preventing
+/// the need to revisit and modify earlier operations after processing later
+/// ones.
 LogicalResult foldDmaWaits(const AMDAIE::AMDAIEDeviceModel &deviceModel,
                            AMDAIE::ControlCodeOp controlCodeOp) {
   IRRewriter rewriter(controlCodeOp->getContext());
   std::vector<AMDAIE::NpuDmaWaitOp> waitOpsToErase;
   DenseMap<std::pair<AMDAIE::TileOp, AMDAIE::ConnectionOp>,
            SmallVector<uint32_t>>
-      tileConnectionToBdIdQueueMap;
+      tileConnectToBdIdQueue;
   // Traverse the control code in reverse.
   WalkResult res = controlCodeOp->walk<WalkOrder::PostOrder, ReverseIterator>(
       [&](AMDAIE::NpuDmaWaitOp waitOp) {
@@ -33,62 +116,10 @@ LogicalResult foldDmaWaits(const AMDAIE::AMDAIEDeviceModel &deviceModel,
           if (auto npuHalfDmaCpyNdOp =
                   dyn_cast_if_present<AMDAIE::NpuHalfDmaCpyNdOp>(
                       token.getDefiningOp())) {
-            // Retrieve the connection op.
-            std::optional<AMDAIE::ConnectionOp> maybeConnectionOp =
-                npuHalfDmaCpyNdOp.getConnectionOp();
-            if (!maybeConnectionOp) {
-              npuHalfDmaCpyNdOp.emitOpError()
-                  << "expected to operate on an `amdaie.connection`";
-              return WalkResult::interrupt();
-            }
-            AMDAIE::ConnectionOp connectionOp = maybeConnectionOp.value();
-            // Retrieve the flow op.
-            std::optional<AMDAIE::FlowOp> maybeFlowOp =
-                maybeConnectionOp->getFlowOp();
-            if (!maybeFlowOp) {
-              maybeConnectionOp->emitOpError()
-                  << "expected to operate on an `amdaie.flow`";
-              return WalkResult::interrupt();
-            }
-            bool isPacketFlow = maybeFlowOp->getIsPacketFlow();
-            // Retrieve the BD ID op.
-            std::optional<AMDAIE::BdIdOp> maybeBdIdOp =
-                npuHalfDmaCpyNdOp.getBdIdOp();
-            if (!maybeBdIdOp) {
-              npuHalfDmaCpyNdOp.emitOpError()
-                  << "must have a BD ID op to lower to "
-                     "`amdaie.npu.write_bd`";
-              return WalkResult::interrupt();
-            }
-            AMDAIE::BdIdOp bdIdOp = maybeBdIdOp.value();
-            // Retrieve the tile op.
-            AMDAIE::TileOp tileOp = dyn_cast_if_present<AMDAIE::TileOp>(
-                bdIdOp.getTile().getDefiningOp());
-            if (!tileOp) {
-              bdIdOp.emitOpError() << "must operate on an `amdaie.tile`";
-              return WalkResult::interrupt();
-            }
-            // Get the maximum queue size.
-            uint32_t col = getConstantIndexOrAssert(tileOp.getCol());
-            uint32_t row = getConstantIndexOrAssert(tileOp.getRow());
-            uint32_t maxQueueSize = deviceModel.getDmaMaxQueueSize(col, row);
-            // Keep wait op if, either reaches the maximum queue size, or there
-            // is a duplicate BD ID in the same tile.
-            uint32_t bdId = getConstantIndexOrAssert(bdIdOp.getValue());
-            bool isDuplicateBdId = llvm::any_of(
-                tileConnectionToBdIdQueueMap, [&](const auto &entry) {
-                  return entry.first.first == tileOp &&
-                         llvm::is_contained(entry.second, bdId);
-                });
-            SmallVector<uint32_t> &bdIdQueue =
-                tileConnectionToBdIdQueueMap[std::make_pair(tileOp,
-                                                            connectionOp)];
-            if (isDuplicateBdId || isPacketFlow ||
-                bdIdQueue.size() >= maxQueueSize) {
-              bdIdQueue.clear();
-            }
-            if (bdIdQueue.empty()) toErase = false;
-            bdIdQueue.push_back(bdId);
+            FailureOr<bool> result = canFoldBasedOnHalfDmaCpy(
+                deviceModel, npuHalfDmaCpyNdOp, tileConnectToBdIdQueue);
+            if (failed(result)) return WalkResult::interrupt();
+            toErase &= *result;
           }
         }
         // Erase later to avoid invalidating the iterator.

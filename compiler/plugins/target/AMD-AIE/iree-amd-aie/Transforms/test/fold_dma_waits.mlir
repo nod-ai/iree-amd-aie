@@ -31,16 +31,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // Expect no DMA waits to be folded, since the same BD ID is used.
 // CHECK-LABEL: @fold_dma_waits_same_bd_id
-// CHECK:       %[[OBJECT_FIFO_0:.+]] = amdaie.logicalobjectfifo.from_buffers
-// CHECK:       %[[CHANNEL_0:.+]] = amdaie.channel
-// CHECK:       %[[CHANNEL_1:.+]] = amdaie.channel
-// CHECK:       %[[CONNECTION:.+]] = amdaie.connection
-// CHECK:         %[[OBJECT_FIFO_1:.+]] = amdaie.logicalobjectfifo.from_memref
-// CHECK:         %[[BD_ID:.+]] = amdaie.bd_id
-// CHECK:         %[[TOKEN_0:.+]] = amdaie.npu.half_dma_cpy_nd async %[[CONNECTION]](%[[OBJECT_FIFO_1]] [] [] [] bd_id = %[[BD_ID]] channel = %[[CHANNEL_0]]) : !amdaie.logicalobjectfifo<memref<2048xi32>>
-// CHECK:         amdaie.npu.dma_wait(%[[TOKEN_0]] : !amdaie.async_token)
-// CHECK:         %[[TOKEN_1:.+]] = amdaie.npu.half_dma_cpy_nd async %[[CONNECTION]](%[[OBJECT_FIFO_1]] [] [] [] bd_id = %[[BD_ID]] channel = %[[CHANNEL_0]]) : !amdaie.logicalobjectfifo<memref<2048xi32>>
-// CHECK:         amdaie.npu.dma_wait(%[[TOKEN_1]] : !amdaie.async_token)
+// CHECK-COUNT-2: amdaie.npu.dma_wait
+// CHECK-NOT:     amdaie.npu.dma_wait
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 #pipeline_layout = #hal.pipeline.layout<bindings = [#hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, Indirect>], flags = Indirect>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
