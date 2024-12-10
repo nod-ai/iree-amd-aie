@@ -67,25 +67,30 @@ static SmallVector<Value> getInputOperands(linalg::LinalgOp &linalgOp) {
   return operands;
 }
 
-/// Utility to fetch operands from the defining ops of LinalgOp's input
-/// operands. For example, we want to fetch the input operand of %pack0 and
-/// %pack1 as shown in below, and promote them to memory.
-/// %pack0 = tensor.pack % arg0
-/// %pack1 = tensor.pack % arg1
-/// %pack2 = tensor.pack % pack0
-/// %pack3 = tensor.pack % pack1
-/// %generic = linalg.generic ins(%pack2, %pack3)
-static FailureOr<SmallVector<Value>> getOperandsFromDefOp(
-    linalg::LinalgOp &linalgOp) {
+/// Utility to fetch pack operands at a specified depth from the LinalgOp's
+/// input operands.
+static FailureOr<SmallVector<Value>> getPackOperands(linalg::LinalgOp linalgOp,
+                                                     uint32_t depthLevel) {
   SmallVector<Value> operands;
-  for (Value input : linalgOp.getDpsInputs()) {
-    auto defOp = input.getDefiningOp<tensor::PackOp>();
+  for (auto input : llvm::enumerate(linalgOp.getDpsInputs())) {
+    uint32_t currentLevel{0};
+    Operation *currentOp = input.value().getDefiningOp();
+    while (currentLevel < depthLevel && currentOp != nullptr) {
+      if (dyn_cast<tensor::PackOp>(currentOp)) {
+        currentLevel++;
+        if (currentLevel == depthLevel) break;
+      }
+      currentOp = currentOp->getOperand(0).getDefiningOp();
+    }
     // The defining op has to be a pack op, fail otherwise.
-    if (!defOp) {
-      return failure();
+    if (!currentOp) {
+      return linalgOp.emitOpError()
+             << "operand #" << input.index() << " only has pack ops to depth "
+             << currentLevel << ", but request is for a depth " << depthLevel
+             << " pack op.";
     }
     // We only want to fetch the input operand of the pack op.
-    operands.push_back(defOp->getOperand(0));
+    operands.push_back(currentOp->getResult(0));
   }
   return operands;
 }
@@ -94,7 +99,8 @@ static FailureOr<SmallVector<Value>> getOperandsFromDefOp(
 // ops, based on which operands the caller wants to bufferize via
 // `bufferizeOperand` parameter.
 static FailureOr<SmallVector<Value>> getOperandsToBufferize(
-    BufferizeOperand bufferizeOperand, linalg::LinalgOp &linalgOp) {
+    BufferizeOperand bufferizeOperand, linalg::LinalgOp &linalgOp,
+    uint32_t packDepth) {
   switch (bufferizeOperand) {
     /// Create new allocations for Lhs, Rhs and Out.
     case BufferizeOperand::InputOutput:
@@ -105,9 +111,9 @@ static FailureOr<SmallVector<Value>> getOperandsToBufferize(
     /// Create new allocations only for Out.
     case BufferizeOperand::Output:
       return SmallVector<Value>(linalgOp.getDpsInits());
-    /// Create new allocations for operands from the def ops.
-    case BufferizeOperand::DefOp:
-      return getOperandsFromDefOp(linalgOp);
+    /// Create new allocations for operands from the pack ops.
+    case BufferizeOperand::PackInput:
+      return getPackOperands(linalgOp, packDepth);
     default:
       return failure();
   }
@@ -183,7 +189,7 @@ void AMDAIEBufferizeToAllocationPass::runOnOperation() {
   // Find the producer ops for linalg (matmul) op, and bufferizes them in new
   // allocations.
   FailureOr<SmallVector<Value>> operandsToBufferize =
-      getOperandsToBufferize(bufferizeOperand, linalgOp);
+      getOperandsToBufferize(bufferizeOperand, linalgOp, packDepth);
   if (failed(operandsToBufferize)) {
     linalgOp->emitOpError("could not fetch operands to bufferize");
     return signalPassFailure();

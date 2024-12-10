@@ -207,6 +207,9 @@ std::unique_ptr<Pass> createAMDAIEInsertDmaBdChainPass();
 std::unique_ptr<Pass> createAMDAIEInsertLoopsForVectorizationPass(
     AMDAIEInsertLoopsForVectorizationOptions options = {});
 
+/// Create a pass to remove redundant DMA wait operations.
+std::unique_ptr<Pass> createAMDAIEFoldDmaWaitsPass();
+
 /// Create a pass to fuse the pack operations into the for loops.
 std::unique_ptr<Pass> createAMDAIEFusePackIntoLoopPass(
     AMDAIEFusePackIntoLoopOptions options = {});
