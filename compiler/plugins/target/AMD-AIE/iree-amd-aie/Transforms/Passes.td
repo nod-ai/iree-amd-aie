@@ -219,14 +219,13 @@ def AMDAIEDistributeL1Allocations :
   Pass<"iree-amdaie-distribute-l1-allocations", "ModuleOp"> {
   let summary = "Replace distributed L1 allocations with private allocations.";
   let description = [{
-    Each AIE core/tile is uniquely identified by gpu thread ids, usually
-    'y' (for AIE row) and 'x' (for AIE column).
-
     Some of the compilation pipelines in iree-amd-aie generate a single L1
     memory allocation describing the concatenation of all memory for all
     cores/tiles. Each thread then slices into a mutually exclusive rectangle
     of the allocation, along its thread dimensions, so 'privatizing' its
-    memory.
+    memory. Note the thread dimension is specified by the `GPUThreadMappingAttr`
+    in `scf.forall` ops, indicating that the distribution occurs across one or
+    more blocks of cores, with subsets designated as threads.
 
     This pass rewrites these allocations to be private to each core/tile. So
     it replaces a large allocation in L1 with a smaller allocation, smaller by

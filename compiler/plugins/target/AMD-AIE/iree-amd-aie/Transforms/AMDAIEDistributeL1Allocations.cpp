@@ -53,16 +53,27 @@ MemRefType getDistributedType(memref::AllocOp alloc,
   MemRefType type;
   for (Operation *allocUser : alloc->getUsers()) {
     if (auto subview = dyn_cast<memref::SubViewOp>(allocUser)) {
-      // Check that all offsets are either constants or thread ids. We assume
-      // that if a subview has an offset which is not a constant and not a
-      // thread id, it's not 'distributing'.
+      // Check that all offsets are either constants or depending on thread ids.
+      // We assume that if a subview has an offset which is not a constant and
+      // does not depend on thread id, it's not 'distributing'.
       Operation::operand_range offsets = subview.getOffsets();
       int nIndVars{0};
       for (Value offset : offsets) {
         bool isConst = matchPattern(offset, m_Constant());
-        bool isIndVar = llvm::is_contained(indVars, offset);
-        nIndVars += isIndVar;
-        if (!isConst && !isIndVar) return {};
+        bool dependsOnIndVar = false;
+        if (!isConst &&
+            isa_and_present<affine::AffineApplyOp>(offset.getDefiningOp())) {
+          auto applyOp = cast<affine::AffineApplyOp>(offset.getDefiningOp());
+          for (auto operand : applyOp.getSymbolOperands()) {
+            dependsOnIndVar = llvm::is_contained(indVars, operand);
+            if (dependsOnIndVar) break;
+          }
+        } else {
+          dependsOnIndVar = llvm::is_contained(indVars, offset);
+        }
+
+        nIndVars += dependsOnIndVar;
+        if (!isConst && !dependsOnIndVar) return {};
       }
 
       // If there are no thread ids, this subview is not distributing.
