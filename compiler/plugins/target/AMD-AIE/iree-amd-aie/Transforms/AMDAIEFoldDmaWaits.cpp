@@ -142,8 +142,7 @@ LogicalResult foldDmaWaits(const AMDAIE::AMDAIEDeviceModel &deviceModel,
           rewriter.create<AMDAIE::NpuHalfDmaCpyNdOp>(
               op.getLoc(), resultTypeRange, op.getConnection(), op.getInput(),
               op.getMixedOffsets(), op.getMixedSizes(), op.getMixedStrides(),
-              op.getBdId(), op.getChannel(), op.getUseNextBdAttr(),
-              op.getNextBd(), op.getStartBd());
+              op.getBdId(), op.getChannel(), op.getNextBd(), op.getStartBd());
           rewriter.eraseOp(op);
         }
       }

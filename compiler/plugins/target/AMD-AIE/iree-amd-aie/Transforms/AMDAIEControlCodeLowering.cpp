@@ -109,14 +109,12 @@ struct HalfDmaCpyNdToNpuConverter final
     staticStrides.insert(staticStrides.begin(),
                          numIntraAddrDim - staticStrides.size(), 0);
 
-    bool useNextBd = op.getUseNextBd().value_or(false);
+    bool useNextBd = false;
     int32_t nextBd{0};
-    if (useNextBd) {
-      std::optional<AMDAIE::BdIdOp> nextBdIdOp = op.getNextBdIdOp();
-      if (!nextBdIdOp) {
-        return op.emitOpError() << "useNextBd set, but no next BD ID op found";
-      }
+    std::optional<AMDAIE::BdIdOp> nextBdIdOp = op.getNextBdIdOp();
+    if (nextBdIdOp) {
       nextBd = getConstantIndexOrAssert(nextBdIdOp.value().getValue());
+      useNextBd = true;
     }
 
     bool validBd{true};
@@ -216,9 +214,9 @@ struct HalfDmaCpyNdToNpuConverter final
     if (failed(npuPushToQueueOp)) return failure();
     rewriter.replaceOp(op, *npuPushToQueueOp);
 
-    bool useNextBd = op.getUseNextBd().value_or(false);
-    if (useNextBd) {
-      // `useNextBd` is true, so either at the beginning or middle of a chain.
+    std::optional<AMDAIE::BdIdOp> nextBdIdOp = op.getNextBdIdOp();
+    if (nextBdIdOp) {
+      // `next_bd` is set, so either at the beginning or middle of a chain.
       // No need to push to the queue, just erase the op.
       rewriter.eraseOp(*npuPushToQueueOp);
     } else {

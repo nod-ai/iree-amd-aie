@@ -19,17 +19,22 @@ namespace {
 
 using TileConnect = std::pair<AMDAIE::TileOp, AMDAIE::ConnectionOp>;
 
-/// Utility function to update `use_next_bd`, `next_bd` and `start_bd` operands.
-void updateChainOperands(IRRewriter &rewriter,
-                         SmallVector<AMDAIE::NpuHalfDmaCpyNdOp> &dmaChain) {
-  if (dmaChain.size() < 2) return;
+/// Utility function to update `next_bd` and `start_bd` operands.
+LogicalResult updateChainOperands(
+    IRRewriter &rewriter, SmallVector<AMDAIE::NpuHalfDmaCpyNdOp> &dmaChain) {
+  // Nothing to do if the DMA chain length is one or less.
+  if (dmaChain.size() < 2) return success();
 
-  // Chain the DMA ops.
   Value startBdId = dmaChain[0].getBdId();
+  Operation *parentOp = dmaChain[0]->getParentOp();
+  // Chain the DMA ops.
   for (unsigned i = 0; i < dmaChain.size() - 1; ++i) {
     AMDAIE::NpuHalfDmaCpyNdOp currDmaOp = dmaChain[i];
-    Value nextBd = dmaChain[i + 1].getBdId();
-    BoolAttr useNextBd = rewriter.getBoolAttr(true);
+    if (currDmaOp->getParentOp() != parentOp) {
+      return currDmaOp.emitError(
+          "DMA operations to be chained must belong to the same scope");
+    }
+    Value nextBdId = dmaChain[i + 1].getBdId();
     // No token is produced at the beginning or middle of a chain.
     TypeRange token = TypeRange{};
     rewriter.setInsertionPointAfter(currDmaOp);
@@ -37,8 +42,7 @@ void updateChainOperands(IRRewriter &rewriter,
         currDmaOp.getLoc(), token, currDmaOp.getConnection(),
         currDmaOp.getInput(), currDmaOp.getMixedOffsets(),
         currDmaOp.getMixedSizes(), currDmaOp.getMixedStrides(),
-        currDmaOp.getBdId(), currDmaOp.getChannel(), useNextBd, nextBd,
-        startBdId);
+        currDmaOp.getBdId(), currDmaOp.getChannel(), nextBdId, startBdId);
     for (auto &use : currDmaOp->getUses()) {
       rewriter.eraseOp(use.getOwner());
     }
@@ -46,16 +50,19 @@ void updateChainOperands(IRRewriter &rewriter,
   }
   // Last DMA op in the chain.
   AMDAIE::NpuHalfDmaCpyNdOp lastDmaOp = dmaChain.back();
-  Value nextBd = nullptr;
-  BoolAttr useNextBd = rewriter.getBoolAttr(false);
+  if (lastDmaOp->getParentOp() != parentOp) {
+    return lastDmaOp.emitError(
+        "DMA operations to be chained must belong to the same scope");
+  }
+  Value nextBdId = nullptr;
   rewriter.setInsertionPointAfter(lastDmaOp);
   auto lastDmaOpChained = rewriter.create<AMDAIE::NpuHalfDmaCpyNdOp>(
       lastDmaOp.getLoc(), lastDmaOp.getResultTypes(), lastDmaOp.getConnection(),
       lastDmaOp.getInput(), lastDmaOp.getMixedOffsets(),
       lastDmaOp.getMixedSizes(), lastDmaOp.getMixedStrides(),
-      lastDmaOp.getBdId(), lastDmaOp.getChannel(), useNextBd, nextBd,
-      startBdId);
+      lastDmaOp.getBdId(), lastDmaOp.getChannel(), nextBdId, startBdId);
   rewriter.replaceOp(lastDmaOp, lastDmaOpChained.getResults());
+  return success();
 }
 
 /// Utility function to determine if chains can grow further
@@ -95,25 +102,27 @@ void canChainGrowFurther(
   }
 }
 
-/// Traverse the control code in reverse order to create DMA BD chains.
+/// Traverse the control code in reverse order to create DMA BD chains. Reverse
+/// traversal simplifies handling duplicate BD IDs, preventing the need to
+/// revisit and modify earlier operations after processing later ones.
 LogicalResult insertDmaBdChain(const AMDAIE::AMDAIEDeviceModel &deviceModel,
                                AMDAIE::ControlCodeOp controlCodeOp) {
   IRRewriter rewriter(controlCodeOp->getContext());
 
   // Move all BdIdOps to the beginning of the control code.
   // This is to avoid dominance issues when chaining BD IDs.
-  SmallVector<Operation *> ops;
+  SmallVector<Operation *> bdIdOps;
   WalkResult res = controlCodeOp->walk([&](Operation *op) {
     if (auto bdIdOp = dyn_cast<AMDAIE::BdIdOp>(op)) {
-      ops.push_back(op);
+      bdIdOps.push_back(op);
     }
     return WalkResult::advance();
   });
-  for (Operation *op : llvm::reverse(ops)) {
+  for (Operation *op : llvm::reverse(bdIdOps)) {
     op->moveBefore(&controlCodeOp.front());
   }
 
-  // BD ID that are have been assigned in each tile.
+  // BD IDs that have been assigned in each tile.
   DenseMap<TileConnect, SmallVector<uint32_t>> tileConnectToBdIds;
   // Buffers the DMA ops that will be chained.
   DenseMap<TileConnect, SmallVector<AMDAIE::NpuHalfDmaCpyNdOp>>
@@ -122,7 +131,7 @@ LogicalResult insertDmaBdChain(const AMDAIE::AMDAIEDeviceModel &deviceModel,
   res = controlCodeOp->walk<WalkOrder::PostOrder, ReverseIterator>(
       [&](Operation *op) {
         if (auto npuHalfDmaCpyNdOp = dyn_cast<AMDAIE::NpuHalfDmaCpyNdOp>(op)) {
-          // Not shim, will be earsed at ControlcodeLowering, ignore.
+          // Not shim, will be erased at ControlcodeLowering, ignore.
           if (npuHalfDmaCpyNdOp.getMemorySpaceAsUInt() != 0) {
             return WalkResult::advance();
           }
@@ -181,9 +190,9 @@ LogicalResult insertDmaBdChain(const AMDAIE::AMDAIEDeviceModel &deviceModel,
             return WalkResult::interrupt();
           }
 
-          // Any duplicate BD ID from the same tile indicates the chain cannot
-          // grow further and requires breaking to release the conflicting BD
-          // ID.
+          // Any duplicate BD ID from the same tile indicates that the chain
+          // cannot grow further and requires breaking to release the
+          // conflicting BD ID.
           SmallVector<TileConnect> chainsToBreak;
           TileConnect currTileConnect = {tileOp, connectionOp};
           canChainGrowFurther(bdId, currTileConnect, tileConnectToBdIds,
@@ -193,7 +202,9 @@ LogicalResult insertDmaBdChain(const AMDAIE::AMDAIEDeviceModel &deviceModel,
           // the `updateChainOperands` function.
           if (!chainsToBreak.empty()) {
             for (auto &entry : chainsToBreak) {
-              updateChainOperands(rewriter, tileConnectToDmaChain[entry]);
+              if (failed(updateChainOperands(rewriter,
+                                             tileConnectToDmaChain[entry])))
+                WalkResult::interrupt();
               tileConnectToBdIds[entry].clear();
               tileConnectToDmaChain[entry].clear();
             }
@@ -211,7 +222,8 @@ LogicalResult insertDmaBdChain(const AMDAIE::AMDAIEDeviceModel &deviceModel,
 
   // Build the remaining chains.
   for (auto &[entry, _] : tileConnectToBdIds) {
-    updateChainOperands(rewriter, tileConnectToDmaChain[entry]);
+    if (failed(updateChainOperands(rewriter, tileConnectToDmaChain[entry])))
+      return failure();
   }
 
   if (res.wasInterrupted()) return failure();

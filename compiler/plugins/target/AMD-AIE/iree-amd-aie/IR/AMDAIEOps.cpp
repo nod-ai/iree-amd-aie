@@ -1101,8 +1101,7 @@ void NpuHalfDmaCpyNdOp::build(OpBuilder &b, OperationState &result,
                               Value input, ArrayRef<OpFoldResult> offsets,
                               ArrayRef<OpFoldResult> sizes,
                               ArrayRef<OpFoldResult> strides, Value bdId,
-                              Value channel, BoolAttr useNextBd, Value nextBd,
-                              Value startBd) {
+                              Value channel, Value nextBd, Value startBd) {
   SmallVector<int64_t> staticOffsets, staticSizes, staticStrides;
   SmallVector<Value> dynamicOffsets, dynamicSizes, dynamicStrides;
   dispatchIndexOpFoldResults(offsets, dynamicOffsets, staticOffsets);
@@ -1110,7 +1109,7 @@ void NpuHalfDmaCpyNdOp::build(OpBuilder &b, OperationState &result,
   dispatchIndexOpFoldResults(strides, dynamicStrides, staticStrides);
   build(b, result, resultTypes, connection, input, dynamicOffsets, dynamicSizes,
         dynamicStrides, staticOffsets, staticSizes, staticStrides, bdId,
-        channel, useNextBd, nextBd, startBd);
+        channel, nextBd, startBd);
 }
 
 // Build a NpuHalfDmaCpyNdOp with static entries.
@@ -1119,8 +1118,7 @@ void NpuHalfDmaCpyNdOp::build(OpBuilder &b, OperationState &result,
                               Value input, ArrayRef<int64_t> offsets,
                               ArrayRef<int64_t> sizes,
                               ArrayRef<int64_t> strides, mlir::Value bdId,
-                              Value channel, BoolAttr useNextBd, Value nextBd,
-                              Value startBd) {
+                              Value channel, Value nextBd, Value startBd) {
   SmallVector<OpFoldResult> offsetValues = llvm::to_vector<4>(llvm::map_range(
       offsets,
       [&](int64_t v) -> OpFoldResult { return b.getI64IntegerAttr(v); }));
@@ -1132,7 +1130,7 @@ void NpuHalfDmaCpyNdOp::build(OpBuilder &b, OperationState &result,
       strides,
       [&](int64_t v) -> OpFoldResult { return b.getI64IntegerAttr(v); }));
   build(b, result, resultTypes, connection, input, offsetValues, sizeValues,
-        strideValues, bdId, channel, useNextBd, nextBd, startBd);
+        strideValues, bdId, channel, nextBd, startBd);
 }
 
 // Build a NpuHalfDmaCpyNdOp with dynamic entries.
@@ -1140,8 +1138,7 @@ void NpuHalfDmaCpyNdOp::build(OpBuilder &b, OperationState &result,
                               TypeRange resultTypes, Value connection,
                               Value input, ValueRange offsets, ValueRange sizes,
                               ValueRange strides, mlir::Value bdId,
-                              Value channel, BoolAttr useNextBd, Value nextBd,
-                              Value startBd) {
+                              Value channel, Value nextBd, Value startBd) {
   SmallVector<OpFoldResult> offsetValues = llvm::to_vector<4>(
       llvm::map_range(offsets, [](Value v) -> OpFoldResult { return v; }));
   SmallVector<OpFoldResult> sizeValues = llvm::to_vector<4>(
@@ -1149,7 +1146,7 @@ void NpuHalfDmaCpyNdOp::build(OpBuilder &b, OperationState &result,
   SmallVector<OpFoldResult> strideValues = llvm::to_vector<4>(
       llvm::map_range(strides, [](Value v) -> OpFoldResult { return v; }));
   build(b, result, resultTypes, connection, input, offsetValues, sizeValues,
-        strideValues, bdId, channel, useNextBd, nextBd, startBd);
+        strideValues, bdId, channel, nextBd, startBd);
 }
 
 std::optional<int64_t> NpuHalfDmaCpyNdOp::getStaticBaseOffset() {
