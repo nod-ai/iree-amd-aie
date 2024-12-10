@@ -61,6 +61,32 @@ FailureOr<AMDAIE::TileOp> getGeneratorTileOp(
   return tileOp;
 };
 
+/// Utility to retrieve a ChannelOp from a DMA copy operation.
+template <CopyOpOperateOn OperateOn>
+FailureOr<AMDAIE::ChannelOp> getChannelOp(AMDAIE::NpuDmaCpyNdOp &npuDmaOp) {
+  AMDAIE::ConnectionOp connectionOp = npuDmaOp.getConnectionOp();
+  if (!connectionOp) {
+    return npuDmaOp.emitOpError()
+           << "should operate on an `amdaie.connection` op";
+  }
+  if constexpr (OperateOn == CopyOpOperateOn::Source) {
+    if (connectionOp.getSourceChannels().size() != 1)
+      return connectionOp.emitOpError() << "expected a single source channel";
+    auto sourceChannelOp = dyn_cast<AMDAIE::ChannelOp>(
+        connectionOp.getSourceChannels()[0].getDefiningOp());
+    return sourceChannelOp;
+  } else if constexpr (OperateOn == CopyOpOperateOn::Target) {
+    if (connectionOp.getTargetChannels().size() != 1)
+      return connectionOp.emitOpError() << "expected a single target channel";
+    auto targetChannelOp = dyn_cast<AMDAIE::ChannelOp>(
+        connectionOp.getTargetChannels()[0].getDefiningOp());
+    return targetChannelOp;
+  } else {
+    return npuDmaOp.emitOpError()
+           << "Function can only operate on Source or Target";
+  }
+}
+
 std::optional<uint32_t> getNumberIterations(scf::ForOp loop) {
   std::optional<uint32_t> lowerBound =
       getConstantIntValue(loop.getLowerBound());
@@ -146,13 +172,20 @@ template <CopyOpOperateOn OperateOn>
 FailureOr<AMDAIE::BdIdOp> getBdIdOp(
     IRRewriter &rewriter, AMDAIE::NpuDmaCpyNdOp &npuDmaOp,
     DenseMap<Value, ChannelBdIdGenerator> &shimTileToGeneratorMap,
-    DenseMap<AMDAIE::BdIdOp, SmallVector<uint32_t>> &bdIdOpToBdIdsMap,
-    uint32_t channel) {
-  FailureOr<AMDAIE::TileOp> tileOp =
+    DenseMap<AMDAIE::BdIdOp, SmallVector<uint32_t>> &bdIdOpToBdIdsMap) {
+  // Get the TileOp.
+  FailureOr<AMDAIE::TileOp> maybeTileOp =
       getGeneratorTileOp<OperateOn>(npuDmaOp, shimTileToGeneratorMap);
-  if (failed(tileOp)) return failure();
+  if (failed(maybeTileOp)) return failure();
+  AMDAIE::TileOp tileOp = maybeTileOp.value();
+  // Get the channel.
+  FailureOr<AMDAIE::ChannelOp> maybeChannelOp =
+      getChannelOp<OperateOn>(npuDmaOp);
+  if (failed(maybeChannelOp)) return failure();
+  AMDAIE::ChannelOp channelOp = maybeChannelOp.value();
+  uint32_t channel = channelOp.getValue();
 
-  ChannelBdIdGenerator &generator = shimTileToGeneratorMap[tileOp->getResult()];
+  ChannelBdIdGenerator &generator = shimTileToGeneratorMap[tileOp.getResult()];
   rewriter.setInsertionPoint(npuDmaOp);
   if (scf::ForOp loop = npuDmaOp->getParentOfType<scf::ForOp>();
       loop && getNumberIterations(loop)) {
@@ -165,7 +198,7 @@ FailureOr<AMDAIE::BdIdOp> getBdIdOp(
 
     // Get the number of BD IDs will be assigned to current DMA op.
     uint32_t numRequired = 0;
-    getNumRequiredBdIds(loop, npuDmaOp, *tileOp, shimTileToGeneratorMap,
+    getNumRequiredBdIds(loop, npuDmaOp, tileOp, shimTileToGeneratorMap,
                         numRequired);
     uint32_t numAvailable = generator.getNumAvailableBdIds(channel);
     uint32_t size = std::max(numAvailable / numRequired, 1u);
@@ -193,7 +226,7 @@ FailureOr<AMDAIE::BdIdOp> getBdIdOp(
               iv,
           });
       AMDAIE::BdIdOp bdIdOp = rewriter.create<AMDAIE::BdIdOp>(
-          rewriter.getUnknownLoc(), *tileOp, affineApply.getResult());
+          rewriter.getUnknownLoc(), tileOp, affineApply.getResult());
       bdIdOpToBdIdsMap[bdIdOp] = bdIds;
       return bdIdOp;
     }
@@ -206,7 +239,7 @@ FailureOr<AMDAIE::BdIdOp> getBdIdOp(
   auto constant = rewriter.create<arith::ConstantOp>(
       rewriter.getUnknownLoc(), rewriter.getIndexAttr(bdId.value()));
   AMDAIE::BdIdOp bdIdOp = rewriter.create<AMDAIE::BdIdOp>(
-      rewriter.getUnknownLoc(), *tileOp, constant.getResult());
+      rewriter.getUnknownLoc(), tileOp, constant.getResult());
   return bdIdOp;
 };
 
@@ -266,13 +299,6 @@ LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
     }
   });
 
-  // TODO(jornt): Temporarily use channel 0 for all DMAs. This should
-  // return correct results for Shim channels, however, for generality
-  // towards other DMAs and future hardware generations, channel
-  // assignment should happen before BD assignemnt. This requires more
-  // refactoring.
-  const uint32_t channel = 0;
-
   DenseMap<AMDAIE::BdIdOp, SmallVector<uint32_t>> bdIdOpToBdIdsMap;
   // Walk `amdaie.npu_dma_cpy_nd` and  `amdaie.dma_wait` operations and assign
   // and release BD IDs when encountering the respective operations using the
@@ -282,8 +308,7 @@ LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
     if (auto npuDmaOp = dyn_cast<AMDAIE::NpuDmaCpyNdOp>(op)) {
       if (npuDmaOp.getSource()) {
         FailureOr<AMDAIE::BdIdOp> bdIdOp = getBdIdOp<CopyOpOperateOn::Source>(
-            rewriter, npuDmaOp, shimTileToGeneratorMap, bdIdOpToBdIdsMap,
-            channel);
+            rewriter, npuDmaOp, shimTileToGeneratorMap, bdIdOpToBdIdsMap);
         if (failed(bdIdOp)) return WalkResult::interrupt();
         rewriter.setInsertionPoint(npuDmaOp);
         npuDmaOp = rewriter.replaceOpWithNewOp<AMDAIE::NpuDmaCpyNdOp>(
@@ -296,8 +321,7 @@ LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
       }
       if (npuDmaOp.getTarget()) {
         FailureOr<AMDAIE::BdIdOp> bdIdOp = getBdIdOp<CopyOpOperateOn::Target>(
-            rewriter, npuDmaOp, shimTileToGeneratorMap, bdIdOpToBdIdsMap,
-            channel);
+            rewriter, npuDmaOp, shimTileToGeneratorMap, bdIdOpToBdIdsMap);
         if (failed(bdIdOp)) return WalkResult::interrupt();
         rewriter.setInsertionPoint(npuDmaOp);
         (void)rewriter.replaceOpWithNewOp<AMDAIE::NpuDmaCpyNdOp>(
