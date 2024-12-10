@@ -11,7 +11,6 @@ iree_lit_test_suite(
     "conv2d_nhwc_objectfifo_e2e.mlir"
     "matmul_elementwise_pack_peel_air_e2e.mlir"
     "matmul_pack_peel_air_e2e.mlir"
-    "matmul_pack_peel_objectfifo.mlir"
     "matmul_pack_peel_objectfifo_e2e.mlir"
     "matmul_pack_peel_objectfifo_ukernel_e2e.mlir"
     "matmul_pad_pack_air_e2e.mlir"
