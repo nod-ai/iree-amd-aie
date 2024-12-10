@@ -31,7 +31,6 @@ struct NpuDmaToHalfDmaCpyNdConverter final
       return dmaOp.emitOpError()
              << "should operate on an `amdaie.connection` op";
     }
-    Value nextBd{nullptr};
     // Convert source half.
     Value source =
         dmaOp.getSource() ? dmaOp.getSource() : connectionOp.getSource();
@@ -51,8 +50,7 @@ struct NpuDmaToHalfDmaCpyNdConverter final
     auto sourceDma = rewriter.create<AMDAIE::NpuHalfDmaCpyNdOp>(
         dmaOp.getLoc(), sourceResultTypes, connectionOp, source,
         dmaOp.getSourceMixedOffsets(), dmaOp.getSourceMixedSizes(),
-        dmaOp.getSourceMixedStrides(), dmaOp.getSourceBdId(), sourceChannelOp,
-        nextBd, dmaOp.getSourceBdId());
+        dmaOp.getSourceMixedStrides(), dmaOp.getSourceBdId(), sourceChannelOp);
 
     // Convert target half.
     Value target =
@@ -70,8 +68,7 @@ struct NpuDmaToHalfDmaCpyNdConverter final
     auto targetDma = rewriter.create<AMDAIE::NpuHalfDmaCpyNdOp>(
         dmaOp.getLoc(), targetResultTypes, connectionOp, target,
         dmaOp.getTargetMixedOffsets(), dmaOp.getTargetMixedSizes(),
-        dmaOp.getTargetMixedStrides(), dmaOp.getTargetBdId(), targetChannelOp,
-        nextBd, dmaOp.getTargetBdId());
+        dmaOp.getTargetMixedStrides(), dmaOp.getTargetBdId(), targetChannelOp);
     if (dmaOp.getNumResults() == 1) {
       if (sourceDma.getNumResults() == 1) {
         rewriter.replaceUsesWithIf(

@@ -662,18 +662,18 @@ def AMDAIE_NpuHalfDmaCpyNdOp
       "::mlir::Value":$input, "ArrayRef<OpFoldResult>":$offsets,
       "ArrayRef<OpFoldResult>":$sizes, "ArrayRef<OpFoldResult>":$strides,
       "::mlir::Value":$bd_id, "::mlir::Value":$channel,
-      "::mlir::Value":$next_bd, "::mlir::Value":$start_bd)>,
+      CArg<"::mlir::Value", "nullptr">:$next_bd, CArg<"::mlir::Value", "nullptr">:$start_bd)>,
     // Build a NpuHalfDmaCpyNdOp with static entries.
     OpBuilder<(ins "::mlir::TypeRange":$result_types, "Value":$connection,
       "::mlir::Value":$target, "ArrayRef<int64_t>":$offsets,
       "ArrayRef<int64_t>":$sizes, "ArrayRef<int64_t>":$strides,
       "::mlir::Value":$bd_id, "::mlir::Value":$channel,
-      "::mlir::Value":$next_bd, "::mlir::Value":$start_bd)>,
+      CArg<"::mlir::Value", "nullptr">:$next_bd, CArg<"::mlir::Value", "nullptr">:$start_bd)>,
     // Build a NpuHalfDmaCpyNdOp with dynamic entries.
     OpBuilder<(ins "::mlir::TypeRange":$result_types, "Value":$connection,
       "::mlir::Value":$input, "ValueRange":$offsets, "ValueRange":$sizes,
       "ValueRange":$strides, "::mlir::Value":$bd_id, "::mlir::Value":$channel,
-      "::mlir::Value":$next_bd, "::mlir::Value":$start_bd)>,
+      CArg<"::mlir::Value", "nullptr">:$next_bd, CArg<"::mlir::Value", "nullptr">:$start_bd)>,
   ];
 
   let extraClassDeclaration = [{
