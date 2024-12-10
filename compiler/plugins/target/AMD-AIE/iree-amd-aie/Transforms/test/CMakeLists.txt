@@ -50,6 +50,7 @@ iree_lit_test_suite(
     "hoist_for_affine_apply.mlir"
     "hoist_logical_obj_fifo.mlir"
     "insert_cores.mlir"
+    "insert_dma_bd_chain.mlir"
     "insert_infinite_loop_around_core_block.mlir"
     "insert_loops_for_vectorization.mlir"
     "localize_logical_objectfifo.mlir"

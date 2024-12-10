@@ -397,6 +397,7 @@ func.func @npu_dma_cpy_nd_all_operands(%arg0: !amdaie.logicalobjectfifo<memref<1
 // CHECK-DAG:   %[[C1:.+]] = arith.constant 1 : index
 // CHECK-DAG:   %[[TILE_0_0:.+]] = amdaie.tile(%[[C0]], %[[C0]])
 // CHECK-DAG:   %[[BD_ID:.+]] = amdaie.bd_id(%[[TILE_0_0]], %[[C0]])
+// CHECK-DAG:   %[[BD_ID_1:.+]] = amdaie.bd_id(%[[TILE_0_0]], %[[C1]])
 // CHECK-DAG:   %[[CHANNEL:.*]] = amdaie.channel(%[[TILE_0_0]], 0, port_type = DMA, direction = S2MM)
 // CHECK-DAG:   %[[CONNECTION_0:.+]] = amdaie.connection
 func.func @npu_half_dma_cpy_nd(%arg0: !amdaie.logicalobjectfifo<memref<2048xi32>>, %arg1: !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>>) {
@@ -404,6 +405,7 @@ func.func @npu_half_dma_cpy_nd(%arg0: !amdaie.logicalobjectfifo<memref<2048xi32>
   %c1 = arith.constant 1 : index
   %tile_0_0 = amdaie.tile(%c0, %c0)
   %bd_id = amdaie.bd_id(%tile_0_0, %c0)
+  %bd_id_1 = amdaie.bd_id(%tile_0_0, %c1)
   %channel = amdaie.channel(%tile_0_0, 0, port_type = DMA, direction = S2MM)
   %0 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<2048xi32>>, !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>>)
 // CHECK: amdaie.npu.half_dma_cpy_nd %[[CONNECTION_0]](%[[ARG0]] [] [] []) : !amdaie.logicalobjectfifo<memref<2048xi32>>
@@ -416,6 +418,8 @@ func.func @npu_half_dma_cpy_nd(%arg0: !amdaie.logicalobjectfifo<memref<2048xi32>
   amdaie.npu.half_dma_cpy_nd %0(%arg0[%c0, 0] [%c0, 64] [%c0, 1] channel = %channel) : !amdaie.logicalobjectfifo<memref<2048xi32>>
 // CHECK: amdaie.npu.half_dma_cpy_nd %[[CONNECTION_0]](%[[ARG0]] [] [] [] bd_id = %[[BD_ID]] channel = %[[CHANNEL]]) : !amdaie.logicalobjectfifo<memref<2048xi32>>
   amdaie.npu.half_dma_cpy_nd %0(%arg0[] [] [] bd_id = %bd_id channel = %channel) : !amdaie.logicalobjectfifo<memref<2048xi32>>
+// CHECK: amdaie.npu.half_dma_cpy_nd %[[CONNECTION_0]](%[[ARG0]] [] [] [] bd_id = %[[BD_ID]] channel = %[[CHANNEL]] next_bd = %[[BD_ID_1]] start_bd = %[[BD_ID]]) : !amdaie.logicalobjectfifo<memref<2048xi32>>
+  amdaie.npu.half_dma_cpy_nd %0(%arg0[] [] [] bd_id = %bd_id channel = %channel next_bd = %bd_id_1 start_bd = %bd_id) : !amdaie.logicalobjectfifo<memref<2048xi32>>
   return
 }
 
