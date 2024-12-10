@@ -16,6 +16,7 @@ extern const iree_hal_buffer_vtable_t iree_hal_xrt_lite_buffer_vtable;
 struct iree_hal_xrt_lite_buffer {
   iree_hal_buffer_t base;
   shim_xdna::bo* bo;
+  iree_allocator_t host_allocator;
   iree_hal_buffer_release_callback_t release_callback;
 };
 
@@ -111,7 +112,7 @@ static iree_status_t iree_hal_xrt_lite_buffer_unmap_range(
 }
 
 iree_status_t iree_hal_xrt_lite_buffer_wrap(
-    shim_xdna::bo* bo, iree_hal_allocator_t* allocator,
+    shim_xdna::bo* bo, iree_hal_buffer_placement_t placement,
     iree_hal_memory_type_t memory_type, iree_hal_memory_access_t allowed_access,
     iree_hal_buffer_usage_t allowed_usage, iree_device_size_t allocation_size,
     iree_device_size_t byte_offset, iree_device_size_t byte_length,
@@ -125,9 +126,9 @@ iree_status_t iree_hal_xrt_lite_buffer_wrap(
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_allocator_malloc(host_allocator, sizeof(*buffer),
                                 reinterpret_cast<void**>(&buffer)));
-  iree_hal_buffer_initialize(host_allocator, allocator, &buffer->base,
-                             allocation_size, byte_offset, byte_length,
-                             memory_type, allowed_access, allowed_usage,
+  iree_hal_buffer_initialize(placement, &buffer->base, allocation_size,
+                             byte_offset, byte_length, memory_type,
+                             allowed_access, allowed_usage,
                              &iree_hal_xrt_lite_buffer_vtable, &buffer->base);
   buffer->release_callback = release_callback;
   buffer->bo = bo;
@@ -142,7 +143,7 @@ static void iree_hal_xrt_lite_buffer_destroy(iree_hal_buffer_t* base_buffer) {
       base_buffer, iree_hal_xrt_lite_buffer_vtable, iree_hal_xrt_lite_buffer);
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  iree_allocator_t host_allocator = base_buffer->host_allocator;
+  iree_allocator_t host_allocator = buffer->host_allocator;
   if (buffer->release_callback.fn) {
     buffer->release_callback.fn(buffer->release_callback.user_data,
                                 base_buffer);
