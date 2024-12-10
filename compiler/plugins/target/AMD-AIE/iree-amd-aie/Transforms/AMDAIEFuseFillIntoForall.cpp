@@ -58,33 +58,38 @@ void AMDAIEFuseFillIntoForallPass::runOnOperation() {
     }
   }
 
-  // Locate the correct tensor to fill. This is either the block argument
-  // (if there is no extract_slice op), or the output of the extract_slice op.
-  Value toFill;
-  // In the case where there are no extract_slice ops, we create the fill
-  // at the beginning of the forall body.
-  if (!extractSliceOp) {
-    toFill = bbArg;
-    rewriter.setInsertionPointToStart(forallOp.getBody());
-  }
-  // In the case where there is exactly one extract_slice op, we create
-  // the new fill on the output of the extract_slice op.
-  else {
-    toFill = extractSliceOp.getResult();
-    rewriter.setInsertionPointAfter(extractSliceOp);
+  if (extractSliceOp) {
+    LoopLikeOpInterface loops =
+        cast<LoopLikeOpInterface>(forallOp.getOperation());
+
+    // Materialize the slice of the producer in place.
+    std::optional<scf::SCFFuseProducerOfSliceResult> fusedProducer =
+        scf::tileAndFuseProducerOfSlice(rewriter, extractSliceOp,
+                                        MutableArrayRef(&loops, 1));
+    if (!fusedProducer) {
+      funcOp->emitOpError("Failed to fuse fill op into forall loop.");
+      return signalPassFailure();
+    }
+    return;
   }
 
-  // Create the new fill operation.
+  // In the case where there are no extract_slice ops, we manually create the
+  // fill at the beginning of the forall body.
+  assert(!extractSliceOp);
+  rewriter.setInsertionPointToStart(forallOp.getBody());
   Value scalar = fillOp.value();
   Location loc = fillOp.getLoc();
-  auto fusedFill = rewriter.create<linalg::FillOp>(loc, scalar, toFill);
+  auto fusedFill = rewriter.create<linalg::FillOp>(loc, scalar, bbArg);
   rewriter.replaceUsesWithIf(
-      toFill, fusedFill.getResult(0), [&](OpOperand &operand) {
-        if (operand.getOwner() == fusedFill) return false;
-        if (isa<tensor::ParallelInsertSliceOp>(operand.getOwner())) {
+      bbArg, fusedFill.getResult(0), [&](OpOperand &operand) {
+        Operation *owner = operand.getOwner();
+        if (owner == fusedFill) {
           return false;
+        } else if (isa<tensor::ParallelInsertSliceOp>(owner)) {
+          return false;
+        } else {
+          return true;
         }
-        return true;
       });
 
   // Do not use the result of the old fill.
