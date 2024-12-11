@@ -103,13 +103,13 @@ static FailureOr<SmallVector<Value>> getOperandsToBufferize(
     uint32_t packDepth) {
   switch (bufferizeOperand) {
     /// Create new allocations for Lhs, Rhs and Out.
-    case BufferizeOperand::InputOutput:
+    case BufferizeOperand::LinalgInputOutput:
       return getInputOutputOperands(linalgOp);
     /// Create new allocation only for Lhs, Rhs.
-    case BufferizeOperand::Input:
+    case BufferizeOperand::LinalgInput:
       return getInputOperands(linalgOp);
     /// Create new allocations only for Out.
-    case BufferizeOperand::Output:
+    case BufferizeOperand::LinalgOutput:
       return SmallVector<Value>(linalgOp.getDpsInits());
     /// Create new allocations for operands from the pack ops.
     case BufferizeOperand::PackInput:
