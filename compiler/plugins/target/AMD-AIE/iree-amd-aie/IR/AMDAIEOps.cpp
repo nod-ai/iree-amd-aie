@@ -1066,6 +1066,28 @@ bool NpuDmaCpyNdOp::hasDmaWaitOpUser() {
                       [](auto userOp) { return isa<NpuDmaWaitOp>(userOp); });
 }
 
+FailureOr<AMDAIE::ChannelOp> NpuDmaCpyNdOp::getSourceChannelOp() {
+  AMDAIE::ConnectionOp connectionOp = getConnectionOp();
+  if (!connectionOp)
+    return emitOpError() << "should operate on an `amdaie.connection` op";
+  if (connectionOp.getSourceChannels().size() != 1)
+    return emitOpError() << "expected a single source channel";
+  auto sourceChannelOp = dyn_cast<AMDAIE::ChannelOp>(
+      connectionOp.getSourceChannels()[0].getDefiningOp());
+  return sourceChannelOp;
+}
+
+FailureOr<AMDAIE::ChannelOp> NpuDmaCpyNdOp::getTargetChannelOp() {
+  AMDAIE::ConnectionOp connectionOp = getConnectionOp();
+  if (!connectionOp)
+    return emitOpError() << "should operate on an `amdaie.connection` op";
+  if (connectionOp.getTargetChannels().size() != 1)
+    return emitOpError() << "expected a single target channel";
+  auto targetChannelOp = dyn_cast<AMDAIE::ChannelOp>(
+      connectionOp.getTargetChannels()[0].getDefiningOp());
+  return targetChannelOp;
+}
+
 namespace {
 struct NpuDmaCpyNdOpReplacementBuilder {
   static void replace(NpuDmaCpyNdOp dmaOp, PatternRewriter &rewriter,
@@ -1346,7 +1368,15 @@ SmallVector<AMDAIE::NpuDmaCpyNdOp> NpuDmaWaitOp::getDmaOps() {
 //===----------------------------------------------------------------------===//
 
 void TileOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
-  setNameFn(getResult(), "tile");
+  std::optional<int64_t> iCol = getConstantIntValue(getCol());
+  std::optional<int64_t> iRow = getConstantIntValue(getRow());
+  std::string name{"tile"};
+  if (iCol.has_value() && iRow.has_value()) {
+    std::string sCol = std::to_string(iCol.value());
+    std::string sRow = std::to_string(iRow.value());
+    name += "_" + sCol + "_" + sRow;
+  }
+  setNameFn(getResult(), name);
 }
 
 bool TileOp::hasStaticLocation() {

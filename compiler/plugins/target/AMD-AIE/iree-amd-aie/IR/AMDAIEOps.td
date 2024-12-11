@@ -558,6 +558,10 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd", [
       if (!bdIdValue) return nullptr;
       return dyn_cast_if_present<BdIdOp>(bdIdValue.getDefiningOp());
     }
+    
+    FailureOr<AMDAIE::ChannelOp> getSourceChannelOp();
+
+    FailureOr<AMDAIE::ChannelOp> getTargetChannelOp();
 
     // A utility to create a new doubly strided operation from this one with a
     // new set of source and target offsets, sizes and strides.

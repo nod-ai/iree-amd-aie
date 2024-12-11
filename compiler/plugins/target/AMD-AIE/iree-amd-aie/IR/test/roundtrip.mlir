@@ -49,7 +49,7 @@ func.func @core() {
 // -----
 
 // CHECK-LABEL: func.func @logicalobjectfifo_from_memref
-// CHECK: %[[I0:.*]] = amdaie.logicalobjectfifo.from_memref %[[ARG0:.*]], {} 
+// CHECK: %[[I0:.*]] = amdaie.logicalobjectfifo.from_memref %[[ARG0:.*]], {}
 // CHECK-SAME: memref<1x1x8x16xi32, 1> -> !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>
 func.func @logicalobjectfifo_from_memref(%arg0: memref<1x1x8x16xi32, 1>) {
   %0 = amdaie.logicalobjectfifo.from_memref %arg0, {} : memref<1x1x8x16xi32, 1> -> !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>
@@ -489,5 +489,28 @@ func.func @workgroup() {
 func.func @reference_to() {
   %0 = memref.alloc() : memref<1x1x8x4x8x4xi32>
   %1 = amdaie.reference_to %0 : memref<1x1x8x4x8x4xi32>
+  return
+}
+
+// -----
+
+// Test that if the row and column are statically known, the tile operation is
+// printed with the row and column in the SSA value.
+func.func @tile_a_b(%i : index) {
+  %c2 = arith.constant 2: index
+  %c3 = arith.constant 3 : index
+  amdaie.workgroup {
+    // CHECK: %tile_2_3 = amdaie.tile
+    %t_23 = amdaie.tile(%c2, %c3)
+    // CHECK: %tile_2_3_0 = amdaie.tile
+    %t_231 = amdaie.tile(%c2, %c3)
+    // CHECK: %tile = amdaie.tile
+    %t_i3 = amdaie.tile(%i, %c3)
+    // CHECK: %tile_1 = amdaie.tile
+    %t_2i = amdaie.tile(%c2, %i)
+    amdaie.controlcode {
+      amdaie.end
+    }
+  }
   return
 }
