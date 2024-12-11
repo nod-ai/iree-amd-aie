@@ -1,4 +1,4 @@
-// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-fuse-fill-into-forall))' %s | FileCheck %s
+// RUN: iree-opt --split-input-file --pass-pipeline='builtin.module(func.func(iree-amdaie-fuse-fill-into-forall))' %s | FileCheck %s
 
 #map2 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d0, d2, d3, d5)>
 #map3 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d2, d1, d5, d4)>
@@ -29,3 +29,38 @@ func.func @fuse_fill_into_forall(%arg0: tensor<1x4x16x64xi8>, %arg1 : tensor<4x1
 // CHECK:     linalg.fill
 // CHECK:     linalg.generic
 // CHECK:  }
+
+// -----
+
+#map = affine_map<(d0) -> (d0)>
+func.func @fuse_without_slice(%arg0: tensor<8xi8>) -> tensor<8xi8> {
+  %c7_i8 = arith.constant 7 : i8
+  %c3_i8 = arith.constant 3 : i8
+  %0 = linalg.fill ins(%c7_i8 : i8) outs(%arg0 : tensor<8xi8>) -> tensor<8xi8>
+  %1 = tensor.empty() : tensor<8xi8>
+  %2 = scf.forall (%arg1) in (1) shared_outs(%arg2 = %0) -> (tensor<8xi8>) {
+    %3 = linalg.generic {indexing_maps = [#map, #map], iterator_types = ["parallel"]} ins(%arg0 : tensor<8xi8>) outs(%1 : tensor<8xi8>) {
+    ^bb0(%in: i8, %out: i8):
+      %4 = arith.addi %in, %c3_i8 : i8
+      linalg.yield %4 : i8
+    } -> tensor<8xi8>
+    scf.forall.in_parallel {
+      tensor.parallel_insert_slice %3 into %arg2[0] [8] [1] : tensor<8xi8> into tensor<8xi8>
+    }
+  } {mapping = [#gpu.thread<y>]}
+  return %2 : tensor<8xi8>
+}
+
+// CHECK: @fuse_without_slice(%[[FUNCARG:.*]]: tensor<8xi8>) -> tensor<8xi8> {
+// check that the operand of scf.forall is not the filled tensor, because the
+// fill will take place inside the scf.forall:
+// CHECK: %[[FORALL:.*]] = scf.forall (%[[ARG1:.*]]) in (1)
+// CHECK-SAME: shared_outs(%[[ARG2:.*]] = %[[FUNCARG]])
+// check for the new fill:
+// CHECK: %[[NEWFILL:.*]] = linalg.fill
+// CHECK-SAME: outs(%[[ARG2]] : tensor<8xi8>) -> tensor<8xi8>
+// CHECK: linalg.generic
+// check the the parallel_insert_slice still happens on arg2, not the filled
+// tensor. This is because it must match the shared_outs of the scf.forall:
+// CHECK: tensor.parallel_insert_slice
+// CHECK-SAME: into %[[ARG2]]
