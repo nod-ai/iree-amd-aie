@@ -142,7 +142,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
-// Expect two BD ID chains, as the chains break whenever duplicate BD ID occurs.
+// Expect two BD ID chains, as the chain breaks whenever duplicate BD ID occurs.
+// The first chain: [0, 1, 2]. The second chain: [1, 2].
 // CHECK-LABEL: @duplicate_bd_id
 // CHECK:       %[[CHANNEL:.+]] = amdaie.channel
 // CHECK:       %[[CONNECTION:.+]] = amdaie.connection
