@@ -1368,7 +1368,15 @@ SmallVector<AMDAIE::NpuDmaCpyNdOp> NpuDmaWaitOp::getDmaOps() {
 //===----------------------------------------------------------------------===//
 
 void TileOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
-  setNameFn(getResult(), "tile");
+  std::optional<int64_t> iCol = getConstantIntValue(getCol());
+  std::optional<int64_t> iRow = getConstantIntValue(getRow());
+  std::string name{"tile"};
+  if (iCol.has_value() && iRow.has_value()) {
+    std::string sCol = std::to_string(iCol.value());
+    std::string sRow = std::to_string(iRow.value());
+    name += "_" + sCol + "_" + sRow;
+  }
+  setNameFn(getResult(), name);
 }
 
 bool TileOp::hasStaticLocation() {
