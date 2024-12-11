@@ -155,7 +155,7 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   {
     AMDAIEBufferizeToAllocationOptions bufferizeOptions;
     bufferizeOptions.memorySpace = 1;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::Output;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgOutput;
     funcPassManager.addPass(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }
@@ -165,7 +165,7 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
     AMDAIEBufferizeToAllocationOptions bufferizeOptions;
     bufferizeOptions.memorySpace = 1;
     bufferizeOptions.bufferizeElementwise = true;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::Input;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgInput;
     funcPassManager.addPass(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }
@@ -241,7 +241,7 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   {
     AMDAIEBufferizeToAllocationOptions bufferizeOptions;
     bufferizeOptions.memorySpace = 2;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::Input;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgInput;
     funcPassManager.addPass(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }
@@ -280,7 +280,7 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
     AMDAIEBufferizeToAllocationOptions bufferizeOptions;
     bufferizeOptions.memorySpace = 2;
     bufferizeOptions.bufferizeElementwise = true;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::Input;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgInput;
     funcPassManager.addPass(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }
@@ -325,7 +325,7 @@ void addPadPackBasedPassPipeline(OpPassManager &funcPassManager,
   {
     AMDAIEBufferizeToAllocationOptions bufferizeOptions;
     bufferizeOptions.memorySpace = 1;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::InputOutput;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgInputOutput;
     funcPassManager.addPass(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }
@@ -362,7 +362,7 @@ void addPadPackBasedPassPipeline(OpPassManager &funcPassManager,
   {
     AMDAIEBufferizeToAllocationOptions bufferizeOptions;
     bufferizeOptions.memorySpace = 2;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::Output;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgOutput;
     funcPassManager.addPass(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }
@@ -388,7 +388,7 @@ void addPadPackBasedPassPipeline(OpPassManager &funcPassManager,
   {
     AMDAIEBufferizeToAllocationOptions bufferizeOptions;
     bufferizeOptions.memorySpace = 2;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::Input;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgInput;
     funcPassManager.addPass(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }
@@ -438,7 +438,7 @@ void addConvDecomposePassPipeline(OpPassManager &funcPassManager,
   {
     AMDAIEBufferizeToAllocationOptions bufferizeOptions;
     bufferizeOptions.memorySpace = 1;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::InputOutput;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgInputOutput;
     funcPassManager.addPass(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }
@@ -466,7 +466,7 @@ void addConvDecomposePassPipeline(OpPassManager &funcPassManager,
   {
     AMDAIEBufferizeToAllocationOptions bufferizeOptions;
     bufferizeOptions.memorySpace = 2;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::InputOutput;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgInputOutput;
     funcPassManager.addPass(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
     addCleanups();

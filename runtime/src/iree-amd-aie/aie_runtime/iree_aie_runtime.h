@@ -234,6 +234,32 @@ struct AMDAIEDeviceModel {
     ///////////////////////////////////////
     // AIE Array configuration constants //
     ///////////////////////////////////////
+    /// Constant specifying the number of inter-iteration dimension for DMA
+    /// operations.
+    ///
+    /// NOTE(jornt): this number is implicitly assumed in the device model and can't
+    /// be retrieved from it afaik.
+    ///
+    /// Some background:
+    ///
+    /// DMAs support multi-dimensional addressing through buffer descriptors in two
+    /// ways:
+    /// 1. Intra-iteration access pattern. Specified via 'strides' ('steps' in buffer
+    /// descriptor lingo), 'sizes' ('wraps' in buffer descriptro lingo) and
+    /// 'padding'. When a DMA executes a buffer descriptor, it will access the data
+    /// (read/write) as specified by the intra-iteration access pattern.
+    /// 2. Inter-iteration access pattern. Specified via an iteration 'stride',
+    /// 'size' and 'current_iteration' ('stride' is the same as 'stepsize' and 'size'
+    /// is the same as 'wrap' in buffer descriptor lingo). Here, 'current_iteration'
+    /// keeps track of the current execution iteration of the buffer descriptor and
+    /// is incremented after buffer descriptor execution. the 'stride' is the offset
+    /// to be used for each execution of the buffer descriptor, relative to the
+    /// previous one. When 'iteration_current' is equal to 'size', the
+    /// 'iteration_current' is reset to zero.
+    ///
+    /// Although DMAs can have a different number of intra-iteration dimensions, all
+    /// DMAs have a single inter-iteration dimension (at least in AIE2 and AIE2p).
+    uint8_t dmaNbInterDims = 1;
     /// The number of shim tile rows. Not found in aie-rt data structures, but
     /// provided as `XAIE_SHIM_NUM_ROWS`.
     uint8_t shimTileNumRows{1};

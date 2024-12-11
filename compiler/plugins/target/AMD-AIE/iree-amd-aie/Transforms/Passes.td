@@ -90,14 +90,14 @@ def AMDAIEBufferizeToAllocation :
       "Indicator of whether the target op for bufferization is an elementwise op">,
     Option<"bufferizeOperand", "bufferize-operand",
       "mlir::iree_compiler::AMDAIE::BufferizeOperand",
-      /*default=*/"mlir::iree_compiler::AMDAIE::BufferizeOperand::InputOutput",
+      /*default=*/"mlir::iree_compiler::AMDAIE::BufferizeOperand::LinalgInputOutput",
       "Select which operands of a linalg op to be bufferized to allocation",
       [{::llvm::cl::values(
-        clEnumValN(mlir::iree_compiler::AMDAIE::BufferizeOperand::InputOutput, "input-output",
+        clEnumValN(mlir::iree_compiler::AMDAIE::BufferizeOperand::LinalgInputOutput, "linalg-input-output",
                    "Create new allocations for lhs, rhs and output of a linalg op."),
-        clEnumValN(mlir::iree_compiler::AMDAIE::BufferizeOperand::Input, "input",
+        clEnumValN(mlir::iree_compiler::AMDAIE::BufferizeOperand::LinalgInput, "linalg-input",
                    "Create new allocations for lhs, rhs of a linalg op."),
-        clEnumValN(mlir::iree_compiler::AMDAIE::BufferizeOperand::Output, "output",
+        clEnumValN(mlir::iree_compiler::AMDAIE::BufferizeOperand::LinalgOutput, "linalg-output",
                    "Create new allocations for output of a linalg op."),
         clEnumValN(mlir::iree_compiler::AMDAIE::BufferizeOperand::PackInput, "pack-input",
                    "Create new allocations for operands from the pack op inputs of a linalg op.")

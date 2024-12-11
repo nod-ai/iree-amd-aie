@@ -40,7 +40,8 @@ struct HalfDmaCpyNdToNpuConverter final
       ArrayRef<OpFoldResult> strides) const {
     uint8_t numIntraAddrDim = deviceModel.getDmaProp<uint8_t>(
         tileType, AMDAIE::AMDAIEDmaProp::NumAddrDim);
-    uint8_t numAddrDim = numIntraAddrDim + kAMDAIEDmaNbInterDims;
+    uint8_t numAddrDim =
+        numIntraAddrDim + deviceModel.deviceConfig.dmaNbInterDims;
     auto subspanOp = dyn_cast_if_present<IREE::HAL::InterfaceBindingSubspanOp>(
         logicalObjFifo.getMemref().getDefiningOp());
     if (!subspanOp) {

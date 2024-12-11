@@ -473,6 +473,51 @@ TEST_F(FoldTest, UnitDimsFoldAndMerge) {
                     {1, 8}, {1024, 1}, true);
 }
 
+class DmaDimConfigTest : public testing::TestWithParam<AMDAIEDevice> {
+ protected:
+  DmaDimConfigTest() : deviceModel(getDeviceModel(GetParam())) {}
+  AMDAIEDeviceModel deviceModel;
+};
+
+TEST_P(DmaDimConfigTest, ShimTile) {
+  DmaDimConfig config(deviceModel, 0);
+  SmallVector<int64_t> maxSizes = config.getMaxSizes();
+  SmallVector<int64_t> expectedMaxSizes = {
+      63, std::numeric_limits<int64_t>::max(), 1023, 1023};
+  EXPECT_EQ(maxSizes, expectedMaxSizes);
+  SmallVector<int64_t> maxStrides = config.getMaxStrides();
+  SmallVector<int64_t> expectedMaxStrides(4, 1 << 20);
+  EXPECT_EQ(maxStrides, expectedMaxStrides);
+}
+
+TEST_P(DmaDimConfigTest, MemTile) {
+  DmaDimConfig config(deviceModel, 1);
+  SmallVector<int64_t> maxSizes = config.getMaxSizes();
+  SmallVector<int64_t> expectedMaxSizes = {std::numeric_limits<int64_t>::max(),
+                                           1023, 1023, 1023};
+  EXPECT_EQ(maxSizes, expectedMaxSizes);
+  SmallVector<int64_t> maxStrides = config.getMaxStrides();
+  SmallVector<int64_t> expectedMaxStrides(4, 1 << 17);
+  EXPECT_EQ(maxStrides, expectedMaxStrides);
+}
+
+TEST_P(DmaDimConfigTest, CoreTile) {
+  DmaDimConfig config(deviceModel, 2);
+  SmallVector<int64_t> maxSizes = config.getMaxSizes();
+  SmallVector<int64_t> expectedMaxSizes = {std::numeric_limits<int64_t>::max(),
+                                           255, 255};
+  EXPECT_EQ(maxSizes, expectedMaxSizes);
+  SmallVector<int64_t> maxStrides = config.getMaxStrides();
+  SmallVector<int64_t> expectedMaxStrides(3, 1 << 13);
+  EXPECT_EQ(maxStrides, expectedMaxStrides);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Devices, DmaDimConfigTest,
+    testing::Values(AMDAIEDevice::npu1, AMDAIEDevice::npu1_1col,
+                    AMDAIEDevice::npu1_2col, AMDAIEDevice::npu1_3col,
+                    AMDAIEDevice::npu1_4col, AMDAIEDevice::npu4));
+
 }  // namespace
 
 int main(int argc, char **argv) {
