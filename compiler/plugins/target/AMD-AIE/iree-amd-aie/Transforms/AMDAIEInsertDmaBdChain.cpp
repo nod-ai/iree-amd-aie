@@ -83,7 +83,7 @@ LogicalResult updateChainOperands(
 ///   - Chain X: [0] (the newly added BD ID).
 ///   - Chain Y: [] (emptied after breaking).
 void checkForChainsToBeBroken(
-    const uint32_t &currbdId, const DmaChain &currDmaChain,
+    int32_t currBdId, const DmaChain &currDmaChain,
     const DenseMap<DmaChain, DenseSet<uint32_t>> &dmaChainToBdIds,
     SmallVector<DmaChain> &chainsToBreak) {
   for (auto &[entry, bdIds] : dmaChainToBdIds) {
