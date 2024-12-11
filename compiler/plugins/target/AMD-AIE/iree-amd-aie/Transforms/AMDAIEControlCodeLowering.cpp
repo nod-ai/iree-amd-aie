@@ -112,8 +112,7 @@ struct HalfDmaCpyNdToNpuConverter final
 
     bool useNextBd = false;
     int32_t nextBd{0};
-    std::optional<AMDAIE::BdIdOp> nextBdIdOp = op.getNextBdIdOp();
-    if (nextBdIdOp) {
+    if (std::optional<AMDAIE::BdIdOp> nextBdIdOp = op.getNextBdIdOp()) {
       nextBd = getConstantIndexOrAssert(nextBdIdOp.value().getValue());
       useNextBd = true;
     }
