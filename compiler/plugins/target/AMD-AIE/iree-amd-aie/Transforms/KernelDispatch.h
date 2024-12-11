@@ -34,7 +34,7 @@ enum class TilePassPipeline {
 enum class PeelingType { First, Last, FirstLast };
 
 /// Enum for operands to be bufferized to allocation.
-enum class BufferizeOperand { InputOutput, Input, Output, PackInput };
+enum class BufferizeOperand { LinalgInputOutput, LinalgInput, LinalgOutput, PackInput };
 
 LogicalResult initAIELaunchConfig(FunctionOpInterface funcOp,
                                   TilePassPipeline useTilePipeline,

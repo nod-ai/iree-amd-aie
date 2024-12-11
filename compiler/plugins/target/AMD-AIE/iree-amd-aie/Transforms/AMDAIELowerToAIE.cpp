@@ -229,9 +229,8 @@ void AIEDeviceBuilder::foldDims(const SmallVector<OpFoldResult> &offsets,
   SmallVector<OpFoldResult> tmpStrides;
   (void)foldUnitDims(rewriter.getContext(), offsets, sizes, strides, tmpOffsets,
                      tmpSizes, tmpStrides);
-  AMDAIE::DmaDimConfig dmaDimConfig(deviceModel, memSpace, memSpace);
-  SmallVector<int64_t> maxSizes =
-      dmaDimConfig.getMaxSizes<CopyOpOperateOn::Source>();
+  DmaDimConfig dmaDimConfig(deviceModel, memSpace);
+  SmallVector<int64_t> maxSizes = dmaDimConfig.getMaxSizes();
   (void)foldLinearDims(rewriter.getContext(), tmpOffsets, tmpSizes, tmpStrides,
                        newOffsets, newSizes, newStrides, maxSizes);
   (void)foldSingleDim(newOffsets, newSizes, newStrides);

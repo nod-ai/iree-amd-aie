@@ -74,33 +74,6 @@ struct RetrieveScaleAndBias
   }
 };
 
-// Constant specifying the number of inter-iteration dimension for DMA
-// operations.
-//
-// NOTE(jornt): this number is implicitly assumed in the device model and can't
-// be retrieved from it afaik.
-//
-// Some background:
-//
-// DMAs support multi-dimensional addressing through buffer descriptors in two
-// ways:
-// 1. Intra-iteration access pattern. Specified via 'strides' ('steps' in buffer
-// descriptor lingo), 'sizes' ('wraps' in buffer descriptro lingo) and
-// 'padding'. When a DMA executes a buffer descriptor, it will access the data
-// (read/write) as specified by the intra-iteration access pattern.
-// 2. Inter-iteration access pattern. Specified via an iteration 'stride',
-// 'size' and 'current_iteration' ('stride' is the same as 'stepsize' and 'size'
-// is the same as 'wrap' in buffer descriptor lingo). Here, 'current_iteration'
-// keeps track of the current execution iteration of the buffer descriptor and
-// is incremented after buffer descriptor execution. the 'stride' is the offset
-// to be used for each execution of the buffer descriptor, relative to the
-// previous one. When 'iteration_current' is equal to 'size', the
-// 'iteration_current' is reset to zero.
-//
-// Although DMAs can have a different number of intra-iteration dimensions, all
-// DMAs have a single inter-iteration dimension (at least in AIE2 and AIE2p).
-static const size_t kAMDAIEDmaNbInterDims = 1;
-
 /// Check whether two access patterns are equal in value, starting from
 /// specified indices.
 bool areAccessPatternsEqualFromIndices(ArrayRef<OpFoldResult> offsetsA,
@@ -220,119 +193,40 @@ LogicalResult foldUnitDims(MLIRContext *ctx,
 ///   be used for DMA access patterns.
 struct DmaDimConfig {
   const AMDAIE::AMDAIEDeviceModel &deviceModel;
-  AMDAIE::AMDAIETileType sourceTileType;
-  AMDAIE::AMDAIETileType targetTileType;
-  /// The maximum number of addressing dimensions on the source side of the DMA.
-  uint8_t sourceMaxNbDims{0};
-  /// The maximum number of addressing dimensions on the target side of the DMA.
-  uint8_t targetMaxNbDims{0};
+  AMDAIE::AMDAIETileType tileType;
+  /// The maximum number of addressing dimensions on of the DMA.
+  uint8_t maxNbDims{0};
+  /// The number of `inter` addressing dimensions on of the DMA.
+  uint8_t nbInterDims{0};
 
-  DmaDimConfig(const AMDAIE::AMDAIEDeviceModel &deviceModel,
-               uint8_t sourceMemspaceInt, uint8_t targetMemspaceInt)
+  DmaDimConfig(const AMDAIE::AMDAIEDeviceModel &deviceModel, uint8_t memSpace)
       : deviceModel(deviceModel) {
-    uint8_t shimNbIntraDims = deviceModel.getDmaProp<uint8_t>(
-        AMDAIE::AMDAIETileType::SHIMNOC, AMDAIE::AMDAIEDmaProp::NumAddrDim);
-    uint8_t memTileNbIntraDims = deviceModel.getDmaProp<uint8_t>(
-        AMDAIE::AMDAIETileType::MEMTILE, AMDAIE::AMDAIEDmaProp::NumAddrDim);
-    uint8_t coreNbIntraDims = deviceModel.getDmaProp<uint8_t>(
-        AMDAIE::AMDAIETileType::AIETILE, AMDAIE::AMDAIEDmaProp::NumAddrDim);
-    if (sourceMemspaceInt == 0) {
-      sourceTileType = AMDAIE::AMDAIETileType::SHIMNOC;
-      sourceMaxNbDims = shimNbIntraDims + kAMDAIEDmaNbInterDims;
-    } else if (sourceMemspaceInt == 1) {
-      sourceTileType = AMDAIE::AMDAIETileType::MEMTILE;
-      sourceMaxNbDims = memTileNbIntraDims;
-    } else if (sourceMemspaceInt == 2) {
-      sourceTileType = AMDAIE::AMDAIETileType::AIETILE;
-      sourceMaxNbDims = coreNbIntraDims;
+    if (memSpace == 0) {
+      uint8_t shimNbIntraDims = deviceModel.getDmaProp<uint8_t>(
+          AMDAIE::AMDAIETileType::SHIMNOC, AMDAIE::AMDAIEDmaProp::NumAddrDim);
+      tileType = AMDAIE::AMDAIETileType::SHIMNOC;
+      nbInterDims = deviceModel.deviceConfig.dmaNbInterDims;
+      maxNbDims = shimNbIntraDims + nbInterDims;
+    } else if (memSpace == 1) {
+      uint8_t memTileNbIntraDims = deviceModel.getDmaProp<uint8_t>(
+          AMDAIE::AMDAIETileType::MEMTILE, AMDAIE::AMDAIEDmaProp::NumAddrDim);
+      tileType = AMDAIE::AMDAIETileType::MEMTILE;
+      maxNbDims = memTileNbIntraDims;
+    } else if (memSpace == 2) {
+      uint8_t coreNbIntraDims = deviceModel.getDmaProp<uint8_t>(
+          AMDAIE::AMDAIETileType::AIETILE, AMDAIE::AMDAIEDmaProp::NumAddrDim);
+      tileType = AMDAIE::AMDAIETileType::AIETILE;
+      maxNbDims = coreNbIntraDims;
     } else {
-      assert(false && "unsupported source memspace");
-    }
-    if (targetMemspaceInt == 0) {
-      targetTileType = AMDAIE::AMDAIETileType::SHIMNOC;
-      targetMaxNbDims = shimNbIntraDims + kAMDAIEDmaNbInterDims;
-    } else if (targetMemspaceInt == 1) {
-      targetTileType = AMDAIE::AMDAIETileType::MEMTILE;
-      targetMaxNbDims = memTileNbIntraDims;
-    } else if (targetMemspaceInt == 2) {
-      targetTileType = AMDAIE::AMDAIETileType::AIETILE;
-      targetMaxNbDims = coreNbIntraDims;
-    } else {
-      assert(false && "unsupported target memspace");
+      assert(false && "unsupported memspace: ");
     }
   }
 
-  /// Return a vector containing the max stride values for every dimension. The
-  /// first dimension is the inter-iteration dimension, while the latter are
-  /// intra-iteration dimensions.
-  /// NOTE: It doesn't need to be known which BDs will be used exactly as all
-  /// BDs on the same tile types should have the same step and wrap sizes.
-  /// Therefore, `BD ID == 0` is choosen to be used to retrieve device
-  /// information.
-  template <CopyOpOperateOn OperateOn>
-  SmallVector<int64_t> getMaxStrides() const {
-    uint32_t maxIntraStride;
-    uint32_t maxInterStride;
-    if constexpr (OperateOn == CopyOpOperateOn::Source) {
-      maxIntraStride = deviceModel.getDmaBdProp<uint32_t>(
-          sourceTileType, 0, AMDAIE::AMDAIEDmaBdProp::StepSizeMax);
-      maxInterStride = deviceModel.getDmaBdProp<uint32_t>(
-          sourceTileType, 0, AMDAIE::AMDAIEDmaBdProp::IterStepSizeMax);
-      // +1 because values are encoded in HW BDs as (value - 1), so the range is
-      // [1:2^x].
-      SmallVector<int64_t> stepSizes(sourceMaxNbDims, maxIntraStride + 1);
-      stepSizes[0] = maxInterStride + 1;
-      return stepSizes;
-    } else if constexpr (OperateOn == CopyOpOperateOn::Target) {
-      maxIntraStride = deviceModel.getDmaBdProp<uint32_t>(
-          targetTileType, 0, AMDAIE::AMDAIEDmaBdProp::StepSizeMax);
-      maxInterStride = deviceModel.getDmaBdProp<uint32_t>(
-          targetTileType, 0, AMDAIE::AMDAIEDmaBdProp::IterStepSizeMax);
-      // +1 because values are encoded in HW BDs as (value - 1), so the range is
-      // [1:2^x].
-      SmallVector<int64_t> stepSizes(targetMaxNbDims, maxIntraStride + 1);
-      stepSizes[0] = maxInterStride + 1;
-      return stepSizes;
-    } else {
-      assert(false && "Function can only operate on Source or Target");
-    }
-  }
+  /// Return a vector containing the max size values for every dimension.
+  SmallVector<int64_t> getMaxSizes() const;
 
-  /// Return a vector containing the max size values for every dimension. The
-  /// first dimension is the inter-iteration dimension, while the latter are
-  /// intra-iteration dimensions.
-  /// NOTE: It doesn't need to be known which BDs will be used exactly as all
-  /// BDs on the same tile types should have the same step and wrap sizes.
-  /// Therefore, `BD ID == 0` is choosen to be used to retrieve device
-  /// information.
-  template <CopyOpOperateOn OperateOn>
-  SmallVector<int64_t> getMaxSizes() const {
-    uint32_t maxIntraSize;
-    uint32_t maxInterSize;
-    if constexpr (OperateOn == CopyOpOperateOn::Source) {
-      maxIntraSize = deviceModel.getDmaBdProp<uint16_t>(
-          sourceTileType, 0, AMDAIE::AMDAIEDmaBdProp::WrapMax);
-      maxInterSize = deviceModel.getDmaBdProp<uint8_t>(
-          sourceTileType, 0, AMDAIE::AMDAIEDmaBdProp::IterWrapMax);
-      SmallVector<int64_t> stepSizes(sourceMaxNbDims, maxIntraSize);
-      stepSizes[0] = maxInterSize;
-      // The outermost intra size doesn't have limit in HW.
-      stepSizes[1] = std::numeric_limits<int64_t>::max();
-      return stepSizes;
-    } else if constexpr (OperateOn == CopyOpOperateOn::Target) {
-      maxIntraSize = deviceModel.getDmaBdProp<uint16_t>(
-          targetTileType, 0, AMDAIE::AMDAIEDmaBdProp::WrapMax);
-      maxInterSize = deviceModel.getDmaBdProp<uint8_t>(
-          targetTileType, 0, AMDAIE::AMDAIEDmaBdProp::IterWrapMax);
-      SmallVector<int64_t> stepSizes(targetMaxNbDims, maxIntraSize);
-      stepSizes[0] = maxInterSize;
-      // The outermost intra size doesn't have limit in HW.
-      stepSizes[1] = std::numeric_limits<int64_t>::max();
-      return stepSizes;
-    } else {
-      assert(false && "Function can only operate on Source or Target");
-    }
-  }
+  /// Return a vector containing the max stride values for every dimension.
+  SmallVector<int64_t> getMaxStrides() const;
 };
 
 /// Utility to move the synchronization users (`amdaie.npu.dma_wait`) directly

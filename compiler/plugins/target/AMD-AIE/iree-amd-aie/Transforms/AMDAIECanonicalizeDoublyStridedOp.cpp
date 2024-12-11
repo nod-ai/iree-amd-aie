@@ -54,10 +54,12 @@ class FoldDmaOpLinearDims
             "expected a source and target memory space for hardware aware "
             "linear dimension folding");
       }
-      AMDAIE::DmaDimConfig dmaDimConfig(
-          deviceModel.value(), sourceMemSpace.value(), targetMemSpace.value());
-      maxSourceSizes = dmaDimConfig.getMaxSizes<CopyOpOperateOn::Source>();
-      maxTargetSizes = dmaDimConfig.getMaxSizes<CopyOpOperateOn::Target>();
+      DmaDimConfig sourceDmaDimConfig(deviceModel.value(),
+                                      sourceMemSpace.value());
+      maxSourceSizes = sourceDmaDimConfig.getMaxSizes();
+      DmaDimConfig targetDmaDimConfig(deviceModel.value(),
+                                      targetMemSpace.value());
+      maxTargetSizes = targetDmaDimConfig.getMaxSizes();
     }
     LogicalResult sourceRes = foldLinearDims(
         op.getContext(), sourceOffsets, sourceSizes, sourceStrides,
