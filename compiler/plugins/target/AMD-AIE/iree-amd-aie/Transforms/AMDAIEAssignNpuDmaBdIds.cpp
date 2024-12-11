@@ -61,32 +61,6 @@ FailureOr<AMDAIE::TileOp> getGeneratorTileOp(
   return tileOp;
 };
 
-/// Utility to retrieve a ChannelOp from a DMA copy operation.
-template <CopyOpOperateOn OperateOn>
-FailureOr<AMDAIE::ChannelOp> getChannelOp(AMDAIE::NpuDmaCpyNdOp &npuDmaOp) {
-  AMDAIE::ConnectionOp connectionOp = npuDmaOp.getConnectionOp();
-  if (!connectionOp) {
-    return npuDmaOp.emitOpError()
-           << "should operate on an `amdaie.connection` op";
-  }
-  if constexpr (OperateOn == CopyOpOperateOn::Source) {
-    if (connectionOp.getSourceChannels().size() != 1)
-      return connectionOp.emitOpError() << "expected a single source channel";
-    auto sourceChannelOp = dyn_cast<AMDAIE::ChannelOp>(
-        connectionOp.getSourceChannels()[0].getDefiningOp());
-    return sourceChannelOp;
-  } else if constexpr (OperateOn == CopyOpOperateOn::Target) {
-    if (connectionOp.getTargetChannels().size() != 1)
-      return connectionOp.emitOpError() << "expected a single target channel";
-    auto targetChannelOp = dyn_cast<AMDAIE::ChannelOp>(
-        connectionOp.getTargetChannels()[0].getDefiningOp());
-    return targetChannelOp;
-  } else {
-    return npuDmaOp.emitOpError()
-           << "Function can only operate on Source or Target";
-  }
-}
-
 std::optional<uint32_t> getNumberIterations(scf::ForOp loop) {
   std::optional<uint32_t> lowerBound =
       getConstantIntValue(loop.getLowerBound());
@@ -178,12 +152,19 @@ FailureOr<AMDAIE::BdIdOp> getBdIdOp(
       getGeneratorTileOp<OperateOn>(npuDmaOp, shimTileToGeneratorMap);
   if (failed(maybeTileOp)) return failure();
   AMDAIE::TileOp tileOp = maybeTileOp.value();
+
   // Get the channel.
-  FailureOr<AMDAIE::ChannelOp> maybeChannelOp =
-      getChannelOp<OperateOn>(npuDmaOp);
+  FailureOr<AMDAIE::ChannelOp> maybeChannelOp;
+  if constexpr (OperateOn == CopyOpOperateOn::Source) {
+    maybeChannelOp = npuDmaOp.getSourceChannelOp();
+  } else if constexpr (OperateOn == CopyOpOperateOn::Target) {
+    maybeChannelOp = npuDmaOp.getTargetChannelOp();
+  } else {
+    return npuDmaOp.emitOpError()
+           << "Function can only operate on Source or Target";
+  }
   if (failed(maybeChannelOp)) return failure();
-  AMDAIE::ChannelOp channelOp = maybeChannelOp.value();
-  uint32_t channel = channelOp.getValue();
+  uint32_t channel = maybeChannelOp.value().getValue();
 
   ChannelBdIdGenerator &generator = shimTileToGeneratorMap[tileOp.getResult()];
   rewriter.setInsertionPoint(npuDmaOp);
