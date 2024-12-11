@@ -483,4 +483,32 @@ LogicalResult moveNpuDmaSyncUsersAfterAncestorInSameBlock(
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// DmaDimConfig
+//===----------------------------------------------------------------------===//
+
+SmallVector<int64_t> DmaDimConfig::getMaxSizes() const {
+  uint32_t maxIntraSize = deviceModel.getDmaBdProp<uint16_t>(
+      tileType, 0, AMDAIE::AMDAIEDmaBdProp::WrapMax);
+  uint32_t maxInterSize = deviceModel.getDmaBdProp<uint8_t>(
+      tileType, 0, AMDAIE::AMDAIEDmaBdProp::IterWrapMax);
+  SmallVector<int64_t> maxSizes(maxNbDims, maxIntraSize);
+  std::fill_n(maxSizes.begin(), nbInterDims, maxInterSize);
+  // The outermost intra size doesn't have limit in HW.
+  maxSizes[nbInterDims] = std::numeric_limits<int64_t>::max();
+  return maxSizes;
+}
+
+SmallVector<int64_t> DmaDimConfig::getMaxStrides() const {
+  uint32_t maxIntraStride = deviceModel.getDmaBdProp<uint32_t>(
+      tileType, 0, AMDAIE::AMDAIEDmaBdProp::StepSizeMax);
+  uint32_t maxInterStride = deviceModel.getDmaBdProp<uint32_t>(
+      tileType, 0, AMDAIE::AMDAIEDmaBdProp::IterStepSizeMax);
+  // +1 because values are encoded in HW BDs as (value - 1), so the range is
+  // [1:2^x].
+  SmallVector<int64_t> stepSizes(maxNbDims, maxIntraStride + 1);
+  std::fill_n(stepSizes.begin(), nbInterDims, maxInterStride + 1);
+  return stepSizes;
+}
+
 }  // namespace mlir::iree_compiler::AMDAIE

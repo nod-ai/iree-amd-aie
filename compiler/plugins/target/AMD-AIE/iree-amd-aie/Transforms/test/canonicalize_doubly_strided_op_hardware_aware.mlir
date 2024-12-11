@@ -38,7 +38,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-LABEL:    func.func @dma_cpy_nd_no_fold
 // CHECK:          amdaie.dma_cpy_nd(%{{.+}}[0, 0] [2, 512] [512, 1], %{{.+}}[0, 0] [2, 512] [512, 1])
 // CHECK:          amdaie.dma_cpy_nd(%{{.+}}[0, 0, 0] [128, 8, 512] [2048, 256, 1], %{{.+}}[0, 0, 0] [128, 8, 512] [2048, 256, 1])
-// CHECK:          amdaie.dma_cpy_nd(%{{.+}}[0, 0, 0, 0, 0] [8, 8, 16, 8, 512] [1024, 128, 1024, 256, 1], %{{.+}}[0, 0, 0, 0, 0] [8, 8, 16, 8, 512] [1024, 128, 1024, 256, 1])
+// CHECK:          amdaie.dma_cpy_nd(%{{.+}}[0, 0, 0, 0] [64, 16, 8, 512] [128, 1024, 256, 1], %{{.+}}[0, 0, 0, 0] [64, 16, 8, 512] [128, 1024, 256, 1])
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @dma_cpy_nd_no_fold(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {

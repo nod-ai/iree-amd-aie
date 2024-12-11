@@ -152,7 +152,8 @@ struct SubsumeLoopIntoDMA
   /// operation.
   LogicalResult rewriteWithLoopLikeOpParent(
       AMDAIE::DoublyStridedOpInterface op, PatternRewriter &rewriter,
-      const AMDAIE::DmaDimConfig &dmaDimConfig,
+      const DmaDimConfig &sourceDmaDimConfig,
+      const DmaDimConfig &targetDmaDimConfig,
       const SmallVector<int64_t> &lowerBounds,
       const SmallVector<int64_t> &upperBounds,
       const SmallVector<int64_t> &steps,
@@ -210,10 +211,10 @@ struct SubsumeLoopIntoDMA
       if (nbIterations > 1) nbNonUnitIterations++;
     }
     if (newSourceOffsets.size() + nbNonUnitIterations >
-        dmaDimConfig.sourceMaxNbDims)
+        sourceDmaDimConfig.maxNbDims)
       return failure();
     if (newTargetOffsets.size() + nbNonUnitIterations >
-        dmaDimConfig.targetMaxNbDims)
+        targetDmaDimConfig.maxNbDims)
       return failure();
 
     // Fail if zero stride is only supported on the outer dimension and adding
@@ -309,10 +310,8 @@ struct SubsumeLoopIntoDMA
             insertInFront(newSourceSizes, insertSourceSizes);
         SmallVector<int64_t> newSourceStridesInt =
             insertInFront(newSourceStrides, insertSourceStrides);
-        SmallVector<int64_t> maxSizes =
-            dmaDimConfig.getMaxSizes<CopyOpOperateOn::Source>();
-        SmallVector<int64_t> maxStrides =
-            dmaDimConfig.getMaxStrides<CopyOpOperateOn::Source>();
+        SmallVector<int64_t> maxSizes = sourceDmaDimConfig.getMaxSizes();
+        SmallVector<int64_t> maxStrides = sourceDmaDimConfig.getMaxStrides();
         assert(maxSizes.size() >= newSourceSizesInt.size() &&
                "Max number of dimensions exceeded");
         size_t begin = maxSizes.size() - newSourceSizesInt.size();
@@ -335,10 +334,8 @@ struct SubsumeLoopIntoDMA
             insertInFront(newTargetSizes, insertTargetSizes);
         SmallVector<int64_t> newTargetStridesInt =
             insertInFront(newTargetStrides, insertTargetStrides);
-        SmallVector<int64_t> maxSizes =
-            dmaDimConfig.getMaxSizes<CopyOpOperateOn::Target>();
-        SmallVector<int64_t> maxStrides =
-            dmaDimConfig.getMaxStrides<CopyOpOperateOn::Target>();
+        SmallVector<int64_t> maxSizes = targetDmaDimConfig.getMaxSizes();
+        SmallVector<int64_t> maxStrides = targetDmaDimConfig.getMaxStrides();
         assert(maxSizes.size() >= newTargetSizesInt.size() &&
                "Max number of dimensions exceeded");
         size_t begin = maxSizes.size() - newTargetSizesInt.size();
@@ -413,7 +410,8 @@ struct SubsumeLoopIntoDMA
   /// optional `affine.apply` user for now.
   LogicalResult rewriteWithForOpParent(
       AMDAIE::DoublyStridedOpInterface op, PatternRewriter &rewriter,
-      const AMDAIE::DmaDimConfig &dmaDimConfig) const {
+      const DmaDimConfig &sourceDmaDimConfig,
+      const DmaDimConfig &targetDmaDimConfig) const {
     auto forOp = dyn_cast<scf::ForOp>(op->getParentOp());
     if (!forOp) return failure();
 
@@ -440,9 +438,9 @@ struct SubsumeLoopIntoDMA
     SmallVector<int64_t> upperBounds = {upperBound.value()};
     SmallVector<int64_t> steps = {step.value()};
     SmallVector<DenseSet<Value>> inductionValues = {curIvValues};
-    return rewriteWithLoopLikeOpParent(op, rewriter, dmaDimConfig, lowerBounds,
-                                       upperBounds, steps, inductionValues,
-                                       curIvValues);
+    return rewriteWithLoopLikeOpParent(
+        op, rewriter, sourceDmaDimConfig, targetDmaDimConfig, lowerBounds,
+        upperBounds, steps, inductionValues, curIvValues);
   }
 
   /// Main rewrite function for a doubly strided operation with a `scf.forall`
@@ -450,7 +448,8 @@ struct SubsumeLoopIntoDMA
   /// optional `affine.apply` user for now.
   LogicalResult rewriteWithForallOpParent(
       AMDAIE::DoublyStridedOpInterface op, PatternRewriter &rewriter,
-      const AMDAIE::DmaDimConfig &dmaDimConfig) const {
+      const DmaDimConfig &sourceDmaDimConfig,
+      const DmaDimConfig &targetDmaDimConfig) const {
     auto forallOp = dyn_cast<scf::ForallOp>(op->getParentOp());
     if (!forallOp) return failure();
 
@@ -481,9 +480,10 @@ struct SubsumeLoopIntoDMA
       }
       inductionValues.push_back(curIvValues);
     }
-    return rewriteWithLoopLikeOpParent(
-        op, rewriter, dmaDimConfig, lowerBounds.value(), upperBounds.value(),
-        steps.value(), inductionValues, allInductionValues);
+    return rewriteWithLoopLikeOpParent(op, rewriter, sourceDmaDimConfig,
+                                       targetDmaDimConfig, lowerBounds.value(),
+                                       upperBounds.value(), steps.value(),
+                                       inductionValues, allInductionValues);
   }
 
   LogicalResult matchAndRewrite(AMDAIE::DoublyStridedOpInterface op,
@@ -562,13 +562,15 @@ struct SubsumeLoopIntoDMA
       return rewriter.notifyMatchFailure(
           op, "expected a source and target memory space");
     }
-    AMDAIE::DmaDimConfig dmaDimConfig(deviceModel, sourceMemspaceInt.value(),
-                                      targetMemspaceInt.value());
+    DmaDimConfig sourceDmaDimConfig(deviceModel, sourceMemspaceInt.value());
+    DmaDimConfig targetDmaDimConfig(deviceModel, targetMemspaceInt.value());
 
     if (isa<scf::ForOp>(parentOp)) {
-      return rewriteWithForOpParent(op, rewriter, dmaDimConfig);
+      return rewriteWithForOpParent(op, rewriter, sourceDmaDimConfig,
+                                    targetDmaDimConfig);
     } else if (isa<scf::ForallOp>(parentOp)) {
-      return rewriteWithForallOpParent(op, rewriter, dmaDimConfig);
+      return rewriteWithForallOpParent(op, rewriter, sourceDmaDimConfig,
+                                       targetDmaDimConfig);
     } else {
       return rewriter.notifyMatchFailure(
           op, "Has parent operation of currently unsupported type");
