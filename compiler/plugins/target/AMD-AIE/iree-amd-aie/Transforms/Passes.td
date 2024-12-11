@@ -336,6 +336,13 @@ def AMDAIEInsertCores :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEInsertCoresPass()";
 }
 
+def AMDAIEInsertDmaBdChain :
+    Pass<"iree-amdaie-insert-dma-bd-chain"> {
+  let summary = "Chain DMA BD IDs by updating next_bd operands.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEInsertDmaBdChainPass()";
+}
+
+
 def AMDAIEInsertInfiniteLoopAroundCoreBlock :
     Pass<"iree-amdaie-insert-infinite-loop-around-core-block", ""> {
   let summary = "Inserts an infinite loop around each `amdaie.core`'s block.";
