@@ -39,13 +39,10 @@ iree_status_t iree_hal_xrt_buffer_wrap(
     iree_hal_buffer_usage_t allowed_usage, iree_device_size_t allocation_size,
     iree_device_size_t byte_offset, iree_device_size_t byte_length,
     iree_hal_buffer_release_callback_t release_callback,
-    iree_hal_buffer_t** out_buffer) {
-  IREE_ASSERT_ARGUMENT(allocator);
+    iree_allocator_t host_allocator, iree_hal_buffer_t** out_buffer) {
   IREE_ASSERT_ARGUMENT(out_buffer);
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  iree_allocator_t host_allocator =
-      iree_hal_allocator_host_allocator(allocator);
   iree_hal_xrt_buffer_t* buffer = nullptr;
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0,

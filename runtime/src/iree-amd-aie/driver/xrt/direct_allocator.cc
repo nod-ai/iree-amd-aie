@@ -197,7 +197,8 @@ static iree_status_t iree_hal_xrt_allocator_allocate_buffer(
         xrt_buffer.release(), placement, compat_params.type,
         compat_params.access, compat_params.usage, allocation_size,
         /*byte_offset=*/0, /*byte_length=*/allocation_size,
-        iree_hal_buffer_release_callback_null(), &buffer);
+        iree_hal_buffer_release_callback_null(), allocator->host_allocator,
+        &buffer);
   }
 
   if (iree_status_is_ok(status)) {
