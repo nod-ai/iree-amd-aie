@@ -83,10 +83,10 @@ struct CombineStridedOps
       return rewriter.notifyMatchFailure(
           nextStridedOp, "expected a source and target memory space");
     }
-    AMDAIE::DmaDimConfig dmaDimConfig(deviceModel, sourceMemspaceInt.value(),
-                                      targetMemspaceInt.value());
-    size_t sourceMaxNbDims = dmaDimConfig.sourceMaxNbDims;
-    size_t targetMaxNbDims = dmaDimConfig.targetMaxNbDims;
+    DmaDimConfig sourceDmaDimConfig(deviceModel, sourceMemspaceInt.value());
+    size_t sourceMaxNbDims = sourceDmaDimConfig.maxNbDims;
+    DmaDimConfig targetDmaDimConfig(deviceModel, targetMemspaceInt.value());
+    size_t targetMaxNbDims = targetDmaDimConfig.maxNbDims;
 
     SmallVector<OpFoldResult> sourceOffsetsA = op.getSourceMixedOffsets();
     SmallVector<OpFoldResult> sourceSizesA = op.getSourceMixedSizes();
