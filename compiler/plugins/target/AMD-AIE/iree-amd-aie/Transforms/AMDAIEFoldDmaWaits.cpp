@@ -18,7 +18,7 @@ namespace {
 
 /// Utility function to determine whether a DMA wait op can be folded based on
 /// its half DMA copy operation.
-FailureOr<bool> canFoldBasedOnHalfDmaCpy(
+FailureOr<bool> canFoldByConnection(
     const AMDAIE::AMDAIEDeviceModel &deviceModel,
     AMDAIE::NpuHalfDmaCpyNdOp &npuHalfDmaCpyNdOp,
     DenseMap<std::pair<AMDAIE::TileOp, AMDAIE::ConnectionOp>,
@@ -101,8 +101,9 @@ FailureOr<bool> canFoldBasedOnHalfDmaCpy(
 /// Reverse traversal simplifies handling duplicate BD IDs, preventing
 /// the need to revisit and modify earlier operations after processing later
 /// ones.
-LogicalResult foldDmaWaits(const AMDAIE::AMDAIEDeviceModel &deviceModel,
-                           AMDAIE::ControlCodeOp controlCodeOp) {
+LogicalResult foldDmaWaitsByConnection(
+    const AMDAIE::AMDAIEDeviceModel &deviceModel,
+    AMDAIE::ControlCodeOp controlCodeOp) {
   IRRewriter rewriter(controlCodeOp->getContext());
   std::vector<AMDAIE::NpuDmaWaitOp> waitOpsToErase;
   DenseMap<std::pair<AMDAIE::TileOp, AMDAIE::ConnectionOp>,
@@ -116,7 +117,7 @@ LogicalResult foldDmaWaits(const AMDAIE::AMDAIEDeviceModel &deviceModel,
           if (auto npuHalfDmaCpyNdOp =
                   dyn_cast_if_present<AMDAIE::NpuHalfDmaCpyNdOp>(
                       token.getDefiningOp())) {
-            FailureOr<bool> result = canFoldBasedOnHalfDmaCpy(
+            FailureOr<bool> result = canFoldByConnection(
                 deviceModel, npuHalfDmaCpyNdOp, tileConnectToBdIdQueue);
             if (failed(result)) return WalkResult::interrupt();
             toErase &= *result;
@@ -152,6 +153,147 @@ LogicalResult foldDmaWaits(const AMDAIE::AMDAIEDeviceModel &deviceModel,
   return success();
 }
 
+struct DmaColumnBatch {
+  uint32_t row;
+  uint32_t channel;
+  AMDAIE::DMAChannelDir direction;
+
+  // Sorted by column.
+  std::map<uint32_t, AMDAIE::NpuDmaWaitOp> colWaitOpMap;
+};
+
+/// Updates a batch of asynchronous DMA wait operations by combining their
+/// async tokens into a single NpuDmaWaitOp.
+void updateColumnBatchTokens(
+    IRRewriter &rewriter,
+    std::map<uint32_t, AMDAIE::NpuDmaWaitOp> &colWaitOpMap) {
+  if (colWaitOpMap.size() < 2) return;
+
+  // Check if there is any discontinuity in the columns, and if so, split into
+  // separate batches.
+  SmallVector<SmallVector<AMDAIE::NpuDmaWaitOp>> waitOpsList;
+  uint32_t prevCol = 0;
+  for (auto &entry : colWaitOpMap) {
+    uint32_t col = entry.first;
+    AMDAIE::NpuDmaWaitOp waitOp = entry.second;
+    if (waitOpsList.empty() || col != prevCol + 1) {
+      waitOpsList.push_back({});
+    }
+    waitOpsList.back().push_back(waitOp);
+    prevCol = col;
+  }
+
+  for (SmallVector<AMDAIE::NpuDmaWaitOp> &waitOps : waitOpsList) {
+    // For each batch, combine the async tokens into a single NpuDmaWaitOp.
+    SmallVector<Value> asyncTokens;
+    for (AMDAIE::NpuDmaWaitOp waitOp : waitOps) {
+      asyncTokens.append(waitOp.getAsyncTokens().begin(),
+                         waitOp.getAsyncTokens().end());
+    }
+    rewriter.setInsertionPointAfter(waitOps.back());
+    rewriter.create<AMDAIE::NpuDmaWaitOp>(waitOps.back().getLoc(), asyncTokens);
+    for (AMDAIE::NpuDmaWaitOp waitOp : waitOps) {
+      rewriter.eraseOp(waitOp);
+    }
+  }
+}
+
+/// Utility function to determine if a DMA wait operation can be folded.
+/// This is achieved by verifying whether it shares the same row, channel,
+/// and direction with preceding wait operations.
+LogicalResult foldByColumn(IRRewriter &rewriter, DmaColumnBatch &dmaBatch,
+                           AMDAIE::NpuHalfDmaCpyNdOp dmaOp,
+                           AMDAIE::NpuDmaWaitOp waitOp) {
+  // Get the row and column.
+  std::optional<AMDAIE::BdIdOp> maybeBdIdOp = dmaOp.getBdIdOp();
+  if (!maybeBdIdOp) return dmaOp.emitOpError() << "must have a BD ID op";
+  AMDAIE::BdIdOp bdIdOp = maybeBdIdOp.value();
+  AMDAIE::TileOp tileOp =
+      dyn_cast_if_present<AMDAIE::TileOp>(bdIdOp.getTile().getDefiningOp());
+  if (!tileOp)
+    return bdIdOp.emitOpError() << "must operate on an `amdaie.tile`";
+  uint32_t col = getConstantIndexOrAssert(tileOp.getCol());
+  uint32_t row = getConstantIndexOrAssert(tileOp.getRow());
+
+  // Get the channel.
+  std::optional<AMDAIE::ChannelOp> maybeChannelOp = dmaOp.getChannelOp();
+  if (!maybeChannelOp)
+    return dmaOp.emitOpError() << "found non-`amdaie.channel` channel";
+  AMDAIE::ChannelOp channelOp = maybeChannelOp.value();
+  std::optional<AMDAIE::DMAChannelDir> maybeDirection =
+      channelOp.getDirection();
+  std::optional<uint32_t> maybeChannel = channelOp.getValue();
+  if (!maybeDirection || !maybeChannel)
+    return channelOp.emitOpError() << "direction and channel needed";
+  AMDAIE::DMAChannelDir direction = maybeDirection.value();
+  uint32_t channel = maybeChannel.value();
+
+  if (dmaBatch.colWaitOpMap.empty() || row != dmaBatch.row ||
+      channel != dmaBatch.channel || direction != dmaBatch.direction) {
+    updateColumnBatchTokens(rewriter, dmaBatch.colWaitOpMap);
+    dmaBatch = {row, channel, direction, {}};
+  }
+  dmaBatch.colWaitOpMap[col] = waitOp;
+  return success();
+}
+
+/// Traverses the control code forward, ensuring that only one DMA wait op is
+/// retained for all the columns.
+///
+/// Example Input:
+///   %0 = dma_cpy_nd(col=0)
+///   %1 = dma_cpy_nd(col=1)
+///   %2 = dma_cpy_nd(col=2)
+///   %3 = dma_cpy_nd(col=3)
+///   dma_wait(%0)
+///   dma_wait(%1)
+///   dma_wait(%2)
+///   dma_wait(%3)
+/// Example Output:
+///   %0 = dma_cpy_nd(col=0)
+///   %1 = dma_cpy_nd(col=1)
+///   %2 = dma_cpy_nd(col=2)
+///   %3 = dma_cpy_nd(col=3)
+///   dma_wait(%0, %1, %2, %3)
+LogicalResult foldDmaWaitsByColumn(const AMDAIE::AMDAIEDeviceModel &deviceModel,
+                                   AMDAIE::ControlCodeOp controlCodeOp) {
+  IRRewriter rewriter(controlCodeOp->getContext());
+  DmaColumnBatch dmaBatch = {};
+
+  WalkResult res = controlCodeOp->walk([&](Operation *op) {
+    auto waitOp = dyn_cast<AMDAIE::NpuDmaWaitOp>(op);
+    // Skip if not a DMA wait op or if it already has multiple async tokens.
+    if (!waitOp || waitOp.getAsyncTokens().size() != 1) {
+      updateColumnBatchTokens(rewriter, dmaBatch.colWaitOpMap);
+      dmaBatch.colWaitOpMap.clear();
+      return WalkResult::advance();
+    }
+
+    // Get the half DMA copy operation.
+    Value token = waitOp.getAsyncTokens().front();
+    auto npuHalfDmaCpyNdOp =
+        dyn_cast_if_present<AMDAIE::NpuHalfDmaCpyNdOp>(token.getDefiningOp());
+    if (!npuHalfDmaCpyNdOp) {
+      waitOp.emitOpError() << "expected to operate on an "
+                              "`amdaie.npu.half_dma_cpy_nd`";
+      return WalkResult::interrupt();
+    }
+
+    // Check if the DMA wait op can be folded into the column batch.
+    if (succeeded(
+            foldByColumn(rewriter, dmaBatch, npuHalfDmaCpyNdOp, waitOp))) {
+      return WalkResult::advance();
+    } else {
+      return WalkResult::interrupt();
+    }
+  });
+
+  // Process the remaining wait ops.
+  updateColumnBatchTokens(rewriter, dmaBatch.colWaitOpMap);
+  if (res.wasInterrupted()) return failure();
+  return success();
+}
+
 class AMDAIEFoldDmaWaitsPass
     : public impl::AMDAIEFoldDmaWaitsBase<AMDAIEFoldDmaWaitsPass> {
  public:
@@ -181,7 +323,10 @@ void AMDAIEFoldDmaWaitsPass::runOnOperation() {
 
   WalkResult res = parentOp->walk([&](AMDAIE::WorkgroupOp workgroupOp) {
     AMDAIE::ControlCodeOp controlCodeOp = workgroupOp.getControlCode();
-    if (failed(foldDmaWaits(deviceModel, controlCodeOp))) {
+    if (failed(foldDmaWaitsByConnection(deviceModel, controlCodeOp))) {
+      return WalkResult::interrupt();
+    }
+    if (failed(foldDmaWaitsByColumn(deviceModel, controlCodeOp))) {
       return WalkResult::interrupt();
     }
     return WalkResult::advance();

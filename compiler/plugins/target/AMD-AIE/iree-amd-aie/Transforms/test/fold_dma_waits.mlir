@@ -220,3 +220,93 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
     return
   }
 }
+
+// -----
+
+// The first two DMA operations are expected to be batched into a single DMA wait, as they share the same row, 
+// channel, and direction, with consecutive columns (0 and 1). The third DMA operation is not batched because 
+// its column (3) is not consecutive with the previous operations.
+// CHECK-LABEL: @fold_dma_waits_column_batch
+// CHECK-DAG: %[[C0:.+]] = arith.constant 0 : index
+// CHECK-DAG: %[[C1:.+]] = arith.constant 1 : index
+// CHECK-DAG: %[[C3:.+]] = arith.constant 3 : index
+// CHECK:       %[[TILE_0_0:.+]] = amdaie.tile(%[[C0]], %[[C0]])
+// CHECK:       %[[TILE_1_0:.+]] = amdaie.tile(%[[C1]], %[[C0]])
+// CHECK:       %[[TILE_3_0:.+]] = amdaie.tile(%[[C3]], %[[C0]])
+// CHECK:         %[[BD_ID_0:.+]] = amdaie.bd_id(%[[TILE_0_0]], %[[C0]])
+// CHECK:         %[[TOKEN_0:.+]] = amdaie.npu.half_dma_cpy_nd async %{{.+}}(%{{.+}} [] [] [] bd_id = %[[BD_ID_0]]
+// CHECK:         %[[BD_ID_1:.+]] = amdaie.bd_id(%[[TILE_1_0]], %[[C0]])
+// CHECK:         %[[TOKEN_1:.+]] = amdaie.npu.half_dma_cpy_nd async %{{.+}}(%{{.+}} [] [] [] bd_id = %[[BD_ID_1]]
+// CHECK:         %[[BD_ID_2:.+]] = amdaie.bd_id(%[[TILE_3_0]], %[[C0]])
+// CHECK:         %[[TOKEN_2:.+]] = amdaie.npu.half_dma_cpy_nd async %{{.+}}(%{{.+}} [] [] [] bd_id = %[[BD_ID_2]]
+// CHECK:         amdaie.npu.dma_wait(%[[TOKEN_0]], %[[TOKEN_1]] : !amdaie.async_token, !amdaie.async_token)
+// CHECK:         amdaie.npu.dma_wait(%[[TOKEN_2]] : !amdaie.async_token)
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+#pipeline_layout = #hal.pipeline.layout<bindings = [#hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, Indirect>], flags = Indirect>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @fold_dma_waits_column_batch() {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c3 = arith.constant 3 : index
+    amdaie.workgroup {
+      %tile_0_1 = amdaie.tile(%c0, %c1)
+      %tile_0_0 = amdaie.tile(%c0, %c0)
+      %tile_1_1 = amdaie.tile(%c1, %c1)
+      %tile_1_0 = amdaie.tile(%c1, %c0)
+      %tile_3_1 = amdaie.tile(%c3, %c1)
+      %tile_3_0 = amdaie.tile(%c3, %c0)
+      %buffer = amdaie.buffer(%tile_0_1) : memref<2048xi32, 1 : i32>
+      %buffer_0 = amdaie.buffer(%tile_0_1) : memref<2048xi32, 1 : i32>
+      %buffer_1 = amdaie.buffer(%tile_1_1) : memref<2048xi32, 1 : i32>
+      %buffer_2 = amdaie.buffer(%tile_1_1) : memref<2048xi32, 1 : i32>
+      %buffer_3 = amdaie.buffer(%tile_3_1) : memref<2048xi32, 1 : i32>
+      %buffer_4 = amdaie.buffer(%tile_3_1) : memref<2048xi32, 1 : i32>
+      %lock = amdaie.lock(%tile_0_1(4), 4)
+      %lock_5 = amdaie.lock(%tile_0_1(5), 0)
+      %lock_6 = amdaie.lock(%tile_1_1(4), 4)
+      %lock_7 = amdaie.lock(%tile_1_1(5), 0)
+      %lock_8 = amdaie.lock(%tile_3_1(4), 4)
+      %lock_9 = amdaie.lock(%tile_3_1(5), 0)
+      %0 = amdaie.logicalobjectfifo.from_buffers({%buffer, %buffer_0}, {%lock}, {%lock_5}) : memref<2048xi32, 1 : i32>, memref<2048xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 2>
+      %1 = hal.interface.binding.subspan layout(#pipeline_layout) binding(0) alignment(64) offset(%c0) flags("ReadOnly|Indirect") : memref<64x32xi32>
+      %2 = amdaie.logicalobjectfifo.placeholder{%tile_0_0} : !amdaie.logicalobjectfifo<memref<64x32xi32>>
+      %3 = amdaie.logicalobjectfifo.from_buffers({%buffer_1, %buffer_2}, {%lock_6}, {%lock_7}) : memref<2048xi32, 1 : i32>, memref<2048xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 2>
+      %4 = hal.interface.binding.subspan layout(#pipeline_layout) binding(0) alignment(64) offset(%c0) flags("ReadOnly|Indirect") : memref<64x32xi32>
+      %5 = amdaie.logicalobjectfifo.placeholder{%tile_1_0} : !amdaie.logicalobjectfifo<memref<64x32xi32>>
+      %6 = amdaie.logicalobjectfifo.from_buffers({%buffer_3, %buffer_4}, {%lock_8}, {%lock_9}) : memref<2048xi32, 1 : i32>, memref<2048xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 2>
+      %7 = hal.interface.binding.subspan layout(#pipeline_layout) binding(0) alignment(64) offset(%c0) flags("ReadOnly|Indirect") : memref<64x32xi32>
+      %8 = amdaie.logicalobjectfifo.placeholder{%tile_3_0} : !amdaie.logicalobjectfifo<memref<64x32xi32>>
+      %channel = amdaie.channel(%tile_0_0, 0, port_type = DMA, direction = MM2S)
+      %channel_10 = amdaie.channel(%tile_0_1, 0, port_type = DMA, direction = S2MM)
+      %channel_11 = amdaie.channel(%tile_1_0, 0, port_type = DMA, direction = MM2S)
+      %channel_12 = amdaie.channel(%tile_1_1, 0, port_type = DMA, direction = S2MM)
+      %channel_13 = amdaie.channel(%tile_3_0, 0, port_type = DMA, direction = MM2S)
+      %channel_14 = amdaie.channel(%tile_3_1, 0, port_type = DMA, direction = S2MM)
+      %9 = amdaie.flow({%channel} -> {%channel_10}) {is_packet_flow = false}
+      %10 = amdaie.connection(%0 {%channel_10}, %2 {%channel}, flow = %9) {connection_type = #amdaie<connection_type Packet>} : (!amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 2>, !amdaie.logicalobjectfifo<memref<64x32xi32>>)
+      %11 = amdaie.flow({%channel_11} -> {%channel_12}) {is_packet_flow = false}
+      %12 = amdaie.connection(%3 {%channel_12}, %5 {%channel_11}, flow = %11) {connection_type = #amdaie<connection_type Packet>} : (!amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 2>, !amdaie.logicalobjectfifo<memref<64x32xi32>>)
+      %13 = amdaie.flow({%channel_13} -> {%channel_14}) {is_packet_flow = false}
+      %14 = amdaie.connection(%6 {%channel_14}, %8 {%channel_13}, flow = %13) {connection_type = #amdaie<connection_type Packet>} : (!amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 2>, !amdaie.logicalobjectfifo<memref<64x32xi32>>)
+      amdaie.controlcode {
+        %15 = amdaie.logicalobjectfifo.from_memref %1, {%tile_0_0} : memref<64x32xi32> -> !amdaie.logicalobjectfifo<memref<2048xi32>>
+        memref.assume_alignment %1, 64 : memref<64x32xi32>
+        %16 = amdaie.logicalobjectfifo.from_memref %4, {%tile_1_0} : memref<64x32xi32> -> !amdaie.logicalobjectfifo<memref<2048xi32>>
+        memref.assume_alignment %4, 64 : memref<64x32xi32>
+        %17 = amdaie.logicalobjectfifo.from_memref %7, {%tile_3_0} : memref<64x32xi32> -> !amdaie.logicalobjectfifo<memref<2048xi32>>
+        memref.assume_alignment %7, 64 : memref<64x32xi32>
+        %bd_id = amdaie.bd_id(%tile_0_0, %c0)
+        %18 = amdaie.npu.half_dma_cpy_nd async %10(%15 [] [] [] bd_id = %bd_id channel = %channel) : !amdaie.logicalobjectfifo<memref<2048xi32>>
+        %bd_id_15 = amdaie.bd_id(%tile_1_0, %c0)
+        %19 = amdaie.npu.half_dma_cpy_nd async %12(%16 [] [] [] bd_id = %bd_id_15 channel = %channel_11) : !amdaie.logicalobjectfifo<memref<2048xi32>>
+        %bd_id_16 = amdaie.bd_id(%tile_3_0, %c0)
+        %20 = amdaie.npu.half_dma_cpy_nd async %14(%17 [] [] [] bd_id = %bd_id_16 channel = %channel_13) : !amdaie.logicalobjectfifo<memref<2048xi32>>
+        amdaie.npu.dma_wait(%18 : !amdaie.async_token)
+        amdaie.npu.dma_wait(%19 : !amdaie.async_token)
+        amdaie.npu.dma_wait(%20 : !amdaie.async_token)
+        amdaie.end
+      }
+    }
+    return
+  }
+}

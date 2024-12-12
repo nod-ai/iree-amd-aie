@@ -200,16 +200,34 @@ LogicalResult convertOp(AMDAIE::NpuAddressPatchOp op,
 }
 
 LogicalResult convertOp(AMDAIE::NpuDmaWaitOp op, TransactionBuilder &builder) {
-  for (Value token : op.getAsyncTokens()) {
-    auto pushToQueueOp =
-        dyn_cast_if_present<AMDAIE::NpuPushToQueueOp>(token.getDefiningOp());
+  // Batch DMA operations with the same row, channel, and direction into a
+  // single TCT sync operation, as long as they have consecutive columns.
+  SmallVector<std::pair<AMDAIE::NpuPushToQueueOp, uint32_t>> columnBatches;
+  for (Value asyncToken : op.getAsyncTokens()) {
+    auto pushToQueueOp = dyn_cast_if_present<AMDAIE::NpuPushToQueueOp>(
+        asyncToken.getDefiningOp());
     if (!pushToQueueOp) {
       return op.emitOpError()
-             << "should operate on an `amdaie.push_to_queue` op";
+             << "should operate on an `amdaie.push_to_queue` op async token";
     }
+    if (!columnBatches.empty()) {
+      auto &[lastPushOp, lastColNum] = columnBatches.back();
+      if (lastPushOp.getRow() == pushToQueueOp.getRow() &&
+          lastPushOp.getCol() + lastColNum == pushToQueueOp.getCol() &&
+          lastPushOp.getDirection() == pushToQueueOp.getDirection() &&
+          lastPushOp.getChannel() == pushToQueueOp.getChannel()) {
+        ++lastColNum;
+        continue;
+      }
+    }
+    columnBatches.push_back({pushToQueueOp, 1});
+  }
+
+  // Convert to TCT sync ops.
+  for (auto &[pushToQueueOp, colNum] : columnBatches) {
     if (failed(builder.appendTCTSync(
             pushToQueueOp.getCol(), pushToQueueOp.getRow(),
-            static_cast<uint32_t>(pushToQueueOp.getDirection()), 1, 1,
+            static_cast<uint32_t>(pushToQueueOp.getDirection()), 1, colNum,
             pushToQueueOp.getChannel()))) {
       return failure();
     }
