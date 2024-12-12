@@ -9,6 +9,7 @@
 #include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
 #include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Iterators.h"
 #include "mlir/Pass/Pass.h"
 
@@ -18,37 +19,46 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
-/// A utility function specific to this pass which, given a value, would
-/// traverse the def-chain till it either finds a tensor.extract_slice op or a
-/// BlockArgument.
+/// A utility function specific to this pass which, given a value `operand`,
+/// traverses the def-chain till it finds a tensor.extract_slice. The 2 cases
+/// where it successfully finds and returns an extract_slice (SLICE) are:
+///
+/// Case 1)
+/// pack -> SLICE -> pack -> pack -> pack -> operand
+///                  ^^^^^^^^^^^^^^^^^^^^
+///                  any number (>= 0) of trailing packs
+///
+/// Case 2)
+/// pack -> block arg -> SLICE  -> pack -> pack -> pack -> operand
+///                                ^^^^^^^^^^^^^^^^^^^^
+///                                any number (>= 0) of trailing packs
+///
+/// Case 2 only matches where `block arg` is for a loop operation.
 static FailureOr<tensor::ExtractSliceOp> getTensorExtractSliceDefiningOp(
     Value operand) {
-  while (Operation *defOp = operand.getDefiningOp()) {
-    auto sliceOp = dyn_cast_if_present<tensor::ExtractSliceOp>(defOp);
-    if (sliceOp) {
-      // The producer of sliceOp should be a pack op.
-      if (isa_and_present<tensor::PackOp>(
-              sliceOp.getSource().getDefiningOp())) {
-        return sliceOp;
-      }
-      if (isa<BlockArgument>(sliceOp.getSource())) {
-        auto blkArg = dyn_cast<BlockArgument>(sliceOp.getSource());
-        for (Value blkOperand :
-             blkArg.getOwner()->getParentOp()->getOperands()) {
-          if (isa_and_present<tensor::PackOp>(blkOperand.getDefiningOp())) {
-            return sliceOp;
-          }
-        }
-      }
-      break;
-    }
-    // We perform further traversal only if we have tensor.pack op in the
-    // def-chain.
-    if (!isa<tensor::PackOp>(defOp)) {
-      break;
-    }
-    operand = defOp->getOperand(0);
+  // roll back through all the packs immediately preceding `operand`.
+  while (isa_and_present<tensor::PackOp>(operand.getDefiningOp())) {
+    operand = operand.getDefiningOp()->getOperand(0);
   }
+
+  tensor::ExtractSliceOp sliceOp =
+      dyn_cast_if_present<tensor::ExtractSliceOp>(operand.getDefiningOp());
+  if (!sliceOp) return failure();
+
+  // Case 1 outlined above.
+  if (isa_and_present<tensor::PackOp>(sliceOp.getSource().getDefiningOp())) {
+    return sliceOp;
+  }
+
+  // Case 2 outlined above.
+  else if (auto blkArg = dyn_cast<BlockArgument>(sliceOp.getSource())) {
+    Operation *parent = blkArg.getOwner()->getParentOp();
+    LoopLikeOpInterface loop = dyn_cast<LoopLikeOpInterface>(parent);
+    if (!loop) return failure();
+    Operation *operandParent = loop.getTiedLoopInit(blkArg)->getOwner();
+    if (isa_and_present<tensor::PackOp>(operandParent)) return sliceOp;
+  }
+
   return failure();
 }
 
@@ -90,11 +100,6 @@ void AMDAIEFusePackIntoLoopPass::runOnOperation() {
     return;
   }
 
-  if (fusePackDepth < 1) {
-    funcOp->emitOpError("Invalid depth of pack ops for fusion.");
-    return signalPassFailure();
-  }
-
   LoopLikeOpInterface loops = cast<LoopLikeOpInterface>(scfLoopOp);
 
   // Based on the `fusePackDepth`, we would greedily fuse the producer
@@ -122,29 +127,31 @@ void AMDAIEFusePackIntoLoopPass::runOnOperation() {
       return;
     }
 
-    SmallVector<tensor::ExtractSliceOp> sliceOps;
-    for (auto [index, operand] : llvm::enumerate(genericOp.getOperands())) {
-      FailureOr<tensor::ExtractSliceOp> sliceOp =
-          getTensorExtractSliceDefiningOp(operand);
-      if (!failed(sliceOp)) {
-        sliceOps.push_back(sliceOp.value());
-      }
-    }
-
-    if (sliceOps.empty()) {
-      LLVM_DEBUG(llvm::dbgs() << "----- Pack ops are already fused or no slice "
-                                 "ops were found.-----\n");
-      return;
-    }
-
     // Materialize each slice of the producer in place.
-    for (auto sliceOp : sliceOps) {
-      std::optional<scf::SCFFuseProducerOfSliceResult> fusedProducer =
-          scf::tileAndFuseProducerOfSlice(rewriter, sliceOp,
-                                          MutableArrayRef(&loops, 1));
-      if (!fusedProducer) {
-        funcOp->emitOpError("Failed to fuse pack ops into for loop.");
-        return signalPassFailure();
+    for (Value operand : genericOp.getOperands()) {
+      FailureOr<tensor::ExtractSliceOp> maybeSliceOp =
+          getTensorExtractSliceDefiningOp(operand);
+
+      if (succeeded(maybeSliceOp)) {
+        tensor::ExtractSliceOp sliceOp = maybeSliceOp.value();
+        std::optional<scf::SCFFuseProducerOfSliceResult> fusedProducer =
+            scf::tileAndFuseProducerOfSlice(rewriter, sliceOp,
+                                            MutableArrayRef(&loops, 1));
+        if (!fusedProducer) {
+          funcOp->emitOpError("Failed to fuse pack ops into for loop.");
+          return signalPassFailure();
+        }
+      }
+
+      // Case where operand of generic is a pack op which is in a different
+      // block than the generic's block.
+      else if (auto parent = dyn_cast_if_present<tensor::PackOp>(
+                   operand.getDefiningOp())) {
+        Block *genericBlock = genericOp->getBlock();
+        if (parent->getBlock() != genericBlock && parent->hasOneUse()) {
+          Operation *firstOpInBlock = &genericBlock->front();
+          rewriter.moveOpBefore(parent, firstOpInBlock);
+        }
       }
     }
   }
