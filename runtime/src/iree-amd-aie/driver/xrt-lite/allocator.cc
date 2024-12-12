@@ -95,10 +95,14 @@ static iree_status_t iree_hal_xrt_lite_allocator_allocate_buffer(
   shim_xdna::bo* bo =
       allocator->shim_device->alloc_bo(allocation_size, flags).release();
   iree_hal_buffer_t* buffer = nullptr;
+  const iree_hal_buffer_placement_t placement = {
+      .queue_affinity = params->queue_affinity ? params->queue_affinity
+                                               : IREE_HAL_QUEUE_AFFINITY_ANY,
+      .flags = IREE_HAL_BUFFER_PLACEMENT_FLAG_NONE,
+  };
   iree_status_t status = iree_hal_xrt_lite_buffer_wrap(
-      bo, reinterpret_cast<iree_hal_allocator_t*>(allocator),
-      compat_params.type, compat_params.access, compat_params.usage,
-      allocation_size,
+      bo, placement, compat_params.type, compat_params.access,
+      compat_params.usage, allocation_size,
       /*byte_offset=*/0, /*byte_length=*/allocation_size,
       iree_hal_buffer_release_callback_null(), allocator->host_allocator,
       &buffer);
