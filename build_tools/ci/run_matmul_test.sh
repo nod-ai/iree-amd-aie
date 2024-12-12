@@ -629,8 +629,6 @@ run_matmul_test_on_shapes ${i32_shapes_medium[@]} \
     --acc_type "i32" \
     --num_repeat_runs "2"
 
-# bf16 Matmul tests.
-
 bf16_i8_shapes_small=(
   '64x64x64'
   '128x256x128'
@@ -643,7 +641,7 @@ bf16_i8_shapes_medium=(
   '4096x2048x4096'
 )
 
-
+# bf16 Matmul tests.
 run_matmul_test_on_shapes ${bf16_i8_shapes_small[@]} \
     --name_prefix "small_bf16" \
     --lower_to_aie_pipeline "objectFifo" \
@@ -677,6 +675,31 @@ run_matmul_test_on_shapes ${bf16_i8_shapes_medium[@]} \
     --acc_type "i32" \
     --num_repeat_runs "2"
 
+# matmul_transpose_b tests.
+transpose_shapes=(
+  '64x64x64'
+  '128x32x256'
+  '512x128x256'
+  '1536x2048x1536'
+)
+
+run_matmul_test_on_shapes ${transpose_shapes[@]} \
+    --name_prefix "transpose_bf16" \
+    --lower_to_aie_pipeline "objectFifo" \
+    --tile_pipeline "pack-peel" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
+    --num_repeat_runs "2" \
+    --do_transpose_rhs "1"
+
+run_matmul_test_on_shapes ${transpose_shapes[@]} \
+    --name_prefix "transpose_i8" \
+    --lower_to_aie_pipeline "objectFifo" \
+    --tile_pipeline "pack-peel" \
+    --lhs_rhs_type "i8" \
+    --acc_type "i32" \
+    --num_repeat_runs "2" \
+    --do_transpose_rhs "1"
 
 
 # note this will not actually show any devices because --xrt_lite_n_core_rows --xrt_lite_n_core_cols are not passed

@@ -1446,6 +1446,22 @@ class Tests:
             )
         )
 
+        # Matmul test on 2(rows)x2(cols) cores
+        self.register(
+            Matmul(
+                32,
+                32,
+                32,
+                "bf16",
+                "f32",
+                aie_compilation_flags=[
+                    "--iree-amdaie-num-rows=2",
+                    "--iree-amdaie-num-cols=2",
+                ],
+                name_suffix="2rows_2cols",
+            )
+        )
+
         performance_tests = [
             {
                 "M": 512,
