@@ -850,7 +850,14 @@ def generate_aie_output(config, aie_vmfb, input_args, function_name, name, outpu
 
 
 def benchmark_aie_kernel_time(
-    config, aie_vmfb, input_args, function_name, name, n_repeats, n_kernel_runs
+    config,
+    aie_vmfb,
+    input_args,
+    function_name,
+    name,
+    n_repeats,
+    n_kernel_runs,
+    time_unit,
 ):
     """
     Benchmark a compiled AIE module's (aie_vmfb) kernel time, average over the specified number of runs.
@@ -865,6 +872,7 @@ def benchmark_aie_kernel_time(
         f"--benchmark_repetitions={n_repeats}",
         f"--batch_size={n_kernel_runs}",
         f"--xrt_lite_n_kernel_runs={n_kernel_runs}",
+        f"--time_unit={time_unit}",
     ]
     if function_name:
         run_args += [f"--function={function_name}"]
@@ -1236,6 +1244,7 @@ def benchmark_aie(
     n_repeats,
     n_kernel_runs,
     seed=1,
+    time_unit="us",
 ):
     """
     Arguments to the function are:
@@ -1261,6 +1270,8 @@ def benchmark_aie(
         functions).
     seed:
         The seed to be used for generating the inputs.
+    time_unit:
+        The time unit to be shown in the benchmark output (ns, us, ms).
     """
     if (
         "--iree-amdaie-enable-infinite-loop-around-core-block=true"
@@ -1302,6 +1313,7 @@ def benchmark_aie(
         name,
         n_repeats,
         n_kernel_runs,
+        time_unit,
     )
 
     if config.verbose:
