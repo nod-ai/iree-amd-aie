@@ -94,10 +94,39 @@ LogicalResult insertCoreOps(mlir::ModuleOp moduleOp) {
     Value threadX = attrMapping[threadXAttr];
     Value threadY = attrMapping[threadYAttr];
 
-    // Find input and output DMAs that need to be added to the core.
+    // Check if there is a nested inner for loop.
+    SmallVector<scf::ForOp> forOps;
+    forallOp->walk([&](scf::ForOp forOp) {
+      forOps.push_back(forOp);
+    });
+    if (forOps.size() != 1) {
+      LLVM_DEBUG(llvm::dbgs() << "Expected exactly 1 for op, but found "
+                              << forOps.size() << ".\n");
+      return WalkResult::interrupt();
+    }
+    scf::ForOp innerForOp = forOps[0];
+
+    // Find fill op and create CoreOp around fill op.
+    SmallVector<linalg::FillOp> fillOps;
     SmallVector<Value> inputDmas;
     SmallVector<Value> outputDmas;
-    WalkResult dmaRes = forallOp->walk([&](AMDAIE::DmaCpyNdOp dmaOp) {
+    forallOp->walk(
+        [&](linalg::FillOp fillOp) { fillOps.push_back(fillOp); });
+    if (!fillOps.empty()){
+      linalg::FillOp fillOp = fillOps[0];
+      rewriter.setInsertionPoint(fillOp);
+      auto coreOp1 = rewriter.create<AMDAIE::CoreOp>(
+          rewriter.getUnknownLoc(), threadX, threadY, inputDmas, outputDmas);
+      Region &region1 = coreOp1.getRegion();
+      Block *newBlock1 = rewriter.createBlock(&region1);
+      rewriter.setInsertionPointToStart(newBlock1);
+      auto endOp1 = rewriter.create<AMDAIE::EndOp>(rewriter.getUnknownLoc());
+      rewriter.setInsertionPoint(endOp1);
+      rewriter.moveOpBefore(fillOp, endOp1);
+    }
+
+    // Find input and output DMAs that need to be added to the core.
+    WalkResult dmaRes = innerForOp->walk([&](AMDAIE::DmaCpyNdOp dmaOp) {
       std::optional<uint8_t> sourceMemSpace =
           dmaOp.getSourceMemorySpaceAsUInt();
       std::optional<uint8_t> targetMemSpace =
@@ -120,7 +149,12 @@ LogicalResult insertCoreOps(mlir::ModuleOp moduleOp) {
     if (dmaRes.wasInterrupted()) return WalkResult::interrupt();
 
     // Create CoreOp at the end of the innermost forall
-    rewriter.setInsertionPoint(forallOp.getBody()->getTerminator());
+    if (innerForOp) {
+      rewriter.setInsertionPoint(innerForOp.getBody()->getTerminator());
+    } else {
+      rewriter.setInsertionPoint(forallOp.getBody()->getTerminator());
+    }
+
     auto coreOp = rewriter.create<AMDAIE::CoreOp>(
         rewriter.getUnknownLoc(), threadX, threadY, inputDmas, outputDmas);
     Region &region = coreOp.getRegion();
@@ -130,11 +164,11 @@ LogicalResult insertCoreOps(mlir::ModuleOp moduleOp) {
 
     // Walk all operations in the workgroup and fill in the CoreOp with
     // computational ops.
-    WalkResult forallRes = forallOp->walk([&](Operation *op) {
+    WalkResult forallRes = innerForOp->walk([&](Operation *op) {
       // Skip operations already inside core ops
       if (op->getParentOfType<AMDAIE::CoreOp>()) return WalkResult::advance();
 
-      if (op == forallOp) return WalkResult::advance();
+      if (op == innerForOp) return WalkResult::advance();
 
       if (auto callOp = dyn_cast<func::CallOp>(op)) {
         // Fetch name of the ukernel function to look up its declaration in the
@@ -158,7 +192,7 @@ LogicalResult insertCoreOps(mlir::ModuleOp moduleOp) {
         // Most distant ancestor of 'op' that's a strict descendant of
         // 'forallOp'.
         Operation *ancestor = op;
-        while (ancestor->getParentOp() != forallOp) {
+        while (ancestor->getParentOp() != innerForOp) {
           ancestor = ancestor->getParentOp();
         }
         rewriter.setInsertionPoint(endOp);
