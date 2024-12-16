@@ -12,6 +12,12 @@
 
 namespace {
 
+uint64_t abs_now_ns() {
+  auto now = std::chrono::high_resolution_clock::now();
+  auto now_ns = std::chrono::time_point_cast<std::chrono::nanoseconds>(now);
+  return now_ns.time_since_epoch().count();
+}
+
 ert_packet *get_chained_command_pkt(shim_xdna::bo *boh) {
   ert_packet *cmdpkt = reinterpret_cast<ert_packet *>(boh->map());
   return cmdpkt->opcode == ERT_CMD_CHAIN ? cmdpkt : nullptr;
@@ -21,22 +27,49 @@ int wait_cmd(const shim_xdna::pdev &pdev, const shim_xdna::hw_ctx *ctx,
              shim_xdna::bo *cmd, uint32_t timeout_ms) {
   int ret = 1;
   auto id = cmd->get_cmd_id();
+  uint32_t syncobj = ctx->m_syncobj;
 
   SHIM_DEBUG("Waiting for cmd (%ld)...", id);
 
-  amdxdna_drm_wait_cmd wcmd = {
-      .hwctx = ctx->m_handle,
-      .timeout = timeout_ms,
-      .seq = id,
-  };
+  if (syncobj != AMDXDNA_INVALID_FENCE_HANDLE) {
+    int64_t timeout = std::numeric_limits<int64_t>::max();
 
-  if (::ioctl(pdev.m_dev_fd, DRM_IOCTL_AMDXDNA_WAIT_CMD, &wcmd) == -1) {
-    if (errno == ETIME) {
-      ret = 0;
-    } else {
-      shim_xdna::shim_err(errno, "DRM_IOCTL_AMDXDNA_WAIT_CMD IOCTL failed");
+    if (timeout_ms) {
+      timeout = timeout_ms;
+      timeout *= 1000000;
+      timeout += abs_now_ns();
+    }
+    drm_syncobj_timeline_wait wsobj = {
+        .handles = reinterpret_cast<uintptr_t>(&syncobj),
+        .points = reinterpret_cast<uintptr_t>(&id),
+        .timeout_nsec = timeout,
+        .count_handles = 1,
+        .flags = 0,
+    };
+    if (::ioctl(pdev.m_dev_fd, DRM_IOCTL_SYNCOBJ_TIMELINE_WAIT, &wsobj) == -1) {
+      if (errno == ETIME) {
+        ret = 0;
+      } else {
+        shim_xdna::shim_err(errno,
+                            "DRM_IOCTL_SYNCOBJ_TIMELINE_WAIT IOCTL failed");
+      }
+    }
+    // pdev.ioctl(DRM_IOCTL_SYNCOBJ_TIMELINE_WAIT, &wsobj);
+  } else {
+    amdxdna_drm_wait_cmd wcmd = {
+        .hwctx = ctx->m_handle,
+        .timeout = timeout_ms,
+        .seq = id,
+    };
+    if (::ioctl(pdev.m_dev_fd, DRM_IOCTL_AMDXDNA_WAIT_CMD, &wcmd) == -1) {
+      if (errno == ETIME) {
+        ret = 0;
+      } else {
+        shim_xdna::shim_err(errno, "DRM_IOCTL_AMDXDNA_WAIT_CMD IOCTL failed");
+      }
     }
   }
+
   return ret;
 }
 

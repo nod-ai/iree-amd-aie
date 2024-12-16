@@ -45,9 +45,9 @@ enum amdxdna_drm_ioctl_id {
   DRM_AMDXDNA_GET_BO_INFO,
   DRM_AMDXDNA_SYNC_BO,
   DRM_AMDXDNA_EXEC_CMD,
-  DRM_AMDXDNA_WAIT_CMD,
   DRM_AMDXDNA_GET_INFO,
   DRM_AMDXDNA_SET_STATE,
+  DRM_AMDXDNA_WAIT_CMD,
   DRM_AMDXDNA_NUM_IOCTLS
 };
 
@@ -89,6 +89,8 @@ struct amdxdna_qos_info {
  * @mem_size: Size of AIE tile memory.
  * @umq_doorbell: Returned offset of doorbell associated with UMQ.
  * @handle: Returned hardware context handle.
+ * @syncobj_handle: The drm timeline syncobj handle for command completion
+ * notification.
  * @pad: Structure padding.
  */
 struct amdxdna_drm_create_hwctx {
@@ -102,6 +104,7 @@ struct amdxdna_drm_create_hwctx {
   __u32 mem_size;
   __u32 umq_doorbell;
   __u32 handle;
+  __u32 syncobj_handle;
   __u32 pad;
 };
 
@@ -156,7 +159,7 @@ enum amdxdna_drm_config_hwctx_param {
  * @param_val_size: Size of the parameter buffer pointed to by the param_val.
  *		    If param_val is not a pointer, driver can ignore this.
  * @pad: Structure padding.
- * 
+ *
  * Note: if the param_val is a pointer pointing to a buffer, the maximum size
  * of the buffer is 4KiB(PAGE_SIZE).
  */
