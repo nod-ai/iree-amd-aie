@@ -47,11 +47,11 @@ Build and install `xdna-driver`, use commit `59f1d62`:
 git clone git@github.com:amd/xdna-driver.git
 cd <root-of-source-tree>
 # get code for submodules
-git checkout 59f1d62
+git checkout 929e8ab
 git submodule update --init --recursive
 ```
 
-Follow the instructions to build and install the driver module: [xdna-driver](https://github.com/amd/xdna-driver/tree/59f1d6235334499b22dbd056a60ab00bfec142ee).
+Follow the instructions to build and install the driver module: [xdna-driver](https://github.com/amd/xdna-driver/tree/929e8ab459cab5915631849b9f1ef9a4982d1c11).
 
 ## Building (along with IREE)
 
