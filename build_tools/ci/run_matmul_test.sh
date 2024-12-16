@@ -678,7 +678,6 @@ run_matmul_test_on_shapes ${bf16_i8_shapes_medium[@]} \
     --num_repeat_runs "2"
 
 
-
 # note this will not actually show any devices because --xrt_lite_n_core_rows --xrt_lite_n_core_cols are not passed
 # which i have omitted to make the conditional slightly more succinct
 if [[ $($IREE_INSTALL_DIR/bin/iree-benchmark-module --dump_devices | grep xrt-lite) ]]; then
