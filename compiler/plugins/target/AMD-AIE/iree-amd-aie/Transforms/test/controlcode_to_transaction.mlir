@@ -143,7 +143,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
     amdaie.workgroup {
       amdaie.controlcode {
         %0 = amdaie.npu.push_to_queue async {bd_id = 15 : ui32, channel = 0 : ui32, col = 2 : ui32, direction = 1 : i32, repeat_count = 256 : ui32, row = 0 : ui32}
-        amdaie.npu.dma_wait(%0 : !amdaie.async_token)
+        amdaie.npu.tct_sync {channel = 0 : ui32, col = 2 : ui32, col_num = 1 : ui32, direction = 1 : i32, row = 0 : ui32, row_num = 1 : ui32}
         amdaie.end
       }
     }

@@ -236,6 +236,31 @@ struct HalfDmaCpyNdToNpuConverter final
   uint8_t minStrideBitWidth;
 };
 
+struct DmaWaitToTctSyncConverter final
+    : OpConversionPattern<AMDAIE::NpuDmaWaitOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      AMDAIE::NpuDmaWaitOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    LLVM_DEBUG(llvm::dbgs() << "matchAndRewrite[AMDAIE::NpuDmaWaitOp]\n");
+
+    for (Value token : op.getAsyncTokens()) {
+      auto pushToQueueOp =
+          dyn_cast_if_present<AMDAIE::NpuPushToQueueOp>(token.getDefiningOp());
+      if (!pushToQueueOp) {
+        return op.emitOpError()
+               << "should operate on an `amdaie.push_to_queue` op";
+      }
+      rewriter.create<AMDAIE::NpuTctSyncOp>(
+          op.getLoc(), pushToQueueOp.getCol(), pushToQueueOp.getRow(),
+          pushToQueueOp.getDirection(), pushToQueueOp.getChannel(), 1, 1);
+    }
+    rewriter.eraseOp(op);
+    return success();
+  }
+};
+
 namespace {
 class AMDAIEControlCodeLoweringPass
     : public impl::AMDAIEControlCodeLoweringBase<
@@ -260,17 +285,37 @@ void AMDAIEControlCodeLoweringPass::runOnOperation() {
            "ops.";
     return signalPassFailure();
   }
-  AMDAIE::AMDAIEDeviceModel deviceModel =
-      AMDAIE::getDeviceModel(maybeDevice.value());
 
-  RewritePatternSet patterns(context);
-  ConversionTarget conversionTarget(*context);
-  conversionTarget.addLegalDialect<AMDAIEDialect>();
-  conversionTarget.addIllegalOp<AMDAIE::NpuHalfDmaCpyNdOp>();
-  patterns.insert<HalfDmaCpyNdToNpuConverter>(context, deviceModel);
-  if (failed(applyPartialConversion(parentOp, conversionTarget,
-                                    std::move(patterns)))) {
-    return signalPassFailure();
+  // First conversion: HalfDmaCpyNdOp to WriteBdOp, AddressPatchOp and
+  // PushToQueueOp.
+  {
+    AMDAIE::AMDAIEDeviceModel deviceModel =
+        AMDAIE::getDeviceModel(maybeDevice.value());
+    RewritePatternSet patterns(context);
+    ConversionTarget conversionTarget(*context);
+    conversionTarget.addLegalDialect<AMDAIEDialect>();
+    conversionTarget.addIllegalOp<AMDAIE::NpuHalfDmaCpyNdOp>();
+    patterns.insert<HalfDmaCpyNdToNpuConverter>(context, deviceModel);
+
+    if (failed(applyPartialConversion(parentOp, conversionTarget,
+                                      std::move(patterns)))) {
+      return signalPassFailure();
+    }
+  }
+
+  // Second conversion: DmaWaitOp to TctSyncOp.
+  // The two conversions are separate to simplify the attribute handling, such
+  // as col, row, direction, channel, etc.
+  {
+    RewritePatternSet patterns(context);
+    ConversionTarget conversionTarget(*context);
+    conversionTarget.addLegalDialect<AMDAIEDialect>();
+    conversionTarget.addIllegalOp<AMDAIE::NpuDmaWaitOp>();
+    patterns.insert<DmaWaitToTctSyncConverter>(context);
+    if (failed(applyPartialConversion(parentOp, conversionTarget,
+                                      std::move(patterns)))) {
+      return signalPassFailure();
+    }
   }
 }
 

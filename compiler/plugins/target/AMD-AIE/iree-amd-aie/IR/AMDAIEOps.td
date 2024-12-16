@@ -1022,6 +1022,31 @@ def AMDAIE_NpuWriteBdOp: AMDAIE_Op<"npu.write_bd"> {
   let assemblyFormat = [{ attr-dict }];
 }
 
+def AMDAIE_NpuTctSyncOp: AMDAIE_Op<"npu.tct_sync"> {
+  let summary = "Wait for the TCTs to be emitted.";
+  let description = [{
+    This NPU controller operation to synchronize the Task Completion Tokens (TCTs)
+    on the specified `channel` and `direction`. The ranges of tiles to synchronize 
+    are defined by [col, col+col_num) and [row, row+row_num).
+
+    Example:
+
+    ```mlir
+    amdaie.npu.tct_sync {col = 0 : ui32, row = 0 : ui32, channel = 0 : ui32,
+      direction = 1 : i32, col_num = 1 : ui32, row_num = 1 : ui32}
+    ```
+  }];
+  let arguments = (
+    ins UI32Attr:$col,
+        UI32Attr:$row,
+        DMAChannelDir:$direction,
+        UI32Attr:$channel,
+        UI32Attr:$col_num,
+        UI32Attr:$row_num
+  );
+  let assemblyFormat = [{ attr-dict }];
+}
+
 //===----------------------------------------------------------------------===//
 // IREE AMDAIE LogicalObjectFifo Ops
 //===----------------------------------------------------------------------===//

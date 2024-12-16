@@ -62,13 +62,13 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK: amdaie.npu.write_bd {bd_id = 0 : ui32, buffer_length = 2048 : ui32, buffer_offset = 0 : ui32, col = 0 : ui32, enable_packet = true, iteration_current = 0 : ui32, iteration_size = 0 : ui32, iteration_stride = 0 : ui32, lock_acq_enable = false, lock_acq_id = 0 : ui32, lock_acq_val = 0 : i32, lock_rel_id = 0 : ui32, lock_rel_val = 0 : i32, next_bd = 0 : ui32, out_of_order_id = 0 : ui32, packet_id = 0 : ui32, packet_type = 0 : ui32, paddings_after = array<i32>, paddings_before = array<i32>, row = 0 : ui32, sizes = array<i32: 0, 0, 2048>, strides = array<i32: 0, 0, 1>, use_next_bd = false, valid_bd = true}
 // CHECK: amdaie.npu.address_patch {arg_idx = 0 : ui32, bd_id = 0 : ui32, col = 0 : ui32, offset = 0 : ui32}
 // CHECK: %[[TOKEN_0:.+]] = amdaie.npu.push_to_queue async {bd_id = 0 : ui32, channel = 0 : ui32, col = 0 : ui32, direction = 1 : i32, repeat_count = 1 : ui32, row = 0 : ui32}
-// CHECK: amdaie.npu.dma_wait(%[[TOKEN_0]] : !amdaie.async_token)
+// CHECK: amdaie.npu.tct_sync {channel = 0 : ui32, col = 0 : ui32, col_num = 1 : ui32, direction = 1 : i32, row = 0 : ui32, row_num = 1 : ui32}
         %6 = amdaie.npu.half_dma_cpy_nd async %4(%5[0] [2048] [1] bd_id = %bd_id channel = %channel) : !amdaie.logicalobjectfifo<memref<2048xi32>>
         amdaie.npu.dma_wait(%6 : !amdaie.async_token)
 // CHECK: amdaie.npu.write_bd {bd_id = 0 : ui32, buffer_length = 1024 : ui32, buffer_offset = 0 : ui32, col = 0 : ui32, enable_packet = true, iteration_current = 0 : ui32, iteration_size = 0 : ui32, iteration_stride = 0 : ui32, lock_acq_enable = false, lock_acq_id = 0 : ui32, lock_acq_val = 0 : i32, lock_rel_id = 0 : ui32, lock_rel_val = 0 : i32, next_bd = 0 : ui32, out_of_order_id = 0 : ui32, packet_id = 0 : ui32, packet_type = 0 : ui32, paddings_after = array<i32>, paddings_before = array<i32>, row = 0 : ui32, sizes = array<i32: 4, 16, 16>, strides = array<i32: 64, 8, 1>, use_next_bd = false, valid_bd = true}
 // CHECK: amdaie.npu.address_patch {arg_idx = 0 : ui32, bd_id = 0 : ui32, col = 0 : ui32, offset = 0 : ui32}
 // CHECK: %[[TOKEN_1:.+]] = amdaie.npu.push_to_queue async {bd_id = 0 : ui32, channel = 0 : ui32, col = 0 : ui32, direction = 1 : i32, repeat_count = 2 : ui32, row = 0 : ui32}
-// CHECK: amdaie.npu.dma_wait(%[[TOKEN_1]] : !amdaie.async_token)
+// CHECK: amdaie.npu.tct_sync {channel = 0 : ui32, col = 0 : ui32, col_num = 1 : ui32, direction = 1 : i32, row = 0 : ui32, row_num = 1 : ui32}
         %7 = amdaie.npu.half_dma_cpy_nd async %4(%5[0, 0, 0, 0] [2, 4, 16, 16] [0, 64, 8, 1] bd_id = %bd_id channel = %channel) : !amdaie.logicalobjectfifo<memref<2048xi32>>
         amdaie.npu.dma_wait(%7 : !amdaie.async_token)
         amdaie.end
@@ -113,13 +113,13 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK: amdaie.npu.write_bd {bd_id = 0 : ui32, buffer_length = 1024 : ui32, buffer_offset = 0 : ui32, col = 0 : ui32, enable_packet = true, iteration_current = 0 : ui32, iteration_size = 0 : ui32, iteration_stride = 0 : ui32, lock_acq_enable = false, lock_acq_id = 0 : ui32, lock_acq_val = 0 : i32, lock_rel_id = 0 : ui32, lock_rel_val = 0 : i32, next_bd = 0 : ui32, out_of_order_id = 0 : ui32, packet_id = 0 : ui32, packet_type = 0 : ui32, paddings_after = array<i32>, paddings_before = array<i32>, row = 0 : ui32, sizes = array<i32: 0, 0, 1024>, strides = array<i32: 0, 0, 1>, use_next_bd = false, valid_bd = true}
 // CHECK: amdaie.npu.address_patch {arg_idx = 0 : ui32, bd_id = 0 : ui32, col = 0 : ui32, offset = 0 : ui32}
 // CHECK: %[[TOKEN_0:.+]] = amdaie.npu.push_to_queue async {bd_id = 0 : ui32, channel = 0 : ui32, col = 0 : ui32, direction = 1 : i32, repeat_count = 1 : ui32, row = 0 : ui32}
-// CHECK: amdaie.npu.dma_wait(%[[TOKEN_0]] : !amdaie.async_token)
+// CHECK: amdaie.npu.tct_sync {channel = 0 : ui32, col = 0 : ui32, col_num = 1 : ui32, direction = 1 : i32, row = 0 : ui32, row_num = 1 : ui32}
         %6 = amdaie.npu.half_dma_cpy_nd async %4(%5[0] [2048] [1] bd_id = %bd_id channel = %channel) : !amdaie.logicalobjectfifo<memref<2048xbf16>>
         amdaie.npu.dma_wait(%6 : !amdaie.async_token)
 // CHECK: amdaie.npu.write_bd {bd_id = 0 : ui32, buffer_length = 512 : ui32, buffer_offset = 0 : ui32, col = 0 : ui32, enable_packet = true, iteration_current = 0 : ui32, iteration_size = 0 : ui32, iteration_stride = 0 : ui32, lock_acq_enable = false, lock_acq_id = 0 : ui32, lock_acq_val = 0 : i32, lock_rel_id = 0 : ui32, lock_rel_val = 0 : i32, next_bd = 0 : ui32, out_of_order_id = 0 : ui32, packet_id = 0 : ui32, packet_type = 0 : ui32, paddings_after = array<i32>, paddings_before = array<i32>, row = 0 : ui32, sizes = array<i32: 4, 16, 8>, strides = array<i32: 32, 4, 1>, use_next_bd = false, valid_bd = true}
 // CHECK: amdaie.npu.address_patch {arg_idx = 0 : ui32, bd_id = 0 : ui32, col = 0 : ui32, offset = 64 : ui32}
 // CHECK: %[[TOKEN_1:.+]] = amdaie.npu.push_to_queue async {bd_id = 0 : ui32, channel = 0 : ui32, col = 0 : ui32, direction = 1 : i32, repeat_count = 2 : ui32, row = 0 : ui32}
-// CHECK: amdaie.npu.dma_wait(%[[TOKEN_1]] : !amdaie.async_token)
+// CHECK: amdaie.npu.tct_sync {channel = 0 : ui32, col = 0 : ui32, col_num = 1 : ui32, direction = 1 : i32, row = 0 : ui32, row_num = 1 : ui32}
         %7 = amdaie.npu.half_dma_cpy_nd async %4(%5[0, 0, 0, 32] [2, 4, 16, 16] [0, 64, 8, 1] bd_id = %bd_id channel = %channel) : !amdaie.logicalobjectfifo<memref<2048xbf16>>
         amdaie.npu.dma_wait(%7 : !amdaie.async_token)
         amdaie.end
@@ -169,7 +169,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK: amdaie.npu.write_bd {bd_id = 2 : ui32, buffer_length = 1024 : ui32, buffer_offset = 0 : ui32, col = 0 : ui32, enable_packet = false, iteration_current = 0 : ui32, iteration_size = 0 : ui32, iteration_stride = 0 : ui32, lock_acq_enable = false, lock_acq_id = 0 : ui32, lock_acq_val = 0 : i32, lock_rel_id = 0 : ui32, lock_rel_val = 0 : i32, next_bd = 0 : ui32, out_of_order_id = 0 : ui32, packet_id = 0 : ui32, packet_type = 0 : ui32, paddings_after = array<i32>, paddings_before = array<i32>, row = 0 : ui32, sizes = array<i32: 4, 16, 16>, strides = array<i32: 64, 8, 1>, use_next_bd = false, valid_bd = true}
 // CHECK: amdaie.npu.address_patch {arg_idx = 0 : ui32, bd_id = 2 : ui32, col = 0 : ui32, offset = 0 : ui32}
 // CHECK: %[[TOKEN_0:.+]] = amdaie.npu.push_to_queue async {bd_id = 0 : ui32, channel = 0 : ui32, col = 0 : ui32, direction = 1 : i32, repeat_count = 2 : ui32, row = 0 : ui32}
-// CHECK: amdaie.npu.dma_wait(%[[TOKEN_0]] : !amdaie.async_token)
+// CHECK: amdaie.npu.tct_sync {channel = 0 : ui32, col = 0 : ui32, col_num = 1 : ui32, direction = 1 : i32, row = 0 : ui32, row_num = 1 : ui32}
         %6 = amdaie.npu.half_dma_cpy_nd async %4(%5[0, 0, 0, 0] [2, 4, 16, 16] [0, 64, 8, 1] bd_id = %bd_id_2 channel = %channel start_bd = %bd_id) : !amdaie.logicalobjectfifo<memref<2048xi32>>
         amdaie.npu.dma_wait(%6 : !amdaie.async_token)
         amdaie.end

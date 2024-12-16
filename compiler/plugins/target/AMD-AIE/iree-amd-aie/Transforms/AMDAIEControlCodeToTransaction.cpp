@@ -199,20 +199,11 @@ LogicalResult convertOp(AMDAIE::NpuAddressPatchOp op,
   return success();
 }
 
-LogicalResult convertOp(AMDAIE::NpuDmaWaitOp op, TransactionBuilder &builder) {
-  for (Value token : op.getAsyncTokens()) {
-    auto pushToQueueOp =
-        dyn_cast_if_present<AMDAIE::NpuPushToQueueOp>(token.getDefiningOp());
-    if (!pushToQueueOp) {
-      return op.emitOpError()
-             << "should operate on an `amdaie.push_to_queue` op";
-    }
-    if (failed(builder.appendTCTSync(
-            pushToQueueOp.getCol(), pushToQueueOp.getRow(),
-            static_cast<uint32_t>(pushToQueueOp.getDirection()), 1, 1,
-            pushToQueueOp.getChannel()))) {
-      return failure();
-    }
+LogicalResult convertOp(AMDAIE::NpuTctSyncOp op, TransactionBuilder &builder) {
+  if (failed(builder.appendTCTSync(
+          op.getCol(), op.getRow(), static_cast<uint32_t>(op.getDirection()),
+          op.getRowNum(), op.getColNum(), op.getChannel()))) {
+    return failure();
   }
   return success();
 }
@@ -274,7 +265,7 @@ LogicalResult controlCodeToTransaction(IRRewriter &rewriter,
   WalkResult res = controlCodeOp->walk([&](Operation *op) {
     LogicalResult switchResult =
         TypeSwitch<Operation *, LogicalResult>(op)
-            .Case<AMDAIE::NpuAddressPatchOp, AMDAIE::NpuDmaWaitOp,
+            .Case<AMDAIE::NpuAddressPatchOp, AMDAIE::NpuTctSyncOp,
                   AMDAIE::NpuPushToQueueOp, AMDAIE::NpuWriteBdOp>(
                 [&](auto npuOp) {
                   if (failed(convertOp(npuOp, builder))) return failure();
