@@ -33,7 +33,6 @@ int wait_cmd(const shim_xdna::pdev &pdev, const shim_xdna::hw_ctx *ctx,
 
   if (syncobj != AMDXDNA_INVALID_FENCE_HANDLE) {
     int64_t timeout = std::numeric_limits<int64_t>::max();
-
     if (timeout_ms) {
       timeout = timeout_ms;
       timeout *= 1000000;
@@ -54,7 +53,6 @@ int wait_cmd(const shim_xdna::pdev &pdev, const shim_xdna::hw_ctx *ctx,
                             "DRM_IOCTL_SYNCOBJ_TIMELINE_WAIT IOCTL failed");
       }
     }
-    // pdev.ioctl(DRM_IOCTL_SYNCOBJ_TIMELINE_WAIT, &wsobj);
   } else {
     amdxdna_drm_wait_cmd wcmd = {
         .hwctx = ctx->m_handle,
