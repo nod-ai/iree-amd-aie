@@ -45,9 +45,9 @@ enum amdxdna_drm_ioctl_id {
   DRM_AMDXDNA_GET_BO_INFO,
   DRM_AMDXDNA_SYNC_BO,
   DRM_AMDXDNA_EXEC_CMD,
-  DRM_AMDXDNA_WAIT_CMD,
   DRM_AMDXDNA_GET_INFO,
   DRM_AMDXDNA_SET_STATE,
+  DRM_AMDXDNA_WAIT_CMD,
   DRM_AMDXDNA_NUM_IOCTLS
 };
 
@@ -55,6 +55,23 @@ enum amdxdna_device_type {
   AMDXDNA_DEV_TYPE_UNKNOWN = -1,
   AMDXDNA_DEV_TYPE_KMQ,
   AMDXDNA_DEV_TYPE_UMQ,
+};
+
+/*
+ * Enum for priority in application's QoS. Values copied from Window shim layer.
+ * AMDXDNA_QOS_DEFAULT_PRIORITY: Default priority.
+ * AMDXDNA_QOS_REALTIME_PRIORITY: Real time clients.
+ * AMDXDNA_QOS_HIGH_PRIORITY: Best effort foreground clients.
+ * AMDXDNA_QOS_NORMAL_PRIORITY: Best effort or background clients.
+ * AMDXDNA_QOS_LOW_PRIORITY: Clients that can wait indefinite amount of time for
+ *                           completion.
+ */
+enum amdxdna_qos_priority {
+  AMDXDNA_QOS_DEFAULT_PRIORITY = 0x0,
+  AMDXDNA_QOS_REALTIME_PRIORITY = 0x100,
+  AMDXDNA_QOS_HIGH_PRIORITY = 0x180,
+  AMDXDNA_QOS_NORMAL_PRIORITY = 0x200,
+  AMDXDNA_QOS_LOW_PRIORITY = 0x280
 };
 
 /**
@@ -89,6 +106,8 @@ struct amdxdna_qos_info {
  * @mem_size: Size of AIE tile memory.
  * @umq_doorbell: Returned offset of doorbell associated with UMQ.
  * @handle: Returned hardware context handle.
+ * @syncobj_handle: The drm timeline syncobj handle for command completion
+ * notification.
  * @pad: Structure padding.
  */
 struct amdxdna_drm_create_hwctx {
@@ -102,6 +121,7 @@ struct amdxdna_drm_create_hwctx {
   __u32 mem_size;
   __u32 umq_doorbell;
   __u32 handle;
+  __u32 syncobj_handle;
   __u32 pad;
 };
 
@@ -156,7 +176,7 @@ enum amdxdna_drm_config_hwctx_param {
  * @param_val_size: Size of the parameter buffer pointed to by the param_val.
  *		    If param_val is not a pointer, driver can ignore this.
  * @pad: Structure padding.
- * 
+ *
  * Note: if the param_val is a pointer pointing to a buffer, the maximum size
  * of the buffer is 4KiB(PAGE_SIZE).
  */
@@ -493,6 +513,17 @@ struct amdxdna_drm_query_firmware_version {
   __u32 build; /* out */
 };
 
+/**
+ * struct amdxdna_drm_get_force_preempt_state - Get force preemption state.
+ * @force_preempt_state: 1 implies force preemption is enabled.
+ *                       0 implies disabled.
+ * @pad: MBZ.
+ */
+struct amdxdna_drm_get_force_preempt_state {
+  __u8 state;
+  __u8 pad[7];
+};
+
 enum amdxdna_drm_get_param {
   DRM_AMDXDNA_QUERY_AIE_STATUS,
   DRM_AMDXDNA_QUERY_AIE_METADATA,
@@ -505,6 +536,7 @@ enum amdxdna_drm_get_param {
   DRM_AMDXDNA_QUERY_FIRMWARE_VERSION,
   DRM_AMDXDNA_GET_POWER_MODE,
   DRM_AMDXDNA_QUERY_TELEMETRY,
+  DRM_AMDXDNA_GET_FORCE_PREEMPT_STATE,
   DRM_AMDXDNA_NUM_GET_PARAM,
 };
 
@@ -531,10 +563,22 @@ struct amdxdna_drm_set_power_mode {
   __u8 pad[7];
 };
 
+/**
+ * struct amdxdna_drm_set_force_preempt_state - set force preemption state
+ * @force_preempt_state: 1 implies force preemption is enabled.
+ *                       0 implies disabled
+ * @pad: MBZ.
+ */
+struct amdxdna_drm_set_force_preempt_state {
+  __u8 state;
+  __u8 pad[7];
+};
+
 enum amdxdna_drm_set_param {
   DRM_AMDXDNA_SET_POWER_MODE,
   DRM_AMDXDNA_WRITE_AIE_MEM,
   DRM_AMDXDNA_WRITE_AIE_REG,
+  DRM_AMDXDNA_SET_FORCE_PREEMPT,
   DRM_AMDXDNA_NUM_SET_PARAM,
 };
 
