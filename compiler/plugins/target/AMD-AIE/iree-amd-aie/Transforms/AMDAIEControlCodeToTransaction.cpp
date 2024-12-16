@@ -200,9 +200,8 @@ LogicalResult convertOp(AMDAIE::NpuAddressPatchOp op,
 }
 
 LogicalResult convertOp(AMDAIE::NpuDmaWaitOp op, TransactionBuilder &builder) {
-  // Batch DMA operations with the same row, channel, and direction into a
-  // single TCT sync operation, as long as they have consecutive columns.
-  SmallVector<std::pair<AMDAIE::NpuPushToQueueOp, uint32_t>> columnBatches;
+  // Collect all half DMA ops from the async tokens.
+  SmallVector<AMDAIE::NpuPushToQueueOp> pushToQueueOps;
   for (Value asyncToken : op.getAsyncTokens()) {
     auto pushToQueueOp = dyn_cast_if_present<AMDAIE::NpuPushToQueueOp>(
         asyncToken.getDefiningOp());
@@ -210,6 +209,20 @@ LogicalResult convertOp(AMDAIE::NpuDmaWaitOp op, TransactionBuilder &builder) {
       return op.emitOpError()
              << "should operate on an `amdaie.push_to_queue` op async token";
     }
+    pushToQueueOps.push_back(pushToQueueOp);
+  }
+  // Sort the half DMA ops by channel, direction, row, and column.
+  std::sort(pushToQueueOps.begin(), pushToQueueOps.end(),
+            [](AMDAIE::NpuPushToQueueOp a, AMDAIE::NpuPushToQueueOp b) {
+              return std::make_tuple(a.getChannel(), a.getDirection(),
+                                     a.getRow(), a.getCol()) <
+                     std::make_tuple(b.getChannel(), b.getDirection(),
+                                     b.getRow(), b.getCol());
+            });
+  // Batch DMA operations with the same row, channel, and direction into a
+  // single TCT sync operation, as long as they have consecutive columns.
+  llvm::MapVector<AMDAIE::NpuPushToQueueOp, uint32_t> columnBatches;
+  for (auto pushToQueueOp : pushToQueueOps) {
     if (!columnBatches.empty()) {
       auto &[lastPushOp, lastColNum] = columnBatches.back();
       if (lastPushOp.getRow() == pushToQueueOp.getRow() &&
@@ -220,9 +233,8 @@ LogicalResult convertOp(AMDAIE::NpuDmaWaitOp op, TransactionBuilder &builder) {
         continue;
       }
     }
-    columnBatches.push_back({pushToQueueOp, 1});
+    columnBatches.insert({pushToQueueOp, 1});
   }
-
   // Convert to TCT sync ops.
   for (auto &[pushToQueueOp, colNum] : columnBatches) {
     if (failed(builder.appendTCTSync(
