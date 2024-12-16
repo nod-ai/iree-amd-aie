@@ -404,6 +404,43 @@ class MatmulBenchmark(BaseMatmul):
         return self.benchmark(config)
 
 
+class MatmulTransposeB(BaseMatmul):
+    """
+    A test of the form matmul_transpose_b(A,B) where A:MxK, B:NxK
+    """
+
+    def __init__(
+        self,
+        M,
+        N,
+        K,
+        input_type,
+        acc_type,
+        use_ukernel=False,
+        run_on_target=["npu1_4col"],
+    ):
+        super().__init__(
+            run_on_target=run_on_target,
+            aie_compilation_flags=None,
+            M=M,
+            N=N,
+            K=K,
+            input_type=input_type,
+            acc_type=acc_type,
+        )
+        self.labels.append("MatmulTransposeB")
+
+        self.name = f"matmul_transpose_b_{M}_{N}_{K}_{input_type}_{acc_type}"
+
+    def _execute(self, config):
+        matmul_template_dir = config.file_dir / "matmul_template"
+        template_name = matmul_template_dir / "matmul_transpose_b_MxK_NxK.mlir"
+        self.generate(config, template_name)
+        self.vs_cpu(config)
+
+        return True
+
+
 class MatmulThinBias(BaseMatmul):
     """
     A test of the form matmul(A,B) + C where A:MxK, B:KxN, C:N
@@ -1412,6 +1449,15 @@ class Tests:
         self.register(MatmulThinBias(1024, 1024, 512, "bf16", "f32", use_ukernel=True))
         self.register(MatmulThinBias(1024, 1024, 512, "bf16", "f32"))
 
+        # MatmulFullBias test:
+        self.register(MatmulFullBias(128, 128, 256, "i32", "i32"))
+
+        # MatmulTransposeB test(s):
+        for input_type, acc_type in zip(["i8", "bf16"], ["i32", "f32"]):
+            self.register(MatmulTransposeB(32, 32, 32, input_type, acc_type))
+            self.register(MatmulTransposeB(128, 256, 128, input_type, acc_type))
+            self.register(MatmulTransposeB(1536, 1536, 2048, input_type, acc_type))
+
         # Matmul test(s):
         self.register(
             Matmul(
@@ -1455,6 +1501,22 @@ class Tests:
                 use_ukernel=True,
                 use_chess=True,
                 run_on_target=["npu4"],
+            )
+        )
+
+        # Matmul test on 2(rows)x2(cols) cores
+        self.register(
+            Matmul(
+                32,
+                32,
+                32,
+                "bf16",
+                "f32",
+                aie_compilation_flags=[
+                    "--iree-amdaie-num-rows=2",
+                    "--iree-amdaie-num-cols=2",
+                ],
+                name_suffix="2rows_2cols",
             )
         )
 
@@ -1655,9 +1717,6 @@ class Tests:
         for name in ["two_matmul_switching", "matmul_f32_8_8_4", "matmul_f32_8_4_8"]:
             self.register(MultipleDispatches(name))
 
-        # MatmulFullBias test:
-        self.register(MatmulFullBias(128, 128, 256, "i32", "i32"))
-
         # Convolution NHCWQ test:
         self.register(ConvolutionNHWCQ())
 
@@ -1718,7 +1777,7 @@ def all_tests(
        that directory.
 
     3) create a new matmul template in `./matmul_template`, for example if you
-       want to add a new variant with tranposed operands or unary elementwise
+       want to add a new variant with transposed operands or unary elementwise
        operations.
 
     4) create a new template generator, duplicating the directory structure of
