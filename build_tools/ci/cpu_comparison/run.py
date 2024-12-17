@@ -441,6 +441,43 @@ class MatmulTransposeB(BaseMatmul):
         return True
 
 
+class MatmulTransposeA(BaseMatmul):
+    """
+    A test of the form matmul_transpose_a(A,B) where A:KxM, B:KxN
+    """
+
+    def __init__(
+        self,
+        M,
+        N,
+        K,
+        input_type,
+        acc_type,
+        use_ukernel=False,
+        run_on_target=["npu1_4col"],
+    ):
+        super().__init__(
+            run_on_target=run_on_target,
+            aie_compilation_flags=None,
+            M=M,
+            N=N,
+            K=K,
+            input_type=input_type,
+            acc_type=acc_type,
+        )
+        self.labels.append("MatmulTransposeA")
+
+        self.name = f"matmul_transpose_a_{M}_{N}_{K}_{input_type}_{acc_type}"
+
+    def _execute(self, config):
+        matmul_template_dir = config.file_dir / "matmul_template"
+        template_name = matmul_template_dir / "matmul_transpose_a_KxM_KxN.mlir"
+        self.generate(config, template_name)
+        self.vs_cpu(config)
+
+        return True
+
+
 class MatmulThinBias(BaseMatmul):
     """
     A test of the form matmul(A,B) + C where A:MxK, B:KxN, C:N
@@ -1457,6 +1494,12 @@ class Tests:
             self.register(MatmulTransposeB(32, 32, 32, input_type, acc_type))
             self.register(MatmulTransposeB(128, 256, 128, input_type, acc_type))
             self.register(MatmulTransposeB(1536, 1536, 2048, input_type, acc_type))
+
+        # MatmulTransposeA test(s):
+        for input_type, acc_type in zip(["i32"], ["i32"]):
+            self.register(MatmulTransposeA(32, 32, 32, input_type, acc_type))
+            self.register(MatmulTransposeA(128, 256, 128, input_type, acc_type))
+            self.register(MatmulTransposeA(1536, 1536, 2048, input_type, acc_type))
 
         # Matmul test(s):
         self.register(
