@@ -45,10 +45,10 @@ FailureOr<uint32_t> getAIEMacNumElements(Type inputType, Type outputType);
 /// width.
 FailureOr<unsigned> getTilingScaleFactor(Type elemType);
 
-/// Utility to indentify whether a linalg op is a matmul op.
+/// Utility to identify whether a linalg op is a matmul op.
 bool isMatmul(linalg::LinalgOp linalgOp);
 
-/// Utility to indentify whether a linalg op is a matmul_transpose_b op.
+/// Utility to identify whether a linalg op is a matmul_transpose_b op.
 bool isMatmulTransposeB(linalg::LinalgOp linalgOp);
 
 /// Utility to identify if the input operand has matmul-like op in its

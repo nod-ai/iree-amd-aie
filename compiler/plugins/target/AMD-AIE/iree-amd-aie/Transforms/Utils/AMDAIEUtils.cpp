@@ -80,13 +80,10 @@ static BlockArgument checkOptionalExtOps(Value val) {
 /// Utility to match block body for matmul-like ops.
 static bool bodyMatcherForMatmulLikeOps(Value yieldVal, Block *body) {
   Operation *addOp = yieldVal.getDefiningOp();
-  if (!isa_and_present<arith::AddIOp, arith::AddFOp>(addOp)) {
-    return false;
-  }
+  if (!isa_and_present<arith::AddIOp, arith::AddFOp>(addOp)) return false;
+
   Operation *mulOp = addOp->getOperand(1).getDefiningOp();
-  if (!isa_and_present<arith::MulIOp, arith::MulFOp>(mulOp)) {
-    return false;
-  }
+  if (!isa_and_present<arith::MulIOp, arith::MulFOp>(mulOp)) return false;
 
   BlockArgument lhsBlockArg = checkOptionalExtOps(mulOp->getOperand(0));
   BlockArgument rhsBlockArg = checkOptionalExtOps(mulOp->getOperand(1));
@@ -107,18 +104,16 @@ static bool is2DMatmulLikeOp(linalg::LinalgOp genericOp,
   Block *body = genericOp.getBlock();
   auto yieldOp = cast<linalg::YieldOp>(body->getTerminator());
   Value yieldVal = yieldOp.getOperand(0);
-  if (!bodyMatcherForMatmulLikeOps(yieldVal, body)) {
-    return false;
-  }
+  if (!bodyMatcherForMatmulLikeOps(yieldVal, body)) return false;
+
   // Step 2. Check iterator types.
   SmallVector<utils::IteratorType> matmulIteratorTypes = {
       utils::IteratorType::parallel, utils::IteratorType::parallel,
       utils::IteratorType::reduction};
   SmallVector<utils::IteratorType> opIteratorTypes =
       genericOp.getIteratorTypesArray();
-  if (matmulIteratorTypes != opIteratorTypes) {
-    return false;
-  }
+  if (matmulIteratorTypes != opIteratorTypes) return false;
+
   // Step 3. Check the number of inputs and results from indexing maps.
   if (indexingMaps.size() != 3) return false;
 
@@ -158,9 +153,8 @@ static bool match4DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
       utils::IteratorType::parallel,  utils::IteratorType::reduction};
   SmallVector<utils::IteratorType> opIteratorTypes =
       linalgOp.getIteratorTypesArray();
-  if (matmulIteratorTypes != opIteratorTypes) {
-    return false;
-  }
+  if (matmulIteratorTypes != opIteratorTypes) return false;
+
   // Check indexing maps.
   ArrayAttr indexingMaps = linalgOp.getIndexingMaps();
   if (indexingMaps.size() != 3) return false;
@@ -192,9 +186,8 @@ static bool match6DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
       utils::IteratorType::reduction};
   SmallVector<utils::IteratorType> opIteratorTypes =
       linalgOp.getIteratorTypesArray();
-  if (matmulIteratorTypes != opIteratorTypes) {
-    return false;
-  }
+  if (matmulIteratorTypes != opIteratorTypes) return false;
+
   // Check indexing maps.
   ArrayAttr indexingMaps = linalgOp.getIndexingMaps();
   if (indexingMaps.size() != 3) return false;
@@ -214,7 +207,7 @@ static bool match6DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
   return true;
 }
 
-/// Utility to indentify whether a linalg op is a matmul op.
+/// Utility to identify whether a linalg op is a matmul op.
 bool isMatmul(linalg::LinalgOp linalgOp) {
   // Step 0. Test if the op itself is a linalg.matmul op.
   if (isa<linalg::MatmulOp>(linalgOp)) return true;
@@ -225,16 +218,14 @@ bool isMatmul(linalg::LinalgOp linalgOp) {
   Block *body = linalgOp.getBlock();
   auto yieldOp = cast<linalg::YieldOp>(body->getTerminator());
   Value yieldVal = yieldOp.getOperand(0);
-  if (!bodyMatcherForMatmulLikeOps(yieldVal, body)) {
-    return false;
-  }
+  if (!bodyMatcherForMatmulLikeOps(yieldVal, body)) return false;
 
   return match2DLinalgGenericMatmul(linalgOp) ||
          match4DLinalgGenericMatmul(linalgOp) ||
          match6DLinalgGenericMatmul(linalgOp);
 }
 
-/// Utility to indentify whether a linalg op is a matmul_transpose_b op.
+/// Utility to identify whether a linalg op is a matmul_transpose_b op.
 bool isMatmulTransposeB(linalg::LinalgOp linalgOp) {
   if (isa<linalg::MatmulTransposeBOp>(linalgOp)) return true;
   if (!isa<linalg::GenericOp>(linalgOp)) return false;
@@ -254,18 +245,12 @@ bool isMatmulTransposeB(linalg::LinalgOp linalgOp) {
 /// def-chain.
 bool isMatmulInDefChain(Value operand) {
   Operation *defOp = operand.getDefiningOp();
-  if (!defOp) {
-    return false;
-  }
+  if (!defOp) return false;
 
-  if (isa<arith::ConstantOp>(defOp)) {
-    return false;
-  }
+  if (isa<arith::ConstantOp>(defOp)) return false;
 
   if (auto defLinalgOp = dyn_cast_if_present<linalg::LinalgOp>(defOp)) {
-    if (isMatmul(defLinalgOp)) {
-      return true;
-    }
+    if (isMatmul(defLinalgOp)) return true;
   }
 
   // If something is being produced from a for/forall loop, we just assume it is
@@ -276,9 +261,7 @@ bool isMatmulInDefChain(Value operand) {
   }
 
   for (Value operand : defOp->getOperands()) {
-    if (isMatmulInDefChain(operand)) {
-      return true;
-    }
+    if (isMatmulInDefChain(operand)) return true;
   }
   return false;
 }
@@ -291,9 +274,7 @@ bool isMatmulProducerOfElementwise(linalg::LinalgOp linalgOp) {
   }
   // Check if any of the defining op is a matmul-like op.
   for (Value operand : linalgOp->getOperands()) {
-    if (isMatmulInDefChain(operand)) {
-      return true;
-    }
+    if (isMatmulInDefChain(operand)) return true;
   }
   return false;
 }
