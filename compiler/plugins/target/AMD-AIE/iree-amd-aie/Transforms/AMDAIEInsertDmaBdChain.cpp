@@ -17,7 +17,7 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
-using DmaChain = std::pair<AMDAIE::TileOp, AMDAIE::ConnectionOp>;
+using DmaChainKey = std::pair<AMDAIE::TileOp, AMDAIE::ConnectionOp>;
 
 /// Utility function to update `next_bd` and `start_bd` operands.
 LogicalResult updateChainOperands(
@@ -83,9 +83,9 @@ LogicalResult updateChainOperands(
 ///   - Chain X: [0] (the newly added BD ID).
 ///   - Chain Y: [] (emptied after breaking).
 void checkForChainsToBeBroken(
-    uint32_t currBdId, const DmaChain &currDmaChain,
-    const DenseMap<DmaChain, DenseSet<uint32_t>> &dmaChainToBdIds,
-    SmallVector<DmaChain> &chainsToBreak) {
+    uint32_t currBdId, const DmaChainKey &currDmaChain,
+    const DenseMap<DmaChainKey, DenseSet<uint32_t>> &dmaChainToBdIds,
+    SmallVector<DmaChainKey> &chainsToBreak) {
   for (auto &[entry, bdIds] : dmaChainToBdIds) {
     if (entry.first == currDmaChain.first && bdIds.contains(currBdId)) {
       // Break the chain that contains the duplicate BD ID.
@@ -120,9 +120,10 @@ LogicalResult insertDmaBdChain(const AMDAIE::AMDAIEDeviceModel &deviceModel,
   }
 
   // BD IDs that have been assigned in each tile.
-  DenseMap<DmaChain, DenseSet<uint32_t>> dmaChainToBdIds;
+  DenseMap<DmaChainKey, DenseSet<uint32_t>> dmaChainToBdIds;
   // Buffers the DMA ops that will be chained.
-  DenseMap<DmaChain, SmallVector<AMDAIE::NpuHalfDmaCpyNdOp>> dmaChainToDmaOps;
+  DenseMap<DmaChainKey, SmallVector<AMDAIE::NpuHalfDmaCpyNdOp>>
+      dmaChainToDmaOps;
 
   res = controlCodeOp->walk<WalkOrder::PostOrder,
                             ReverseIterator>([&](Operation *op) {
@@ -185,8 +186,8 @@ LogicalResult insertDmaBdChain(const AMDAIE::AMDAIEDeviceModel &deviceModel,
       // Any duplicate BD ID from the same tile indicates that the chain
       // cannot grow further and requires breaking to release the
       // conflicting BD ID.
-      SmallVector<DmaChain> chainsToBreak;
-      DmaChain currDmaChain = {tileOp, connectionOp};
+      SmallVector<DmaChainKey> chainsToBreak;
+      DmaChainKey currDmaChain = {tileOp, connectionOp};
       checkForChainsToBeBroken(bdId, currDmaChain, dmaChainToBdIds,
                                chainsToBreak);
 
