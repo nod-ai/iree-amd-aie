@@ -153,6 +153,128 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
+// Same channel, direction, and row, but different col.
+// Expect one TCT sync operation (0x00000080), with col_num = 4.
+// CHECK:       0x06030100
+// CHECK:       0x00000105
+// CHECK:       0x00000005
+// CHECK:       0x00000080
+// CHECK:       0x00000000
+// CHECK:       0x00000000
+// CHECK:       0x0001D214
+// CHECK:       0x00000000
+// CHECK:       0x80000000
+// CHECK:       0x00000018
+// CHECK:       0x00000000
+// CHECK:       0x00000000
+// CHECK:       0x0601D214
+// CHECK:       0x00000000
+// CHECK:       0x80000000
+// CHECK:       0x00000018
+// CHECK:       0x00000000
+// CHECK:       0x00000000
+// CHECK:       0x0401D214
+// CHECK:       0x00000000
+// CHECK:       0x80000000
+// CHECK:       0x00000018
+// CHECK:       0x00000000
+// CHECK:       0x00000000
+// CHECK:       0x0201D214
+// CHECK:       0x00000000
+// CHECK:       0x80000000
+// CHECK:       0x00000018
+// CHECK:       0x00000080
+// CHECK:       0x00000010
+// CHECK:       0x00000001
+// CHECK:       0x00040100
+// CHECK-LABEL: @async_push_to_queue_and_wait_col_num
+// CHECK:       npu_instructions = dense_resource<npu_instructions> : tensor<32xui32>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @async_push_to_queue_and_wait_col_num() {
+    amdaie.workgroup {
+      amdaie.controlcode {
+        %0 = amdaie.npu.push_to_queue async {bd_id = 0 : ui32, channel = 0 : ui32, col = 0 : ui32, direction = 1 : i32, repeat_count = 1 : ui32, row = 0 : ui32}
+        %1 = amdaie.npu.push_to_queue async {bd_id = 0 : ui32, channel = 0 : ui32, col = 3 : ui32, direction = 1 : i32, repeat_count = 1 : ui32, row = 0 : ui32}
+        %2 = amdaie.npu.push_to_queue async {bd_id = 0 : ui32, channel = 0 : ui32, col = 2 : ui32, direction = 1 : i32, repeat_count = 1 : ui32, row = 0 : ui32}
+        %3 = amdaie.npu.push_to_queue async {bd_id = 0 : ui32, channel = 0 : ui32, col = 1 : ui32, direction = 1 : i32, repeat_count = 1 : ui32, row = 0 : ui32}
+        amdaie.npu.dma_wait(%0, %1, %2, %3 : !amdaie.async_token, !amdaie.async_token, !amdaie.async_token, !amdaie.async_token)
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+// Completely different channels, directions, rows, and cols.
+// Expect four TCT sync operations (0x00000080).
+// CHECK:       0x06030100
+// CHECK:       0x00000105
+// CHECK:       0x00000008
+// CHECK:       0x000000B0
+// CHECK:       0x00000000
+// CHECK:       0x00000000
+// CHECK:       0x0001D214
+// CHECK:       0x00000000
+// CHECK:       0x80000000
+// CHECK:       0x00000018
+// CHECK:       0x00000000
+// CHECK:       0x00000000
+// CHECK:       0x0201D21C
+// CHECK:       0x00000000
+// CHECK:       0x80000000
+// CHECK:       0x00000018
+// CHECK:       0x00000000
+// CHECK:       0x00000000
+// CHECK:       0x0401D204
+// CHECK:       0x00000000
+// CHECK:       0x80000000
+// CHECK:       0x00000018
+// CHECK:       0x00000000
+// CHECK:       0x00000000
+// CHECK:       0x0601D20C
+// CHECK:       0x00000000
+// CHECK:       0x80000000
+// CHECK:       0x00000018
+// CHECK:       0x00000080
+// CHECK:       0x00000010
+// CHECK:       0x00020000
+// CHECK:       0x00010100
+// CHECK:       0x00000080
+// CHECK:       0x00000010
+// CHECK:       0x00000001
+// CHECK:       0x00010100
+// CHECK:       0x00000080
+// CHECK:       0x00000010
+// CHECK:       0x00030000
+// CHECK:       0x01010100
+// CHECK:       0x00000080
+// CHECK:       0x00000010
+// CHECK:       0x00010001
+// CHECK:       0x01010100
+// CHECK-LABEL: @wait_different_row_col_channel_direction
+// CHECK:       npu_instructions = dense_resource<npu_instructions> : tensor<44xui32>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @wait_different_row_col_channel_direction() {
+    amdaie.workgroup {
+      amdaie.controlcode {
+        %0 = amdaie.npu.push_to_queue async {bd_id = 0 : ui32, channel = 0 : ui32, col = 0 : ui32, direction = 1 : i32, repeat_count = 1 : ui32, row = 0 : ui32}
+        %1 = amdaie.npu.push_to_queue async {bd_id = 0 : ui32, channel = 1 : ui32, col = 1 : ui32, direction = 1 : i32, repeat_count = 1 : ui32, row = 0 : ui32}
+        %2 = amdaie.npu.push_to_queue async {bd_id = 0 : ui32, channel = 0 : ui32, col = 2 : ui32, direction = 0 : i32, repeat_count = 1 : ui32, row = 0 : ui32}
+        %3 = amdaie.npu.push_to_queue async {bd_id = 0 : ui32, channel = 1 : ui32, col = 3 : ui32, direction = 0 : i32, repeat_count = 1 : ui32, row = 0 : ui32}
+        amdaie.npu.dma_wait(%0, %1, %2, %3 : !amdaie.async_token, !amdaie.async_token, !amdaie.async_token, !amdaie.async_token)
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
 // CHECK:       0x06030100
 // CHECK:       0x00000105
 // CHECK:       0x00000001
