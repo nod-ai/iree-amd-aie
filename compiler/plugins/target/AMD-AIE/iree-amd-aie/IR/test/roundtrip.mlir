@@ -454,6 +454,15 @@ func.func @npu_write_bd() {
 
 // -----
 
+// CHECK-LABEL: func.func @npu_tct_sync
+// CHECK:       amdaie.npu.tct_sync {channel = 0 : ui32, col = 0 : ui32, col_num = 2 : ui32, direction = 1 : i32, row = 0 : ui32, row_num = 1 : ui32}
+func.func @npu_tct_sync() {
+  amdaie.npu.tct_sync {channel = 0 : ui32, col = 0 : ui32, col_num = 2 : ui32, direction = 1 : i32, row = 0 : ui32, row_num = 1 : ui32}
+  return
+}
+
+// -----
+
 // CHECK-LABEL: func.func @workgroup
 // CHECK: amdaie.workgroup
 // CHECK: amdaie.core
