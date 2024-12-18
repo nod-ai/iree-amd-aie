@@ -308,23 +308,17 @@ LogicalResult combineAccessPatterns(RewriterBase &rewriter,
 /// represented by:
 ///
 /// `offsets: [0], sizes: [16], strides: [1]`
-LogicalResult foldLinearDims(MLIRContext *ctx,
-                             const SmallVector<OpFoldResult> &offsets,
-                             const SmallVector<OpFoldResult> &sizes,
-                             const SmallVector<OpFoldResult> &strides,
-                             SmallVector<OpFoldResult> &newOffsets,
-                             SmallVector<OpFoldResult> &newSizes,
-                             SmallVector<OpFoldResult> &newStrides,
-                             ArrayRef<int64_t> maxSizes) {
+LogicalResult foldLinearDims(
+    MLIRContext *ctx, const SmallVector<OpFoldResult> &offsets,
+    const SmallVector<OpFoldResult> &sizes,
+    const SmallVector<OpFoldResult> &strides,
+    SmallVector<OpFoldResult> &newOffsets, SmallVector<OpFoldResult> &newSizes,
+    SmallVector<OpFoldResult> &newStrides,
+    function_ref<bool(size_t, int64_t)> checkValidSize) {
   assert(offsets.size() == sizes.size() && offsets.size() == strides.size() &&
          "expected same number of offsets, sizes and strides");
   bool foldableLinearDimsFound = false;
   if (offsets.size() == 0) return success(foldableLinearDimsFound);
-
-  // As the new offsets/sizes/strides are created in reverse order, reverse the
-  // maxSizes as well for easy comparison.
-  SmallVector<int64_t> maxSizesReversed(maxSizes);
-  std::reverse(maxSizesReversed.begin(), maxSizesReversed.end());
 
   std::optional<SmallVector<int64_t>> staticSizes = getConstantIntValues(sizes);
   std::optional<SmallVector<int64_t>> staticStrides =
@@ -344,9 +338,8 @@ LogicalResult foldLinearDims(MLIRContext *ctx,
     // 2. newSizes[-1] x newStrides[-1] == strides[i]. With this we can have
     // newSizes[-1] = sizes[i] * newSizes[-1] , and then fold away the i
     // dimension
-    // 3. sizes[i] * newSizes[-1] <= maxSizes[newSizes.size() - 1], IF max
-    // constraints are provided. This allows hardware constraints to be
-    // provided.
+    // 3. checkValidSize(sizes[i] * newSizes[-1]). This allows hardware
+    // constraints to be checked.
     size_t vecSize = newOffsets.size();
     int64_t newStride = staticStrideVals[i];
     int64_t newSize = staticSizeVals[i];
@@ -356,11 +349,7 @@ LogicalResult foldLinearDims(MLIRContext *ctx,
     // Fail if max constraints are provided, but the newly created
     // offsets/sizes/strides start exceeding the number of provide max
     // constraints as this will result in undefined behaviour.
-    if (maxSizesReversed.size() > 0 && vecSize > maxSizesReversed.size())
-      return failure();
-    bool fitsMaxConstraint =
-        maxSizesReversed.size() == 0 ||
-        newSize * prevSize <= maxSizesReversed[vecSize - 1];
+    bool fitsMaxConstraint = checkValidSize(vecSize - 1, newSize * prevSize);
     if (fitsMaxConstraint && isConstantIntValue(offsets[i], 0) &&
         dimExtent == newStride) {
       foldableLinearDimsFound = true;
@@ -377,6 +366,40 @@ LogicalResult foldLinearDims(MLIRContext *ctx,
   std::reverse(newSizes.begin(), newSizes.end());
   std::reverse(newStrides.begin(), newStrides.end());
   return success(foldableLinearDimsFound);
+}
+
+LogicalResult foldRepetitionCount(MLIRContext *ctx,
+                                  SmallVector<OpFoldResult> &sizes,
+                                  SmallVector<OpFoldResult> &strides,
+                                  std::optional<int64_t> maybeRepetitionCount) {
+  // If no repetition count is provided, fold all leading dimensions with
+  // `stride == 0`.
+  if (!maybeRepetitionCount.has_value()) {
+    for (auto &&[idx, stride] : llvm::enumerate(strides)) {
+      if (!isConstantIntValue(stride, 0)) break;
+      sizes[idx] = getAsIndexOpFoldResult(ctx, 1);
+    }
+    return success();
+  }
+  int64_t repetitionCount = maybeRepetitionCount.value();
+  for (size_t i = 0; i < strides.size(); i++) {
+    if (repetitionCount == 1) break;
+    if (!isConstantIntValue(strides[i], 0)) return failure();
+    std::optional<int64_t> maybeSize = getConstantIntValue(sizes[i]);
+    if (!maybeSize) return failure();
+    int64_t size = maybeSize.value();
+    if (size >= repetitionCount) {
+      if (size % repetitionCount != 0) return failure();
+      sizes[i] = getAsIndexOpFoldResult(ctx, size / repetitionCount);
+      repetitionCount = 1;
+    } else {
+      if (repetitionCount % size != 0) return failure();
+      sizes[i] = getAsIndexOpFoldResult(ctx, 1);
+      repetitionCount /= size;
+    }
+  }
+  if (repetitionCount != 1) return failure();
+  return success();
 }
 
 /// Fold single dimension linear accesses and make them implicit. This requires
@@ -487,27 +510,131 @@ LogicalResult moveNpuDmaSyncUsersAfterAncestorInSameBlock(
 // DmaDimConfig
 //===----------------------------------------------------------------------===//
 
-SmallVector<int64_t> DmaDimConfig::getMaxSizes() const {
+static bool anyOutOfRange(ArrayRef<int64_t> values, ArrayRef<int64_t> maxValues,
+                          size_t begin) {
+  assert(maxValues.size() - begin >= values.size() &&
+         "begin should be set so that the values don't exceed the max "
+         "values slice");
+  for (auto [value, maxValue] :
+       llvm::zip(values, maxValues.drop_front(begin))) {
+    if (value < 0 || value > maxValue) return true;
+  }
+  return false;
+}
+
+bool DmaDimConfig::isValidAccessPattern(ArrayRef<int64_t> sizes,
+                                        ArrayRef<int64_t> strides) const {
+  assert(sizes.size() == strides.size() &&
+         "`sizes` and `strides` should have the same size");
+  SmallVector<int64_t> maxSizes = getMaxSizes(sizes.size());
+  assert(maxSizes.size() >= sizes.size() &&
+         "Max number of dimensions exceeded");
+  size_t frontToDrop = maxSizes.size() - sizes.size();
+  if (anyOutOfRange(sizes, maxSizes, frontToDrop)) return false;
+  SmallVector<int64_t> maxStrides = getMaxStrides(sizes.size());
+  if (anyOutOfRange(strides, maxStrides, frontToDrop)) return false;
+  return true;
+}
+
+SmallVector<int64_t> DmaDimConfig::getMaxSizes(
+    std::optional<size_t> maybeNbDims) const {
+  size_t nbDims = maybeNbDims.has_value() ? maybeNbDims.value() : maxNbDims;
   uint32_t maxIntraSize = deviceModel.getDmaBdProp<uint16_t>(
       tileType, 0, AMDAIE::AMDAIEDmaBdProp::WrapMax);
   uint32_t maxInterSize = deviceModel.getDmaBdProp<uint8_t>(
       tileType, 0, AMDAIE::AMDAIEDmaBdProp::IterWrapMax);
-  SmallVector<int64_t> maxSizes(maxNbDims, maxIntraSize);
-  std::fill_n(maxSizes.begin(), nbInterDims, maxInterSize);
-  // The outermost intra size doesn't have limit in HW.
-  maxSizes[nbInterDims] = std::numeric_limits<int64_t>::max();
+  SmallVector<int64_t> maxSizes(nbDims, 0);
+  int64_t nbIntraDimsToBeFilled =
+      std::min((int64_t)nbIntraDims, (int64_t)maxSizes.size());
+  int64_t intraStart = maxSizes.size() - nbIntraDimsToBeFilled;
+  std::fill_n(maxSizes.begin() + intraStart, nbIntraDimsToBeFilled,
+              maxIntraSize);
+  assert(intraStart >= 0 &&
+         "The start index for intra dimensions should be greater than or equal "
+         "to zero");
+  if (intraStart < maxSizes.size())
+    maxSizes[intraStart] = std::numeric_limits<int64_t>::max();
+  int64_t nbInterDimsToBeFilled = std::min((int64_t)nbInterDims, intraStart);
+  int64_t interStart = intraStart - nbInterDimsToBeFilled;
+  assert(interStart >= 0 &&
+         "The start index for inter dimensions should be greater than or equal "
+         "to zero");
+  std::fill_n(maxSizes.begin() + interStart, nbInterDimsToBeFilled,
+              maxInterSize);
   return maxSizes;
 }
 
-SmallVector<int64_t> DmaDimConfig::getMaxStrides() const {
+SmallVector<int64_t> DmaDimConfig::getMaxStrides(
+    std::optional<size_t> maybeNbDims) const {
+  size_t nbDims = maybeNbDims.has_value() ? maybeNbDims.value() : maxNbDims;
   uint32_t maxIntraStride = deviceModel.getDmaBdProp<uint32_t>(
       tileType, 0, AMDAIE::AMDAIEDmaBdProp::StepSizeMax);
   uint32_t maxInterStride = deviceModel.getDmaBdProp<uint32_t>(
       tileType, 0, AMDAIE::AMDAIEDmaBdProp::IterStepSizeMax);
+  SmallVector<int64_t> stepSizes(nbDims, 0);
+  int64_t nbIntraDimsToBeFilled =
+      std::min((int64_t)nbIntraDims, (int64_t)stepSizes.size());
+  int64_t intraStart = stepSizes.size() - nbIntraDimsToBeFilled;
+  assert(intraStart >= 0 &&
+         "The start index for intra dimensions should be greater than or equal "
+         "to zero");
   // +1 because values are encoded in HW BDs as (value - 1), so the range is
   // [1:2^x].
-  SmallVector<int64_t> stepSizes(maxNbDims, maxIntraStride + 1);
-  std::fill_n(stepSizes.begin(), nbInterDims, maxInterStride + 1);
+  std::fill_n(stepSizes.begin() + intraStart, nbIntraDimsToBeFilled,
+              maxIntraStride + 1);
+  int64_t nbInterDimsToBeFilled = std::min((int64_t)nbInterDims, intraStart);
+  int64_t interStart = intraStart - nbInterDimsToBeFilled;
+  assert(interStart >= 0 &&
+         "The start index for inter dimensions should be greater than or equal "
+         "to zero");
+  // +1 because values are encoded in HW BDs as (value - 1), so the range is
+  // [1:2^x].
+  std::fill_n(stepSizes.begin() + interStart, nbInterDimsToBeFilled,
+              maxInterStride + 1);
+  return stepSizes;
+}
+
+SmallVector<int64_t> CircularDmaDimConfig::getMaxSizes(
+    std::optional<size_t> maybeNbDims) const {
+  size_t nbDims = maybeNbDims.has_value() ? maybeNbDims.value() : maxNbDims;
+  uint32_t maxIntraSize = deviceModel.getDmaBdProp<uint16_t>(
+      tileType, 0, AMDAIE::AMDAIEDmaBdProp::WrapMax);
+  SmallVector<int64_t> maxSizes(nbDims, 0);
+  int64_t nbIntraDimsToBeFilled =
+      std::min((int64_t)nbIntraDims, (int64_t)maxSizes.size());
+  int64_t intraStart = maxSizes.size() - nbIntraDimsToBeFilled;
+  std::fill_n(maxSizes.begin() + intraStart, nbIntraDimsToBeFilled,
+              maxIntraSize);
+  assert(intraStart >= 0 &&
+         "The start index for intra dimensions should be greater than or equal "
+         "to zero");
+  if (intraStart < maxSizes.size())
+    maxSizes[intraStart] = std::numeric_limits<int64_t>::max();
+  // All other dimension can have any size for circular DMAs.
+  std::fill_n(maxSizes.begin(), intraStart,
+              std::numeric_limits<int64_t>::max());
+  return maxSizes;
+}
+
+SmallVector<int64_t> CircularDmaDimConfig::getMaxStrides(
+    std::optional<size_t> maybeNbDims) const {
+  size_t nbDims = maybeNbDims.has_value() ? maybeNbDims.value() : maxNbDims;
+  uint32_t maxIntraStride = deviceModel.getDmaBdProp<uint32_t>(
+      tileType, 0, AMDAIE::AMDAIEDmaBdProp::StepSizeMax);
+  SmallVector<int64_t> stepSizes(nbDims, 0);
+  int64_t nbIntraDimsToBeFilled =
+      std::min((int64_t)nbIntraDims, (int64_t)stepSizes.size());
+  int64_t intraStart = stepSizes.size() - nbIntraDimsToBeFilled;
+  assert(intraStart >= 0 &&
+         "The start index for intra dimensions should be greater than or equal "
+         "to zero");
+  // +1 because values are encoded in HW BDs as (value - 1), so the range is
+  // [1:2^x].
+  std::fill_n(stepSizes.begin() + intraStart, nbIntraDimsToBeFilled,
+              maxIntraStride + 1);
+  // All other dimension can have any stride for circular DMAs.
+  std::fill_n(stepSizes.begin(), intraStart,
+              std::numeric_limits<int64_t>::max());
   return stepSizes;
 }
 

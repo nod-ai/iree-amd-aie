@@ -176,23 +176,6 @@ struct SubsumeLoopIntoDMA
           "parent op.");
     }
 
-    // Handle ops with trait `CircularDmaOp`. If circular DMA ops don't have a
-    // loop dependency, they can be hoisted outside the loop without any
-    // changes as in principal they run indefinitely until the resource operated
-    // on is dedicated to another operation. Therefore, care should be taken to
-    // ensure that the resource being operated on is not touched within the same
-    // scope.
-    // TODO(jornt): find a way to annotate the DMA resource(s) being
-    // operated on so that this touch checking logic can be implemented in
-    // general for different ops.
-    if (op->hasTrait<CircularDmaOp>() &&
-        !hasLoopDependency(op, allInductionValues)) {
-      rewriter.setInsertionPoint(loopOp);
-      Operation *cloneOp = rewriter.clone(*op.getOperation());
-      rewriter.replaceOp(op, cloneOp);
-      return success();
-    }
-
     // Initialize new access pattern offsets/sizes/strides with current values.
     SmallVector<OpFoldResult> newSourceOffsets = op.getSourceMixedOffsets();
     SmallVector<OpFoldResult> newSourceSizes = op.getSourceMixedSizes();
@@ -210,16 +193,18 @@ struct SubsumeLoopIntoDMA
       if (nbIterations == 0) return failure();
       if (nbIterations > 1) nbNonUnitIterations++;
     }
-    if (newSourceOffsets.size() + nbNonUnitIterations >
-        sourceDmaDimConfig.maxNbDims)
+    if (sourceDmaDimConfig.exceedsNbDims(newSourceOffsets.size() +
+                                         nbNonUnitIterations)) {
       return failure();
-    if (newTargetOffsets.size() + nbNonUnitIterations >
-        targetDmaDimConfig.maxNbDims)
+    }
+    if (targetDmaDimConfig.exceedsNbDims(newTargetOffsets.size() +
+                                         nbNonUnitIterations)) {
       return failure();
+    }
 
     // Fail if zero stride is only supported on the outer dimension and adding
     // this loop to the strided access pattern would violate that.
-    if (onlyZeroStrideOnOuterDim) {
+    if (onlyZeroStrideOnOuterDim && !op->hasTrait<CircularDmaOp>()) {
       if (!newSourceStrides.empty()) {
         std::optional<int64_t> outerStride =
             getConstantIntValue(newSourceStrides[0]);
@@ -256,20 +241,6 @@ struct SubsumeLoopIntoDMA
         }
       }
     }
-
-    auto anyOutOfRange = [](const SmallVector<int64_t> &values,
-                            const SmallVector<int64_t> &maxValues,
-                            size_t begin) -> bool {
-      assert(maxValues.size() - begin >= values.size() &&
-             "begin should be set so that the values don't exceed the max "
-             "values slice");
-      for (size_t i = 0; i < values.size(); ++i) {
-        int64_t value = values[i];
-        int64_t maxValue = maxValues[begin + i];
-        if (value < 0 || value > maxValue) return true;
-      }
-      return false;
-    };
 
     auto insertInFront =
         [](SmallVector<OpFoldResult> &origOpFold,
@@ -310,14 +281,10 @@ struct SubsumeLoopIntoDMA
             insertInFront(newSourceSizes, insertSourceSizes);
         SmallVector<int64_t> newSourceStridesInt =
             insertInFront(newSourceStrides, insertSourceStrides);
-        SmallVector<int64_t> maxSizes = sourceDmaDimConfig.getMaxSizes();
-        SmallVector<int64_t> maxStrides = sourceDmaDimConfig.getMaxStrides();
-        assert(maxSizes.size() >= newSourceSizesInt.size() &&
-               "Max number of dimensions exceeded");
-        size_t begin = maxSizes.size() - newSourceSizesInt.size();
-        if (anyOutOfRange(newSourceSizesInt, maxSizes, begin)) return failure();
-        if (anyOutOfRange(newSourceStridesInt, maxStrides, begin))
+        if (!sourceDmaDimConfig.isValidAccessPattern(newSourceSizesInt,
+                                                     newSourceStridesInt)) {
           return failure();
+        }
       }
       // Add loop iteration to the access pattern on the target side.
       if (!newTargetOffsets.empty()) {
@@ -334,14 +301,10 @@ struct SubsumeLoopIntoDMA
             insertInFront(newTargetSizes, insertTargetSizes);
         SmallVector<int64_t> newTargetStridesInt =
             insertInFront(newTargetStrides, insertTargetStrides);
-        SmallVector<int64_t> maxSizes = targetDmaDimConfig.getMaxSizes();
-        SmallVector<int64_t> maxStrides = targetDmaDimConfig.getMaxStrides();
-        assert(maxSizes.size() >= newTargetSizesInt.size() &&
-               "Max number of dimensions exceeded");
-        size_t begin = maxSizes.size() - newTargetSizesInt.size();
-        if (anyOutOfRange(newTargetSizesInt, maxSizes, begin)) return failure();
-        if (anyOutOfRange(newTargetStridesInt, maxStrides, begin))
+        if (!targetDmaDimConfig.isValidAccessPattern(newTargetSizesInt,
+                                                     newTargetStridesInt)) {
           return failure();
+        }
       }
     }
 
@@ -502,11 +465,17 @@ struct SubsumeLoopIntoDMA
       return false;
     };
 
-    std::optional<uint8_t> sourceMemspaceInt;
-    std::optional<uint8_t> targetMemspaceInt;
+    std::unique_ptr<DmaDimConfig> sourceDmaDimConfig;
+    std::unique_ptr<DmaDimConfig> targetDmaDimConfig;
     if (auto npuDmaOp = dyn_cast<AMDAIE::NpuDmaCpyNdOp>(op.getOperation())) {
-      sourceMemspaceInt = npuDmaOp.getSourceMemorySpaceAsUInt();
-      targetMemspaceInt = npuDmaOp.getTargetMemorySpaceAsUInt();
+      std::optional<uint8_t> sourceMemspaceInt =
+          npuDmaOp.getSourceMemorySpaceAsUInt();
+      std::optional<uint8_t> targetMemspaceInt =
+          npuDmaOp.getTargetMemorySpaceAsUInt();
+      if (!sourceMemspaceInt.has_value() || !targetMemspaceInt.has_value()) {
+        return rewriter.notifyMatchFailure(
+            op, "Needs a memory space for both source and target");
+      }
 
       // Check that the connection this `amdaie.npu.dma_cpy_nd` operation is
       // operating on, is not being touched within the same scope. Otherwise,
@@ -533,11 +502,21 @@ struct SubsumeLoopIntoDMA
             "Has users of same DMA in scope, analysis to check validity of "
             "subsumption unimplemented");
       }
+      sourceDmaDimConfig = std::make_unique<DmaDimConfig>(
+          deviceModel, sourceMemspaceInt.value());
+      targetDmaDimConfig = std::make_unique<DmaDimConfig>(
+          deviceModel, targetMemspaceInt.value());
     } else if (auto npuCircularDmaOp =
                    dyn_cast<AMDAIE::NpuCircularDmaCpyNdOp>(op.getOperation())) {
       // TODO(jornt): Consolidate with `NpuDmaCpyNdOp`.
-      sourceMemspaceInt = npuCircularDmaOp.getSourceMemorySpaceAsUInt();
-      targetMemspaceInt = npuCircularDmaOp.getTargetMemorySpaceAsUInt();
+      std::optional<uint8_t> sourceMemspaceInt =
+          npuCircularDmaOp.getSourceMemorySpaceAsUInt();
+      std::optional<uint8_t> targetMemspaceInt =
+          npuCircularDmaOp.getTargetMemorySpaceAsUInt();
+        if (!sourceMemspaceInt.has_value() || !targetMemspaceInt.has_value()) {
+        return rewriter.notifyMatchFailure(
+            op, "Needs a memory space for both source and target");
+      }
       FailureOr<bool> hasBlockingUsers =
           doesCircularDmaHaveUsersBlockingSubsumption(npuCircularDmaOp);
       if (failed(hasBlockingUsers)) {
@@ -551,6 +530,10 @@ struct SubsumeLoopIntoDMA
             "loop. The analysis to check validity of subsumption in this case "
             "might have to be implemented");
       }
+      sourceDmaDimConfig = std::make_unique<CircularDmaDimConfig>(
+          deviceModel, sourceMemspaceInt.value());
+      targetDmaDimConfig = std::make_unique<CircularDmaDimConfig>(
+          deviceModel, targetMemspaceInt.value());
     } else {
       return rewriter.notifyMatchFailure(
           op,
@@ -558,19 +541,12 @@ struct SubsumeLoopIntoDMA
           "`amdaie.npu.circular_dma_cpy_nd` operation");
     }
 
-    if (!sourceMemspaceInt || !targetMemspaceInt) {
-      return rewriter.notifyMatchFailure(
-          op, "expected a source and target memory space");
-    }
-    DmaDimConfig sourceDmaDimConfig(deviceModel, sourceMemspaceInt.value());
-    DmaDimConfig targetDmaDimConfig(deviceModel, targetMemspaceInt.value());
-
     if (isa<scf::ForOp>(parentOp)) {
-      return rewriteWithForOpParent(op, rewriter, sourceDmaDimConfig,
-                                    targetDmaDimConfig);
+      return rewriteWithForOpParent(op, rewriter, *sourceDmaDimConfig,
+                                    *targetDmaDimConfig);
     } else if (isa<scf::ForallOp>(parentOp)) {
-      return rewriteWithForallOpParent(op, rewriter, sourceDmaDimConfig,
-                                       targetDmaDimConfig);
+      return rewriteWithForallOpParent(op, rewriter, *sourceDmaDimConfig,
+                                       *targetDmaDimConfig);
     } else {
       return rewriter.notifyMatchFailure(
           op, "Has parent operation of currently unsupported type");

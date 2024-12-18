@@ -17,6 +17,8 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
+using mlir::OpTrait::iree_compiler::AMDAIE::CircularDmaOp;
+
 namespace {
 
 /// Recognize linear accesses across multiple DMA access dimensions and fold
@@ -54,19 +56,40 @@ class FoldDmaOpLinearDims
             "expected a source and target memory space for hardware aware "
             "linear dimension folding");
       }
-      DmaDimConfig sourceDmaDimConfig(deviceModel.value(),
-                                      sourceMemSpace.value());
-      maxSourceSizes = sourceDmaDimConfig.getMaxSizes();
-      DmaDimConfig targetDmaDimConfig(deviceModel.value(),
-                                      targetMemSpace.value());
-      maxTargetSizes = targetDmaDimConfig.getMaxSizes();
+      if (op->hasTrait<CircularDmaOp>()) {
+        CircularDmaDimConfig sourceDmaDimConfig(deviceModel.value(),
+                                                sourceMemSpace.value());
+        maxSourceSizes = sourceDmaDimConfig.getMaxSizes(sourceOffsets.size());
+        CircularDmaDimConfig targetDmaDimConfig(deviceModel.value(),
+                                                targetMemSpace.value());
+        maxTargetSizes = targetDmaDimConfig.getMaxSizes(targetOffsets.size());
+      } else {
+        DmaDimConfig sourceDmaDimConfig(deviceModel.value(),
+                                        sourceMemSpace.value());
+        maxSourceSizes = sourceDmaDimConfig.getMaxSizes(sourceOffsets.size());
+        DmaDimConfig targetDmaDimConfig(deviceModel.value(),
+                                        targetMemSpace.value());
+        maxTargetSizes = targetDmaDimConfig.getMaxSizes(targetOffsets.size());
+      }
     }
     LogicalResult sourceRes = foldLinearDims(
         op.getContext(), sourceOffsets, sourceSizes, sourceStrides,
-        newSourceOffsets, newSourceSizes, newSourceStrides, maxSourceSizes);
+        newSourceOffsets, newSourceSizes, newSourceStrides,
+        [&](size_t idxFromEnd, int64_t size) {
+          // All sizes are valid if there are no device constraints.
+          if (maxSourceSizes.size() == 0) return true;
+          return idxFromEnd < maxSourceSizes.size() &&
+                 size <= maxSourceSizes[maxSourceSizes.size() - idxFromEnd - 1];
+        });
     LogicalResult targetRes = foldLinearDims(
         op.getContext(), targetOffsets, targetSizes, targetStrides,
-        newTargetOffsets, newTargetSizes, newTargetStrides, maxTargetSizes);
+        newTargetOffsets, newTargetSizes, newTargetStrides,
+        [&](size_t idxFromEnd, int64_t size) {
+          // All sizes are valid if there are no device constraints.
+          if (maxTargetSizes.size() == 0) return true;
+          return idxFromEnd < maxTargetSizes.size() &&
+                 size <= maxTargetSizes[maxTargetSizes.size() - idxFromEnd - 1];
+        });
     if (failed(sourceRes) && failed(targetRes)) {
       return rewriter.notifyMatchFailure(
           op, "neither a source nor a target change");

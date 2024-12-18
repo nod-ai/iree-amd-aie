@@ -6,9 +6,9 @@
 // CHECK:       %[[CONNECTION_2:.+]] = amdaie.connection
 // CHECK:       amdaie.controlcode
 // CHECK-NOT:     scf.for
-// CHECK:         amdaie.npu.circular_dma_cpy_nd %[[CONNECTION_2]]([0] [16] [1], [] [] [])
 // CHECK-NOT:     scf.forall
 // CHECK:         amdaie.npu.circular_dma_cpy_nd %[[CONNECTION_1]]([] [] [], [] [] [])
+// CHECK:         amdaie.npu.circular_dma_cpy_nd %[[CONNECTION_2]]([0, 0, 0, 0] [3, 2, 6, 16] [0, 0, 0, 1], [] [] [])
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @no_loop_dependency(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
@@ -66,7 +66,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:       %[[CONNECTION:.+]] = amdaie.connection
 // CHECK:       amdaie.controlcode
 // CHECK-NOT:     scf.forall
-// CHECK:         amdaie.npu.circular_dma_cpy_nd %[[CONNECTION]]([0] [2048] [1], [] [] [])
+// CHECK:         amdaie.npu.circular_dma_cpy_nd %[[CONNECTION]]([0, 0, 0] [2, 2, 128] [0, 0, 1], [] [] [])
 // CHECK:         amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [0, 0, 0, 0] [2, 2, 32, 64] [0, 64, 128, 1])
 #map = affine_map<(d0) -> (d0 * 64)>
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
@@ -77,7 +77,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       amdaie.controlcode {
         scf.forall (%arg2, %arg3) in (2, 2) {
           %1 = affine.apply #map(%arg3)
-          amdaie.npu.circular_dma_cpy_nd %0([0] [2048] [1], [] [] [])
+          amdaie.npu.circular_dma_cpy_nd %0([0] [128] [1], [] [] [])
           amdaie.npu.dma_cpy_nd %0([] [] [], [0, %1] [32, 64] [128, 1])
         }
         amdaie.end
@@ -187,7 +187,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:       %[[CONNECTION:.+]] = amdaie.connection
 // CHECK:       amdaie.controlcode
 // CHECK-NOT:     scf.for
-// CHECK:         amdaie.npu.circular_dma_cpy_nd %[[CONNECTION]]([0] [16] [1], [] [] [])
+// CHECK:         amdaie.npu.circular_dma_cpy_nd %[[CONNECTION]]([0, 0] [3, 16] [0, 1], [] [] [])
 // CHECK:         amdaie.npu.circular_dma_cpy_nd %[[CONNECTION]]([0] [32] [1], [] [] [])
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
