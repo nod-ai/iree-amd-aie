@@ -53,20 +53,68 @@ FailureOr<unsigned> getTilingScaleFactor(Type elemType) {
   return 64 / bitWidth;
 }
 
-/// Utility to match iterator type and indexing map for a linalg.generic that
-/// is basically implementing a matmul with 2D input/output operands.
-static bool match2DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
-  // Check iterator types.
+/// Get the m/n/k dimension of a matmul-like op from its affine map.
+static mlir::AffineExpr getAffineMapDim(ArrayAttr indexingMaps,
+                                        uint32_t mapIndex, uint32_t mnkIndex) {
+  auto affineMap = cast<AffineMapAttr>(indexingMaps[mapIndex]).getValue();
+  uint32_t nResults = affineMap.getNumResults();
+  return affineMap.getResult(nResults - 2 + mnkIndex);
+}
+
+/// Returns the BlockArgument that leads to `val`. Traverses optional ext*
+/// ops.
+static BlockArgument checkOptionalExtOps(Value val) {
+  BlockArgument blockArg;
+  if (!(blockArg = dyn_cast<BlockArgument>(val))) {
+    auto defOp = val.getDefiningOp();
+    if (!dyn_cast_if_present<arith::ExtFOp>(defOp) &&
+        !dyn_cast_if_present<arith::ExtSIOp>(defOp) &&
+        !dyn_cast_if_present<arith::ExtUIOp>(defOp)) {
+      return nullptr;
+    }
+    blockArg = dyn_cast<BlockArgument>(defOp->getOperand(0));
+  }
+  return blockArg;
+}
+
+/// Utility to match block body for matmul-like ops.
+static bool bodyMatcherForMatmulLikeOps(Value yieldVal, Block *body) {
+  Operation *addOp = yieldVal.getDefiningOp();
+  if (!isa_and_present<arith::AddIOp, arith::AddFOp>(addOp)) return false;
+
+  Operation *mulOp = addOp->getOperand(1).getDefiningOp();
+  if (!isa_and_present<arith::MulIOp, arith::MulFOp>(mulOp)) return false;
+
+  BlockArgument lhsBlockArg = checkOptionalExtOps(mulOp->getOperand(0));
+  BlockArgument rhsBlockArg = checkOptionalExtOps(mulOp->getOperand(1));
+  BlockArgument outBlockArg = checkOptionalExtOps(addOp->getOperand(0));
+  if (!lhsBlockArg || !rhsBlockArg || !outBlockArg ||
+      lhsBlockArg.getOwner() != body || rhsBlockArg.getOwner() != body ||
+      outBlockArg.getOwner() != body || lhsBlockArg.getArgNumber() != 0 ||
+      rhsBlockArg.getArgNumber() != 1 || outBlockArg.getArgNumber() != 2) {
+    return false;
+  }
+  return true;
+}
+
+/// Utility to check if the given generic op is a 2D matmul-like op.
+static bool is2DMatmulLikeOp(linalg::LinalgOp genericOp,
+                             ArrayAttr indexingMaps) {
+  // Step 1. Check the body of the generic op.
+  Block *body = genericOp.getBlock();
+  auto yieldOp = cast<linalg::YieldOp>(body->getTerminator());
+  Value yieldVal = yieldOp.getOperand(0);
+  if (!bodyMatcherForMatmulLikeOps(yieldVal, body)) return false;
+
+  // Step 2. Check iterator types.
   SmallVector<utils::IteratorType> matmulIteratorTypes = {
       utils::IteratorType::parallel, utils::IteratorType::parallel,
       utils::IteratorType::reduction};
   SmallVector<utils::IteratorType> opIteratorTypes =
-      linalgOp.getIteratorTypesArray();
-  if (matmulIteratorTypes != opIteratorTypes) {
-    return false;
-  }
-  // Check indexing maps.
-  ArrayAttr indexingMaps = linalgOp.getIndexingMaps();
+      genericOp.getIteratorTypesArray();
+  if (matmulIteratorTypes != opIteratorTypes) return false;
+
+  // Step 3. Check the number of inputs and results from indexing maps.
   if (indexingMaps.size() != 3) return false;
 
   AffineMap map0 = cast<AffineMapAttr>(indexingMaps[0]).getValue();
@@ -78,17 +126,21 @@ static bool match2DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
       map1.getNumInputs() != 3 || map2.getNumInputs() != 3) {
     return false;
   }
+  return true;
+}
 
-  AffineExpr M = map2.getResult(0);
-  AffineExpr N = map2.getResult(1);
-  AffineExpr K = map0.getResult(1);
+/// Utility to match iterator type and indexing map for a linalg.generic that
+/// is basically implementing a matmul with 2D input/output operands.
+static bool match2DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
+  ArrayAttr maps = linalgOp.getIndexingMaps();
+  if (!is2DMatmulLikeOp(linalgOp, maps)) return false;
 
-  auto *context = indexingMaps.getContext();
-  auto mapA = AffineMapAttr::get(AffineMap::get(3, 0, {M, K}, context));
-  auto mapB = AffineMapAttr::get(AffineMap::get(3, 0, {K, N}, context));
-  auto mapC = AffineMapAttr::get(AffineMap::get(3, 0, {M, N}, context));
-  auto maps = ArrayAttr::get(context, {mapA, mapB, mapC});
-  return indexingMaps == maps;
+  uint32_t A = 0, B = 1, C = 2;
+  bool isBTransposed =
+      getAffineMapDim(maps, A, 0) == getAffineMapDim(maps, C, 0) &&  // M
+      getAffineMapDim(maps, B, 1) == getAffineMapDim(maps, C, 1) &&  // N
+      getAffineMapDim(maps, A, 1) == getAffineMapDim(maps, B, 0);    // K
+  return isBTransposed;
 }
 
 /// Utility to match iterator type and indexing map for a linalg.generic that
@@ -101,9 +153,8 @@ static bool match4DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
       utils::IteratorType::parallel,  utils::IteratorType::reduction};
   SmallVector<utils::IteratorType> opIteratorTypes =
       linalgOp.getIteratorTypesArray();
-  if (matmulIteratorTypes != opIteratorTypes) {
-    return false;
-  }
+  if (matmulIteratorTypes != opIteratorTypes) return false;
+
   // Check indexing maps.
   ArrayAttr indexingMaps = linalgOp.getIndexingMaps();
   if (indexingMaps.size() != 3) return false;
@@ -135,9 +186,8 @@ static bool match6DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
       utils::IteratorType::reduction};
   SmallVector<utils::IteratorType> opIteratorTypes =
       linalgOp.getIteratorTypesArray();
-  if (matmulIteratorTypes != opIteratorTypes) {
-    return false;
-  }
+  if (matmulIteratorTypes != opIteratorTypes) return false;
+
   // Check indexing maps.
   ArrayAttr indexingMaps = linalgOp.getIndexingMaps();
   if (indexingMaps.size() != 3) return false;
@@ -157,80 +207,50 @@ static bool match6DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
   return true;
 }
 
-/// Returns the BlockArgument that leads to `val`. Traverses optional ext*
-/// ops.
-static BlockArgument checkOptionalExtOps(Value val) {
-  BlockArgument blockArg;
-  if (!(blockArg = dyn_cast<BlockArgument>(val))) {
-    auto defOp = val.getDefiningOp();
-    if (!dyn_cast_if_present<arith::ExtFOp>(defOp) &&
-        !dyn_cast_if_present<arith::ExtSIOp>(defOp) &&
-        !dyn_cast_if_present<arith::ExtUIOp>(defOp)) {
-      return nullptr;
-    }
-    blockArg = dyn_cast<BlockArgument>(defOp->getOperand(0));
-  }
-  return blockArg;
-}
-
-/// Utility to match block body for matmul.
-static bool bodyMatcherForMatmul(Value yieldVal, Block *body) {
-  Operation *addOp = yieldVal.getDefiningOp();
-  if (!isa_and_present<arith::AddIOp, arith::AddFOp>(addOp)) {
-    return false;
-  }
-  Operation *mulOp = addOp->getOperand(1).getDefiningOp();
-  if (!isa_and_present<arith::MulIOp, arith::MulFOp>(mulOp)) {
-    return false;
-  }
-
-  BlockArgument lhsBlockArg = checkOptionalExtOps(mulOp->getOperand(0));
-  BlockArgument rhsBlockArg = checkOptionalExtOps(mulOp->getOperand(1));
-  BlockArgument outBlockArg = checkOptionalExtOps(addOp->getOperand(0));
-  if (!lhsBlockArg || !rhsBlockArg || !outBlockArg ||
-      lhsBlockArg.getOwner() != body || rhsBlockArg.getOwner() != body ||
-      outBlockArg.getOwner() != body || lhsBlockArg.getArgNumber() != 0 ||
-      rhsBlockArg.getArgNumber() != 1 || outBlockArg.getArgNumber() != 2) {
-    return false;
-  }
-  return true;
-}
-
-/// Utility to indentify whether a linalg op is a matmul op.
+/// Utility to identify whether a linalg op is a matmul op.
 bool isMatmul(linalg::LinalgOp linalgOp) {
   // Step 0. Test if the op itself is a linalg.matmul op.
   if (isa<linalg::MatmulOp>(linalgOp)) return true;
+  if (!isa<linalg::GenericOp>(linalgOp)) return false;
 
   // Step 1. Test the body of the generic to indeed be what we expect for a
   //         matmul.
   Block *body = linalgOp.getBlock();
   auto yieldOp = cast<linalg::YieldOp>(body->getTerminator());
   Value yieldVal = yieldOp.getOperand(0);
-  if (!bodyMatcherForMatmul(yieldVal, body)) {
-    return false;
-  }
+  if (!bodyMatcherForMatmulLikeOps(yieldVal, body)) return false;
 
   return match2DLinalgGenericMatmul(linalgOp) ||
          match4DLinalgGenericMatmul(linalgOp) ||
          match6DLinalgGenericMatmul(linalgOp);
 }
 
+/// Utility to identify whether a linalg op is a matmul_transpose_b op.
+bool isMatmulTransposeB(linalg::LinalgOp linalgOp) {
+  if (isa<linalg::MatmulTransposeBOp>(linalgOp)) return true;
+  if (!isa<linalg::GenericOp>(linalgOp)) return false;
+
+  ArrayAttr maps = linalgOp.getIndexingMaps();
+  if (!is2DMatmulLikeOp(linalgOp, maps)) return false;
+
+  uint32_t A = 0, B = 1, C = 2;
+  bool isBTransposed =
+      getAffineMapDim(maps, A, 0) == getAffineMapDim(maps, C, 0) &&  // M
+      getAffineMapDim(maps, B, 0) == getAffineMapDim(maps, C, 1) &&  // N
+      getAffineMapDim(maps, A, 1) == getAffineMapDim(maps, B, 1);    // K
+  return isBTransposed;
+}
+
 /// Utility to identify if the input operand has matmul-like op in its
 /// def-chain.
 bool isMatmulInDefChain(Value operand) {
   Operation *defOp = operand.getDefiningOp();
-  if (!defOp) {
-    return false;
-  }
+  if (!defOp) return false;
 
-  if (isa<arith::ConstantOp>(defOp)) {
-    return false;
-  }
+  if (isa<arith::ConstantOp>(defOp)) return false;
 
   if (auto defLinalgOp = dyn_cast_if_present<linalg::LinalgOp>(defOp)) {
-    if (isMatmul(defLinalgOp)) {
-      return true;
-    }
+    if (isMatmul(defLinalgOp)) return true;
   }
 
   // If something is being produced from a for/forall loop, we just assume it is
@@ -241,9 +261,7 @@ bool isMatmulInDefChain(Value operand) {
   }
 
   for (Value operand : defOp->getOperands()) {
-    if (isMatmulInDefChain(operand)) {
-      return true;
-    }
+    if (isMatmulInDefChain(operand)) return true;
   }
   return false;
 }
@@ -256,9 +274,7 @@ bool isMatmulProducerOfElementwise(linalg::LinalgOp linalgOp) {
   }
   // Check if any of the defining op is a matmul-like op.
   for (Value operand : linalgOp->getOperands()) {
-    if (isMatmulInDefChain(operand)) {
-      return true;
-    }
+    if (isMatmulInDefChain(operand)) return true;
   }
   return false;
 }
