@@ -97,24 +97,18 @@ static bool bodyMatcherForMatmulLikeOps(Value yieldVal, Block *body) {
   return true;
 }
 
-/// Utility to check if the given generic op is a 2D matmul-like op.
-static bool is2DMatmulLikeOp(linalg::LinalgOp genericOp,
-                             ArrayAttr indexingMaps) {
-  // Step 1. Check the body of the generic op.
-  Block *body = genericOp.getBlock();
-  auto yieldOp = cast<linalg::YieldOp>(body->getTerminator());
-  Value yieldVal = yieldOp.getOperand(0);
-  if (!bodyMatcherForMatmulLikeOps(yieldVal, body)) return false;
-
-  // Step 2. Check iterator types.
+/// Utility to check if the input generic op is a 2D matmul-like op.
+static bool is2DMatmulLikeOp(linalg::LinalgOp linalgOp) {
+  // Check iterator types.
   SmallVector<utils::IteratorType> matmulIteratorTypes = {
       utils::IteratorType::parallel, utils::IteratorType::parallel,
       utils::IteratorType::reduction};
   SmallVector<utils::IteratorType> opIteratorTypes =
-      genericOp.getIteratorTypesArray();
+      linalgOp.getIteratorTypesArray();
   if (matmulIteratorTypes != opIteratorTypes) return false;
 
-  // Step 3. Check the number of inputs and results from indexing maps.
+  // Check the number of inputs and results from indexing maps.
+  ArrayAttr indexingMaps = linalgOp.getIndexingMaps();
   if (indexingMaps.size() != 3) return false;
 
   AffineMap map0 = cast<AffineMapAttr>(indexingMaps[0]).getValue();
@@ -129,23 +123,8 @@ static bool is2DMatmulLikeOp(linalg::LinalgOp genericOp,
   return true;
 }
 
-/// Utility to match iterator type and indexing map for a linalg.generic that
-/// is basically implementing a matmul with 2D input/output operands.
-static bool match2DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
-  ArrayAttr maps = linalgOp.getIndexingMaps();
-  if (!is2DMatmulLikeOp(linalgOp, maps)) return false;
-
-  uint32_t A = 0, B = 1, C = 2;
-  bool isBTransposed =
-      getAffineMapDim(maps, A, 0) == getAffineMapDim(maps, C, 0) &&  // M
-      getAffineMapDim(maps, B, 1) == getAffineMapDim(maps, C, 1) &&  // N
-      getAffineMapDim(maps, A, 1) == getAffineMapDim(maps, B, 0);    // K
-  return isBTransposed;
-}
-
-/// Utility to match iterator type and indexing map for a linalg.generic that
-/// is basically implementing a matmul with 4D input/output operands.
-static bool match4DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
+/// Utility to check if the input generic op is a 4D matmul-like op.
+static bool is4DMatmulLikeOp(linalg::LinalgOp linalgOp) {
   // Check iterator types.
   SmallVector<utils::IteratorType> matmulIteratorTypes = {
       utils::IteratorType::parallel,  utils::IteratorType::parallel,
@@ -168,15 +147,11 @@ static bool match4DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
       map1.getNumInputs() != 6 || map2.getNumInputs() != 6) {
     return false;
   }
-
-  // Skip the exact indexingMaps matching, because there could be different
-  // dimension permutations caused by pack_transpose.
   return true;
 }
 
-/// Utility to match iterator type and indexing map for a linalg.generic that
-/// is basically implementing a matmul with 6D input/output operands.
-static bool match6DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
+/// Utility to check if the input generic op is a 6D matmul-like op.
+static bool is6DMatmulLikeOp(linalg::LinalgOp linalgOp) {
   // Check iterator types.
   SmallVector<utils::IteratorType> matmulIteratorTypes = {
       utils::IteratorType::parallel,  utils::IteratorType::parallel,
@@ -201,16 +176,15 @@ static bool match6DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
       map1.getNumInputs() != 9 || map2.getNumInputs() != 9) {
     return false;
   }
-
-  // Skip the exact indexingMaps matching, because there could be different
-  // dimension permutations caused by pack_transpose.
   return true;
 }
 
-/// Utility to identify whether a linalg op is a matmul op.
+/// Utility to identify whether a linalg op is a broad concept matmul op. Here
+/// we don't limit the number of operands in the input and outputs, but the
+/// innermost 3 dimensions must map exactly to a matmul.
 bool isMatmul(linalg::LinalgOp linalgOp) {
   // Step 0. Test if the op itself is a linalg.matmul op.
-  if (isa<linalg::MatmulOp>(linalgOp)) return true;
+  if (isa<linalg::MatmulOp, linalg::BatchMatmulOp>(linalgOp)) return true;
   if (!isa<linalg::GenericOp>(linalgOp)) return false;
 
   // Step 1. Test the body of the generic to indeed be what we expect for a
@@ -220,19 +194,38 @@ bool isMatmul(linalg::LinalgOp linalgOp) {
   Value yieldVal = yieldOp.getOperand(0);
   if (!bodyMatcherForMatmulLikeOps(yieldVal, body)) return false;
 
-  return match2DLinalgGenericMatmul(linalgOp) ||
-         match4DLinalgGenericMatmul(linalgOp) ||
-         match6DLinalgGenericMatmul(linalgOp);
+  // Step 2. Check the innermost 3 dimensions 'parallel, parallel, reduction'
+  //         map exactly to a matmul.
+  ArrayAttr maps = linalgOp.getIndexingMaps();
+  uint32_t A = 0, B = 1, C = 2;
+  bool isMatmul =
+      getAffineMapDim(maps, A, 0) == getAffineMapDim(maps, C, 0) &&  // M
+      getAffineMapDim(maps, B, 1) == getAffineMapDim(maps, C, 1) &&  // N
+      getAffineMapDim(maps, A, 1) == getAffineMapDim(maps, B, 0);    // K
+  return isMatmul;
 }
 
-/// Utility to identify whether a linalg op is a matmul_transpose_a op.
+/// Utility to identify whether a linalg op is a broad concept matmul with
+/// lhs matrix transposed. Here we don't limit the number of operands in the
+/// input and outputs, but the innermost 3 dimensions must map exactly to a
+/// matmul_transpose_a op.
 bool isMatmulTransposeA(linalg::LinalgOp linalgOp) {
-  if (isa<linalg::MatmulTransposeAOp>(linalgOp)) return true;
+  // Step 0. Test if the op itself is a linalg.matmul_transpose_a op.
+  if (isa<linalg::MatmulTransposeAOp, linalg::BatchMatmulTransposeAOp>(
+          linalgOp))
+    return true;
   if (!isa<linalg::GenericOp>(linalgOp)) return false;
 
-  ArrayAttr maps = linalgOp.getIndexingMaps();
-  if (!is2DMatmulLikeOp(linalgOp, maps)) return false;
+  // Step 1. Test the body of the generic to indeed be what we expect for a
+  //         matmul.
+  Block *body = linalgOp.getBlock();
+  auto yieldOp = cast<linalg::YieldOp>(body->getTerminator());
+  Value yieldVal = yieldOp.getOperand(0);
+  if (!bodyMatcherForMatmulLikeOps(yieldVal, body)) return false;
 
+  // Step 2. Check the innermost 3 dimensions 'parallel, parallel, reduction'
+  //         map exactly to a matmul_transpose_a.
+  ArrayAttr maps = linalgOp.getIndexingMaps();
   uint32_t A = 0, B = 1, C = 2;
   bool isATransposed =
       getAffineMapDim(maps, A, 1) == getAffineMapDim(maps, C, 0) &&  // M
@@ -241,14 +234,27 @@ bool isMatmulTransposeA(linalg::LinalgOp linalgOp) {
   return isATransposed;
 }
 
-/// Utility to identify whether a linalg op is a matmul_transpose_b op.
+/// Utility to identify whether a linalg op is a broad concept matmul with
+/// rhs matrix transposed. Here we don't limit the number of operands in the
+/// input and outputs, but the innermost 3 dimensions must map exactly to a
+/// matmul_transpose_b op.
 bool isMatmulTransposeB(linalg::LinalgOp linalgOp) {
-  if (isa<linalg::MatmulTransposeBOp>(linalgOp)) return true;
+  // Step 0. Test if the op itself is a linalg.matmul_transpose_b op.
+  if (isa<linalg::MatmulTransposeBOp, linalg::BatchMatmulTransposeBOp>(
+          linalgOp))
+    return true;
   if (!isa<linalg::GenericOp>(linalgOp)) return false;
 
-  ArrayAttr maps = linalgOp.getIndexingMaps();
-  if (!is2DMatmulLikeOp(linalgOp, maps)) return false;
+  // Step 1. Test the body of the generic to indeed be what we expect for a
+  //         matmul.
+  Block *body = linalgOp.getBlock();
+  auto yieldOp = cast<linalg::YieldOp>(body->getTerminator());
+  Value yieldVal = yieldOp.getOperand(0);
+  if (!bodyMatcherForMatmulLikeOps(yieldVal, body)) return false;
 
+  // Step 2. Check the innermost 3 dimensions 'parallel, parallel, reduction'
+  //         map exactly to a matmul_transpose_a.
+  ArrayAttr maps = linalgOp.getIndexingMaps();
   uint32_t A = 0, B = 1, C = 2;
   bool isBTransposed =
       getAffineMapDim(maps, A, 0) == getAffineMapDim(maps, C, 0) &&  // M

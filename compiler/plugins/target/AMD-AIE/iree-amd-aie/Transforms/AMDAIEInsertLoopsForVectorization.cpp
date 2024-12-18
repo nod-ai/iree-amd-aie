@@ -197,27 +197,12 @@ class AMDAIEInsertLoopsForVectorizationPass
     if (!linalg::isReductionIterator(iteratorTypes[iteratorTypes.size() - 1]))
       return failure();
 
-    // Check that the 'parallel, parallel, reduction' map exactly to a matmul,
-    // or a matmul_transpose_b.
-    {
-      auto indexingMaps = genericOp.getIndexingMaps();
-      assert(indexingMaps.size() == 3 && "expected 3 indexing maps here");
-      auto getDim = [&](uint32_t mapIndex, uint32_t matMulIndex) {
-        auto aMap = cast<AffineMapAttr>(indexingMaps[mapIndex]).getValue();
-        auto nResults = aMap.getNumResults();
-        return aMap.getResult(nResults - 2 + matMulIndex);
-      };
-      uint32_t A = 0, B = 1, C = 2;
+    // Check that the innermost 'parallel, parallel, reduction' map exactly to
+    // a matmul / matmul_transpose_a / matmul_transpose_b.
 
-      auto isMatmul = getDim(A, 0) == getDim(C, 0) &&  // M
-                      getDim(B, 1) == getDim(C, 1) &&  // N
-                      getDim(A, 1) == getDim(B, 0);    // K
-
-      auto isMatmulTransposeB = getDim(A, 0) == getDim(C, 0) &&  // M
-                                getDim(B, 0) == getDim(C, 1) &&  // N
-                                getDim(A, 1) == getDim(B, 1);    // K
-
-      if (!isMatmul && !isMatmulTransposeB) return failure();
+    if (!isMatmul(genericOp) && !isMatmulTransposeA(genericOp) &&
+        !isMatmulTransposeB(genericOp)) {
+      return failure();
     }
 
     if (enableCollapsingUnitDims) collapseUnitDims(rewriter, genericOp);
