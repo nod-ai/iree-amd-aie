@@ -120,14 +120,39 @@ LogicalResult combineAccessPatterns(RewriterBase &rewriter,
 /// number of max sizes might exceed the number of sizes and the other way
 /// around, BUT after canonicalization, the number of sizes should be smaller or
 /// equal to the number of max sizes (if specified).
-LogicalResult foldLinearDims(MLIRContext *ctx,
-                             const SmallVector<OpFoldResult> &offsets,
-                             const SmallVector<OpFoldResult> &sizes,
-                             const SmallVector<OpFoldResult> &strides,
-                             SmallVector<OpFoldResult> &newOffsets,
-                             SmallVector<OpFoldResult> &newSizes,
-                             SmallVector<OpFoldResult> &newStrides,
-                             ArrayRef<int64_t> maxSizes = {});
+LogicalResult foldLinearDims(
+    MLIRContext *ctx, const SmallVector<OpFoldResult> &offsets,
+    const SmallVector<OpFoldResult> &sizes,
+    const SmallVector<OpFoldResult> &strides,
+    SmallVector<OpFoldResult> &newOffsets, SmallVector<OpFoldResult> &newSizes,
+    SmallVector<OpFoldResult> &newStrides,
+    function_ref<bool(size_t, int64_t)> checkValidSize =
+        [](size_t idxFromEnd, int64_t size) { return true; });
+
+/// Utility to fold a provided repetition count from the front of the access
+/// pattern (dimensions with `size > 1` and `stride == 0` indicate a
+/// repetition). This function fails if the access pattern doesn't have the
+/// provided repetition count at the front.
+///
+/// This transformation is useful for circular DMA operations that don't need
+/// the repetition count to be specified. Note however that not all repetition
+/// dimensions are necessarily completely removed as that could potentially
+/// invalidate the DMA operation as part of the repetition could be operating on
+/// the same data slice, while part could be operating on a new data slice. This
+/// function doesn't make any assumption on that, but that's the reason why an
+/// optional repetition count can be passed.
+///
+/// Example:
+///
+/// sizes: [32, 8], strides: [0, 1], repetitionCount: 16
+///
+/// will be transformed into:
+///
+/// sizes: [2, 8], strides: [0, 1]
+LogicalResult foldRepetitionCount(
+    MLIRContext *ctx, SmallVector<OpFoldResult> &sizes,
+    SmallVector<OpFoldResult> &strides,
+    std::optional<int64_t> maybeRepetitionCount = std::nullopt);
 
 /// Fold single dimension linear accesses and make them implicit. `This
 /// operation happens in place. Returns `success` if folding took place.
@@ -198,35 +223,64 @@ struct DmaDimConfig {
   uint8_t maxNbDims{0};
   /// The number of `inter` addressing dimensions on of the DMA.
   uint8_t nbInterDims{0};
+  /// The number of `intra` addressing dimensions on of the DMA.
+  uint8_t nbIntraDims{0};
 
   DmaDimConfig(const AMDAIE::AMDAIEDeviceModel &deviceModel, uint8_t memSpace)
       : deviceModel(deviceModel) {
     if (memSpace == 0) {
-      uint8_t shimNbIntraDims = deviceModel.getDmaProp<uint8_t>(
+      nbIntraDims = deviceModel.getDmaProp<uint8_t>(
           AMDAIE::AMDAIETileType::SHIMNOC, AMDAIE::AMDAIEDmaProp::NumAddrDim);
       tileType = AMDAIE::AMDAIETileType::SHIMNOC;
       nbInterDims = deviceModel.deviceConfig.dmaNbInterDims;
-      maxNbDims = shimNbIntraDims + nbInterDims;
+      maxNbDims = nbIntraDims + nbInterDims;
     } else if (memSpace == 1) {
-      uint8_t memTileNbIntraDims = deviceModel.getDmaProp<uint8_t>(
+      nbIntraDims = deviceModel.getDmaProp<uint8_t>(
           AMDAIE::AMDAIETileType::MEMTILE, AMDAIE::AMDAIEDmaProp::NumAddrDim);
       tileType = AMDAIE::AMDAIETileType::MEMTILE;
-      maxNbDims = memTileNbIntraDims;
+      maxNbDims = nbIntraDims;
     } else if (memSpace == 2) {
-      uint8_t coreNbIntraDims = deviceModel.getDmaProp<uint8_t>(
+      nbIntraDims = deviceModel.getDmaProp<uint8_t>(
           AMDAIE::AMDAIETileType::AIETILE, AMDAIE::AMDAIEDmaProp::NumAddrDim);
       tileType = AMDAIE::AMDAIETileType::AIETILE;
-      maxNbDims = coreNbIntraDims;
+      maxNbDims = nbIntraDims;
     } else {
       assert(false && "unsupported memspace: ");
     }
   }
+  virtual ~DmaDimConfig(){};
+
+  bool isValidAccessPattern(ArrayRef<int64_t> sizes,
+                            ArrayRef<int64_t> strides) const;
 
   /// Return a vector containing the max size values for every dimension.
-  SmallVector<int64_t> getMaxSizes() const;
+  virtual SmallVector<int64_t> getMaxSizes(
+      std::optional<size_t> maybeNbDims = std::nullopt) const;
 
   /// Return a vector containing the max stride values for every dimension.
-  SmallVector<int64_t> getMaxStrides() const;
+  virtual SmallVector<int64_t> getMaxStrides(
+      std::optional<size_t> maybeNbDims = std::nullopt) const;
+
+  virtual bool exceedsNbDims(size_t dims) const { return dims > maxNbDims; }
+};
+
+/// Contains utility DMA information for circular DMA operations which is
+/// calculated based on AMDAIEDeviceModel information.
+struct CircularDmaDimConfig final : public DmaDimConfig {
+  CircularDmaDimConfig(const AMDAIE::AMDAIEDeviceModel &deviceModel,
+                       uint8_t memSpace)
+      : DmaDimConfig(deviceModel, memSpace) {}
+
+  SmallVector<int64_t> getMaxSizes(
+      std::optional<size_t> maybeNbDims = std::nullopt) const;
+
+  SmallVector<int64_t> getMaxStrides(
+      std::optional<size_t> maybeNbDims = std::nullopt) const;
+
+  bool exceedsNbDims(size_t dims) const {
+    // Allow any number of dimensions for circular DMAs.
+    return false;
+  }
 };
 
 /// Utility to move the synchronization users (`amdaie.npu.dma_wait`) directly

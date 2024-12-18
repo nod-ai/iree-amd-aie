@@ -349,14 +349,19 @@ class FoldTest : public ::testing::Test {
     SmallVector<OpFoldResult> newOffsets;
     SmallVector<OpFoldResult> newSizes;
     SmallVector<OpFoldResult> newStrides;
+    auto isValidSize = [&](size_t idxFromEnd, int64_t size) -> bool {
+      if (maxSizes.empty()) return true;
+      return idxFromEnd < maxSizes.size() &&
+             size <= maxSizes[maxSizes.size() - idxFromEnd - 1];
+    };
     if (shouldSucceed) {
       EXPECT_TRUE(succeeded(foldLinearDims(&context, offsetsValues, sizesValues,
                                            stridesValues, newOffsets, newSizes,
-                                           newStrides, maxSizes)));
+                                           newStrides, isValidSize)));
     } else {
       EXPECT_TRUE(failed(foldLinearDims(&context, offsetsValues, sizesValues,
                                         stridesValues, newOffsets, newSizes,
-                                        newStrides, maxSizes)));
+                                        newStrides, isValidSize)));
     }
     EXPECT_EQ(newOffsets, expectedOffsetsValues);
     EXPECT_EQ(newSizes, expectedSizesValues);
@@ -393,6 +398,29 @@ class FoldTest : public ::testing::Test {
       EXPECT_TRUE(failed(foldUnitDims(&context, offsetsValues, sizesValues,
                                       stridesValues, newOffsets, newSizes,
                                       newStrides)));
+    }
+  }
+
+  void checkFoldRepetitionCount(
+      const SmallVector<int64_t> sizes, const SmallVector<int64_t> strides,
+      const SmallVector<int64_t> expectedSizes,
+      const SmallVector<int64_t> expectedStrides,
+      std::optional<int64_t> maybeRepetitionCount = std::nullopt,
+      bool shouldSucceed = true) {
+    SmallVector<OpFoldResult> sizesValues = toOpFoldResult(sizes);
+    SmallVector<OpFoldResult> stridesValues = toOpFoldResult(strides);
+    SmallVector<OpFoldResult> expectedSizesValues =
+        toOpFoldResult(expectedSizes);
+    SmallVector<OpFoldResult> expectedStridesValues =
+        toOpFoldResult(expectedStrides);
+    if (shouldSucceed) {
+      EXPECT_TRUE(succeeded(foldRepetitionCount(
+          &context, sizesValues, stridesValues, maybeRepetitionCount)));
+      EXPECT_EQ(sizesValues, expectedSizesValues);
+      EXPECT_EQ(stridesValues, expectedStridesValues);
+    } else {
+      EXPECT_TRUE(failed(foldRepetitionCount(
+          &context, sizesValues, stridesValues, maybeRepetitionCount)));
     }
   }
 
@@ -473,43 +501,302 @@ TEST_F(FoldTest, UnitDimsFoldAndMerge) {
                     {1, 8}, {1024, 1}, true);
 }
 
+TEST_F(FoldTest, FoldRepetitionCount) {
+  checkFoldRepetitionCount({2}, {0}, {1}, {0});
+  checkFoldRepetitionCount({2}, {0}, {1}, {0}, 2);
+  checkFoldRepetitionCount({4, 3}, {0, 1}, {2, 3}, {0, 1}, 2);
+  checkFoldRepetitionCount({4, 3}, {0, 0}, {2, 3}, {0, 0}, 2);
+  checkFoldRepetitionCount({4, 3}, {0, 0}, {1, 1}, {0, 0});
+  checkFoldRepetitionCount({4, 3}, {0, 0}, {1, 1}, {0, 0}, 12);
+  checkFoldRepetitionCount({4, 6, 4}, {0, 0, 1}, {1, 1, 4}, {0, 0, 1});
+  checkFoldRepetitionCount({4, 6, 4}, {0, 0, 1}, {2, 6, 4}, {0, 0, 1}, 2);
+  checkFoldRepetitionCount({4, 6, 4}, {0, 0, 1}, {1, 6, 4}, {0, 0, 1}, 4);
+  checkFoldRepetitionCount({4, 6, 4}, {0, 0, 1}, {1, 3, 4}, {0, 0, 1}, 8);
+  checkFoldRepetitionCount({4, 6, 4}, {0, 0, 1}, {1, 2, 4}, {0, 0, 1}, 12);
+  checkFoldRepetitionCount({4, 6, 4}, {0, 0, 1}, {1, 1, 4}, {0, 0, 1}, 24);
+}
+
+TEST_F(FoldTest, NoFoldRepetitionCount) {
+  checkFoldRepetitionCount({}, {}, {}, {});
+  checkFoldRepetitionCount({}, {}, {}, {}, 1);
+  checkFoldRepetitionCount({2}, {1}, {2}, {1});
+  checkFoldRepetitionCount({2}, {1}, {2}, {1}, 1);
+  checkFoldRepetitionCount({4, 2}, {8, 1}, {4, 2}, {8, 1});
+  checkFoldRepetitionCount({4, 2}, {8, 1}, {4, 2}, {8, 1}, 1);
+  checkFoldRepetitionCount({4, 2}, {0, 1}, {4, 2}, {0, 1}, 1);
+}
+
+TEST_F(FoldTest, FoldRepetitionCountFail) {
+  checkFoldRepetitionCount({}, {}, {}, {}, 2, false);
+  checkFoldRepetitionCount({1}, {1}, {}, {}, 2, false);
+  checkFoldRepetitionCount({3}, {0}, {}, {}, 2, false);
+  checkFoldRepetitionCount({4, 3}, {0, 0}, {1, 1}, {0, 0}, 8, false);
+  checkFoldRepetitionCount({4, 3}, {0, 0}, {1, 1}, {0, 0}, 24, false);
+  checkFoldRepetitionCount({4, 6, 4}, {0, 0, 1}, {1, 2, 4}, {0, 0, 1}, 7,
+                           false);
+  checkFoldRepetitionCount({4, 6, 4}, {0, 0, 1}, {1, 2, 4}, {0, 0, 1}, 16,
+                           false);
+  checkFoldRepetitionCount({4, 6, 4}, {0, 0, 1}, {1, 2, 4}, {0, 0, 1}, 48,
+                           false);
+}
+
 class DmaDimConfigTest : public testing::TestWithParam<AMDAIEDevice> {
  protected:
   DmaDimConfigTest() : deviceModel(getDeviceModel(GetParam())) {}
   AMDAIEDeviceModel deviceModel;
 };
 
-TEST_P(DmaDimConfigTest, ShimTile) {
+TEST_P(DmaDimConfigTest, ShimTileSizes) {
   DmaDimConfig config(deviceModel, 0);
   SmallVector<int64_t> maxSizes = config.getMaxSizes();
   SmallVector<int64_t> expectedMaxSizes = {
       63, std::numeric_limits<int64_t>::max(), 1023, 1023};
   EXPECT_EQ(maxSizes, expectedMaxSizes);
+  EXPECT_EQ(config.getMaxSizes(1),
+            SmallVector<int64_t>{std::numeric_limits<int64_t>::max()});
+  SmallVector<int64_t> expectedMaxSizes2 = {std::numeric_limits<int64_t>::max(),
+                                            1023};
+  EXPECT_EQ(config.getMaxSizes(2), expectedMaxSizes2);
+  SmallVector<int64_t> expectedMaxSizes3 = {std::numeric_limits<int64_t>::max(),
+                                            1023, 1023};
+  EXPECT_EQ(config.getMaxSizes(3), expectedMaxSizes3);
+  EXPECT_EQ(config.getMaxSizes(4), expectedMaxSizes);
+  SmallVector<int64_t> expectedMaxSizes5 = {
+      0, 63, std::numeric_limits<int64_t>::max(), 1023, 1023};
+  EXPECT_EQ(config.getMaxSizes(5), expectedMaxSizes5);
+  SmallVector<int64_t> expectedMaxSizes6 = {
+      0, 0, 63, std::numeric_limits<int64_t>::max(), 1023, 1023};
+  EXPECT_EQ(config.getMaxSizes(6), expectedMaxSizes6);
+}
+
+TEST_P(DmaDimConfigTest, ShimTileStrides) {
+  DmaDimConfig config(deviceModel, 0);
   SmallVector<int64_t> maxStrides = config.getMaxStrides();
   SmallVector<int64_t> expectedMaxStrides(4, 1 << 20);
   EXPECT_EQ(maxStrides, expectedMaxStrides);
+  EXPECT_EQ(config.getMaxStrides(1), SmallVector<int64_t>{1 << 20});
+  SmallVector<int64_t> expectedMaxStrides2 = {1 << 20, 1 << 20};
+  EXPECT_EQ(config.getMaxStrides(2), expectedMaxStrides2);
+  SmallVector<int64_t> expectedMaxStrides3 = {1 << 20, 1 << 20, 1 << 20};
+  EXPECT_EQ(config.getMaxStrides(3), expectedMaxStrides3);
+  SmallVector<int64_t> expectedMaxStrides4 = {1 << 20, 1 << 20, 1 << 20,
+                                              1 << 20};
+  EXPECT_EQ(config.getMaxStrides(4), expectedMaxStrides4);
+  SmallVector<int64_t> expectedMaxStrides5 = {0, 1 << 20, 1 << 20, 1 << 20,
+                                              1 << 20};
+  EXPECT_EQ(config.getMaxStrides(5), expectedMaxStrides5);
+  SmallVector<int64_t> expectedMaxStrides6 = {0,       0,       1 << 20,
+                                              1 << 20, 1 << 20, 1 << 20};
+  EXPECT_EQ(config.getMaxStrides(6), expectedMaxStrides6);
 }
 
-TEST_P(DmaDimConfigTest, MemTile) {
+TEST_P(DmaDimConfigTest, MemTileSizes) {
   DmaDimConfig config(deviceModel, 1);
   SmallVector<int64_t> maxSizes = config.getMaxSizes();
   SmallVector<int64_t> expectedMaxSizes = {std::numeric_limits<int64_t>::max(),
                                            1023, 1023, 1023};
   EXPECT_EQ(maxSizes, expectedMaxSizes);
+  EXPECT_EQ(config.getMaxSizes(1),
+            SmallVector<int64_t>{std::numeric_limits<int64_t>::max()});
+  SmallVector<int64_t> expectedMaxSizes2 = {std::numeric_limits<int64_t>::max(),
+                                            1023};
+  EXPECT_EQ(config.getMaxSizes(2), expectedMaxSizes2);
+  SmallVector<int64_t> expectedMaxSizes3 = {std::numeric_limits<int64_t>::max(),
+                                            1023, 1023};
+  EXPECT_EQ(config.getMaxSizes(3), expectedMaxSizes3);
+  EXPECT_EQ(config.getMaxSizes(4), expectedMaxSizes);
+  SmallVector<int64_t> expectedMaxSizes5 = {
+      0, std::numeric_limits<int64_t>::max(), 1023, 1023, 1023};
+  EXPECT_EQ(config.getMaxSizes(5), expectedMaxSizes5);
+  SmallVector<int64_t> expectedMaxSizes6 = {
+      0, 0, std::numeric_limits<int64_t>::max(), 1023, 1023, 1023};
+  EXPECT_EQ(config.getMaxSizes(6), expectedMaxSizes6);
+}
+
+TEST_P(DmaDimConfigTest, MemTileStrides) {
+  DmaDimConfig config(deviceModel, 1);
   SmallVector<int64_t> maxStrides = config.getMaxStrides();
   SmallVector<int64_t> expectedMaxStrides(4, 1 << 17);
   EXPECT_EQ(maxStrides, expectedMaxStrides);
+  EXPECT_EQ(config.getMaxStrides(1), SmallVector<int64_t>{1 << 17});
+  SmallVector<int64_t> expectedMaxStrides2(2, 1 << 17);
+  EXPECT_EQ(config.getMaxStrides(2), expectedMaxStrides2);
+  SmallVector<int64_t> expectedMaxStrides3(3, 1 << 17);
+  EXPECT_EQ(config.getMaxStrides(3), expectedMaxStrides3);
+  EXPECT_EQ(config.getMaxStrides(4), expectedMaxStrides);
+  SmallVector<int64_t> expectedMaxStrides5 = {0, 1 << 17, 1 << 17, 1 << 17,
+                                              1 << 17};
+  EXPECT_EQ(config.getMaxStrides(5), expectedMaxStrides5);
+  SmallVector<int64_t> expectedMaxStrides6 = {0,       0,       1 << 17,
+                                              1 << 17, 1 << 17, 1 << 17};
+  EXPECT_EQ(config.getMaxStrides(6), expectedMaxStrides6);
 }
 
-TEST_P(DmaDimConfigTest, CoreTile) {
+TEST_P(DmaDimConfigTest, CoreTileSizes) {
   DmaDimConfig config(deviceModel, 2);
   SmallVector<int64_t> maxSizes = config.getMaxSizes();
   SmallVector<int64_t> expectedMaxSizes = {std::numeric_limits<int64_t>::max(),
                                            255, 255};
   EXPECT_EQ(maxSizes, expectedMaxSizes);
+  EXPECT_EQ(config.getMaxSizes(1),
+            SmallVector<int64_t>{std::numeric_limits<int64_t>::max()});
+  SmallVector<int64_t> expectedMaxSizes2 = {std::numeric_limits<int64_t>::max(),
+                                            255};
+  EXPECT_EQ(config.getMaxSizes(2), expectedMaxSizes2);
+  EXPECT_EQ(config.getMaxSizes(3), expectedMaxSizes);
+  SmallVector<int64_t> expectedMaxSizes4 = {
+      0, std::numeric_limits<int64_t>::max(), 255, 255};
+  EXPECT_EQ(config.getMaxSizes(4), expectedMaxSizes4);
+  SmallVector<int64_t> expectedMaxSizes5 = {
+      0, 0, std::numeric_limits<int64_t>::max(), 255, 255};
+  EXPECT_EQ(config.getMaxSizes(5), expectedMaxSizes5);
+}
+
+TEST_P(DmaDimConfigTest, CoreTileStrides) {
+  DmaDimConfig config(deviceModel, 2);
   SmallVector<int64_t> maxStrides = config.getMaxStrides();
   SmallVector<int64_t> expectedMaxStrides(3, 1 << 13);
   EXPECT_EQ(maxStrides, expectedMaxStrides);
+  EXPECT_EQ(config.getMaxStrides(1), SmallVector<int64_t>{1 << 13});
+  SmallVector<int64_t> expectedMaxStrides2(2, 1 << 13);
+  EXPECT_EQ(config.getMaxStrides(2), expectedMaxStrides2);
+  EXPECT_EQ(config.getMaxStrides(3), expectedMaxStrides);
+  SmallVector<int64_t> expectedMaxStrides4 = {0, 1 << 13, 1 << 13, 1 << 13};
+  EXPECT_EQ(config.getMaxStrides(4), expectedMaxStrides4);
+  SmallVector<int64_t> expectedMaxStrides5 = {0, 0, 1 << 13, 1 << 13, 1 << 13};
+  EXPECT_EQ(config.getMaxStrides(5), expectedMaxStrides5);
+}
+
+TEST_P(DmaDimConfigTest, CircularShimTileSizes) {
+  CircularDmaDimConfig config(deviceModel, 0);
+  SmallVector<int64_t> maxSizes = config.getMaxSizes();
+  SmallVector<int64_t> expectedMaxSizes = {std::numeric_limits<int64_t>::max(),
+                                           std::numeric_limits<int64_t>::max(),
+                                           1023, 1023};
+  EXPECT_EQ(maxSizes, expectedMaxSizes);
+  EXPECT_EQ(config.getMaxSizes(1),
+            SmallVector<int64_t>{std::numeric_limits<int64_t>::max()});
+  SmallVector<int64_t> expectedMaxSizes2 = {std::numeric_limits<int64_t>::max(),
+                                            1023};
+  EXPECT_EQ(config.getMaxSizes(2), expectedMaxSizes2);
+  SmallVector<int64_t> expectedMaxSizes3 = {std::numeric_limits<int64_t>::max(),
+                                            1023, 1023};
+  EXPECT_EQ(config.getMaxSizes(3), expectedMaxSizes3);
+  EXPECT_EQ(config.getMaxSizes(4), expectedMaxSizes);
+  SmallVector<int64_t> expectedMaxSizes5 = {
+      std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max(),
+      std::numeric_limits<int64_t>::max(), 1023, 1023};
+  EXPECT_EQ(config.getMaxSizes(5), expectedMaxSizes5);
+}
+
+TEST_P(DmaDimConfigTest, CircularShimTileStrides) {
+  CircularDmaDimConfig config(deviceModel, 0);
+  SmallVector<int64_t> maxStrides = config.getMaxStrides();
+  SmallVector<int64_t> expectedMaxStrides = {
+      std::numeric_limits<int64_t>::max(), 1 << 20, 1 << 20, 1 << 20};
+  EXPECT_EQ(maxStrides, expectedMaxStrides);
+  EXPECT_EQ(config.getMaxStrides(1), SmallVector<int64_t>{1 << 20});
+  SmallVector<int64_t> expectedMaxStrides2(2, 1 << 20);
+  EXPECT_EQ(config.getMaxStrides(2), expectedMaxStrides2);
+  SmallVector<int64_t> expectedMaxStrides3(3, 1 << 20);
+  EXPECT_EQ(config.getMaxStrides(3), expectedMaxStrides3);
+  EXPECT_EQ(config.getMaxStrides(4), expectedMaxStrides);
+  SmallVector<int64_t> expectedMaxStrides5 = {
+      std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max(),
+      1 << 20, 1 << 20, 1 << 20};
+  EXPECT_EQ(config.getMaxStrides(5), expectedMaxStrides5);
+}
+
+TEST_P(DmaDimConfigTest, CircularMemTileSizes) {
+  CircularDmaDimConfig config(deviceModel, 1);
+  SmallVector<int64_t> maxSizes = config.getMaxSizes();
+  SmallVector<int64_t> expectedMaxSizes = {std::numeric_limits<int64_t>::max(),
+                                           1023, 1023, 1023};
+  EXPECT_EQ(maxSizes, expectedMaxSizes);
+  EXPECT_EQ(config.getMaxSizes(1),
+            SmallVector<int64_t>{std::numeric_limits<int64_t>::max()});
+  SmallVector<int64_t> expectedMaxSizes2 = {std::numeric_limits<int64_t>::max(),
+                                            1023};
+  EXPECT_EQ(config.getMaxSizes(2), expectedMaxSizes2);
+  SmallVector<int64_t> expectedMaxSizes3 = {std::numeric_limits<int64_t>::max(),
+                                            1023, 1023};
+  EXPECT_EQ(config.getMaxSizes(3), expectedMaxSizes3);
+  EXPECT_EQ(config.getMaxSizes(4), expectedMaxSizes);
+  SmallVector<int64_t> expectedMaxSizes5 = {std::numeric_limits<int64_t>::max(),
+                                            std::numeric_limits<int64_t>::max(),
+                                            1023, 1023, 1023};
+  EXPECT_EQ(config.getMaxSizes(5), expectedMaxSizes5);
+  SmallVector<int64_t> expectedMaxSizes6 = {std::numeric_limits<int64_t>::max(),
+                                            std::numeric_limits<int64_t>::max(),
+                                            std::numeric_limits<int64_t>::max(),
+                                            1023,
+                                            1023,
+                                            1023};
+  EXPECT_EQ(config.getMaxSizes(6), expectedMaxSizes6);
+}
+
+TEST_P(DmaDimConfigTest, CircularMemTileStrides) {
+  CircularDmaDimConfig config(deviceModel, 1);
+  SmallVector<int64_t> maxStrides = config.getMaxStrides();
+  SmallVector<int64_t> expectedMaxStrides(4, 1 << 17);
+  EXPECT_EQ(maxStrides, expectedMaxStrides);
+  EXPECT_EQ(config.getMaxStrides(1), SmallVector<int64_t>{1 << 17});
+  SmallVector<int64_t> expectedMaxStrides2(2, 1 << 17);
+  EXPECT_EQ(config.getMaxStrides(2), expectedMaxStrides2);
+  SmallVector<int64_t> expectedMaxStrides3(3, 1 << 17);
+  EXPECT_EQ(config.getMaxStrides(3), expectedMaxStrides3);
+  EXPECT_EQ(config.getMaxStrides(4), expectedMaxStrides);
+  SmallVector<int64_t> expectedMaxStrides5 = {
+      std::numeric_limits<int64_t>::max(), 1 << 17, 1 << 17, 1 << 17, 1 << 17};
+  EXPECT_EQ(config.getMaxStrides(5), expectedMaxStrides5);
+  SmallVector<int64_t> expectedMaxStrides6 = {
+      std::numeric_limits<int64_t>::max(),
+      std::numeric_limits<int64_t>::max(),
+      1 << 17,
+      1 << 17,
+      1 << 17,
+      1 << 17};
+  EXPECT_EQ(config.getMaxStrides(6), expectedMaxStrides6);
+}
+
+TEST_P(DmaDimConfigTest, CircularCoreTileSizes) {
+  CircularDmaDimConfig config(deviceModel, 2);
+  SmallVector<int64_t> maxSizes = config.getMaxSizes();
+  SmallVector<int64_t> expectedMaxSizes = {std::numeric_limits<int64_t>::max(),
+                                           255, 255};
+  EXPECT_EQ(maxSizes, expectedMaxSizes);
+  EXPECT_EQ(config.getMaxSizes(1),
+            SmallVector<int64_t>{std::numeric_limits<int64_t>::max()});
+  SmallVector<int64_t> expectedMaxSizes2 = {std::numeric_limits<int64_t>::max(),
+                                            255};
+  EXPECT_EQ(config.getMaxSizes(2), expectedMaxSizes2);
+  EXPECT_EQ(config.getMaxSizes(3), expectedMaxSizes);
+  SmallVector<int64_t> expectedMaxSizes4 = {std::numeric_limits<int64_t>::max(),
+                                            std::numeric_limits<int64_t>::max(),
+                                            255, 255};
+  EXPECT_EQ(config.getMaxSizes(4), expectedMaxSizes4);
+  SmallVector<int64_t> expectedMaxSizes5 = {
+      std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max(),
+      std::numeric_limits<int64_t>::max(), 255, 255};
+  EXPECT_EQ(config.getMaxSizes(5), expectedMaxSizes5);
+}
+
+TEST_P(DmaDimConfigTest, CircularCoreTileStrides) {
+  CircularDmaDimConfig config(deviceModel, 2);
+  SmallVector<int64_t> maxStrides = config.getMaxStrides();
+  SmallVector<int64_t> expectedMaxStrides(3, 1 << 13);
+  EXPECT_EQ(maxStrides, expectedMaxStrides);
+  EXPECT_EQ(config.getMaxStrides(1), SmallVector<int64_t>{1 << 13});
+  SmallVector<int64_t> expectedMaxStrides2(2, 1 << 13);
+  EXPECT_EQ(config.getMaxStrides(2), expectedMaxStrides2);
+  EXPECT_EQ(config.getMaxStrides(3), expectedMaxStrides);
+  SmallVector<int64_t> expectedMaxStrides4 = {
+      std::numeric_limits<int64_t>::max(), 1 << 13, 1 << 13, 1 << 13};
+  EXPECT_EQ(config.getMaxStrides(4), expectedMaxStrides4);
+  SmallVector<int64_t> expectedMaxStrides5 = {
+      std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max(),
+      1 << 13, 1 << 13, 1 << 13};
+  EXPECT_EQ(config.getMaxStrides(5), expectedMaxStrides5);
 }
 
 INSTANTIATE_TEST_SUITE_P(
