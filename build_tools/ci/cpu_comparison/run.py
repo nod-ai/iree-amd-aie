@@ -334,7 +334,6 @@ class Matmul(BaseMatmul):
             self.name += "_ukernel"
         if additional_labels:
             self.labels += additional_labels
-        self.use_ukernel = use_ukernel
 
     def _execute(self, config):
         matmul_template_dir = config.file_dir / "matmul_template"
@@ -395,7 +394,6 @@ class MatmulBenchmark(BaseMatmul):
         self.labels.append("MatmulBenchmark")
         if additional_labels:
             self.labels += additional_labels
-        self.use_ukernel = use_ukernel
 
     def _execute(self, config):
         matmul_template_dir = config.file_dir / "matmul_template"
@@ -416,21 +414,34 @@ class MatmulTransposeB(BaseMatmul):
         K,
         input_type,
         acc_type,
+        name_suffix="",
         use_ukernel=False,
         run_on_target=["npu1_4col"],
+        additional_labels=None,
+        aie_compilation_flags=None,
+        n_repeats=1,
     ):
         super().__init__(
             run_on_target=run_on_target,
-            aie_compilation_flags=None,
+            aie_compilation_flags=aie_compilation_flags,
             M=M,
             N=N,
             K=K,
             input_type=input_type,
             acc_type=acc_type,
+            use_ukernel=use_ukernel,
+            function_name="matmul_transpose_b",
+            n_repeats=n_repeats,
         )
         self.labels.append("MatmulTransposeB")
 
         self.name = f"matmul_transpose_b_{M}_{N}_{K}_{input_type}_{acc_type}"
+        if name_suffix:
+            self.name += f"_{name_suffix}"
+        if use_ukernel:
+            self.name += "_ukernel"
+        if additional_labels:
+            self.labels += additional_labels
 
     def _execute(self, config):
         matmul_template_dir = config.file_dir / "matmul_template"
@@ -439,6 +450,65 @@ class MatmulTransposeB(BaseMatmul):
         self.vs_cpu(config)
 
         return True
+
+
+class MatmulTransposeBBenchmark(BaseMatmul):
+    """
+    A test of the form matmul_transpose_b(A,B) where A:MxK, B:NxK
+    """
+
+    benchmark_compilation_flags = [
+        "--iree-amdaie-enable-infinite-loop-around-core-block=true"
+    ]
+
+    def __init__(
+        self,
+        M,
+        N,
+        K,
+        input_type,
+        acc_type,
+        name_suffix="",
+        use_ukernel=False,
+        run_on_target=["npu1_4col"],
+        additional_labels=None,
+        aie_compilation_flags=None,
+        n_repeats=1,
+        n_kernel_runs=1,
+    ):
+        aie_compilation_flags = (
+            [] if aie_compilation_flags is None else aie_compilation_flags
+        )
+        aie_compilation_flags += MatmulBenchmark.benchmark_compilation_flags
+        super().__init__(
+            run_on_target=run_on_target,
+            aie_compilation_flags=aie_compilation_flags,
+            M=M,
+            N=N,
+            K=K,
+            input_type=input_type,
+            acc_type=acc_type,
+            tile_pipeline="pack-peel",
+            use_ukernel=use_ukernel,
+            n_repeats=n_repeats,
+            n_kernel_runs=n_kernel_runs,
+            function_name="matmul_transpose_b",
+        )
+
+        self.name = f"matmul_transpose_b_benchmark_{M}_{N}_{K}_{input_type}_{acc_type}"
+        if name_suffix:
+            self.name += f"_{name_suffix}"
+        if use_ukernel:
+            self.name += "_ukernel"
+        self.labels.append("MatmulTransposeBBenchmark")
+        if additional_labels:
+            self.labels += additional_labels
+
+    def _execute(self, config):
+        matmul_template_dir = config.file_dir / "matmul_template"
+        template_name = matmul_template_dir / "matmul_transpose_b_MxK_NxK.mlir"
+        self.generate(config, template_name)
+        return self.benchmark(config)
 
 
 class MatmulTransposeA(BaseMatmul):
@@ -453,21 +523,34 @@ class MatmulTransposeA(BaseMatmul):
         K,
         input_type,
         acc_type,
+        name_suffix="",
         use_ukernel=False,
         run_on_target=["npu1_4col"],
+        additional_labels=None,
+        aie_compilation_flags=None,
+        n_repeats=1,
     ):
         super().__init__(
             run_on_target=run_on_target,
-            aie_compilation_flags=None,
+            aie_compilation_flags=aie_compilation_flags,
             M=M,
             N=N,
             K=K,
             input_type=input_type,
             acc_type=acc_type,
+            use_ukernel=use_ukernel,
+            function_name="matmul_transpose_a",
+            n_repeats=n_repeats,
         )
         self.labels.append("MatmulTransposeA")
 
         self.name = f"matmul_transpose_a_{M}_{N}_{K}_{input_type}_{acc_type}"
+        if name_suffix:
+            self.name += f"_{name_suffix}"
+        if use_ukernel:
+            self.name += "_ukernel"
+        if additional_labels:
+            self.labels += additional_labels
 
     def _execute(self, config):
         matmul_template_dir = config.file_dir / "matmul_template"
@@ -476,6 +559,65 @@ class MatmulTransposeA(BaseMatmul):
         self.vs_cpu(config)
 
         return True
+
+
+class MatmulTransposeABenchmark(BaseMatmul):
+    """
+    A test of the form matmul_transpose_a(A,B) where A:KxM, B:KxN
+    """
+
+    benchmark_compilation_flags = [
+        "--iree-amdaie-enable-infinite-loop-around-core-block=true"
+    ]
+
+    def __init__(
+        self,
+        M,
+        N,
+        K,
+        input_type,
+        acc_type,
+        name_suffix="",
+        use_ukernel=False,
+        run_on_target=["npu1_4col"],
+        additional_labels=None,
+        aie_compilation_flags=None,
+        n_repeats=1,
+        n_kernel_runs=1,
+    ):
+        aie_compilation_flags = (
+            [] if aie_compilation_flags is None else aie_compilation_flags
+        )
+        aie_compilation_flags += MatmulBenchmark.benchmark_compilation_flags
+        super().__init__(
+            run_on_target=run_on_target,
+            aie_compilation_flags=aie_compilation_flags,
+            M=M,
+            N=N,
+            K=K,
+            input_type=input_type,
+            acc_type=acc_type,
+            tile_pipeline="pack-peel",
+            use_ukernel=use_ukernel,
+            n_repeats=n_repeats,
+            n_kernel_runs=n_kernel_runs,
+            function_name="matmul_transpose_a",
+        )
+
+        self.name = f"matmul_transpose_a_benchmark_{M}_{N}_{K}_{input_type}_{acc_type}"
+        if name_suffix:
+            self.name += f"_{name_suffix}"
+        if use_ukernel:
+            self.name += "_ukernel"
+        self.labels.append("MatmulTransposeABenchmark")
+        if additional_labels:
+            self.labels += additional_labels
+
+    def _execute(self, config):
+        matmul_template_dir = config.file_dir / "matmul_template"
+        template_name = matmul_template_dir / "matmul_transpose_a_KxM_KxN.mlir"
+        self.generate(config, template_name)
+        return self.benchmark(config)
 
 
 class MatmulThinBias(BaseMatmul):
@@ -1571,6 +1713,8 @@ class Tests:
                 "use_ukernel": False,
                 "peano_opt_level": 2,
                 "outline": False,
+                "transpose_a": False,
+                "transpose_b": False,
             },
             {
                 "M": 512,
@@ -1579,6 +1723,8 @@ class Tests:
                 "use_ukernel": False,
                 "peano_opt_level": 2,
                 "outline": True,
+                "transpose_a": False,
+                "transpose_b": False,
             },
             {
                 "M": 512,
@@ -1587,6 +1733,8 @@ class Tests:
                 "use_ukernel": False,
                 "peano_opt_level": 3,
                 "outline": False,
+                "transpose_a": False,
+                "transpose_b": False,
             },
             {
                 "M": 512,
@@ -1595,6 +1743,8 @@ class Tests:
                 "use_ukernel": False,
                 "peano_opt_level": 3,
                 "outline": True,
+                "transpose_a": False,
+                "transpose_b": False,
             },
             {
                 "M": 512,
@@ -1603,6 +1753,8 @@ class Tests:
                 "use_ukernel": True,
                 "peano_opt_level": 3,
                 "outline": True,
+                "transpose_a": False,
+                "transpose_b": False,
             },
             {
                 "M": 512,
@@ -1611,6 +1763,8 @@ class Tests:
                 "use_ukernel": False,
                 "peano_opt_level": 3,
                 "outline": True,
+                "transpose_a": False,
+                "transpose_b": False,
             },
             {
                 "M": 512,
@@ -1619,6 +1773,18 @@ class Tests:
                 "use_ukernel": True,
                 "peano_opt_level": 3,
                 "outline": True,
+                "transpose_a": False,
+                "transpose_b": False,
+            },
+            {
+                "M": 512,
+                "N": 4096,
+                "K": 512,
+                "use_ukernel": False,
+                "peano_opt_level": 3,
+                "outline": True,
+                "transpose_a": False,
+                "transpose_b": True,
             },
             {
                 "M": 4096,
@@ -1627,6 +1793,8 @@ class Tests:
                 "use_ukernel": False,
                 "peano_opt_level": 3,
                 "outline": True,
+                "transpose_a": False,
+                "transpose_b": False,
             },
             {
                 "M": 4096,
@@ -1635,7 +1803,20 @@ class Tests:
                 "use_ukernel": True,
                 "peano_opt_level": 3,
                 "outline": True,
+                "transpose_a": False,
+                "transpose_b": False,
             },
+            # Todo: Enable this transpose_a test once it is supported.
+            # {
+            #     "M": 4096,
+            #     "N": 512,
+            #     "K": 512,
+            #     "use_ukernel": False,
+            #     "peano_opt_level": 3,
+            #     "outline": True,
+            #     "transpose_a": True,
+            #     "transpose_b": False,
+            # },
         ]
 
         # Some bf16 Performance tests:
@@ -1646,6 +1827,8 @@ class Tests:
             use_ukernel = test["use_ukernel"]
             peano_opt_level = test["peano_opt_level"]
             outline = test["outline"]
+            transpose_a = test["transpose_a"]
+            transpose_b = test["transpose_b"]
 
             outlining_string = "--iree-amdaie-enable-function-outlining=" + str(
                 int(outline)
@@ -1660,8 +1843,20 @@ class Tests:
             if outline:
                 name_suffix += "_outline"
 
+            if (transpose_a, transpose_b) == (False, False):
+                correctness_test_class = Matmul
+                benchmark_test_class = MatmulBenchmark
+            elif (transpose_a, transpose_b) == (True, False):
+                correctness_test_class = MatmulTransposeA
+                benchmark_test_class = MatmulTransposeABenchmark
+            elif (transpose_a, transpose_b) == (False, True):
+                correctness_test_class = MatmulTransposeB
+                benchmark_test_class = MatmulTransposeBBenchmark
+            else:
+                raise ValueError("Transposing both LHS and RHS is not supported.")
+
             self.register(
-                Matmul(
+                correctness_test_class(
                     M,
                     N,
                     K,
@@ -1676,7 +1871,7 @@ class Tests:
             )
 
             self.register(
-                MatmulBenchmark(
+                benchmark_test_class(
                     M,
                     N,
                     K,
