@@ -48,6 +48,9 @@ FailureOr<unsigned> getTilingScaleFactor(Type elemType);
 /// Utility to identify whether a linalg op is a matmul op.
 bool isMatmul(linalg::LinalgOp linalgOp);
 
+/// Utility to identify whether a linalg op is a matmul_transpose_a op.
+bool isMatmulTransposeA(linalg::LinalgOp linalgOp);
+
 /// Utility to identify whether a linalg op is a matmul_transpose_b op.
 bool isMatmulTransposeB(linalg::LinalgOp linalgOp);
 
