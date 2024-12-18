@@ -19,7 +19,9 @@ namespace {
 using DmaBdIdKey = std::pair<AMDAIE::TileOp, AMDAIE::ConnectionOp>;
 using DmaBdIdPair = std::pair<DmaBdIdKey, uint32_t>;
 
-FailureOr<DmaBdIdPair> retriveDmaBdIdPair(
+/// Utility function to retrieve TileOp, ConnectionOp, and BD ID from a given
+/// half DMA copy operation.
+FailureOr<DmaBdIdPair> retrieveDmaBdIdPair(
     AMDAIE::NpuHalfDmaCpyNdOp &npuHalfDmaCpyNdOp) {
   // Retrieve the connection op.
   std::optional<AMDAIE::ConnectionOp> maybeConnectionOp =
@@ -219,7 +221,7 @@ FailureOr<bool> canFoldByBatch(
     const Operation *batchParentOp,
     const DenseSet<AMDAIE::ConnectionOp> &connectionOps,
     const DenseMap<DmaBdIdKey, DenseSet<uint32_t>> &dmaBdIdsMap,
-    AMDAIE::NpuHalfDmaCpyNdOp currHalfDmaCpyNdOp, DmaBdIdPair &currBdIdPair) {
+    AMDAIE::NpuHalfDmaCpyNdOp currHalfDmaCpyNdOp, DmaBdIdPair currBdIdPair) {
   // Not in the same scope? Can't fold.
   if (currHalfDmaCpyNdOp->getParentOp() != batchParentOp) return false;
 
@@ -277,7 +279,7 @@ LogicalResult foldDmaWaitsByBatch(AMDAIE::ControlCodeOp controlCodeOp) {
   DenseMap<DmaBdIdKey, DenseSet<uint32_t>> dmaBdIdsMap;
 
   auto updateWithCurrBdId =
-      [&](bool canFold, DmaBdIdPair &currBdIdPair,
+      [&](bool canFold, DmaBdIdPair currBdIdPair,
           DenseSet<AMDAIE::ConnectionOp> &connectionOps,
           DenseMap<DmaBdIdKey, DenseSet<uint32_t>> &dmaBdIdsMap) {
         DmaBdIdKey currBdIdKey = currBdIdPair.first;
@@ -307,7 +309,7 @@ LogicalResult foldDmaWaitsByBatch(AMDAIE::ControlCodeOp controlCodeOp) {
                       token.getDefiningOp())) {
             // Retrieve the TileOp, ConnectionOp, and BD ID.
             FailureOr<DmaBdIdPair> currBdIdPair =
-                retriveDmaBdIdPair(npuHalfDmaCpyNdOp);
+                retrieveDmaBdIdPair(npuHalfDmaCpyNdOp);
             if (failed(currBdIdPair)) return WalkResult::interrupt();
             // Check if the current DMA wait op can be folded into the batch.
             FailureOr<bool> canFold =
