@@ -255,7 +255,7 @@ struct DmaWaitToTctSyncConverter final
       }
       pushToQueueOps.push_back(pushToQueueOp);
     }
-    // Sort the half DMA ops by channel, direction, row, and column.
+    // Sort the half DMA ops by direction, channel, row, and column.
     std::sort(pushToQueueOps.begin(), pushToQueueOps.end(),
               [](AMDAIE::NpuPushToQueueOp a, AMDAIE::NpuPushToQueueOp b) {
                 return std::make_tuple(a.getDirection(), a.getChannel(),

@@ -154,7 +154,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
-// `tct_sync` on four columns, with same channel, direction, and row.
+// Expect one `tct_sync` to cover four columns, with same channel, direction, and row.
 // CHECK:       0x06030100
 // CHECK:       0x00000105
 // CHECK:       0x00000005
