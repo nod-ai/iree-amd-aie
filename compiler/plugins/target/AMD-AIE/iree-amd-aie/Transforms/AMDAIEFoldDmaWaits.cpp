@@ -53,83 +53,103 @@ FailureOr<DmaBdIdPair> retrieveDmaBdIdPair(
   return DmaBdIdPair{currBdIdKey, currBdIdVal};
 }
 
-/// Utility function to determine whether a DMA wait op can be folded based on
-/// its half DMA copy operation.
+/// Utility function to erase the DMA wait operations in the queue, except for
+/// the last one.
+LogicalResult eraseQueueOperations(IRRewriter &rewriter,
+                                   SmallVector<AMDAIE::NpuDmaWaitOp> &waitOps) {
+  // Skip if there are less than two DMA wait operations in the queue.
+  if (waitOps.size() < 2) return success();
+
+  Operation *parentOp = waitOps.back()->getParentOp();
+  // Do not modify the last wait op, it will be kept.
+  waitOps.pop_back();
+
+  for (AMDAIE::NpuDmaWaitOp waitOp : waitOps) {
+    if (waitOp->getParentOp() != parentOp) {
+      return waitOp.emitError(
+          "DMA operations to be queued must belong to the same scope");
+    }
+    // Erase the wait op.
+    SmallVector<Value> asyncTokens(waitOp.getAsyncTokens());
+    rewriter.eraseOp(waitOp);
+    for (Value token : asyncTokens) {
+      auto dmaOp =
+          dyn_cast_if_present<AMDAIE::NpuHalfDmaCpyNdOp>(token.getDefiningOp());
+      if (!dmaOp)
+        waitOp.emitError("expected to operate on an `amdaie.half_dma_cpy_nd`");
+      if (dmaOp.use_empty()) {
+        rewriter.setInsertionPoint(dmaOp);
+        TypeRange resultTypeRange = TypeRange{};
+        // Nullify the result to avoid issuing a token.
+        rewriter.create<AMDAIE::NpuHalfDmaCpyNdOp>(
+            dmaOp.getLoc(), resultTypeRange, dmaOp.getConnection(),
+            dmaOp.getInput(), dmaOp.getMixedOffsets(), dmaOp.getMixedSizes(),
+            dmaOp.getMixedStrides(), dmaOp.getBdId(), dmaOp.getChannel(),
+            dmaOp.getNextBd(), dmaOp.getStartBd());
+        rewriter.eraseOp(dmaOp);
+      }
+    }
+  }
+  return success();
+}
+
+/// Utility function to determine whether a DMA wait op can be folded into a
+/// queue based on its half DMA copy operation.
+/// Can't fold wait op if:
+/// (1) the current operation is not in the same scope as the queue, or
+/// (2) the current operation is a packet flow, or
+/// (3) reaches the maximum queue size, or
+/// (4) the queue is empty, or
+/// (5) the current BD ID on the same tile already occurs in the queue.
 FailureOr<bool> canFoldByQueue(
     const AMDAIE::AMDAIEDeviceModel &deviceModel,
-    AMDAIE::NpuHalfDmaCpyNdOp &npuHalfDmaCpyNdOp,
-    DenseMap<DmaBdIdKey, SmallVector<uint32_t>> &tileConnectToBdIdQueue) {
-  // Retrieve the connection op.
-  std::optional<AMDAIE::ConnectionOp> maybeConnectionOp =
-      npuHalfDmaCpyNdOp.getConnectionOp();
-  if (!maybeConnectionOp) {
-    return npuHalfDmaCpyNdOp.emitOpError()
-           << "expected to operate on an `amdaie.connection`";
-  }
-  AMDAIE::ConnectionOp connectionOp = maybeConnectionOp.value();
+    const Operation *queueParentOp,
+    const DenseMap<DmaBdIdKey, DenseSet<uint32_t>> &dmaBdIdsMap,
+    AMDAIE::NpuHalfDmaCpyNdOp currHalfDmaCpyNdOp, DmaBdIdPair currBdIdPair) {
+  // Not in the same scope? Can't fold.
+  if (currHalfDmaCpyNdOp->getParentOp() != queueParentOp) return false;
 
-  // Retrieve the flow op.
+  // Packet flow? Can't fold.
+  AMDAIE::ConnectionOp connectionOp = currBdIdPair.first.second;
   std::optional<AMDAIE::FlowOp> maybeFlowOp = connectionOp.getFlowOp();
   if (!maybeFlowOp) {
-    return connectionOp->emitOpError()
+    return connectionOp.emitOpError()
            << "expected to operate on an `amdaie.flow`";
   }
   AMDAIE::FlowOp flowOp = maybeFlowOp.value();
-  bool isPacketFlow = flowOp.getIsPacketFlow();
+  if (flowOp.getIsPacketFlow()) return false;
 
-  // Retrieve the BD ID op.
-  std::optional<AMDAIE::BdIdOp> maybeBdIdOp = npuHalfDmaCpyNdOp.getBdIdOp();
-  if (!maybeBdIdOp) {
-    return npuHalfDmaCpyNdOp.emitOpError()
-           << "must have a BD ID op to lower to "
-              "`amdaie.npu.write_bd`";
-  }
-  AMDAIE::BdIdOp bdIdOp = maybeBdIdOp.value();
-
-  // Retrieve the tile op.
-  AMDAIE::TileOp tileOp =
-      dyn_cast_if_present<AMDAIE::TileOp>(bdIdOp.getTile().getDefiningOp());
-  if (!tileOp) {
-    return bdIdOp.emitOpError() << "must operate on an `amdaie.tile`";
-  }
-
-  // Get the maximum queue size.
+  // Reached the maximum queue size, or the queue is empty? Can't fold.
+  DmaBdIdKey currBdIdKey = currBdIdPair.first;
+  const DenseSet<uint32_t> &bdIds = dmaBdIdsMap.lookup(currBdIdKey);
+  TileOp tileOp = currBdIdKey.first;
   uint32_t col = getConstantIndexOrAssert(tileOp.getCol());
   uint32_t row = getConstantIndexOrAssert(tileOp.getRow());
   uint32_t maxQueueSize = deviceModel.getDmaMaxQueueSize(col, row);
+  if (bdIds.size() >= maxQueueSize || bdIds.empty()) return false;
 
-  // Keep wait op if, either reaches the maximum queue size, or a
-  // duplicate BD ID in the same tile, or packet flow, or the queue is
-  // empty
-  uint32_t bdId = getConstantIndexOrAssert(bdIdOp.getValue());
-  bool isDuplicateBdId =
-      llvm::any_of(tileConnectToBdIdQueue, [&](const auto &entry) {
-        return entry.first.first == tileOp &&
-               llvm::is_contained(entry.second, bdId);
-      });
-  SmallVector<uint32_t> &bdIdQueue =
-      tileConnectToBdIdQueue[{tileOp, connectionOp}];
-  bool canFold = true;
-  if (isDuplicateBdId || isPacketFlow || bdIdQueue.size() >= maxQueueSize ||
-      bdIdQueue.empty()) {
-    bdIdQueue.clear();
-    canFold = false;
-  }
-  bdIdQueue.push_back(bdId);
-  return canFold;
+  // Duplicate BD ID on the same tile? Can't fold.
+  uint32_t currBdIdVal = currBdIdPair.second;
+  bool isDuplicateBdId = llvm::any_of(dmaBdIdsMap, [&](const auto &entry) {
+    return entry.first.first == tileOp && entry.second.contains(currBdIdVal);
+  });
+  if (isDuplicateBdId) return false;
+
+  // Can fold.
+  return true;
 }
 
 /// Traverses the control code in reverse, ensuring that for each connection,
 /// only one DMA wait op is retained for every maximum queue size.
 ///
 /// Example Output: assuming a maximum queue size of 4.
-///   dma_cpy_nd
-///   %0 = dma_cpy_nd
+///   dma_cpy_nd(connection=0, bd_id=0)
+///   %0 = dma_cpy_nd(connection=0, bd_id=1)
 ///   dma_wait(%0)
-///   dma_cpy_nd
-///   dma_cpy_nd
-///   dma_cpy_nd
-///   %1 = dma_cpy_nd
+///   dma_cpy_nd(connection=0, bd_id=2)
+///   dma_cpy_nd(connection=0, bd_id=3)
+///   dma_cpy_nd(connection=0, bd_id=4)
+///   %1 = dma_cpy_nd(connection=0, bd_id=5)
 ///   dma_wait(%1)
 /// From the bottom up, for every four DMA copy operations, only one DMA wait
 /// operation is retained.
@@ -140,49 +160,61 @@ FailureOr<bool> canFoldByQueue(
 LogicalResult foldDmaWaitsByQueue(const AMDAIE::AMDAIEDeviceModel &deviceModel,
                                   AMDAIE::ControlCodeOp controlCodeOp) {
   IRRewriter rewriter(controlCodeOp->getContext());
-  std::vector<AMDAIE::NpuDmaWaitOp> waitOpsToErase;
-  DenseMap<DmaBdIdKey, SmallVector<uint32_t>> tileConnectToBdIdQueue;
+  SmallVector<SmallVector<AMDAIE::NpuDmaWaitOp>> waitOpQueues;
+  DenseMap<DmaBdIdKey, DenseSet<uint32_t>> dmaBdIdsMap;
+
+  auto updateWithCurrBdId =
+      [&](bool canFold, DmaBdIdPair currBdIdPair,
+          DenseMap<DmaBdIdKey, DenseSet<uint32_t>> &dmaBdIdsMap) {
+        DmaBdIdKey currBdIdKey = currBdIdPair.first;
+        uint32_t currBdIdVal = currBdIdPair.second;
+        if (!canFold) dmaBdIdsMap[currBdIdKey].clear();
+        dmaBdIdsMap[currBdIdKey].insert(currBdIdVal);
+      };
+
   // Traverse the control code in reverse.
   WalkResult res = controlCodeOp->walk<WalkOrder::PostOrder, ReverseIterator>(
       [&](AMDAIE::NpuDmaWaitOp waitOp) {
-        bool toErase = true;
+        bool toQueue = true;
+        Operation *queueParentOp =
+            waitOpQueues.empty() ? waitOp->getParentOp()
+                                 : waitOpQueues.back().front()->getParentOp();
         for (Value token : waitOp.getAsyncTokens()) {
           if (auto npuHalfDmaCpyNdOp =
                   dyn_cast_if_present<AMDAIE::NpuHalfDmaCpyNdOp>(
                       token.getDefiningOp())) {
-            FailureOr<bool> result = canFoldByQueue(
-                deviceModel, npuHalfDmaCpyNdOp, tileConnectToBdIdQueue);
-            if (failed(result)) return WalkResult::interrupt();
-            toErase &= *result;
+            // Retrieve the TileOp, ConnectionOp, and BD ID.
+            FailureOr<DmaBdIdPair> currBdIdPair =
+                retrieveDmaBdIdPair(npuHalfDmaCpyNdOp);
+            if (failed(currBdIdPair)) return WalkResult::interrupt();
+            // Check if the current DMA wait op can be folded into the queue.
+            FailureOr<bool> canFold =
+                canFoldByQueue(deviceModel, queueParentOp, dmaBdIdsMap,
+                               npuHalfDmaCpyNdOp, *currBdIdPair);
+            if (failed(canFold)) return WalkResult::interrupt();
+            // Update the `dmaBdIdsMap`.
+            updateWithCurrBdId(*canFold, *currBdIdPair, dmaBdIdsMap);
+            toQueue &= *canFold;
           }
         }
-        // Erase later to avoid invalidating the iterator.
-        if (toErase) waitOpsToErase.push_back(waitOp);
+        // Store all the queues, and modify later to avoid invalidating the
+        // iterator.
+        if (toQueue) {
+          // Append the wait op to the last queue if it can be folded.
+          waitOpQueues.back().push_back(waitOp);
+        } else {
+          // Create a new queue if the wait op cannot be folded.
+          waitOpQueues.push_back({waitOp});
+        }
         return WalkResult::advance();
       });
   if (res.wasInterrupted()) return failure();
-
-  for (AMDAIE::NpuDmaWaitOp waitOp : waitOpsToErase) {
-    SmallVector<Value> asyncTokens(waitOp.getAsyncTokens());
-    // Erase the wait op.
-    rewriter.eraseOp(waitOp);
-    for (Value token : asyncTokens) {
-      if (auto op = dyn_cast_if_present<AMDAIE::NpuHalfDmaCpyNdOp>(
-              token.getDefiningOp())) {
-        if (op.use_empty()) {
-          rewriter.setInsertionPoint(op);
-          TypeRange resultTypeRange = TypeRange{};
-          // Nullify the result to avoid issuing a token.
-          rewriter.create<AMDAIE::NpuHalfDmaCpyNdOp>(
-              op.getLoc(), resultTypeRange, op.getConnection(), op.getInput(),
-              op.getMixedOffsets(), op.getMixedSizes(), op.getMixedStrides(),
-              op.getBdId(), op.getChannel(), op.getNextBd(), op.getStartBd());
-          rewriter.eraseOp(op);
-        }
-      }
-    }
+  for (SmallVector<AMDAIE::NpuDmaWaitOp> &waitOps : waitOpQueues) {
+    // Since the controlcode is traversed in reverse order, we need to
+    // restore the original order of the DMA operations.
+    std::reverse(waitOps.begin(), waitOps.end());
+    if (failed(eraseQueueOperations(rewriter, waitOps))) return failure();
   }
-
   return success();
 }
 
