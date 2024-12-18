@@ -41,7 +41,7 @@ submodules that are nested in IREE.
 
 #### For Linux
 
-Build and install `xdna-driver`, use commit `59f1d62`:
+Build and install `xdna-driver`, use commit `929e8ab`:
 
 ```
 git clone git@github.com:amd/xdna-driver.git
