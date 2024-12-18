@@ -234,11 +234,11 @@ bool isMatmulTransposeA(linalg::LinalgOp linalgOp) {
   if (!is2DMatmulLikeOp(linalgOp, maps)) return false;
 
   uint32_t A = 0, B = 1, C = 2;
-  bool isBTransposed =
+  bool isATransposed =
       getAffineMapDim(maps, A, 1) == getAffineMapDim(maps, C, 0) &&  // M
       getAffineMapDim(maps, B, 1) == getAffineMapDim(maps, C, 1) &&  // N
       getAffineMapDim(maps, A, 0) == getAffineMapDim(maps, B, 0);    // K
-  return isBTransposed;
+  return isATransposed;
 }
 
 /// Utility to identify whether a linalg op is a matmul_transpose_b op.
