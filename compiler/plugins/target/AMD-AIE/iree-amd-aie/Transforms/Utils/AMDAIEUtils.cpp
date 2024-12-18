@@ -225,6 +225,22 @@ bool isMatmul(linalg::LinalgOp linalgOp) {
          match6DLinalgGenericMatmul(linalgOp);
 }
 
+/// Utility to identify whether a linalg op is a matmul_transpose_a op.
+bool isMatmulTransposeA(linalg::LinalgOp linalgOp) {
+  if (isa<linalg::MatmulTransposeAOp>(linalgOp)) return true;
+  if (!isa<linalg::GenericOp>(linalgOp)) return false;
+
+  ArrayAttr maps = linalgOp.getIndexingMaps();
+  if (!is2DMatmulLikeOp(linalgOp, maps)) return false;
+
+  uint32_t A = 0, B = 1, C = 2;
+  bool isATransposed =
+      getAffineMapDim(maps, A, 1) == getAffineMapDim(maps, C, 0) &&  // M
+      getAffineMapDim(maps, B, 1) == getAffineMapDim(maps, C, 1) &&  // N
+      getAffineMapDim(maps, A, 0) == getAffineMapDim(maps, B, 0);    // K
+  return isATransposed;
+}
+
 /// Utility to identify whether a linalg op is a matmul_transpose_b op.
 bool isMatmulTransposeB(linalg::LinalgOp linalgOp) {
   if (isa<linalg::MatmulTransposeBOp>(linalgOp)) return true;

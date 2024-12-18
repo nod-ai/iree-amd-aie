@@ -317,13 +317,23 @@ FailureOr<ParameterSetting> ParameterSetting::create(
 }  // namespace
 
 static SmallVector<int64_t> setInnerPermB(bool isMatmulTransposeB) {
-  SmallVector<int64_t> innerPermB;
+  SmallVector<int64_t> innerPerm;
   if (isMatmulTransposeB) {
-    innerPermB = {0, 1};
+    innerPerm = {0, 1};
   } else {
-    innerPermB = {1, 0};
+    innerPerm = {1, 0};
   }
-  return innerPermB;
+  return innerPerm;
+}
+
+static SmallVector<int64_t> setInnerPermA(bool isMatmulTransposeA) {
+  SmallVector<int64_t> innerPerm;
+  if (isMatmulTransposeA) {
+    innerPerm = {1, 0};
+  } else {
+    innerPerm = {0, 1};
+  }
+  return innerPerm;
 }
 
 //===----------------------------------------------------------------------===//
@@ -334,7 +344,6 @@ static LogicalResult setRootConfigForPackPeelPipeline(
     mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
     LowerToAIEPassPipeline useLowerToAIEPipeline, AMDAIEDevice targetDevice,
     uint32_t numRows, uint32_t numCols) {
-  bool isTransposeB = isMatmulTransposeB(linalgOp);
   bool isObjectFifo =
       useLowerToAIEPipeline == LowerToAIEPassPipeline::ObjectFifo;
   auto maybePackPeelTiling =
@@ -356,17 +365,18 @@ static LogicalResult setRootConfigForPackPeelPipeline(
   // For matmul, transpose B matrix from [K N n k] to [K N k n]
   // For matmul_transpose_b, we don't have to transpose the B matrix,
   // since it is already [N K n k]
-  SmallVector<int64_t> transposePackIndices = {1};
+  SmallVector<int64_t> transposePackIndices = {0, 1};
   // There is no corresponding unpack for the specified pack operation
   // 0 is used when unpack is empty
-  SmallVector<bool> unpackEmpty = {false};
-  SmallVector<int64_t> innerPermB = setInnerPermB(isTransposeB);
-  SmallVector<SmallVector<int64_t>> innerPerm = {innerPermB};
+  SmallVector<bool> unpackEmpty = {false, false};
+  SmallVector<int64_t> innerPermA = setInnerPermA(isMatmulTransposeA(linalgOp));
+  SmallVector<int64_t> innerPermB = setInnerPermB(isMatmulTransposeB(linalgOp));
+  SmallVector<SmallVector<int64_t>> innerPerm = {innerPermA, innerPermB};
   SmallVector<int64_t> outerPermVec = {0, 1};
   if (isa<linalg::BatchMatmulOp>(linalgOp)) {
     outerPermVec.push_back(2);
   }
-  SmallVector<SmallVector<int64_t>> outerPerm = {outerPermVec};
+  SmallVector<SmallVector<int64_t>> outerPerm = {outerPermVec, outerPermVec};
   auto packingConfigLevel0Attr = getPackingConfigPackingLevelAttr(
       context, packedSizesL0, transposePackIndices, unpackEmpty, innerPerm,
       outerPerm);
@@ -392,7 +402,7 @@ static LogicalResult setRootConfigForPackPeelPipeline(
   transposePackIndices = {0, 1, 2};
   // Only the third pack operation has a corresponding unpack operation
   unpackEmpty = {false, false, true};
-  innerPerm = {{0, 1}, innerPermB, {0, 1}};
+  innerPerm = {innerPermA, innerPermB, {0, 1}};
   if (isa<linalg::BatchMatmulOp>(linalgOp)) {
     outerPerm = {{0, 1, 2, 4, 3}, {0, 1, 2, 4, 3}, {0, 1, 2, 4, 3}};
   } else {
@@ -436,7 +446,6 @@ static LogicalResult setRootConfigForPackPeelPipeline(
 static LogicalResult setRootConfigForPadPackPipeline(
     mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
     AMDAIEDevice targetDevice, uint32_t numRows, uint32_t numCols) {
-  bool isTransposeB = isMatmulTransposeB(linalgOp);
   auto maybePadPackTiling = ParameterSetting::create(
       linalgOp, /*isPackPeel=*/false, /*isObjectFifo=*/false, targetDevice,
       numRows, numCols);
@@ -455,8 +464,9 @@ static LogicalResult setRootConfigForPadPackPipeline(
   // For matmul_transpose_b, transpose B matrix from [N K n k] to [K N n k]
   SmallVector<int64_t> transposePackIndices{0, 1, 2};
   SmallVector<bool> unpackEmpty{false, false, true};
-  SmallVector<int64_t> innerPermB = setInnerPermB(isTransposeB);
-  SmallVector<SmallVector<int64_t>> innerPerm{{0, 1}, innerPermB, {0, 1}};
+  SmallVector<int64_t> innerPermA = setInnerPermA(isMatmulTransposeA(linalgOp));
+  SmallVector<int64_t> innerPermB = setInnerPermB(isMatmulTransposeB(linalgOp));
+  SmallVector<SmallVector<int64_t>> innerPerm{innerPermA, innerPermB, {0, 1}};
   SmallVector<SmallVector<int64_t>> outerPerm{{1, 0}, {1, 0}, {1, 0}};
 
   auto packingConfigLevel1Attr = getPackingConfigPackingLevelAttr(
@@ -644,7 +654,8 @@ static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
                                    uint32_t numCols) {
   assert(!getLoweringConfig<IREE::Codegen::LoweringConfigAttr>(genericOp) &&
          "expected lowering_config is not set");
-  if (!isMatmul(genericOp) && !isMatmulTransposeB(genericOp))
+  if (!isMatmul(genericOp) && !isMatmulTransposeA(genericOp) &&
+      !isMatmulTransposeB(genericOp))
     return genericOp.emitOpError(
         "Current pipelines are only set for matmul-like ops.");
 
