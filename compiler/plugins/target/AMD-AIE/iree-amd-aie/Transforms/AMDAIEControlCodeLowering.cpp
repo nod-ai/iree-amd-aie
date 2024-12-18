@@ -244,17 +244,48 @@ struct DmaWaitToTctSyncConverter final
       AMDAIE::NpuDmaWaitOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     LLVM_DEBUG(llvm::dbgs() << "matchAndRewrite[AMDAIE::NpuDmaWaitOp]\n");
-
-    for (Value token : op.getAsyncTokens()) {
-      auto pushToQueueOp =
-          dyn_cast_if_present<AMDAIE::NpuPushToQueueOp>(token.getDefiningOp());
+    // Collect all half DMA ops from the async tokens.
+    SmallVector<AMDAIE::NpuPushToQueueOp> pushToQueueOps;
+    for (Value asyncToken : op.getAsyncTokens()) {
+      auto pushToQueueOp = dyn_cast_if_present<AMDAIE::NpuPushToQueueOp>(
+          asyncToken.getDefiningOp());
       if (!pushToQueueOp) {
         return op.emitOpError()
-               << "should operate on an `amdaie.push_to_queue` op";
+               << "should operate on an `amdaie.push_to_queue` op async token";
       }
+      pushToQueueOps.push_back(pushToQueueOp);
+    }
+    // Sort the half DMA ops by channel, direction, row, and column.
+    std::sort(pushToQueueOps.begin(), pushToQueueOps.end(),
+              [](AMDAIE::NpuPushToQueueOp a, AMDAIE::NpuPushToQueueOp b) {
+                return std::make_tuple(a.getDirection(), a.getChannel(),
+                                       a.getRow(), a.getCol()) <
+                       std::make_tuple(b.getDirection(), b.getChannel(),
+                                       b.getRow(), b.getCol());
+              });
+    // Batch DMA operations with the same row, channel, and direction into a
+    // single TCT sync operation, as long as they have consecutive columns.
+    llvm::MapVector<AMDAIE::NpuPushToQueueOp, uint32_t> columnBatches;
+    for (auto pushToQueueOp : pushToQueueOps) {
+      if (!columnBatches.empty()) {
+        auto &[lastPushOp, lastColNum] = columnBatches.back();
+        if (lastPushOp.getRow() == pushToQueueOp.getRow() &&
+            lastPushOp.getCol() + lastColNum == pushToQueueOp.getCol() &&
+            lastPushOp.getDirection() == pushToQueueOp.getDirection() &&
+            lastPushOp.getChannel() == pushToQueueOp.getChannel()) {
+          ++lastColNum;
+          continue;
+        }
+      }
+      columnBatches.insert({pushToQueueOp, 1});
+    }
+    // Convert to TCT sync ops.
+    for (auto &[pushToQueueOp, colNum] : columnBatches) {
+      uint32_t rowNum = 1;
       rewriter.create<AMDAIE::NpuTctSyncOp>(
           op.getLoc(), pushToQueueOp.getCol(), pushToQueueOp.getRow(),
-          pushToQueueOp.getDirection(), pushToQueueOp.getChannel(), 1, 1);
+          pushToQueueOp.getDirection(), pushToQueueOp.getChannel(), colNum,
+          rowNum);
     }
     rewriter.eraseOp(op);
     return success();
