@@ -115,15 +115,43 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
     return %0 : !t3_f32
   }
 
-  // Another test with a transposed matmul, but in this case A is transposed.
-  // Currently the pass does not modify this (so no scf.for should appear).
-  // We'll probably add support for this in the future, but for now we don't.
+  // A test like the above, but with a matmul_tranpose_a instead of a matmul
   // CHECK-LABEL: batched_transpose_a
-  // CHECK-NOT:      scf.for
-
+  // CHECK:         scf.for
+  // CHECK:           linalg.generic
+  // CHECK-SAME:        iterator_types = ["parallel", "parallel", "parallel", "reduction"]
+  // CHECK-SAME:        ins
+  // CHECK-SAME:        tensor<1x64x64xbf16>, tensor<1x64x64xbf16>
+  // CHECK-SAME:        outs
+  // CHECK-SAME:        tensor<1x64x64xf32>
+  // CHECK-NOT:     scf.for
   func.func @batched_transpose_a(%arg0: !t3_bf16, %arg1: !t3_bf16, %arg2: !t3_f32) -> !t3_f32 {
     %0 = linalg.generic {indexing_maps =
                           [
+                           affine_map<(b0, d0, d1, d2) -> (b0, d2, d0)>,
+                           affine_map<(b0, d0, d1, d2) -> (b0, d2, d1)>,
+                           affine_map<(b0, d0, d1, d2) -> (b0, d0, d1)>
+                          ],
+                         iterator_types = ["parallel", "parallel", "parallel", "reduction"]}
+                         ins(%arg0, %arg1 : !t3_bf16, !t3_bf16) outs(%arg2 : !t3_f32) {
+    ^bb0(%in_0_bf16: bf16, %in_1_bf16: bf16, %out: f32):
+      %in_0 = arith.extf %in_0_bf16: bf16 to f32
+      %in_1 = arith.extf %in_1_bf16: bf16 to f32
+      %1 = arith.mulf %in_0, %in_1 : f32
+      %2 = arith.addf %out, %1 : f32
+      linalg.yield %2 : f32
+    } -> !t3_f32
+    return %0 : !t3_f32
+  }
+
+  // Check that the final 3 dimensions do have the pattern of a matmul (or matmul transpose)
+  // CHECK-LABEL: batched1
+  // CHECK-NOT:     scf.for
+  func.func @batched1(%arg0: !t3_bf16, %arg1: !t3_bf16, %arg2: !t3_f32) -> !t3_f32 {
+    %0 = linalg.generic {indexing_maps =
+                          [
+                           // This is like a matmul but the first operand is
+                           // (b, k, n) and second is (b, k, m)
                            affine_map<(b0, d0, d1, d2) -> (b0, d2, d1)>,
                            affine_map<(b0, d0, d1, d2) -> (b0, d2, d0)>,
                            affine_map<(b0, d0, d1, d2) -> (b0, d0, d1)>
