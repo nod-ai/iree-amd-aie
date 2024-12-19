@@ -1844,19 +1844,19 @@ class Tests:
                 name_suffix += "_outline"
 
             if (transpose_a, transpose_b) == (False, False):
-                correctness_test_class = Matmul
-                benchmark_test_class = MatmulBenchmark
+                NumericTestClass = Matmul
+                BenchmarkTestClass = MatmulBenchmark
             elif (transpose_a, transpose_b) == (True, False):
-                correctness_test_class = MatmulTransposeA
-                benchmark_test_class = MatmulTransposeABenchmark
+                NumericTestClass = MatmulTransposeA
+                BenchmarkTestClass = MatmulTransposeABenchmark
             elif (transpose_a, transpose_b) == (False, True):
-                correctness_test_class = MatmulTransposeB
-                benchmark_test_class = MatmulTransposeBBenchmark
+                NumericTestClass = MatmulTransposeB
+                BenchmarkTestClass = MatmulTransposeBBenchmark
             else:
                 raise ValueError("Transposing both LHS and RHS is not supported.")
 
             self.register(
-                correctness_test_class(
+                NumericTestClass(
                     M,
                     N,
                     K,
@@ -1871,7 +1871,7 @@ class Tests:
             )
 
             self.register(
-                benchmark_test_class(
+                BenchmarkTestClass(
                     M,
                     N,
                     K,
