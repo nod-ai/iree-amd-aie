@@ -26,6 +26,8 @@ using namespace xilinx;
 
 namespace mlir::iree_compiler::AMDAIE {
 
+using BDDimLayoutAndLength = std::pair<AIE::BDDimLayoutArrayAttr, int64_t>;
+
 /// Class to build an `aie.device` from a `module` containing
 /// `amdaie.workgroup`.
 class AIEDeviceBuilder {
@@ -66,17 +68,18 @@ class AIEDeviceBuilder {
 
   /// Utility to convert vectors of `size` and `stride` into an
   /// `AIE::BDDimLayoutArrayAttr`.
-  AIE::BDDimLayoutArrayAttr convertSizeStrideToBDDimLayoutArrayAttr(
-      const SmallVector<OpFoldResult> &sizes,
-      const SmallVector<OpFoldResult> &strides, uint8_t memSpace);
+  FailureOr<BDDimLayoutAndLength> convertSizeStrideToBDDimLayoutArrayAttr(
+      SmallVector<OpFoldResult> sizes, SmallVector<OpFoldResult> strides,
+      uint8_t memSpace, function_ref<InFlightDiagnostic()> emitError);
 
   /// Utility to create DMA blocks and add them to `memOp`.
-  void createDMA(Operation *memOp, AIE::DMAChannelDir channelDir,
-                 int channelIndex, AIE::BDDimLayoutArrayAttr dims,
-                 size_t acqNum, size_t relNum, int64_t len, int64_t offset,
-                 const SmallVector<AIE::BufferOp> &bufferOps,
-                 const std::pair<AIE::LockOp, AIE::LockOp> &locks,
-                 std::optional<uint8_t> pktId);
+  LogicalResult createDMA(Operation *memOp, AIE::DMAChannelDir channelDir,
+                          int channelIndex, SmallVector<OpFoldResult> sizes,
+                          SmallVector<OpFoldResult> strides, uint8_t memSpace,
+                          size_t acqNum, size_t relNum, int64_t offset,
+                          const SmallVector<AIE::BufferOp> &bufferOps,
+                          const std::pair<AIE::LockOp, AIE::LockOp> &locks,
+                          std::optional<uint8_t> pktId);
 
   /// Utility to create flow ops from connection ops.
   SmallVector<Operation *> createFlowOps(

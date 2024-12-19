@@ -41,12 +41,15 @@ namespace mlir::iree_compiler::AMDAIE {
 // AIEDeviceBuilder utilities
 //===----------------------------------------------------------------------===//
 
-AIE::BDDimLayoutArrayAttr
+FailureOr<BDDimLayoutAndLength>
 AIEDeviceBuilder::convertSizeStrideToBDDimLayoutArrayAttr(
-    const SmallVector<OpFoldResult> &sizes,
-    const SmallVector<OpFoldResult> &strides, uint8_t memSpace) {
+    SmallVector<OpFoldResult> sizes, SmallVector<OpFoldResult> strides,
+    uint8_t memSpace, function_ref<InFlightDiagnostic()> emitError) {
   assert(sizes.size() == strides.size() &&
          "expected stride and size vectors of same size");
+  if (failed(foldRepetitionCount(rewriter.getContext(), sizes, strides))) {
+    return emitError() << "could not fold repetition count";
+  }
   // Fold remaining dimensions, assuming zero offsets as offsets should be taken
   // care of separately.
   SmallVector<OpFoldResult> offsets(
@@ -63,18 +66,36 @@ AIEDeviceBuilder::convertSizeStrideToBDDimLayoutArrayAttr(
   if (newStrides.size() == 1) {
     std::optional<int64_t> stride = getConstantIntValue(newStrides[0]);
     if (stride && stride.value() == 1) {
-      return AIE::BDDimLayoutArrayAttr::get(rewriter.getContext(),
-                                            ArrayRef(bdDimLayoutAttr));
+      std::optional<int64_t> maybeSize = getConstantIntValue(newSizes[0]);
+      if (!maybeSize) return emitError() << "expected a static size";
+      return std::make_pair(
+          AIE::BDDimLayoutArrayAttr::get(rewriter.getContext(),
+                                         ArrayRef(bdDimLayoutAttr)),
+          maybeSize.value());
     }
   }
   bdDimLayoutAttr.reserve(newSizes.size());
-  for (auto [size, stride] : llvm::zip(newSizes, newStrides)) {
-    bdDimLayoutAttr.push_back(AIE::BDDimLayoutAttr::get(
-        rewriter.getContext(), getConstantIntValue(size).value(),
-        getConstantIntValue(stride).value()));
+  // Compute the length of the DMA transfer.
+  std::optional<SmallVector<int64_t>> maybeStaticSizes =
+      getConstantIntValues(newSizes);
+  std::optional<SmallVector<int64_t>> maybeStaticStrides =
+      getConstantIntValues(newStrides);
+  if (!maybeStaticSizes || !maybeStaticStrides) {
+    return emitError() << "expected static sizes and strides";
   }
-  return AIE::BDDimLayoutArrayAttr::get(rewriter.getContext(),
-                                        ArrayRef(bdDimLayoutAttr));
+  int64_t transferLength =
+      maybeStaticSizes->empty()
+          ? 0
+          : std::accumulate(maybeStaticSizes->begin(), maybeStaticSizes->end(),
+                            1, std::multiplies<>());
+  for (auto [size, stride] :
+       llvm::zip(maybeStaticSizes.value(), maybeStaticStrides.value())) {
+    bdDimLayoutAttr.push_back(
+        AIE::BDDimLayoutAttr::get(rewriter.getContext(), size, stride));
+  }
+  return std::make_pair(AIE::BDDimLayoutArrayAttr::get(
+                            rewriter.getContext(), ArrayRef(bdDimLayoutAttr)),
+                        transferLength);
 }
 
 /// Create a new `aie.dma_start` op with a sequence of DMA BD blocks within the
@@ -95,13 +116,21 @@ AIEDeviceBuilder::convertSizeStrideToBDDimLayoutArrayAttr(
 ///    aie.dma_bd(%buffer_0_1_50 : memref<2048xi32, 1 : i32>) {len = 2048 : i32}
 ///    aie.use_lock(%lock_0_1_52, Release, 2)
 ///    aie.next_bd ^bb1
-void AIEDeviceBuilder::createDMA(
+LogicalResult AIEDeviceBuilder::createDMA(
     Operation *memOp, AIE::DMAChannelDir channelDir, int channelIndex,
-    AIE::BDDimLayoutArrayAttr dims, size_t acqNum, size_t relNum, int64_t len,
-    int64_t offset, const SmallVector<AIE::BufferOp> &bufferOps,
+    SmallVector<OpFoldResult> sizes, SmallVector<OpFoldResult> strides,
+    uint8_t memSpace, size_t acqNum, size_t relNum, int64_t offset,
+    const SmallVector<AIE::BufferOp> &bufferOps,
     const std::pair<AIE::LockOp, AIE::LockOp> &locks,
     std::optional<uint8_t> pktId) {
   OpBuilder::InsertionGuard g(rewriter);
+
+  FailureOr<BDDimLayoutAndLength> maybeDimsAndLength =
+      convertSizeStrideToBDDimLayoutArrayAttr(
+          sizes, strides, memSpace, [&]() { return memOp->emitOpError(); });
+  if (failed(maybeDimsAndLength)) return failure();
+  auto [dims, len] = maybeDimsAndLength.value();
+
   Block &endBlock = memOp->getRegion(0).getBlocks().back();
   assert(!endBlock.getOps<AIE::EndOp>().empty() &&
          "expected last block to have aie.end");
@@ -116,7 +145,9 @@ void AIEDeviceBuilder::createDMA(
                                    &endBlock);
   if (lastDmaBlock) lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 
-  auto createBdBlockOps = [&](AIE::BufferOp buff, Block *succ) {
+  auto createBdBlockOps = [&](AIE::BufferOp buff, Block *succ,
+                              AIE::BDDimLayoutArrayAttr dimsAttr,
+                              int64_t transferLength) {
     AIE::LockOp acqLock = locks.first, relLock = locks.second;
     rewriter.create<AIE::UseLockOp>(rewriter.getUnknownLoc(), acqLock,
                                     AIE::LockAction::AcquireGreaterEqual,
@@ -128,12 +159,12 @@ void AIEDeviceBuilder::createDMA(
                                           /*pkt_type*/ 0,
                                           /*pkt_id*/ pktId.value());
     }
-    if (!dims.getValue().empty()) {
-      rewriter.create<AIE::DMABDOp>(rewriter.getUnknownLoc(), buff, offset, len,
-                                    dims);
+    if (!dimsAttr.getValue().empty()) {
+      rewriter.create<AIE::DMABDOp>(rewriter.getUnknownLoc(), buff, offset,
+                                    transferLength, dimsAttr);
     } else {
       rewriter.create<AIE::DMABDOp>(rewriter.getUnknownLoc(), buff, offset,
-                                    len);
+                                    transferLength);
     }
     rewriter.create<AIE::UseLockOp>(rewriter.getUnknownLoc(), relLock,
                                     AIE::LockAction::Release, relNum);
@@ -149,9 +180,10 @@ void AIEDeviceBuilder::createDMA(
       succ = rewriter.createBlock(&endBlock);
     }
     rewriter.setInsertionPointToStart(curr);
-    createBdBlockOps(bufferOps[blockIndex], succ);
+    createBdBlockOps(bufferOps[blockIndex], succ, dims, len);
     curr = succ;
   }
+  return success();
 }
 
 SmallVector<Operation *> AIEDeviceBuilder::createFlowOps(
@@ -230,10 +262,13 @@ void AIEDeviceBuilder::foldDims(const SmallVector<OpFoldResult> &offsets,
   (void)foldUnitDims(rewriter.getContext(), offsets, sizes, strides, tmpOffsets,
                      tmpSizes, tmpStrides);
   DmaDimConfig dmaDimConfig(deviceModel, memSpace);
-  SmallVector<int64_t> maxSizes = dmaDimConfig.getMaxSizes();
-  (void)foldLinearDims(rewriter.getContext(), tmpOffsets, tmpSizes, tmpStrides,
-                       newOffsets, newSizes, newStrides, maxSizes);
-  (void)foldSingleDim(newOffsets, newSizes, newStrides);
+  SmallVector<int64_t> maxSizes = dmaDimConfig.getMaxSizes(tmpOffsets.size());
+  (void)foldLinearDims(
+      rewriter.getContext(), tmpOffsets, tmpSizes, tmpStrides, newOffsets,
+      newSizes, newStrides, [&](size_t idxFromEnd, int64_t size) {
+        return idxFromEnd < maxSizes.size() &&
+               size <= maxSizes[maxSizes.size() - idxFromEnd - 1];
+      });
 }
 
 void AIEDeviceBuilder::remapOperands(Operation *op) {
@@ -492,11 +527,6 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
              << "expected source to be an "
                 "`amdaie.logicalobjectfifo.from_buffers` op";
     }
-    std::optional<size_t> maybeSize = maybeNpuDmaUserOp->getSourceStaticSize();
-    if (!maybeSize) {
-      return maybeNpuDmaUserOp->emitOpError()
-             << "could not compute a static access size for source";
-    }
     std::optional<size_t> maybeOffset =
         maybeNpuDmaUserOp->getSourceStaticBaseOffset();
     if (!maybeOffset) {
@@ -509,10 +539,6 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
       return maybeNpuDmaUserOp->emitOpError()
              << "expected to have a source memory space";
     }
-    AIE::BDDimLayoutArrayAttr dims = convertSizeStrideToBDDimLayoutArrayAttr(
-        maybeNpuDmaUserOp->getSourceMixedSizes(),
-        maybeNpuDmaUserOp->getSourceMixedStrides(),
-        maybeSourceMemSpace.value());
     SmallVector<CopyOpInterface> objFifoProducers =
         sourceObjFifo.getCopyLikeProducers();
     SmallVector<CopyOpInterface> objFifoConsumers =
@@ -556,9 +582,13 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
           std::make_pair(consumerLocks[0], producerLocks[0]);
       rewriter.moveOpBefore(memOp, deviceBlock,
                             deviceBlock->without_terminator().end());
-      createDMA(memOp, AIE::DMAChannelDir::MM2S, channel.getValue(), dims,
-                acqNum, acqNum, maybeSize.value(), maybeOffset.value(), buffers,
-                lockPair, packetId);
+      if (failed(createDMA(memOp, AIE::DMAChannelDir::MM2S, channel.getValue(),
+                           maybeNpuDmaUserOp->getSourceMixedSizes(),
+                           maybeNpuDmaUserOp->getSourceMixedStrides(),
+                           maybeSourceMemSpace.value(), acqNum, acqNum,
+                           maybeOffset.value(), buffers, lockPair, packetId))) {
+        return failure();
+      }
     }
   }
 
@@ -588,11 +618,6 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
              << "expected target to be an "
                 "`amdaie.logicalobjectfifo.from_buffers` op";
     }
-    std::optional<size_t> maybeSize = maybeNpuDmaUserOp->getTargetStaticSize();
-    if (!maybeSize) {
-      return maybeNpuDmaUserOp->emitOpError()
-             << "could not compute a static access size for source";
-    }
     std::optional<size_t> maybeOffset =
         maybeNpuDmaUserOp->getTargetStaticBaseOffset();
     if (!maybeOffset) {
@@ -605,10 +630,6 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
       return maybeNpuDmaUserOp->emitOpError()
              << "expected to have a target memory space";
     }
-    AIE::BDDimLayoutArrayAttr dims = convertSizeStrideToBDDimLayoutArrayAttr(
-        maybeNpuDmaUserOp->getTargetMixedSizes(),
-        maybeNpuDmaUserOp->getTargetMixedStrides(),
-        maybeTargetMemSpace.value());
     SmallVector<CopyOpInterface> objFifoProducers =
         targetObjFifo.getCopyLikeProducers();
     SmallVector<CopyOpInterface> objFifoConsumers =
@@ -652,9 +673,13 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
           std::make_pair(producerLocks[0], consumerLocks[0]);
       rewriter.moveOpBefore(memOp, deviceBlock,
                             deviceBlock->without_terminator().end());
-      createDMA(memOp, AIE::DMAChannelDir::S2MM, channel.getValue(), dims,
-                acqNum, acqNum, maybeSize.value(), maybeOffset.value(), buffers,
-                lockPair, packetId);
+      if (failed(createDMA(memOp, AIE::DMAChannelDir::S2MM, channel.getValue(),
+                           maybeNpuDmaUserOp->getTargetMixedSizes(),
+                           maybeNpuDmaUserOp->getTargetMixedStrides(),
+                           maybeTargetMemSpace.value(), acqNum, acqNum,
+                           maybeOffset.value(), buffers, lockPair, packetId))) {
+        return failure();
+      }
     }
   }
 
