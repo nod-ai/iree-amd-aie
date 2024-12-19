@@ -1809,17 +1809,16 @@ class Tests:
                 "transpose_a": False,
                 "transpose_b": False,
             },
-            # Todo: Enable this transpose_a test once it is supported.
-            # {
-            #     "M": 4096,
-            #     "N": 512,
-            #     "K": 512,
-            #     "use_ukernel": False,
-            #     "peano_opt_level": 3,
-            #     "outline": True,
-            #     "transpose_a": True,
-            #     "transpose_b": False,
-            # },
+            {
+                "M": 4096,
+                "N": 512,
+                "K": 512,
+                "use_ukernel": False,
+                "peano_opt_level": 3,
+                "outline": True,
+                "transpose_a": True,
+                "transpose_b": False,
+            },
         ]
 
         # Some bf16 Performance tests:
