@@ -392,7 +392,7 @@ struct CanonicalizeTrivialWriteAccessSubviewOpPattern
   }
 };
 
-static bool isGemmBTransposedContractionOp(vector::ContractionOp op) {
+static bool isGemmLikeContractionOp(vector::ContractionOp op) {
   if (op.getKind() != vector::CombiningKind::ADD) return false;
 
   // Get and check shape of operands
@@ -409,8 +409,14 @@ static bool isGemmBTransposedContractionOp(vector::ContractionOp op) {
       SmallVector<vector::IteratorType>(iterators.end() - 3, iterators.end());
   if (vector::IteratorType::parallel != innerMostIterators[0] ||
       vector::IteratorType::parallel != innerMostIterators[1] ||
-      vector::IteratorType::reduction != innerMostIterators[2])
+      vector::IteratorType::reduction != innerMostIterators[2]) {
     return false;
+  }
+  return true;
+}
+
+static bool isGemmBTransposedContractionOp(vector::ContractionOp op) {
+  if (!isGemmLikeContractionOp(op)) return false;
 
   // Get indexing maps of iterators for operands
   SmallVector<AffineMap, 4> indexingMaps(op.getIndexingMapsArray());
@@ -429,6 +435,36 @@ static bool isGemmBTransposedContractionOp(vector::ContractionOp op) {
           .dropResults(0);
   auto mmBidxMap =
       AffineMap::getPermutationMap(ArrayRef<unsigned>{0, 1, 2}, ctx)
+          .dropResults(0);
+  auto mmCidxMap =
+      AffineMap::getPermutationMap(ArrayRef<unsigned>{2, 0, 1}, ctx)
+          .dropResults(0);
+  int64_t numOuterMostDims = indexingMaps[0].getNumDims() - 3;
+  return innerLhsMap == mmAidxMap.shiftDims(numOuterMostDims) &&
+         innerRhsMap == mmBidxMap.shiftDims(numOuterMostDims) &&
+         innerAccMap == mmCidxMap.shiftDims(numOuterMostDims);
+}
+
+static bool isGemmATransposedContractionOp(vector::ContractionOp op) {
+  if (!isGemmLikeContractionOp(op)) return false;
+
+  // Get indexing maps of iterators for operands
+  SmallVector<AffineMap, 4> indexingMaps(op.getIndexingMapsArray());
+  SmallVector<int64_t> outerMostResults;
+  for (int64_t i = 0; i < indexingMaps[0].getNumResults() - 2; i++)
+    outerMostResults.push_back(i);
+
+  auto innerLhsMap = indexingMaps[0].dropResults(outerMostResults);
+  auto innerRhsMap = indexingMaps[1].dropResults(outerMostResults);
+  auto innerAccMap = indexingMaps[2].dropResults(outerMostResults);
+
+  // Check whether they conform to a "transposed A" gemm
+  auto ctx = op.getContext();
+  auto mmAidxMap =
+      AffineMap::getPermutationMap(ArrayRef<unsigned>{1, 2, 0}, ctx)
+          .dropResults(0);
+  auto mmBidxMap =
+      AffineMap::getPermutationMap(ArrayRef<unsigned>{0, 2, 1}, ctx)
           .dropResults(0);
   auto mmCidxMap =
       AffineMap::getPermutationMap(ArrayRef<unsigned>{2, 0, 1}, ctx)
@@ -800,9 +836,9 @@ struct FlattenArithTruncFOpPattern : public OpRewritePattern<arith::TruncFOp> {
 };
 
 // This pattern extracts an implicit transposition of the 2 innermost
-// dimensions of `rhs` in a gemm-like contraction op, making it an explicit
-// `vector.transpose` op.
-// If `rhs` is coming from a widening op (`extf`/`extsi`/`extui`), the
+// dimensions of `lhs` or `rhs` in a gemm-like contraction op, making it an
+// explicit `vector.transpose` op.
+// If `lhs` or `rhs` is coming from a widening op (`extf`/`extsi`/`extui`), the
 // transposition will be hoisted above the widening op.
 struct ExtractTransposeFromContractionOp
     : public OpRewritePattern<vector::ContractionOp> {
@@ -820,79 +856,100 @@ struct ExtractTransposeFromContractionOp
 
   LogicalResult matchAndRewrite(vector::ContractionOp contractOp,
                                 PatternRewriter &rewriter) const override {
-    if (!isGemmBTransposedContractionOp(contractOp)) return failure();
+    bool isGemmBTransposed = isGemmBTransposedContractionOp(contractOp);
+    bool isGemmATransposed = isGemmATransposedContractionOp(contractOp);
+    if (!isGemmATransposed && !isGemmBTransposed) return failure();
 
     Location loc = contractOp.getLoc();
     auto ctx = rewriter.getContext();
 
-    Value rhsVal = contractOp.getRhs();
-    VectorType rhsVecTy = contractOp.getRhsType();
-    Type rhsElemTy = rhsVecTy.getElementType();
+    Value oldVal =
+        isGemmATransposed ? contractOp.getLhs() : contractOp.getRhs();
+    VectorType oldVecTy =
+        isGemmATransposed ? contractOp.getLhsType() : contractOp.getRhsType();
+    Type elemTy = oldVecTy.getElementType();
 
     bool doExtF = false, doExtSI = false, doExtUI = false;
-    if (auto extfRhsOp = rhsVal.getDefiningOp<arith::ExtFOp>()) {
-      rhsVal = extfRhsOp.getIn();
-      rhsVecTy = cast<VectorType>(rhsVal.getType());
+    if (auto extfRhsOp = oldVal.getDefiningOp<arith::ExtFOp>()) {
+      oldVal = extfRhsOp.getIn();
+      oldVecTy = cast<VectorType>(oldVal.getType());
       doExtF = true;
-    } else if (auto extsiRhsOp = rhsVal.getDefiningOp<arith::ExtSIOp>()) {
-      rhsVal = extsiRhsOp.getIn();
-      rhsVecTy = cast<VectorType>(rhsVal.getType());
+    } else if (auto extsiRhsOp = oldVal.getDefiningOp<arith::ExtSIOp>()) {
+      oldVal = extsiRhsOp.getIn();
+      oldVecTy = cast<VectorType>(oldVal.getType());
       doExtSI = true;
-    } else if (auto extuiRhsOp = rhsVal.getDefiningOp<arith::ExtUIOp>()) {
-      rhsVal = extuiRhsOp.getIn();
-      rhsVecTy = cast<VectorType>(rhsVal.getType());
+    } else if (auto extuiRhsOp = oldVal.getDefiningOp<arith::ExtUIOp>()) {
+      oldVal = extuiRhsOp.getIn();
+      oldVecTy = cast<VectorType>(oldVal.getType());
       doExtUI = true;
     }
 
-    int64_t nDim = rhsVecTy.getShape().size();
+    int64_t nDim = oldVecTy.getShape().size();
 
-    SmallVector<int64_t> rhsPermutation;
-    for (int64_t i = 0; i < nDim - 2; i++) rhsPermutation.push_back(i);
-    rhsPermutation.push_back(nDim - 1);
-    rhsPermutation.push_back(nDim - 2);
-    auto transpRhsVecTy = getTransposedVectorType(rhsVecTy);
-    rhsVal = rewriter
-                 .create<vector::TransposeOp>(loc, transpRhsVecTy, rhsVal,
-                                              rhsPermutation)
-                 .getResult();
+    SmallVector<int64_t> permutation;
+    for (int64_t i = 0; i < nDim - 2; i++) permutation.push_back(i);
+    permutation.push_back(nDim - 1);
+    permutation.push_back(nDim - 2);
+    auto transpVecTy = getTransposedVectorType(oldVecTy);
+    Value newVal =
+        rewriter
+            .create<vector::TransposeOp>(loc, transpVecTy, oldVal, permutation)
+            .getResult();
 
     if (doExtF)
-      rhsVal =
+      newVal =
           rewriter
               .create<arith::ExtFOp>(
-                  loc, VectorType::get(transpRhsVecTy.getShape(), rhsElemTy),
-                  rhsVal)
+                  loc, VectorType::get(transpVecTy.getShape(), elemTy), newVal)
               .getOut();
     if (doExtSI)
-      rhsVal =
+      newVal =
           rewriter
               .create<arith::ExtSIOp>(
-                  loc, VectorType::get(transpRhsVecTy.getShape(), rhsElemTy),
-                  rhsVal)
+                  loc, VectorType::get(transpVecTy.getShape(), elemTy), newVal)
               .getOut();
     if (doExtUI)
-      rhsVal =
+      newVal =
           rewriter
               .create<arith::ExtUIOp>(
-                  loc, VectorType::get(transpRhsVecTy.getShape(), rhsElemTy),
-                  rhsVal)
+                  loc, VectorType::get(transpVecTy.getShape(), elemTy), newVal)
               .getOut();
 
     SmallVector<AffineMap, 4> oldIdxMaps(contractOp.getIndexingMapsArray());
+    assert(oldIdxMaps[0].getNumDims() == oldIdxMaps[1].getNumDims() &&
+           "The number of dimensions for each indexing map must be the same");
 
-    nDim = oldIdxMaps[1].getNumDims();
+    nDim = oldIdxMaps[0].getNumDims();
     SmallVector<int64_t> innerDimPerm;
-    for (int64_t i = 0; i < nDim - 2; i++) innerDimPerm.push_back(i);
-    innerDimPerm.push_back(nDim - 1);
-    innerDimPerm.push_back(nDim - 2);
-    auto transpPermMap = AffineMap::getPermutationMap(innerDimPerm, ctx);
+    for (int64_t i = 0; i < nDim - 3; i++) innerDimPerm.push_back(i);
 
-    auto newIdxMaps = rewriter.getAffineMapArrayAttr(
-        {oldIdxMaps[0], oldIdxMaps[1].compose(transpPermMap), oldIdxMaps[2]});
+    if (isGemmBTransposed) {
+      innerDimPerm.push_back(nDim - 3);
+      innerDimPerm.push_back(nDim - 1);
+      innerDimPerm.push_back(nDim - 2);
+      auto transpPermMap = AffineMap::getPermutationMap(innerDimPerm, ctx);
 
-    rewriter.replaceOpWithNewOp<vector::ContractionOp>(
-        contractOp, contractOp.getResult().getType(), contractOp.getLhs(),
-        rhsVal, contractOp.getAcc(), newIdxMaps, contractOp.getIteratorTypes());
+      auto newIdxMaps = rewriter.getAffineMapArrayAttr(
+          {oldIdxMaps[0], oldIdxMaps[1].compose(transpPermMap), oldIdxMaps[2]});
+
+      rewriter.replaceOpWithNewOp<vector::ContractionOp>(
+          contractOp, contractOp.getResult().getType(), contractOp.getLhs(),
+          newVal, contractOp.getAcc(), newIdxMaps,
+          contractOp.getIteratorTypes());
+    } else {
+      innerDimPerm.push_back(nDim - 1);
+      innerDimPerm.push_back(nDim - 2);
+      innerDimPerm.push_back(nDim - 3);
+      auto transpPermMap = AffineMap::getPermutationMap(innerDimPerm, ctx);
+
+      auto newIdxMaps = rewriter.getAffineMapArrayAttr(
+          {oldIdxMaps[0].compose(transpPermMap), oldIdxMaps[1], oldIdxMaps[2]});
+
+      rewriter.replaceOpWithNewOp<vector::ContractionOp>(
+          contractOp, contractOp.getResult().getType(), newVal,
+          contractOp.getRhs(), contractOp.getAcc(), newIdxMaps,
+          contractOp.getIteratorTypes());
+    }
 
     return success();
   }
