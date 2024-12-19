@@ -92,8 +92,9 @@ static iree_status_t iree_hal_xrt_lite_device_create_command_buffer(
 
   IREE_TRACE_ZONE_END(z0);
   return iree_hal_deferred_command_buffer_create(
-      device->device_allocator, mode, command_categories, binding_capacity,
-      &device->block_pool, device->host_allocator, out_command_buffer);
+      device->device_allocator, mode, command_categories, queue_affinity,
+      binding_capacity, &device->block_pool, device->host_allocator,
+      out_command_buffer);
 }
 
 static iree_status_t iree_hal_xrt_lite_device_create_semaphore(
