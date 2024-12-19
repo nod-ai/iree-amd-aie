@@ -1638,7 +1638,10 @@ class Tests:
             self.register(MatmulTransposeB(1536, 1536, 2048, input_type, acc_type))
 
         # MatmulTransposeA test(s):
-        for input_type, acc_type in zip(["i32"], ["i32"]):
+        # Note: i8->i32 tests don't work because of the following op
+        # %10 = vector.transpose %9, [1, 0] : vector<8x4xi8> to vector<4x8xi8>
+        # failed to lowering to an `aievec.shuffle` op.
+        for input_type, acc_type in zip(["i32", "bf16"], ["i32", "f32"]):
             self.register(MatmulTransposeA(32, 32, 32, input_type, acc_type))
             self.register(MatmulTransposeA(128, 256, 128, input_type, acc_type))
             self.register(MatmulTransposeA(1536, 1536, 2048, input_type, acc_type))
@@ -1806,17 +1809,16 @@ class Tests:
                 "transpose_a": False,
                 "transpose_b": False,
             },
-            # Todo: Enable this transpose_a test once it is supported.
-            # {
-            #     "M": 4096,
-            #     "N": 512,
-            #     "K": 512,
-            #     "use_ukernel": False,
-            #     "peano_opt_level": 3,
-            #     "outline": True,
-            #     "transpose_a": True,
-            #     "transpose_b": False,
-            # },
+            {
+                "M": 4096,
+                "N": 512,
+                "K": 512,
+                "use_ukernel": False,
+                "peano_opt_level": 3,
+                "outline": True,
+                "transpose_a": True,
+                "transpose_b": False,
+            },
         ]
 
         # Some bf16 Performance tests:
