@@ -68,18 +68,17 @@ class AIEDeviceBuilder {
 
   /// Utility to convert vectors of `size` and `stride` into an
   /// `AIE::BDDimLayoutArrayAttr`.
-  FailureOr<BDDimLayoutAndLength> convertSizeStrideToBDDimLayoutArrayAttr(
-      SmallVector<OpFoldResult> sizes, SmallVector<OpFoldResult> strides,
-      uint8_t memSpace, function_ref<InFlightDiagnostic()> emitError);
+  BDDimLayoutAndLength convertSizeStrideToBDDimLayoutArrayAttr(
+      ArrayRef<int64_t> sizes, ArrayRef<int64_t> strides);
 
   /// Utility to create DMA blocks and add them to `memOp`.
-  LogicalResult createDMA(Operation *memOp, AIE::DMAChannelDir channelDir,
-                          int channelIndex, SmallVector<OpFoldResult> sizes,
-                          SmallVector<OpFoldResult> strides, uint8_t memSpace,
-                          size_t acqNum, size_t relNum, int64_t offset,
-                          const SmallVector<AIE::BufferOp> &bufferOps,
-                          const std::pair<AIE::LockOp, AIE::LockOp> &locks,
-                          std::optional<uint8_t> pktId);
+  LogicalResult createDMABlocks(
+      Operation *memOp, AIE::DMAChannelDir channelDir, int channelIndex,
+      ArrayRef<int64_t> sizes, ArrayRef<int64_t> strides, size_t acqNum,
+      size_t relNum, int64_t offset,
+      const SmallVector<AIE::BufferOp> &bufferOps,
+      const std::pair<AIE::LockOp, AIE::LockOp> &locks,
+      std::optional<uint8_t> pktId);
 
   /// Utility to create flow ops from connection ops.
   SmallVector<Operation *> createFlowOps(
@@ -99,14 +98,12 @@ class AIEDeviceBuilder {
   /// might be used after `op` is erased.
   void eraseOp(Operation *op);
 
-  /// Utility to fold linear dims, unit dims and single dims in the provided
-  /// `offsets`, `sizes` and `strides` access patterns.
-  void foldDims(const SmallVector<OpFoldResult> &offsets,
-                const SmallVector<OpFoldResult> &sizes,
-                const SmallVector<OpFoldResult> &strides,
-                SmallVector<OpFoldResult> &newOffsets,
-                SmallVector<OpFoldResult> &newSizes,
-                SmallVector<OpFoldResult> &newStrides, uint8_t memSpace);
+  /// Utility to fold the provided repetition count, unit dims, linear dims and
+  /// to convert the sizes and strides into static versions and return them.
+  LogicalResult foldDimsAndReturnAsStatic(
+      SmallVector<OpFoldResult> sizes, SmallVector<OpFoldResult> strides,
+      SmallVector<int64_t> &newSizes, SmallVector<int64_t> &newStrides,
+      uint8_t memSpace, function_ref<InFlightDiagnostic()> emitError);
 
   /// Utility to remap the provided operation's operands.
   void remapOperands(Operation *op);
