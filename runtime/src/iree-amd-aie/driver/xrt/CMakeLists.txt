@@ -49,6 +49,7 @@ iree_cc_library(
     iree::base::internal::flatcc::parsing
     iree::hal::utils::deferred_command_buffer
     iree::hal::utils::file_transfer
+    iree::hal::utils::files
     iree::hal::utils::semaphore_base
     iree::hal
     iree-amd-aie::schemas::xrt_executable_def_c_fbs
