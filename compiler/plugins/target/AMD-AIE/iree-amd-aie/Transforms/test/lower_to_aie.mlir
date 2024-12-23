@@ -146,6 +146,10 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
+//===----------------------------------------------------------------------===//
+// Connection Tests
+//===----------------------------------------------------------------------===//
+
 // CHECK:  aie.device
 // CHECK:    %[[TILE_0_2:.*]] = aie.tile(0, 2)
 // CHECK:    %[[TILE_0_1:.*]] = aie.tile(0, 1)
@@ -611,6 +615,156 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       amdaie.controlcode {
         %7 = amdaie.npu.circular_dma_cpy_nd %4([0] [1024] [1], [0, 1024] [32, 32] [64, 1])
         %8 = amdaie.npu.circular_dma_cpy_nd %6([] [] [], [0, 1024] [32, 32] [64, 1])
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+// Tests lowering of a circular DMA operation to a DMA chain.
+// Checks that a circular DMA operation with an 'outer' repetition which is not 
+// part of the objectFifo's repetition count (same repetition on each 
+// connection), is lowered to a chain of `dma_bd` operations with a lock
+// acquire at the beginning of the chain and a lock release at the end. Note
+// that this lowering to multiple `dma_bd` operations is needed because 
+// `stride == 0` is not supported in hardware and/or becauser there are more
+// dimensions needed than supported in `dma_bd`.
+// CHECK:     aie.device(npu1_4col)
+// CHECK-DAG:   %[[TILE_0_2:.*]] = aie.tile(0, 2)
+// CHECK-DAG:   %[[TILE_0_1:.*]] = aie.tile(0, 1)
+// CHECK-DAG:   %[[LOCK_0_1:.*]] = aie.lock(%[[TILE_0_1]], 0) {init = 1 : i8
+// CHECK-DAG:   %[[LOCK_0_1_0:.*]] = aie.lock(%[[TILE_0_1]], 1) {init = 0 : i8
+// CHECK:       aie.memtile_dma(%[[TILE_0_1]]) {
+// CHECK:           aie.dma_start(S2MM, 0, ^bb1, ^bb2)
+// CHECK:         ^bb1:
+// CHECK:           aie.use_lock(%[[LOCK_0_1]], AcquireGreaterEqual, 1)
+// CHECK-NEXT:      aie.dma_bd(%{{.+}} : memref<4096xi32, 1 : i32>) {len = 1024 : i32}
+// CHECK-NEXT:      aie.use_lock(%[[LOCK_0_1_0]], Release, 1)
+// CHECK-NEXT:      aie.next_bd ^bb1
+// CHECK:         ^bb2:
+// CHECK:           aie.dma_start(MM2S, 0, ^bb3, ^bb5)
+// CHECK:         ^bb3:
+// CHECK:           aie.use_lock(%[[LOCK_0_1_0]], AcquireGreaterEqual, 1)
+// CHECK-NEXT:      aie.dma_bd(%{{.+}} : memref<4096xi32, 1 : i32>) {dimensions = #aie<bd_dim_layout_array[<size = 32, stride = 64>, <size = 32, stride = 1>]>, len = 1024 : i32}
+// CHECK-NEXT:      aie.next_bd ^bb4
+// CHECK:         ^bb4:
+// CHECK-NEXT:      aie.dma_bd(%{{.+}} : memref<4096xi32, 1 : i32>) {dimensions = #aie<bd_dim_layout_array[<size = 32, stride = 64>, <size = 32, stride = 1>]>, len = 1024 : i32}
+// CHECK-NEXT:      aie.use_lock(%[[LOCK_0_1]], Release, 1)
+// CHECK-NEXT:      aie.next_bd ^bb3
+// CHECK:       aiex.runtime_sequence @connection_dma_chain_outer_repetition
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @connection_dma_chain_outer_repetition() {
+    amdaie.workgroup {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c2 = arith.constant 2 : index
+      %tile_0_0 = amdaie.tile(%c0, %c0)
+      %tile_0_1 = amdaie.tile(%c0, %c1)
+      %tile_0_2 = amdaie.tile(%c0, %c2)
+      %buffer = amdaie.buffer(%tile_0_1) : memref<4096xi32, 1 : i32>
+      %lock = amdaie.lock(%tile_0_1(0), 1)
+      %lock_1 = amdaie.lock(%tile_0_1(1), 0)
+      %buffer_1 = amdaie.buffer(%tile_0_2) : memref<4096xi32, 2 : i32>
+      %lock_2 = amdaie.lock(%tile_0_2(0), 1)
+      %lock_3 = amdaie.lock(%tile_0_2(1), 0)
+      %0 = amdaie.logicalobjectfifo.placeholder{%tile_0_0} : !amdaie.logicalobjectfifo<memref<4096xi32>>
+      %1 = amdaie.logicalobjectfifo.from_buffers({%buffer}, {%lock}, {%lock_1}) : memref<4096xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>
+      %2 = amdaie.logicalobjectfifo.from_buffers({%buffer_1}, {%lock_2}, {%lock_3}) : memref<4096xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 1>
+      %channel = amdaie.channel(%tile_0_0, 0, port_type = DMA, direction = MM2S)
+      %channel_1 = amdaie.channel(%tile_0_1, 0, port_type = DMA, direction = S2MM)
+      %3 = amdaie.flow({%channel} -> {%channel_1}) {is_packet_flow = false}
+      %4 = amdaie.connection(%1 {%channel_1}, %0 {%channel}, flow = %3) : (!amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>, !amdaie.logicalobjectfifo<memref<4096xi32>, 1>)
+      %channel_2 = amdaie.channel(%tile_0_1, 0, port_type = DMA, direction = MM2S)
+      %channel_3 = amdaie.channel(%tile_0_2, 0, port_type = DMA, direction = S2MM)
+      %5 = amdaie.flow({%channel_2} -> {%channel_3}) {is_packet_flow = false}
+      %6 = amdaie.connection(%2 {%channel_3}, %1 {%channel_2}, flow = %5) : (!amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 1>, !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>)
+      amdaie.controlcode {
+        %7 = amdaie.npu.circular_dma_cpy_nd %4([0, 0] [1, 1024] [0, 1], [] [] [])
+        %8 = amdaie.npu.circular_dma_cpy_nd %6([] [] [], [0, 0, 0] [2, 32, 32] [0, 64, 1])
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+// Tests lowering of a circular DMA operation to a DMA chain.
+// Checks that a circular DMA operation with an 'inner' repetition (a dimension 
+// with `stride == 0` after a dimension with `stride != 0`), is lowered to a 
+// chain of `dma_bd` operations with a lock acquire at the beginning of the chain
+// and a lock release at the end. Note that this lowering to multiple `dma_bd` 
+// operations is needed because `stride == 0` is not supported in hardware and/or
+// because there are more dimensions needed than supported in `dma_bd`.
+// CHECK:     aie.device(npu1_4col)
+// CHECK-DAG:   %[[TILE_0_2:.*]] = aie.tile(0, 2)
+// CHECK-DAG:   %[[TILE_0_1:.*]] = aie.tile(0, 1)
+// CHECK-DAG:   %[[LOCK_0_1:.*]] = aie.lock(%[[TILE_0_1]], 0) {init = 1 : i8
+// CHECK-DAG:   %[[LOCK_0_1_0:.*]] = aie.lock(%[[TILE_0_1]], 1) {init = 0 : i8
+// CHECK:       aie.memtile_dma(%[[TILE_0_1]]) {
+// CHECK:           aie.dma_start(S2MM, 0, ^bb1, ^bb2)
+// CHECK:         ^bb1:
+// CHECK:           aie.use_lock(%[[LOCK_0_1]], AcquireGreaterEqual, 1)
+// CHECK-NEXT:      aie.dma_bd(%{{.+}} : memref<4096xi32, 1 : i32>) {len = 2048 : i32}
+// CHECK-NEXT:      aie.use_lock(%[[LOCK_0_1_0]], Release, 1)
+// CHECK-NEXT:      aie.next_bd ^bb1
+// CHECK:         ^bb2:
+// CHECK:           aie.dma_start(MM2S, 0, ^bb3, ^bb9)
+// CHECK:         ^bb3:
+// CHECK:           aie.use_lock(%[[LOCK_0_1_0]], AcquireGreaterEqual, 1)
+// CHECK-NEXT:      aie.dma_bd(%{{.+}} : memref<4096xi32, 1 : i32>) {dimensions = #aie<bd_dim_layout_array[<size = 32, stride = 64>, <size = 32, stride = 1>]>, len = 1024 : i32}
+// CHECK-NEXT:      aie.next_bd ^bb4
+// CHECK:         ^bb4:
+// CHECK-NEXT:      aie.dma_bd(%{{.+}} : memref<4096xi32, 1 : i32>) {dimensions = #aie<bd_dim_layout_array[<size = 32, stride = 64>, <size = 32, stride = 1>]>, len = 1024 : i32}
+// CHECK-NEXT:      aie.next_bd ^bb5
+// CHECK:         ^bb5:
+// CHECK-NEXT:      aie.dma_bd(%{{.+}} : memref<4096xi32, 1 : i32>) {dimensions = #aie<bd_dim_layout_array[<size = 32, stride = 64>, <size = 32, stride = 1>]>, len = 1024 : i32, offset = 128 : i32}
+// CHECK-NEXT:      aie.next_bd ^bb6
+// CHECK:         ^bb6:
+// CHECK-NEXT:      aie.dma_bd(%{{.+}} : memref<4096xi32, 1 : i32>) {dimensions = #aie<bd_dim_layout_array[<size = 32, stride = 64>, <size = 32, stride = 1>]>, len = 1024 : i32, offset = 128 : i32}
+// CHECK-NEXT:      aie.next_bd ^bb7
+// CHECK:         ^bb7:
+// CHECK-NEXT:      aie.dma_bd(%{{.+}} : memref<4096xi32, 1 : i32>) {dimensions = #aie<bd_dim_layout_array[<size = 32, stride = 64>, <size = 32, stride = 1>]>, len = 1024 : i32, offset = 256 : i32}
+// CHECK-NEXT:      aie.next_bd ^bb8
+// CHECK:         ^bb8:
+// CHECK-NEXT:      aie.dma_bd(%{{.+}} : memref<4096xi32, 1 : i32>) {dimensions = #aie<bd_dim_layout_array[<size = 32, stride = 64>, <size = 32, stride = 1>]>, len = 1024 : i32, offset = 256 : i32}
+// CHECK-NEXT:      aie.use_lock(%[[LOCK_0_1]], Release, 1)
+// CHECK-NEXT:      aie.next_bd ^bb3
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @connection_dma_chain_inner_repetition() {
+    amdaie.workgroup {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c2 = arith.constant 2 : index
+      %tile_0_0 = amdaie.tile(%c0, %c0)
+      %tile_0_1 = amdaie.tile(%c0, %c1)
+      %tile_0_2 = amdaie.tile(%c0, %c2)
+      %buffer = amdaie.buffer(%tile_0_1) : memref<4096xi32, 1 : i32>
+      %lock = amdaie.lock(%tile_0_1(0), 1)
+      %lock_1 = amdaie.lock(%tile_0_1(1), 0)
+      %buffer_1 = amdaie.buffer(%tile_0_2) : memref<4096xi32, 2 : i32>
+      %lock_2 = amdaie.lock(%tile_0_2(0), 1)
+      %lock_3 = amdaie.lock(%tile_0_2(1), 0)
+      %0 = amdaie.logicalobjectfifo.placeholder{%tile_0_0} : !amdaie.logicalobjectfifo<memref<4096xi32>>
+      %1 = amdaie.logicalobjectfifo.from_buffers({%buffer}, {%lock}, {%lock_1}) : memref<4096xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>
+      %2 = amdaie.logicalobjectfifo.from_buffers({%buffer_1}, {%lock_2}, {%lock_3}) : memref<4096xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 1>
+      %channel = amdaie.channel(%tile_0_0, 0, port_type = DMA, direction = MM2S)
+      %channel_1 = amdaie.channel(%tile_0_1, 0, port_type = DMA, direction = S2MM)
+      %3 = amdaie.flow({%channel} -> {%channel_1}) {is_packet_flow = false}
+      %4 = amdaie.connection(%1 {%channel_1}, %0 {%channel}, flow = %3) : (!amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>, !amdaie.logicalobjectfifo<memref<4096xi32>, 1>)
+      %channel_2 = amdaie.channel(%tile_0_1, 0, port_type = DMA, direction = MM2S)
+      %channel_3 = amdaie.channel(%tile_0_2, 0, port_type = DMA, direction = S2MM)
+      %5 = amdaie.flow({%channel_2} -> {%channel_3}) {is_packet_flow = false}
+      %6 = amdaie.connection(%2 {%channel_3}, %1 {%channel_2}, flow = %5) : (!amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 1>, !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>)
+      amdaie.controlcode {
+        %7 = amdaie.npu.circular_dma_cpy_nd %4([0, 0] [2, 2048] [0, 1], [] [] [])
+        %8 = amdaie.npu.circular_dma_cpy_nd %6([] [] [], [0, 0, 0, 0, 0] [2, 3, 2, 32, 32] [0, 128, 0, 64, 1])
         amdaie.end
       }
     }
