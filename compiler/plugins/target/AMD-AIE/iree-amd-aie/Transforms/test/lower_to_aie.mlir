@@ -630,7 +630,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // connection), is lowered to a chain of `dma_bd` operations with a lock
 // acquire at the beginning of the chain and a lock release at the end. Note
 // that this lowering to multiple `dma_bd` operations is needed because 
-// `stride == 0` is not supported in hardware and/or becauser there are more
+// `stride == 0` is not supported in hardware and/or because there are more
 // dimensions needed than supported in `dma_bd`.
 // CHECK:     aie.device(npu1_4col)
 // CHECK-DAG:   %[[TILE_0_2:.*]] = aie.tile(0, 2)
