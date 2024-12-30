@@ -118,8 +118,10 @@ LogicalResult configureLocksAndBd(Block &block, const TileLoc &tileLoc,
   assert(bdOp.getBdId().has_value() &&
          "DMABDOp must have assigned bd_id; did you forget to run "
          "aie-assign-bd-ids?");
+  bool validBd = true;
   std::optional<uint8_t> packetType;
   std::optional<uint8_t> packetID;
+  bool enablePacket = false;
   auto maybePacketOps = block.getOps<DMABDPACKETOp>();
   if (!maybePacketOps.empty()) {
     assert(llvm::range_size(maybePacketOps) == 1 &&
@@ -127,6 +129,7 @@ LogicalResult configureLocksAndBd(Block &block, const TileLoc &tileLoc,
     auto packetOp = *maybePacketOps.begin();
     packetType = packetOp.getPacketType();
     packetID = packetOp.getPacketId();
+    enablePacket = true;
   }
 
   BufferOp bufferOp = cast<BufferOp>(bdOp.getBuffer().getDefiningOp());
@@ -148,16 +151,20 @@ LogicalResult configureLocksAndBd(Block &block, const TileLoc &tileLoc,
           BDPadLayout{dim.getConstPadBefore(), dim.getConstPadAfter()});
     }
   }
-  if (failed(configureDMABD(deviceModel, dmaTileBd.value(), tileLoc,
-                            static_cast<uint8_t>(*bdOp.getBdId()),
-                            bdOp.getNextBdId().has_value()
-                                ? std::optional<uint8_t>{static_cast<uint8_t>(
-                                      *bdOp.getNextBdId())}
-                                : std::nullopt,
-                            packetType, packetID, *bufferOp.getAddress(),
-                            getLenInBytes(bdOp), getOffsetInBytes(bdOp),
+
+  bool enableNextBd = bdOp.getNextBdId().has_value();
+  std::optional<uint8_t> nextBdId =
+      enableNextBd
+          ? std::optional<uint8_t>{static_cast<uint8_t>(*bdOp.getNextBdId())}
+          : std::nullopt;
+  std::optional<BDIterLayout> maybeIter = std::nullopt;
+  if (failed(configureDMABD(deviceModel, dmaTileBd.value(), tileLoc, validBd,
+                            static_cast<uint8_t>(*bdOp.getBdId()), enableNextBd,
+                            nextBdId, enablePacket, packetType, packetID,
+                            *bufferOp.getAddress(), getLenInBytes(bdOp),
+                            getOffsetInBytes(bdOp),
                             getBufferElementTypeWidthInBytes(bdOp), maybeDims,
-                            maybePadDims))) {
+                            maybePadDims, maybeIter))) {
     return failure();
   }
   return success();
@@ -233,11 +240,12 @@ LogicalResult addInitConfigToCDO(const AMDAIEDeviceModel &deviceModel,
       for (auto op : block.getOps<DMAStartOp>()) {
         DMABDOp bd = *op.getDest()->getOps<DMABDOp>().begin();
         int chNum = op.getChannelIndex();
-        auto channelDir = op.getChannelDir();
-        if (failed(pushToBdQueueAndEnable(
-                deviceModel, tileLoc, chNum,
-                static_cast<DMAChannelDir>(channelDir), bd.getBdId().value(),
-                op.getRepeatCount())))
+        auto channelDir = static_cast<DMAChannelDir>(op.getChannelDir());
+        bool issueToken = tileLoc.row == 0 && channelDir == DMAChannelDir::MM2S;
+        bool setChannelEnable = true;
+        if (failed(configurePushToBdQueue(
+                deviceModel, tileLoc, chNum, channelDir, bd.getBdId().value(),
+                op.getRepeatCount(), issueToken, setChannelEnable)))
           return failure();
       }
     }

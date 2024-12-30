@@ -15,7 +15,7 @@ module {
 // -----
 
 // CHECK:       0x06030100
-// CHECK:       0x00000105
+// CHECK:       0x00000104
 // CHECK:       0x00000000
 // CHECK:       0x00000010
 // CHECK-LABEL: @no_ops
@@ -35,7 +35,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // -----
 
 // CHECK:       0x06030100
-// CHECK:       0x00000105
+// CHECK:       0x00000104
 // CHECK:       0x00000001
 // CHECK:       0x00000040
 // CHECK:       0x00000081
@@ -68,10 +68,10 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // -----
 
 // CHECK:       0x06030100
-// CHECK:       0x00000105
+// CHECK:       0x00000104
 // CHECK:       0x00000001
 // CHECK:       0x00000028
-// CHECK:       0x00000000
+// CHECK:       0x00140000
 // CHECK:       0x00000000
 // CHECK:       0x0001D214
 // CHECK:       0x00000000
@@ -95,10 +95,10 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // -----
 
 // CHECK:       0x06030100
-// CHECK:       0x00000105
+// CHECK:       0x00000104
 // CHECK:       0x00000001
 // CHECK:       0x00000028
-// CHECK:       0x00000000
+// CHECK:       0x001C0000
 // CHECK:       0x00000000
 // CHECK:       0x0601D21C
 // CHECK:       0x00000000
@@ -123,10 +123,10 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // `tct_sync` on the single column.
 // CHECK:       0x06030100
-// CHECK:       0x00000105
+// CHECK:       0x00000104
 // CHECK:       0x00000002
 // CHECK:       0x00000038
-// CHECK:       0x00000000
+// CHECK:       0x00140000
 // CHECK:       0x00000000
 // CHECK:       0x0401D214
 // CHECK:       0x00000000
@@ -156,28 +156,28 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // Expect one `tct_sync` to cover four columns, with same channel, direction, and row.
 // CHECK:       0x06030100
-// CHECK:       0x00000105
+// CHECK:       0x00000104
 // CHECK:       0x00000005
 // CHECK:       0x00000080
-// CHECK:       0x00000000
+// CHECK:       0x00140000
 // CHECK:       0x00000000
 // CHECK:       0x0001D214
 // CHECK:       0x00000000
 // CHECK:       0x80000000
 // CHECK:       0x00000018
-// CHECK:       0x00000000
+// CHECK:       0x00140000
 // CHECK:       0x00000000
 // CHECK:       0x0601D214
 // CHECK:       0x00000000
 // CHECK:       0x80000000
 // CHECK:       0x00000018
-// CHECK:       0x00000000
+// CHECK:       0x00140000
 // CHECK:       0x00000000
 // CHECK:       0x0401D214
 // CHECK:       0x00000000
 // CHECK:       0x80000000
 // CHECK:       0x00000018
-// CHECK:       0x00000000
+// CHECK:       0x00140000
 // CHECK:       0x00000000
 // CHECK:       0x0201D214
 // CHECK:       0x00000000
@@ -209,7 +209,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // -----
 
 // CHECK:       0x06030100
-// CHECK:       0x00000105
+// CHECK:       0x00000104
 // CHECK:       0x00000001
 // CHECK:       0x00000040
 // CHECK:       0x00000001
@@ -242,10 +242,10 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // -----
 
 // CHECK:       0x06030100
-// CHECK:       0x00000105
+// CHECK:       0x00000104
 // CHECK:       0x00000001
 // CHECK:       0x00000040
-// CHECK:       0x00000001
+// CHECK:       0x00400001
 // CHECK:       0x00000000
 // CHECK:       0x0201D040
 // CHECK:       0x00000030

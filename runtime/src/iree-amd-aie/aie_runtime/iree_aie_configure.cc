@@ -53,12 +53,14 @@ LogicalResult configureDMALocks(const AMDAIEDeviceModel &deviceModel,
 
 LogicalResult configureDMABD(
     const AMDAIEDeviceModel &deviceModel, XAie_DmaDesc &dmaDesc,
-    const TileLoc &tileLoc, uint8_t bdId, std::optional<uint8_t> nextBdId,
+    const TileLoc &tileLoc, bool validBd, uint8_t bdId, bool enableNextBd,
+    std::optional<uint8_t> nextBdId, bool enablePacket,
     std::optional<uint8_t> packetType, std::optional<uint8_t> packetId,
     uint64_t baseAddr, uint64_t lenInBytes, uint64_t offsetInBytes,
     uint32_t bufferElementTypeWidthInBytes,
     const std::optional<std::vector<BDDimLayout>> &maybeDims,
-    const std::optional<std::vector<BDPadLayout>> &maybePadDims) {
+    const std::optional<std::vector<BDPadLayout>> &maybePadDims,
+    const std::optional<BDIterLayout> &maybeIter) {
   assert(dmaDesc.IsReady == XAIE_COMPONENT_IS_READY &&
          "XAie_DmaDescs need to be created using initDMADesc");
   if (deviceModel.isShimNOCTile(tileLoc.col, tileLoc.row)) {
@@ -162,14 +164,19 @@ LogicalResult configureDMABD(
     TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaSetPadding, &dmaDesc, &dmaPadTensor);
   }
 
+  if (maybeIter.has_value()) {
+    auto iter = maybeIter.value();
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaSetBdIteration, &dmaDesc, iter.stride,
+                                iter.size, iter.current);
+  }
+
   if (nextBdId) {
-    auto enableNextBd = 1;
     TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaSetNextBd, &dmaDesc, nextBdId.value(),
                                 enableNextBd);
   }
 
-  if (packetId) {
-    if (!packetType) {
+  if (enablePacket) {
+    if (!packetId || !packetType) {
       llvm::errs() << "must have packetType with packetId";
       return failure();
     }
@@ -184,19 +191,25 @@ LogicalResult configureDMABD(
         XAie_DmaSetPkt, &dmaDesc,
         XAie_PacketInit(packetId.value(), packetType.value()));
   }
-  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaEnableBd, &dmaDesc);
+
+  if (validBd) {
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaEnableBd, &dmaDesc);
+  } else {
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaDisableBd, &dmaDesc);
+  }
+
   auto devInst = const_cast<XAie_DevInst *>(&deviceModel.devInst);
   TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaWriteBd, devInst, &dmaDesc, tileLoc,
                               bdId);
   return success();
 }
 
-LogicalResult pushToBdQueueAndEnable(const AMDAIEDeviceModel &deviceModel,
+LogicalResult configurePushToBdQueue(const AMDAIEDeviceModel &deviceModel,
                                      const TileLoc &tileLoc, uint8_t chNum,
                                      const DMAChannelDir &channelDir,
-                                     uint8_t bdId, uint32_t repeatCount) {
+                                     uint8_t bdId, uint32_t repeatCount,
+                                     bool enTokenIssue, bool setChannelEnable) {
   XAie_DmaDirection direction = static_cast<XAie_DmaDirection>(channelDir);
-  auto enTokenIssue = tileLoc.row == 0 && direction == DMA_S2MM;
   // in english repeat_count==0 means "do it once" and don't repeat but
   // libxaie treats repeat_count=1 as do it once.
   repeatCount += 1;
@@ -204,8 +217,18 @@ LogicalResult pushToBdQueueAndEnable(const AMDAIEDeviceModel &deviceModel,
   TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelSetStartQueue, devInst, tileLoc,
                               chNum, direction, bdId, repeatCount,
                               enTokenIssue);
-  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelEnable, devInst, tileLoc, chNum,
-                              direction);
+  if (setChannelEnable) {
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelEnable, devInst, tileLoc, chNum,
+                                direction);
+  }
+  return success();
+}
+
+LogicalResult configureCustomTxnOp(const AMDAIEDeviceModel &deviceModel,
+                                   uint8_t opCode, uint32_t *data,
+                                   uint32_t size) {
+  auto devInst = const_cast<XAie_DevInst *>(&deviceModel.devInst);
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_AddCustomTxnOp, devInst, opCode, data, size);
   return success();
 }
 
@@ -235,7 +258,8 @@ LogicalResult initializeLock(const AMDAIEDeviceModel &deviceModel,
                              const Lock &lock) {
   auto devInst = const_cast<XAie_DevInst *>(&deviceModel.devInst);
   auto locInit = XAie_LockInit(lock.id, lock.init);
-  TRY_XAIE_API_FATAL_ERROR(XAie_LockSetValue, devInst, lock.tileLoc, locInit);
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_LockSetValue, devInst, lock.tileLoc,
+                              locInit);
   return success();
 }
 
