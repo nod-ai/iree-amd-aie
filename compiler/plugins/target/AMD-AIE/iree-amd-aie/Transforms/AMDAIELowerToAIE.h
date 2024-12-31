@@ -103,7 +103,8 @@ class AIEDeviceBuilder {
   LogicalResult foldDimsAndReturnAsStatic(
       SmallVector<OpFoldResult> sizes, SmallVector<OpFoldResult> strides,
       SmallVector<int64_t> &newSizes, SmallVector<int64_t> &newStrides,
-      uint8_t memSpace, function_ref<InFlightDiagnostic()> emitError);
+      size_t repetitionCount, uint8_t memSpace,
+      function_ref<InFlightDiagnostic()> emitError);
 
   /// Utility to remap the provided operation's operands.
   void remapOperands(Operation *op);
