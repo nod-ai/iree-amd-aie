@@ -165,7 +165,7 @@ LogicalResult configureDMABD(
   }
 
   if (maybeIter.has_value()) {
-    auto iter = maybeIter.value();
+    BDIterLayout iter = maybeIter.value();
     TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaSetBdIteration, &dmaDesc, iter.stride,
                                 iter.size, iter.current);
   }

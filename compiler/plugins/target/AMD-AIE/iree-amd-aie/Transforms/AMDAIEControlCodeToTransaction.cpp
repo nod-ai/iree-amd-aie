@@ -182,21 +182,19 @@ LogicalResult convertOp(AMDAIE::NpuWriteBdOp op, TransactionBuilder &builder) {
   uint32_t row = op.getRow();
   uint32_t bdId = op.getBdId();
   ArrayRef<int32_t> sizes = op.getSizes();
-  ArrayRef<int32_t> strides = op.getStrides();
+  SmallVector<int32_t> strides(op.getStrides());
   if (sizes.size() != 3) return op.emitOpError() << "expected 3 sizes";
   if (strides.size() != 3) return op.emitOpError() << "expected 3 strides";
   // Strides and iteration_size will be encoded as `actual - 1`, so we need to
   // ensure they are at least 1.
-  SmallVector<int32_t> stridesNew(strides.begin(), strides.end());
-  for (auto &stride : stridesNew)
-    stride = std::max(int64_t(stride), int64_t(1));
-  uint32_t iterationSize = std::max(int64_t(op.getIterationSize()), int64_t(1));
-  uint32_t iterationStride =
-      std::max(int64_t(op.getIterationStride()), int64_t(1));
+  std::for_each(strides.begin(), strides.end(),
+                [](int32_t &stride) { stride = std::max(stride, int32_t(1)); });
+  uint32_t iterationSize = std::max(op.getIterationSize(), uint32_t(1));
+  uint32_t iterationStride = std::max(op.getIterationStride(), uint32_t(1));
   if (failed(builder.appendWriteBdOp(
           col, row, bdId, op.getBufferLength(), op.getBufferOffset(),
           op.getEnablePacket(), op.getPacketId(), op.getPacketType(), sizes,
-          stridesNew, op.getIterationCurrent(), iterationSize, iterationStride,
+          strides, op.getIterationCurrent(), iterationSize, iterationStride,
           op.getNextBd(), op.getUseNextBd(), op.getValidBd(),
           op.getLockRelVal(), op.getLockRelId(), op.getLockAcqEnable(),
           op.getLockAcqVal(), op.getLockAcqId()))) {
