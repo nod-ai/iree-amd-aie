@@ -478,7 +478,7 @@ void AMDAIEDistributeCoresAndObjectFifosPass::runOnOperation() {
   // possible.
   RewritePatternSet unrollLocalLoopsPatterns(context);
   unrollLocalLoopsPatterns.insert<AMDAIEUnrollLocalLoops>(context);
-  if (failed(applyPatternsAndFoldGreedily(
+  if (failed(applyPatternsGreedily(
           moduleOp, std::move(unrollLocalLoopsPatterns)))) {
     moduleOp.emitOpError()
         << "loop unrolling of loops selected for parallel execution failed";

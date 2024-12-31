@@ -75,7 +75,7 @@ void AMDAIECleanupPass::runOnOperation() {
 
   RewritePatternSet patterns(context);
   populateCleanupPatterns(patterns);
-  if (failed(applyPatternsAndFoldGreedily(funcOp, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(funcOp, std::move(patterns)))) {
     return signalPassFailure();
   }
   {

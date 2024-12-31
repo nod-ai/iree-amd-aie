@@ -1021,6 +1021,7 @@ void addLowerToLLVMPasses(OpPassManager &pm) {
   ConvertFuncToLLVMPassOptions opts;
   opts.useBarePtrCallConv = true;
   pm.addPass(createConvertFuncToLLVMPass(opts));
+  pm.addPass(createArithToLLVMConversionPass());
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
   pm.addPass(createConvertControlFlowToLLVMPass());

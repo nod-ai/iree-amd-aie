@@ -89,7 +89,7 @@ class AMDAIESinkIntoCorePass
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
     patterns.insert<SinkingPattern>(&getContext());
-    if (failed(applyPatternsAndFoldGreedily(getOperation(),
+    if (failed(applyPatternsGreedily(getOperation(),
                                             std::move(patterns)))) {
       signalPassFailure();
     }
