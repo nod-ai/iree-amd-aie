@@ -36,6 +36,13 @@ struct BDPadLayout {
 };
 ASSERT_STANDARD_LAYOUT(BDPadLayout);
 
+struct BDIterLayout {
+  uint32_t stride;
+  uint8_t size;
+  uint8_t current;
+};
+ASSERT_STANDARD_LAYOUT(BDIterLayout);
+
 /// Metadata necessary for configuring/setting a lock (actually semaphore).
 struct Lock {
   enum class Action : uint32_t {
@@ -146,12 +153,14 @@ FailureOr<XAie_DmaDesc> initDMADesc(const AMDAIEDeviceModel &deviceModel,
 /// Configures/sets up a buffer descriptor (bd) associated with a dma.
 LogicalResult configureDMABD(
     const AMDAIEDeviceModel &deviceModel, XAie_DmaDesc &dmaDesc,
-    const TileLoc &tileLoc, uint8_t bdId, std::optional<uint8_t> nextBdId,
+    const TileLoc &tileLoc, bool validBd, uint8_t bdId, bool enableNextBd,
+    std::optional<uint8_t> nextBdId, bool enablePacket,
     std::optional<uint8_t> packetType, std::optional<uint8_t> packetId,
     uint64_t baseAddr, uint64_t lenInBytes, uint64_t offsetInBytes,
     uint32_t bufferElementTypeWidthInBytes,
     const std::optional<std::vector<BDDimLayout>> &maybeDims,
-    const std::optional<std::vector<BDPadLayout>> &maybePadDims);
+    const std::optional<std::vector<BDPadLayout>> &maybePadDims,
+    const std::optional<BDIterLayout> &maybeIter);
 
 /// Configures/sets up locks associated with a dma (actually the bd...).
 LogicalResult configureDMALocks(const AMDAIEDeviceModel &deviceModel,
@@ -166,10 +175,16 @@ LogicalResult configureDMALocks(const AMDAIEDeviceModel &deviceModel,
 /// once".
 /// TODO(max): revisit this and change it back to being like how most people
 /// understand.
-LogicalResult pushToBdQueueAndEnable(const AMDAIEDeviceModel &deviceModel,
+LogicalResult configurePushToBdQueue(const AMDAIEDeviceModel &deviceModel,
                                      const TileLoc &tileLoc, uint8_t chNum,
                                      const DMAChannelDir &channelDir,
-                                     uint8_t bdId, uint32_t repeatCount);
+                                     uint8_t bdId, uint32_t repeatCount,
+                                     bool issueToken,
+                                     bool configureChannelEnable);
+
+LogicalResult configureCustomTxnOp(const AMDAIEDeviceModel &deviceModel,
+                                   uint8_t opCode, uint32_t *data,
+                                   uint32_t size);
 
 LogicalResult configureStreamSwitch(const AMDAIEDeviceModel &deviceModel,
                                     const TileLoc &tileLoc,
