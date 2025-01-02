@@ -649,7 +649,7 @@ void AMDAIEDmaLoopSubsumptionPass::runOnOperation() {
                                       onlyZeroStrideOnOuterDim);
   }
 
-  if (failed(applyPatternsAndFoldGreedily(parentOp, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(parentOp, std::move(patterns)))) {
     parentOp->emitOpError("failed to subsume some loops into DMA operations");
     return signalPassFailure();
   }

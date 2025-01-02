@@ -211,7 +211,7 @@ void AMDAIECanonicalizeDoublyStridedOpPass::runOnOperation() {
   }
   populateCanonicalizeDoublyStridedOpPatterns(patterns, foldSingleDims,
                                               deviceModel);
-  if (failed(applyPatternsAndFoldGreedily(parentOp, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(parentOp, std::move(patterns)))) {
     parentOp->emitOpError(
         "failed to canonicalize doubly strided DMA operations");
     return signalPassFailure();

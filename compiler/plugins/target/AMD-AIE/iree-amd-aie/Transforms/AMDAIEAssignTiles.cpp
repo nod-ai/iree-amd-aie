@@ -321,7 +321,7 @@ LogicalResult assignNonLocalTiles(RewriterBase &rewriter, Operation *op,
   // Find and fill the tile candidates.
   RewritePatternSet fillTilePatterns(context);
   fillTilePatterns.insert<FillTiles>(context, deviceModel);
-  if (failed(applyPatternsAndFoldGreedily(op, std::move(fillTilePatterns)))) {
+  if (failed(applyPatternsGreedily(op, std::move(fillTilePatterns)))) {
     return op->emitOpError()
            << "collection of tile candidates for logical objectFifos failed";
   }

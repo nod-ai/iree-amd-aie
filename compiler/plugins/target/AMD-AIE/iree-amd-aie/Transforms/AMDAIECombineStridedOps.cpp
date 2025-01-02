@@ -183,7 +183,7 @@ void AMDAIECombineStridedOpsPass::runOnOperation() {
   MLIRContext *context = &getContext();
   RewritePatternSet patterns(context);
   populateStridedOpCombinationPattern(patterns);
-  if (failed(applyPatternsAndFoldGreedily(parentOp, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(parentOp, std::move(patterns)))) {
     parentOp->emitOpError("failed to combine strided operations");
     return signalPassFailure();
   }

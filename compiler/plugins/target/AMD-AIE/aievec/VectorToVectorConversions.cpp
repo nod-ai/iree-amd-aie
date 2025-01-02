@@ -1042,14 +1042,14 @@ struct CanonicalizeVectorForAIEVecPass
       RewritePatternSet patterns(context);
       patterns.add<CanonicalizeTrivialReadAccessSubviewOpPattern,
                    CanonicalizeTrivialWriteAccessSubviewOpPattern>(context);
-      (void)applyPatternsAndFoldGreedily(op, std::move(patterns));
+      (void)applyPatternsGreedily(op, std::move(patterns));
     }
     {
       // These must run before 'populateVectorBroadcastLoweringPatterns'
       // so that broadcasts can be matched before conversion to insert.
       RewritePatternSet patterns(context);
       populateBubbleSignExtensionsLate(patterns);
-      (void)applyPatternsAndFoldGreedily(op, std::move(patterns));
+      (void)applyPatternsGreedily(op, std::move(patterns));
     }
 
     {
@@ -1067,7 +1067,7 @@ struct CanonicalizeVectorForAIEVecPass
       mlir::vector::populateShapeCastFoldingPatterns(patterns);
       mlir::vector::populateDropUnitDimWithShapeCastPatterns(patterns);
       mlir::vector::populateVectorBroadcastLoweringPatterns(patterns);
-      (void)applyPatternsAndFoldGreedily(op, std::move(patterns));
+      (void)applyPatternsGreedily(op, std::move(patterns));
     }
 
     {
@@ -1076,7 +1076,7 @@ struct CanonicalizeVectorForAIEVecPass
       // cycles.
       RewritePatternSet patterns(context);
       populateBubbleSignExtensionsLate(patterns);
-      (void)applyPatternsAndFoldGreedily(op, std::move(patterns));
+      (void)applyPatternsGreedily(op, std::move(patterns));
     }
   }
 };

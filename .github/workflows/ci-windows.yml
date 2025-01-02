@@ -81,7 +81,7 @@ jobs:
       - name: Python deps
         run: |
           pip install -r third_party\iree\runtime\bindings\python\iree\runtime\build_requirements.txt
-          pip install pyyaml pybind11==2.13.6 nanobind==2.2.0
+          pip install pyyaml pybind11==2.13.6 nanobind==2.4.0
 
       - name: Enable cache
         uses: actions/cache/restore@v3
