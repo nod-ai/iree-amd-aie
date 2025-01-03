@@ -21,6 +21,7 @@ hw_ctx::hw_ctx(device &dev, const std::map<std::string, uint32_t> &qos,
       m_num_rows(n_rows),
       m_num_cols(n_cols),
       m_doorbell(0),
+      m_syncobj(AMDXDNA_INVALID_FENCE_HANDLE),
       m_log_buf(nullptr) {
   SHIM_DEBUG("Creating HW context...");
 
@@ -92,6 +93,7 @@ hw_ctx::hw_ctx(device &device, const std::vector<uint8_t> &pdi,
 
 hw_ctx::~hw_ctx() {
   delete_ctx_on_device();
+  delete_syncobj();
   SHIM_DEBUG("Destroyed HW context (%d)...", m_handle);
   SHIM_DEBUG("Destroying KMQ HW context (%d)...", m_handle);
 }
@@ -134,6 +136,7 @@ void hw_ctx::create_ctx_on_device() {
 
   m_handle = arg.handle;
   m_doorbell = arg.umq_doorbell;
+  m_syncobj = arg.syncobj_handle;
 
   m_q->bind_hwctx(this);
 }
@@ -149,17 +152,40 @@ void hw_ctx::delete_ctx_on_device() const {
   fini_log_buf();
 }
 
+void hw_ctx::delete_syncobj() const {
+  if (m_syncobj == AMDXDNA_INVALID_FENCE_HANDLE) return;
+  drm_syncobj_destroy dsobj = {.handle = m_syncobj};
+  m_device.get_pdev().ioctl(DRM_IOCTL_SYNCOBJ_DESTROY, &dsobj);
+}
+
 void hw_ctx::init_log_buf() {
-  auto log_buf_size = m_num_cols * 1024;
+  size_t column_size = 1024;
+  auto log_buf_size = m_num_cols * column_size + sizeof(m_metadata);
   shim_xcl_bo_flags f;
   f.flags = XCL_BO_FLAGS_EXECBUF;
   m_log_bo = alloc_bo(log_buf_size, f);
   m_log_buf = m_log_bo->map();
+  uint64_t bo_paddr = m_log_bo->get_properties().paddr;
+  set_metadata(m_num_cols, column_size, bo_paddr, 1);
   std::memset(m_log_buf, 0, log_buf_size);
+  std::memcpy(m_log_buf, &m_metadata, sizeof(m_metadata));
 }
 
 void hw_ctx::fini_log_buf() const {
   if (m_log_bo) m_log_bo->unmap(m_log_buf);
+}
+
+void hw_ctx::set_metadata(int num_cols, size_t size, uint64_t bo_paddr,
+                          uint8_t flag) {
+  m_metadata.magic_no = CERT_MAGIC_NO;
+  m_metadata.major = 0;
+  m_metadata.minor = 1;
+  m_metadata.cert_log_flag = flag;
+  m_metadata.num_cols = num_cols;
+  for (int i = 0; i < num_cols; i++) {
+    m_metadata.col_paddr[i] = bo_paddr + size * i + sizeof(m_metadata);
+    m_metadata.col_size[i] = size;
+  }
 }
 
 }  // namespace shim_xdna
