@@ -1,5 +1,16 @@
 // RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-assign-channels)" --split-input-file --verify-diagnostics %s | FileCheck %s
 
+module {
+  // expected-error @+1 {{could not find an AMDAIEDevice attribute}}
+  amdaie.workgroup {
+    amdaie.controlcode {
+      amdaie.end
+    }
+  }
+}
+
+// -----
+
 // CHECK-LABEL: @assign_channels
 // CHECK:       %[[C0:.+]] = arith.constant 0 : index
 // CHECK:       %[[C1:.+]] = arith.constant 1 : index
@@ -12,10 +23,8 @@
 // CHECK:         %[[CHANNEL_2:.+]] = amdaie.channel(%[[tile_0_0]], 1, port_type = DMA, direction = MM2S)
 // CHECK:         %[[CHANNEL_3:.+]] = amdaie.channel(%[[tile_0_1]], 1, port_type = DMA, direction = S2MM)
 // CHECK:         amdaie.connection(%{{.+}} {%[[CHANNEL_3]]}, %{{.+}} {%[[CHANNEL_2]]})
-// CHECK:         %[[CHANNEL_4:.+]] = amdaie.channel(%[[tile_0_0]], 2, port_type = DMA, direction = MM2S)
-// CHECK:         %[[CHANNEL_5:.+]] = amdaie.channel(%[[tile_0_1]], 2, port_type = DMA, direction = S2MM)
-// CHECK:         amdaie.connection(%{{.+}} {%[[CHANNEL_5]]}, %{{.+}} {%[[CHANNEL_4]]})
-module {
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @assign_channels(%arg0: memref<1x1x8x16xi32, 1>, %arg1: memref<8x16xi32>) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
@@ -26,6 +35,30 @@ module {
       %1 = amdaie.logicalobjectfifo.from_memref %arg1, {%tile_0_0} : memref<8x16xi32> -> !amdaie.logicalobjectfifo<memref<8x16xi32>>
       %2 = amdaie.connection(%0, %1) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32>>)
       %3 = amdaie.connection(%0, %1) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32>>)
+      amdaie.controlcode {
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+// Each tile has two MM2S channels and two S2MM channels.
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @run_out_of_channel(%arg0: memref<1x1x8x16xi32, 1>, %arg1: memref<8x16xi32>) {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    amdaie.workgroup {
+      %tile_0_0 = amdaie.tile(%c0, %c0)
+      %tile_0_1 = amdaie.tile(%c0, %c1)
+      %0 = amdaie.logicalobjectfifo.from_memref %arg0, {%tile_0_1} : memref<1x1x8x16xi32, 1> -> !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>
+      %1 = amdaie.logicalobjectfifo.from_memref %arg1, {%tile_0_0} : memref<8x16xi32> -> !amdaie.logicalobjectfifo<memref<8x16xi32>>
+      %2 = amdaie.connection(%0, %1) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32>>)
+      %3 = amdaie.connection(%0, %1) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32>>)
+      // expected-error @+1 {{no producer DMA channel available}}
       %4 = amdaie.connection(%0, %1) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32>>)
       amdaie.controlcode {
         amdaie.end
@@ -37,7 +70,8 @@ module {
 
 // -----
 
-module {
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @no_source(%arg0: memref<1x1x8x16xi32, 1>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32>>) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
