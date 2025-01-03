@@ -22,9 +22,10 @@ LogicalResult assignChannels(AMDAIE::WorkgroupOp workgroupOp) {
 
   // Get the device model.
   std::optional<AMDAIEDevice> device = getConfigAMDAIEDevice(workgroupOp);
-  if (!device)
+  if (!device) {
     return workgroupOp->emitOpError()
            << "could not find an AMDAIEDevice attribute";
+  }
   AMDAIEDeviceModel deviceModel = AMDAIE::getDeviceModel(device.value());
 
   // Get the number of producer and consumer channels for each tile.
