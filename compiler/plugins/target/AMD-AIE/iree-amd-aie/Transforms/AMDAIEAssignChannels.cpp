@@ -19,7 +19,27 @@ namespace {
 /// Assign channels to `amdaie.connection` ops.
 LogicalResult assignChannels(AMDAIE::WorkgroupOp workgroupOp) {
   IRRewriter rewriter(workgroupOp->getContext());
-  ChannelGenerator generator;
+
+  // Get the device model.
+  std::optional<AMDAIEDevice> device = getConfigAMDAIEDevice(workgroupOp);
+  if (!device) {
+    return workgroupOp->emitOpError()
+           << "could not find an AMDAIEDevice attribute";
+  }
+  AMDAIEDeviceModel deviceModel = AMDAIE::getDeviceModel(device.value());
+
+  // Get the number of producer and consumer channels for each tile.
+  DenseMap<Value, ChannelGenerator> tileToGeneratorMap;
+  workgroupOp.walk([&](AMDAIE::TileOp tileOp) {
+    uint32_t col = getConstantIndexOrAssert(tileOp.getCol());
+    uint32_t row = getConstantIndexOrAssert(tileOp.getRow());
+    AMDAIETileType tileType = deviceModel.getTileType(col, row);
+    uint8_t numDmaChannels =
+        deviceModel.getDmaProp<uint8_t>(tileType, AMDAIEDmaProp::NumChannels);
+    tileToGeneratorMap[tileOp.getResult()] =
+        ChannelGenerator(numDmaChannels, numDmaChannels);
+  });
+
   SmallVector<AMDAIE::ConnectionOp> connectionOps;
   workgroupOp->walk([&](AMDAIE::ConnectionOp connectionOp) {
     connectionOps.push_back(connectionOp);
@@ -43,18 +63,32 @@ LogicalResult assignChannels(AMDAIE::WorkgroupOp workgroupOp) {
     rewriter.setInsertionPoint(connectionOp);
     SmallVector<Value> sourceChannels;
     for (Value tile : sourceLogicalObjFifo.getTiles()) {
-      uint8_t channel = generator.getProducerDMAChannel(tile);
+      assert(tileToGeneratorMap.contains(tile) &&
+             "no channel generator found for tile");
+      std::optional<uint8_t> maybeChannel =
+          tileToGeneratorMap[tile].getAndAssignProducerDMAChannel();
+      if (!maybeChannel) {
+        return connectionOp.emitOpError()
+               << "no producer DMA channel available";
+      }
       auto channelOp = rewriter.create<AMDAIE::ChannelOp>(
-          rewriter.getUnknownLoc(), tile, channel, StrmSwPortType::DMA,
-          AMDAIE::DMAChannelDir::MM2S);
+          rewriter.getUnknownLoc(), tile, maybeChannel.value(),
+          StrmSwPortType::DMA, AMDAIE::DMAChannelDir::MM2S);
       sourceChannels.push_back(channelOp.getResult());
     }
     SmallVector<Value> targetChannels;
     for (Value tile : targetLogicalObjFifo.getTiles()) {
-      uint8_t channel = generator.getConsumerDMAChannel(tile);
+      assert(tileToGeneratorMap.contains(tile) &&
+             "no channel generator found for tile");
+      std::optional<uint8_t> maybeChannel =
+          tileToGeneratorMap[tile].getAndAssignConsumerDMAChannel();
+      if (!maybeChannel) {
+        return connectionOp.emitOpError()
+               << "no consumer DMA channel available";
+      }
       auto channelOp = rewriter.create<AMDAIE::ChannelOp>(
-          rewriter.getUnknownLoc(), tile, channel, StrmSwPortType::DMA,
-          AMDAIE::DMAChannelDir::S2MM);
+          rewriter.getUnknownLoc(), tile, maybeChannel.value(),
+          StrmSwPortType::DMA, AMDAIE::DMAChannelDir::S2MM);
       targetChannels.push_back(channelOp.getResult());
     }
     rewriter.replaceOpWithNewOp<AMDAIE::ConnectionOp>(

@@ -17,24 +17,50 @@ using namespace llvm;
 namespace mlir::iree_compiler::AMDAIE {
 
 /// Utility to generate valid channels.
-/// TODO(jornt): add physical feasibility checks on channels.
 class ChannelGenerator {
  public:
   ChannelGenerator() {}
+  ChannelGenerator(uint8_t numProducerChannels, uint8_t numConsumerChannels)
+      : numProducerChannels(numProducerChannels),
+        numConsumerChannels(numConsumerChannels) {}
 
-  /// Given a tile, returns its next usable producer channel.
-  uint8_t getProducerDMAChannel(Value tile) {
-    return producerChannelsPerTile[tile]++;
+  /// Returns its next usable producer channel.
+  std::optional<uint8_t> getAndAssignProducerDMAChannel() {
+    for (uint8_t i = 0; i < numProducerChannels; i++) {
+      if (!assignedProducerChannels.count(i)) {
+        assignedProducerChannels.insert(i);
+        return i;
+      }
+    }
+    return std::nullopt;
   }
 
-  /// Given a tile, returns its next usable consumer channel.
-  uint8_t getConsumerDMAChannel(Value tile) {
-    return consumerChannelsPerTile[tile]++;
+  /// Returns its next usable consumer channel.
+  std::optional<uint8_t> getAndAssignConsumerDMAChannel() {
+    for (uint8_t i = 0; i < numConsumerChannels; i++) {
+      if (!assignedConsumerChannels.count(i)) {
+        assignedConsumerChannels.insert(i);
+        return i;
+      }
+    }
+    return std::nullopt;
+  }
+
+  /// Assigns the provided producer channel.
+  void assignProducerDMAChannel(uint8_t channel) {
+    assignedProducerChannels.insert(channel);
+  }
+
+  /// Assigns the provided consumer channel.
+  void assignConsumerDMAChannel(uint8_t channel) {
+    assignedConsumerChannels.insert(channel);
   }
 
  private:
-  DenseMap<Value, uint8_t> producerChannelsPerTile;
-  DenseMap<Value, uint8_t> consumerChannelsPerTile;
+  uint8_t numProducerChannels = 0;
+  uint8_t numConsumerChannels = 0;
+  DenseSet<uint8_t> assignedProducerChannels;
+  DenseSet<uint8_t> assignedConsumerChannels;
 };
 
 }  // namespace mlir::iree_compiler::AMDAIE

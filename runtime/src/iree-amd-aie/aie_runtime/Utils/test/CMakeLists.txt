@@ -18,6 +18,16 @@ iree_cc_test(
 
 iree_cc_test(
   NAME
+    ChannelGeneratorTest
+  SRCS
+    "ChannelGeneratorTest.cpp"
+  DEPS
+    gtest
+    iree-amd-aie::aie_runtime::Utils::Utils
+)
+
+iree_cc_test(
+  NAME
     LockIdGeneratorTest
   SRCS
     "LockIdGeneratorTest.cpp"
