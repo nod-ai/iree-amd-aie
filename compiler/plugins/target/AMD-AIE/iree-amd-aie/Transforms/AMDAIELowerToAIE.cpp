@@ -433,10 +433,13 @@ LogicalResult AIEDeviceBuilder::coreFuncCallOpToAIE(
                                      SymbolTable::Visibility::Private);
     newFnDecl->setAttr("llvm.bareptr", rewriter.getBoolAttr(true));
 
-    // Add the 'noalias' attribute to all argument attributes:
+    // Add the 'noalias' attribute to all argument attributes, if the type is
+    // memref:
     auto noAliasAttrName = LLVM::LLVMDialect::getNoAliasAttrName();
     for (int i = 0; i < newArgs.size(); ++i) {
-      newFnDecl.setArgAttr(i, noAliasAttrName, rewriter.getUnitAttr());
+      if (isa<MemRefType>(newArgs[i].getType())) {
+        newFnDecl.setArgAttr(i, noAliasAttrName, rewriter.getUnitAttr());
+      }
     }
     fnDecl.getBody().cloneInto(&(newFnDecl.getBody()), mapper);
     mapper.map(fnDecl.getOperation(), newFnDecl.getOperation());
