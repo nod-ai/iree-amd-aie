@@ -19,7 +19,8 @@ void addAMDAIEObjectFifoLoweringPasses(
     OpPassManager &passManager, bool enablePacketFlow,
     TilePassPipeline useTilePipeline, bool enableVectorizationPasses,
     bool enableCoalescingLoops, bool enableCollapsingUnitDims,
-    bool enableFunctionOutlining, bool insertLoopAroundCoreBlock);
+    bool enableFunctionOutlining, bool insertLoopAroundCoreBlock,
+    uint32_t numCols);
 
 /// Add passes to lower from MLIR-AIR through AIE. This is
 /// currently the default passes used for lowering after IREEs tiling.
@@ -290,7 +291,8 @@ std::unique_ptr<Pass> createAMDAIERemoveMemorySpacePass();
 std::unique_ptr<Pass> createAMDAIESinkIntoCorePass();
 
 /// Create a pass to split logicalobjectfifos for shimTile/memTile distribution.
-std::unique_ptr<Pass> createAMDAIESplitLogicalObjFifosPass();
+std::unique_ptr<Pass> createAMDAIESplitLogicalObjFifosPass(
+    AMDAIESplitLogicalObjFifosOptions options = {});
 
 /// Create a pass to split logicalobjectfifos for connection reuse.
 std::unique_ptr<Pass> createAMDAIESplitLogicalObjFifosForConnectionReusePass();

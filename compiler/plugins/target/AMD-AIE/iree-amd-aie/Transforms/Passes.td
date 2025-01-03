@@ -705,17 +705,20 @@ def AMDAIESplitLogicalObjFifos :
   let description = [{
     Splitting L2 input and output logical objectFifos and their user dma operations,
     so that the logical objectFifos can be distributed on multiple shimTiles/memTiles.
-    Ideally, the split factor should only depend on the number of AIE columns being used,
-    however the current implementation only considers situations in which `nrows == ncols`.
+    The split factor depends on the number of AIE columns being used.
 
     For example, for the case of a matmul C = A x B, the two outermost dimensions
     of the L2 buffers are the implications of `nrows x ncols` AIE cores being used.
-    So if, A matrix is distributed on a 2x2 AIE array, with L2 buffer size
-    `[2, 1, 32, 32]`, will be split to two `[1, 1, 32, 32]` buffers.
-    Similarly, B matrix is distributed on a 2x2 AIE array with L2 buffer size
+    So if, A matrix is distributed on a 4x2 AIE array, with L2 buffer size
+    `[4, 1, 32, 32]`, will be split to two `[2, 1, 32, 32]` buffers.
+    Similarly, B matrix is distributed on a 4x2 AIE array with L2 buffer size
     `[1, 2, 32, 32]`, will be split to two `[1, 1, 32, 32]` buffers.
   }];
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIESplitLogicalObjFifosPass()";
+  let options = [
+    Option<"numCols", "num-cols", "uint32_t", /*default=*/"4",
+      "Number of columns used in an AIE core array">
+  ];
 }
 
 def AMDAIESplitLogicalObjFifosForConnectionReuse :
