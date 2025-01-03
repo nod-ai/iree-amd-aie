@@ -45,7 +45,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
-// Each tile has two MM2S channels and two S2MM channels.
+// Shim tile (0, 0) has only two producer (MM2S) channels.
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @run_out_of_channel(%arg0: memref<1x1x8x16xi32, 1>, %arg1: memref<8x16xi32>) {
