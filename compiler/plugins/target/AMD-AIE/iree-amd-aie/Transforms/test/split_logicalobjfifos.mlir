@@ -1,6 +1,6 @@
-// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-split-logical-objectfifos)" --split-input-file --verify-diagnostics %s | FileCheck %s
+// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-split-logical-objectfifos{num-cols=2})" --split-input-file --verify-diagnostics %s | FileCheck %s
 
-// Test of splitting matmul lhs input objectFifo and dma operations.
+// Test of splitting matmul lhs input objectFifo and dma operations on 2x2 AIE array.
 
 //   CHECK-DAG: #[[MAP0:.*]] = affine_map<(d0) -> (d0 * 64 + 32)>
 //   CHECK-DAG: #[[MAP1:.*]] = affine_map<(d0) -> (d0 * 64)>
@@ -50,7 +50,7 @@ module {
 
 // -----
 
-// Test of splitting matmul rhs input objectFifo and dma operations.
+// Test of splitting matmul rhs input objectFifo and dma operations on 2x2 AIE array.
 
 //   CHECK-DAG: #[[MAP0:.*]] = affine_map<(d0) -> (d0 * 64 + 32)>
 //   CHECK-DAG: #[[MAP1:.*]] = affine_map<(d0) -> (d0 * 64)>
@@ -100,7 +100,7 @@ module {
 
 // -----
 
-// Test of splitting matmul output objectFifo and dma operations.
+// Test of splitting matmul output objectFifo and dma operations on 2x2 AIE array.
 
 //   CHECK-DAG: #[[MAP0:.*]] = affine_map<(d0) -> (d0 * 64)>
 //   CHECK-DAG: #[[MAP1:.*]] = affine_map<(d0) -> (d0 * 64 + 32)>
@@ -154,6 +154,57 @@ module {
     } {mapping = [#gpu.block<y>, #gpu.block<x>]}
     memref.dealloc %alloc_0 : memref<2x2x32x32xi32, 1 : i32>
     memref.dealloc %alloc : memref<1x1x8x8x4x4xi32, 2 : i32>
+    return
+  }
+}
+
+// -----
+
+// Test of splitting matmul lhs input objectFifo and dma operations on 4x2 AIE array.
+// L2 buffer size `[4, 1, 32, 32]` is expected to be split into two `[2, 1, 32, 32]` buffers.
+
+// CHECK-label: func.func @split_L2_input_lhs_on_4x2_array
+//       CHECK:   %[[OBJ_L2_A0:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_A0]], {} :
+//  CHECK-SAME:         memref<2x1x32x32xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<2x1x32x32xi32, 1 : i32>>
+//       CHECK:   %[[OBJ_L2_A1:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_A1]], {} :
+//  CHECK-SAME:         memref<2x1x32x32xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<2x1x32x32xi32, 1 : i32>>
+//       CHECK:   scf.forall (%[[IV0:.*]], %[[IV1:.*]]) in (4, 2)
+//       CHECK:       %[[DMA_L3_TO_L2_A0:.*]] = amdaie.dma_cpy_nd(
+//  CHECK-SAME:                                   %[[OBJ_L2_A0]][0, 0, 0, 0] [2, 32, 1, 32] [1024, 32, 1024, 1]
+//  CHECK-SAME:                                   {{.*}}[0, 0] [64, 32] [128, 1]
+//       CHECK:       %[[DMA_L3_TO_L2_A1:.*]] = amdaie.dma_cpy_nd(
+//  CHECK-SAME:                                   %[[OBJ_L2_A1]][0, 0, 0, 0] [2, 32, 1, 32] [1024, 32, 1024, 1]
+//  CHECK-SAME:                                   {{.*}}[64, 0] [64, 32] [128, 1]
+//       CHECK:       %[[DMA_L2_TO_L1_A0:.*]] = amdaie.dma_cpy_nd(
+//  CHECK-SAME:                                   {{.*}}[0, 0, 0, 0, 0, 0] [1, 1, 8, 4, 4, 8] [1024, 1024, 32, 8, 256, 1]
+//  CHECK-SAME:                                   %[[OBJ_L2_A0]][0, 0, 0, 0] [1, 1, 32, 32] [1024, 1024, 32, 1]
+//       CHECK:       %[[DMA_L2_TO_L1_A1:.*]] = amdaie.dma_cpy_nd(
+//  CHECK-SAME:                                   {{.*}}[0, 0, 0, 0, 0, 0] [1, 1, 8, 4, 4, 8] [1024, 1024, 32, 8, 256, 1]
+//  CHECK-SAME:                                   %[[OBJ_L2_A0]][1, 0, 0, 0] [1, 1, 32, 32] [1024, 1024, 32, 1]
+//       CHECK:       %[[DMA_L2_TO_L1_A2:.*]] = amdaie.dma_cpy_nd(
+//  CHECK-SAME:                                   {{.*}}[0, 0, 0, 0, 0, 0] [1, 1, 8, 4, 4, 8] [1024, 1024, 32, 8, 256, 1]
+//  CHECK-SAME:                                   %[[OBJ_L2_A1]][0, 0, 0, 0] [1, 1, 32, 32] [1024, 1024, 32, 1]
+//       CHECK:       %[[DMA_L2_TO_L1_A3:.*]] = amdaie.dma_cpy_nd(
+//  CHECK-SAME:                                   {{.*}}[0, 0, 0, 0, 0, 0] [1, 1, 8, 4, 4, 8] [1024, 1024, 32, 8, 256, 1]
+//  CHECK-SAME:                                   %[[OBJ_L2_A1]][1, 0, 0, 0] [1, 1, 32, 32] [1024, 1024, 32, 1]
+//       CHECK:   memref.dealloc %[[ALLOC_A0]] : memref<2x1x32x32xi32, 1 : i32>
+//       CHECK:   memref.dealloc %[[ALLOC_A1]] : memref<2x1x32x32xi32, 1 : i32>
+module {
+  func.func @split_L2_input_lhs_on_4x2_array(%arg0: memref<128x128xi32>) {
+    %alloc = memref.alloc() : memref<1x1x4x8x4x8xi32, 2 : i32>
+    %alloc_0 = memref.alloc() : memref<4x1x32x32xi32, 1 : i32>
+    %0 = amdaie.logicalobjectfifo.from_memref %arg0, {} : memref<128x128xi32> -> !amdaie.logicalobjectfifo<memref<128x128xi32>>
+    %1 = amdaie.logicalobjectfifo.from_memref %alloc_0, {} : memref<4x1x32x32xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<4x1x32x32xi32, 1 : i32>>
+    scf.forall (%arg1, %arg2) in (4, 2) {
+      %3 = amdaie.dma_cpy_nd(%1[0, 0, 0, 0] [4, 32, 1, 32] [1024, 32, 1024, 1], %0[0, 0] [128, 32] [128, 1]) : (!amdaie.logicalobjectfifo<memref<4x1x32x32xi32, 1 : i32>>, !amdaie.logicalobjectfifo<memref<128x128xi32>>)
+      %4 = amdaie.logicalobjectfifo.from_memref %alloc, {} : memref<1x1x4x8x4x8xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<1x1x4x8x4x8xi32, 2 : i32>>
+      %5 = amdaie.dma_cpy_nd(%4[0, 0, 0, 0, 0, 0] [1, 1, 8, 4, 4, 8] [1024, 1024, 32, 8, 256, 1], %1[0, 0, 0, 0] [1, 1, 32, 32] [1024, 1024, 32, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x4x8x4x8xi32, 2 : i32>>, !amdaie.logicalobjectfifo<memref<4x1x32x32xi32, 1 : i32>>)
+      %6 = amdaie.dma_cpy_nd(%4[0, 0, 0, 0, 0, 0] [1, 1, 8, 4, 4, 8] [1024, 1024, 32, 8, 256, 1], %1[1, 0, 0, 0] [1, 1, 32, 32] [1024, 1024, 32, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x4x8x4x8xi32, 2 : i32>>, !amdaie.logicalobjectfifo<memref<4x1x32x32xi32, 1 : i32>>)
+      %7 = amdaie.dma_cpy_nd(%4[0, 0, 0, 0, 0, 0] [1, 1, 8, 4, 4, 8] [1024, 1024, 32, 8, 256, 1], %1[2, 0, 0, 0] [1, 1, 32, 32] [1024, 1024, 32, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x4x8x4x8xi32, 2 : i32>>, !amdaie.logicalobjectfifo<memref<4x1x32x32xi32, 1 : i32>>)
+      %8 = amdaie.dma_cpy_nd(%4[0, 0, 0, 0, 0, 0] [1, 1, 8, 4, 4, 8] [1024, 1024, 32, 8, 256, 1], %1[3, 0, 0, 0] [1, 1, 32, 32] [1024, 1024, 32, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x4x8x4x8xi32, 2 : i32>>, !amdaie.logicalobjectfifo<memref<4x1x32x32xi32, 1 : i32>>)
+    } {mapping = [#gpu.block<y>, #gpu.block<x>]}
+    memref.dealloc %alloc_0 : memref<4x1x32x32xi32, 1 : i32>
+    memref.dealloc %alloc : memref<1x1x4x8x4x8xi32, 2 : i32>
     return
   }
 }

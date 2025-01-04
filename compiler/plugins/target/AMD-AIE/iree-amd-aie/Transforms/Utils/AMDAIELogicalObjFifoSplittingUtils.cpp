@@ -550,7 +550,7 @@ FailureOr<OffsetIndexAndNewOffsetT> getOffsetIndexAndOffset(
   }
   if (offsetIndices.size() > 1)
     return emitError() << "multiple offset indices found";
-  int64_t size{1};
+
   int64_t offset{0};
   std::optional<size_t> maybeOffsetIdx;
   if (offsetIndices.size() == 1) {
@@ -564,12 +564,7 @@ FailureOr<OffsetIndexAndNewOffsetT> getOffsetIndexAndOffset(
              << "expected a static target offset and size on index: "
              << offsetIdx;
     }
-    size = maybeSize.value();
     offset = maybeOffset.value();
-  }
-  if (size != 1) {
-    return emitError() << "only a static size of 1 is currently "
-                          "supported on the split index";
   }
   return OffsetIndexAndNewOffsetT{maybeOffsetIdx, offset};
 }
@@ -584,6 +579,9 @@ LogicalResult splitLogicalObjectFifo(IRRewriter &rewriter,
       llvm::to_vector(op.getMemrefType().getShape());
   int64_t splitFactor = maybeSplitFactor.has_value() ? maybeSplitFactor.value()
                                                      : memrefShape[splitDim];
+  if (memrefShape[splitDim] < splitFactor) {
+    splitFactor = memrefShape[splitDim];
+  }
   assert(
       memrefShape[splitDim] % splitFactor == 0 &&
       "the target size for splitting is not divisible by the splitting factor");
@@ -624,10 +622,17 @@ LogicalResult splitLogicalObjectFifo(IRRewriter &rewriter,
              << "failed to find an offset index and new offset";
     }
     std::tie(maybeOffsetIdx, targetOffset) = maybeOffsetIdxAndNewOffset.value();
+
+    // Adjust offset if the new shape of the split dimension is larger than 1.
+    int64_t newOffset = 0;
+    if (memrefShape[splitDim] > 1) {
+      newOffset = targetOffset % splitFactor;
+      targetOffset /= splitFactor;
+    }
     assert(targetOffset < newObjFifos.size() &&
            "the targetOffset should be smaller than the number of objectFifos");
     if (maybeOffsetIdx.has_value())
-      targetOffsets[maybeOffsetIdx.value()] = rewriter.getIndexAttr(0);
+      targetOffsets[maybeOffsetIdx.value()] = rewriter.getIndexAttr(newOffset);
     AMDAIE::LogicalObjectFifoFromMemrefOp newObjFifo =
         newObjFifos[targetOffset];
     rewriter.setInsertionPoint(producer);
@@ -654,10 +659,17 @@ LogicalResult splitLogicalObjectFifo(IRRewriter &rewriter,
              << "failed to find an offset index and offset";
     }
     std::tie(maybeOffsetIdx, sourceOffset) = maybeOffsetIdxAndNewOffset.value();
+
+    // Adjust offset if the new shape of the split dimension is larger than 1.
+    int64_t newOffset = 0;
+    if (memrefShape[splitDim] > 1) {
+      newOffset = sourceOffset % splitFactor;
+      sourceOffset /= splitFactor;
+    }
     assert(sourceOffset < newObjFifos.size() &&
            "the sourceOffset should be smaller than the number of objectFifos");
     if (maybeOffsetIdx.has_value())
-      sourceOffsets[maybeOffsetIdx.value()] = rewriter.getIndexAttr(0);
+      sourceOffsets[maybeOffsetIdx.value()] = rewriter.getIndexAttr(newOffset);
     AMDAIE::LogicalObjectFifoFromMemrefOp newObjFifo =
         newObjFifos[sourceOffset];
     rewriter.setInsertionPoint(consumer);
@@ -691,29 +703,35 @@ LogicalResult splitDoublyStridedOp(IRRewriter &rewriter,
   assert(targetSplitDim < targetOffsets.size() &&
          "the dimension to be split on should be smaller than the number of "
          "target dimensions");
-  std::optional<int64_t> sourceSize =
+  std::optional<int64_t> maybeSourceSize =
       getConstantIntValue(sourceSizes[sourceSplitDim]);
-  std::optional<int64_t> targetSize =
+  std::optional<int64_t> maybeTargetSize =
       getConstantIntValue(targetSizes[targetSplitDim]);
-  if (!sourceSize) {
+  if (!maybeSourceSize) {
     return op.emitOpError()
            << "does not have a static source size on dim: " << sourceSplitDim;
   }
-  if (!targetSize) {
+  if (!maybeTargetSize) {
     return op.emitOpError()
            << "does not have a static target size on dim: " << targetSplitDim;
   }
+
+  int64_t sourceSize = maybeSourceSize.value();
+  int64_t targetSize = maybeTargetSize.value();
   int64_t splitFactor = maybeSplitFactor.has_value()
                             ? maybeSplitFactor.value()
-                            : std::gcd(sourceSize.value(), targetSize.value());
-  if (sourceSize.value() % splitFactor != 0 ||
-      targetSize.value() % splitFactor != 0) {
+                            : std::gcd(sourceSize, targetSize);
+  if (sourceSize < splitFactor || targetSize < splitFactor) {
+    splitFactor = std::gcd(sourceSize, targetSize);
+  }
+  if (sourceSize % splitFactor != 0 || targetSize % splitFactor != 0) {
     return op.emitOpError() << "the target or source size is not divisible by "
                                "the provided splitting factor: "
                             << splitFactor;
   }
-  int64_t newSourceSize = sourceSize.value() / splitFactor;
-  int64_t newTargetSize = targetSize.value() / splitFactor;
+
+  int64_t newSourceSize = sourceSize / splitFactor;
+  int64_t newTargetSize = targetSize / splitFactor;
   sourceSizes[sourceSplitDim] = rewriter.getIndexAttr(newSourceSize);
   targetSizes[targetSplitDim] = rewriter.getIndexAttr(newTargetSize);
   rewriter.setInsertionPoint(op);
