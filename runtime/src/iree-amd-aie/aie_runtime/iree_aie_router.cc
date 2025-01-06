@@ -639,7 +639,9 @@ std::map<TileLoc, std::vector<Connect>> emitConnections(
       int channel = dst.channel;
       // handle special shim connectivity
       if (curr == srcTileLoc &&
-          deviceModel.isShimNOCorPLTile(srcTileLoc.col, srcTileLoc.row)) {
+          deviceModel.isShimNOCorPLTile(srcTileLoc.col, srcTileLoc.row) &&
+          (srcBundle == StrmSwPortType::DMA ||
+           srcBundle == StrmSwPortType::NOC)) {
         addConnection(curr, StrmSwPortType::SOUTH, shimCh, bundle, channel,
                       std::get<0>(sw), std::get<1>(sw), std::get<2>(sw));
       } else if (deviceModel.isShimNOCorPLTile(curr.col, curr.row) &&
