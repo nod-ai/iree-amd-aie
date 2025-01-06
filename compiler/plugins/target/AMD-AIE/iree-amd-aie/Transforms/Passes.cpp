@@ -529,7 +529,7 @@ void buildAMDAIETransformPassPipeline(
         modulePassManager, enablePacketFlow, useTilePipeline,
         enableVectorizationPasses, enableCoalescingLoops,
         enableCollapsingUnitDims, enableFunctionOutlining,
-        insertLoopAroundCoreBlock);
+        insertLoopAroundCoreBlock, numCols);
   } else if (useLowerToAIEPipeline == LowerToAIEPassPipeline::AIR) {
     addMLIRAIRLoweringPasses(modulePassManager, device, useTilePipeline,
                              matmulElementwiseFusion,
@@ -553,7 +553,8 @@ void addAMDAIEObjectFifoLoweringPasses(
     OpPassManager &passManager, bool enablePacketFlow,
     TilePassPipeline useTilePipeline, bool enableVectorizationPasses,
     bool enableCoalescingLoops, bool enableCollapsingUnitDims,
-    bool enableFunctionOutlining, bool insertLoopAroundCoreBlock) {
+    bool enableFunctionOutlining, bool insertLoopAroundCoreBlock,
+    uint32_t numCols) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
 
@@ -598,8 +599,14 @@ void addAMDAIEObjectFifoLoweringPasses(
 
   passManager.addPass(createAMDAIESplitLogicalObjFifosForConnectionReusePass());
   // Currently, SplitLogicalObjFifos pass only works for matmul-like ops.
-  if (useTilePipeline == TilePassPipeline::PackPeelPipeline)
-    passManager.addPass(createAMDAIESplitLogicalObjFifosPass());
+  {
+    if (useTilePipeline == TilePassPipeline::PackPeelPipeline) {
+      AMDAIESplitLogicalObjFifosOptions splitOptions;
+      splitOptions.numCols = numCols;
+      passManager.addPass(createAMDAIESplitLogicalObjFifosPass(splitOptions));
+    }
+  }
+
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
 

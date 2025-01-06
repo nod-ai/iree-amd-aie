@@ -151,11 +151,15 @@ class AMDAIESplitLogicalObjFifosPass
     : public impl::AMDAIESplitLogicalObjFifosBase<
           AMDAIESplitLogicalObjFifosPass> {
  public:
-  using AMDAIESplitLogicalObjFifosBase::AMDAIESplitLogicalObjFifosBase;
-
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<AMDAIEDialect>();
   }
+
+  AMDAIESplitLogicalObjFifosPass() = default;
+  AMDAIESplitLogicalObjFifosPass(const AMDAIESplitLogicalObjFifosPass &pass){};
+  AMDAIESplitLogicalObjFifosPass(
+      const AMDAIESplitLogicalObjFifosOptions &options)
+      : AMDAIESplitLogicalObjFifosBase(options) {}
   void runOnOperation() override;
 };
 
@@ -198,14 +202,14 @@ void AMDAIESplitLogicalObjFifosPass::runOnOperation() {
         cast<AMDAIE::DoublyStridedOpInterface>(dmaOp.getOperation());
     if (failed(splitDoublyStridedOp(rewriter, stridedOp,
                                     dmaSplitInfo.sourceSplitDim,
-                                    dmaSplitInfo.targetSplitDim))) {
+                                    dmaSplitInfo.targetSplitDim, numCols))) {
       LLVM_DEBUG(llvm::dbgs()
                  << "Failed to perform splitting of the DMA op: " << dmaOp);
       return signalPassFailure();
     }
   }
   for (auto &&[objFifo, splitDim] : objFifoSplitDimMap) {
-    if (failed(splitLogicalObjectFifo(rewriter, objFifo, splitDim))) {
+    if (failed(splitLogicalObjectFifo(rewriter, objFifo, splitDim, numCols))) {
       LLVM_DEBUG(llvm::dbgs()
                  << "Failed to perform splitting of objectFifo op");
       return signalPassFailure();
@@ -215,8 +219,9 @@ void AMDAIESplitLogicalObjFifosPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<Pass> createAMDAIESplitLogicalObjFifosPass() {
-  return std::make_unique<AMDAIESplitLogicalObjFifosPass>();
+std::unique_ptr<Pass> createAMDAIESplitLogicalObjFifosPass(
+    AMDAIESplitLogicalObjFifosOptions options) {
+  return std::make_unique<AMDAIESplitLogicalObjFifosPass>(options);
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE
