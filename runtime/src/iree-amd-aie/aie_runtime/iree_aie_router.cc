@@ -615,7 +615,8 @@ std::map<TileLoc, std::vector<Connect>> emitConnections(
     // TODO: must reserve N3, N7, S2, S3 for DMA connections
     if (curr == srcTileLoc &&
         deviceModel.isShimNOCTile(srcTileLoc.col, srcTileLoc.row)) {
-      // shim DMAs at start of flows
+      // Check for special shim connectivity at the start (based on `srcTileLoc`
+      // and `srcBundle`) of the flow. Shim DMAs/NOCs require special handling.
       auto shimMux = std::pair(Connect::Interconnect::SHIMMUX, srcTileLoc.col);
       if (srcBundle == StrmSwPortType::DMA) {
         // must be either DMA0 -> N3 or DMA1 -> N7
@@ -637,7 +638,9 @@ std::map<TileLoc, std::vector<Connect>> emitConnections(
       Port dst = setting.dsts[i];
       StrmSwPortType bundle = dst.bundle;
       int channel = dst.channel;
-      // handle special shim connectivity
+      // Check for special shim connectivity at the start (based on `srcTileLoc`
+      // and `srcBundle`) or at the end (based on `curr` and `bundle`) of the
+      // flow. Shim DMAs/NOCs require special handling.
       if (curr == srcTileLoc &&
           deviceModel.isShimNOCorPLTile(srcTileLoc.col, srcTileLoc.row) &&
           (srcBundle == StrmSwPortType::DMA ||
@@ -667,6 +670,7 @@ std::map<TileLoc, std::vector<Connect>> emitConnections(
                       shimCh, std::get<0>(sw), std::get<1>(sw),
                       std::get<2>(sw));
       } else {
+        // otherwise, regular switchbox connection
         addConnection(curr, src.bundle, src.channel, bundle, channel,
                       std::get<0>(sw), std::get<1>(sw), std::get<2>(sw));
       }
