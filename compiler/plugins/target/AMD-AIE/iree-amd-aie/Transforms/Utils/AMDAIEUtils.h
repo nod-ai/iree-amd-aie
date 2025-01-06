@@ -22,6 +22,14 @@ std::optional<AMDAIEDevice> getConfigAMDAIEDevice(
 /// attr in the AST.
 std::optional<AMDAIEDevice> getConfigAMDAIEDevice(Operation *op);
 
+/// Returns the number of columns being targeted.
+std::optional<int64_t> getConfigNumColumns(
+    IREE::HAL::ExecutableTargetAttr targetAttr);
+
+/// Returns the number of rows being targeted.
+std::optional<int64_t> getConfigNumRows(
+    IREE::HAL::ExecutableTargetAttr targetAttr);
+
 /// Utility to retrieve a constant index from an OpFoldResult.
 int64_t getConstantIndexOrAssert(OpFoldResult ofr);
 

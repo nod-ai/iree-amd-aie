@@ -13,12 +13,20 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
-std::optional<AMDAIEDevice> getConfigAMDAIEDevice(
-    IREE::HAL::ExecutableTargetAttr targetAttr) {
+template <typename T>
+std::optional<T> getConfigAttr(IREE::HAL::ExecutableTargetAttr targetAttr,
+                               StringRef name) {
   if (!targetAttr) return std::nullopt;
   auto config = targetAttr.getConfiguration();
   if (!config) return std::nullopt;
-  std::optional<StringAttr> attr = config.getAs<StringAttr>("target_device");
+  std::optional<T> attr = config.getAs<T>(name);
+  return attr;
+}
+
+std::optional<AMDAIEDevice> getConfigAMDAIEDevice(
+    IREE::HAL::ExecutableTargetAttr targetAttr) {
+  std::optional<StringAttr> attr =
+      getConfigAttr<StringAttr>(targetAttr, "target_device");
   if (!attr) return std::nullopt;
   return AMDAIE::symbolizeEnum<AMDAIEDevice>(attr.value().getValue());
 }
@@ -27,6 +35,24 @@ std::optional<AMDAIEDevice> getConfigAMDAIEDevice(Operation *op) {
   auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(op);
   if (!targetAttr) return std::nullopt;
   return getConfigAMDAIEDevice(targetAttr);
+}
+
+/// Utility that returns the number of columns being targeted.
+std::optional<int64_t> getConfigNumColumns(
+    IREE::HAL::ExecutableTargetAttr targetAttr) {
+  std::optional<IntegerAttr> attr =
+      getConfigAttr<IntegerAttr>(targetAttr, "num_cols");
+  if (!attr) return std::nullopt;
+  return attr->getInt();
+}
+
+/// Utility that returns the number of rows being targeted.
+std::optional<int64_t> getConfigNumRows(
+    IREE::HAL::ExecutableTargetAttr targetAttr) {
+  std::optional<IntegerAttr> attr =
+      getConfigAttr<IntegerAttr>(targetAttr, "num_rows");
+  if (!attr) return std::nullopt;
+  return attr->getInt();
 }
 
 /// Utility to retrieve a constant index from an OpFoldResult.

@@ -599,13 +599,8 @@ void addAMDAIEObjectFifoLoweringPasses(
 
   passManager.addPass(createAMDAIESplitLogicalObjFifosForConnectionReusePass());
   // Currently, SplitLogicalObjFifos pass only works for matmul-like ops.
-  {
-    if (useTilePipeline == TilePassPipeline::PackPeelPipeline) {
-      AMDAIESplitLogicalObjFifosOptions splitOptions;
-      splitOptions.numCols = numCols;
-      passManager.addPass(createAMDAIESplitLogicalObjFifosPass(splitOptions));
-    }
-  }
+  if (useTilePipeline == TilePassPipeline::PackPeelPipeline)
+    passManager.addPass(createAMDAIESplitLogicalObjFifosPass());
 
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
