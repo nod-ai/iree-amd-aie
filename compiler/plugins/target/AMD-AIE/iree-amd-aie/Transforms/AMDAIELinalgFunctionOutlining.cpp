@@ -194,9 +194,8 @@ void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
   // empty, so that only the return remains. This option to 'do no compute'
   // is useful for benchmarking purposes.
   if (emptyFunctions) {
-    for (auto &[name, funcOp] : computeOpToOutlinedFuncMap) {
-      (void)name;
-      Region &region = funcOp.getBody();
+    for (auto &nameAndFuncOp : computeOpToOutlinedFuncMap) {
+      Region &region = nameAndFuncOp.second.getBody();
       Block &block = region.front();
       uint64_t nOperations = block.getOperations().size();
       assert(nOperations > 0 && "expected terminator");
