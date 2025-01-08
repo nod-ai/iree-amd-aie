@@ -13,14 +13,74 @@ namespace {
 
 using namespace mlir::iree_compiler::AMDAIE;
 
+TEST(ChannelGeneratorTest, GetFirstAvailable) {
+  ChannelGenerator generator(2, 2);
+  EXPECT_EQ(
+      generator.getProducerDMAChannel(ChannelAssignmentMode::FirstAvailable)
+          .value(),
+      0);
+  EXPECT_EQ(
+      generator.getConsumerDMAChannel(ChannelAssignmentMode::FirstAvailable)
+          .value(),
+      0);
+  EXPECT_EQ(
+      generator.getProducerDMAChannel(ChannelAssignmentMode::FirstAvailable)
+          .value(),
+      0);
+  EXPECT_EQ(
+      generator.getConsumerDMAChannel(ChannelAssignmentMode::FirstAvailable)
+          .value(),
+      0);
+  EXPECT_EQ(
+      generator.getProducerDMAChannel(ChannelAssignmentMode::FirstAvailable)
+          .value(),
+      0);
+  EXPECT_EQ(
+      generator.getConsumerDMAChannel(ChannelAssignmentMode::FirstAvailable)
+          .value(),
+      0);
+}
+
+TEST(ChannelGeneratorTest, GetRoundRobin) {
+  ChannelGenerator generator(2, 2);
+  EXPECT_EQ(generator.getProducerDMAChannel(ChannelAssignmentMode::RoundRobin)
+                .value(),
+            0);
+  EXPECT_EQ(generator.getConsumerDMAChannel(ChannelAssignmentMode::RoundRobin)
+                .value(),
+            0);
+  EXPECT_EQ(generator.getProducerDMAChannel(ChannelAssignmentMode::RoundRobin)
+                .value(),
+            1);
+  EXPECT_EQ(generator.getConsumerDMAChannel(ChannelAssignmentMode::RoundRobin)
+                .value(),
+            1);
+  EXPECT_EQ(generator.getProducerDMAChannel(ChannelAssignmentMode::RoundRobin)
+                .value(),
+            0);
+  EXPECT_EQ(generator.getConsumerDMAChannel(ChannelAssignmentMode::RoundRobin)
+                .value(),
+            0);
+  EXPECT_EQ(generator.getProducerDMAChannel(ChannelAssignmentMode::RoundRobin)
+                .value(),
+            1);
+  EXPECT_EQ(generator.getConsumerDMAChannel(ChannelAssignmentMode::RoundRobin)
+                .value(),
+            1);
+}
+
 TEST(ChannelGeneratorTest, GetAssign) {
   ChannelGenerator generator(2, 2);
-  EXPECT_EQ(generator.getAndAssignProducerDMAChannel().value(), 0);
-  EXPECT_EQ(generator.getAndAssignConsumerDMAChannel().value(), 0);
-  EXPECT_EQ(generator.getAndAssignProducerDMAChannel().value(), 1);
-  EXPECT_EQ(generator.getAndAssignConsumerDMAChannel().value(), 1);
-  EXPECT_EQ(generator.getAndAssignProducerDMAChannel(), std::nullopt);
-  EXPECT_EQ(generator.getAndAssignConsumerDMAChannel(), std::nullopt);
+  EXPECT_EQ(generator.getProducerDMAChannel().value(), 0);
+  generator.assignProducerDMAChannel(0);
+  EXPECT_EQ(generator.getConsumerDMAChannel().value(), 0);
+  generator.assignConsumerDMAChannel(0);
+  EXPECT_EQ(generator.getProducerDMAChannel().value(), 1);
+  generator.assignProducerDMAChannel(1);
+  EXPECT_EQ(generator.getConsumerDMAChannel().value(), 1);
+  generator.assignConsumerDMAChannel(1);
+  EXPECT_EQ(generator.getProducerDMAChannel(), std::nullopt);
+  EXPECT_EQ(generator.getConsumerDMAChannel(), std::nullopt);
 }
 
 TEST(ChannelGeneratorTest, Occupied) {
@@ -29,12 +89,40 @@ TEST(ChannelGeneratorTest, Occupied) {
   generator.assignConsumerDMAChannel(0);
   generator.assignProducerDMAChannel(2);
   generator.assignConsumerDMAChannel(2);
-  EXPECT_EQ(generator.getAndAssignProducerDMAChannel().value(), 1);
-  EXPECT_EQ(generator.getAndAssignConsumerDMAChannel().value(), 1);
-  EXPECT_EQ(generator.getAndAssignProducerDMAChannel().value(), 3);
-  EXPECT_EQ(generator.getAndAssignConsumerDMAChannel().value(), 3);
-  EXPECT_EQ(generator.getAndAssignProducerDMAChannel(), std::nullopt);
-  EXPECT_EQ(generator.getAndAssignConsumerDMAChannel(), std::nullopt);
+  EXPECT_EQ(
+      generator.getProducerDMAChannel(ChannelAssignmentMode::FirstAvailable)
+          .value(),
+      1);
+  EXPECT_EQ(
+      generator.getConsumerDMAChannel(ChannelAssignmentMode::FirstAvailable)
+          .value(),
+      1);
+  EXPECT_EQ(
+      generator.getProducerDMAChannel(ChannelAssignmentMode::FirstAvailable)
+          .value(),
+      1);
+  EXPECT_EQ(
+      generator.getConsumerDMAChannel(ChannelAssignmentMode::FirstAvailable)
+          .value(),
+      1);
+  EXPECT_EQ(generator.getProducerDMAChannel(ChannelAssignmentMode::RoundRobin)
+                .value(),
+            3);
+  EXPECT_EQ(generator.getConsumerDMAChannel(ChannelAssignmentMode::RoundRobin)
+                .value(),
+            3);
+  EXPECT_EQ(generator.getProducerDMAChannel(ChannelAssignmentMode::RoundRobin)
+                .value(),
+            1);
+  EXPECT_EQ(generator.getConsumerDMAChannel(ChannelAssignmentMode::RoundRobin)
+                .value(),
+            1);
+  EXPECT_EQ(generator.getProducerDMAChannel(ChannelAssignmentMode::RoundRobin)
+                .value(),
+            3);
+  EXPECT_EQ(generator.getConsumerDMAChannel(ChannelAssignmentMode::RoundRobin)
+                .value(),
+            3);
 }
 
 }  // namespace
