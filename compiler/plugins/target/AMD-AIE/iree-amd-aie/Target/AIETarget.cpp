@@ -236,6 +236,7 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
         options.enableVectorizationPasses, options.pathToUkernels,
         options.enablePacketFlow, options.enableCoalescingLoops,
         options.enableCollapsingUnitDims, options.enableFunctionOutlining,
+        options.replaceOutlinedFunctionsWithEmpty,
         options.insertLoopAroundCoreBlock);
   }
 

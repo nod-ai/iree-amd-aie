@@ -1835,6 +1835,21 @@ class Tests:
                 "transpose_a": True,
                 "transpose_b": False,
             },
+            # Test where the compute is omitted, this should help triangulate
+            # how much performance gain can be obtained with better matmul
+            # on core vs data movement.
+            {
+                "M": 4096,
+                "N": 512,
+                "K": 512,
+                "use_ukernel": False,
+                "peano_opt_level": 3,
+                "outline": True,
+                "outline_to_empty_function": True,
+                "transpose_a": False,
+                "transpose_b": False,
+                "skip_numerics": True,
+            },
         ]
 
         # Some bf16 Performance tests:
@@ -1851,15 +1866,29 @@ class Tests:
             outlining_string = "--iree-amdaie-enable-function-outlining=" + str(
                 int(outline)
             )
+
             peano_opt_level_string = f'"-O{peano_opt_level}"'
             aie_compilation_flags = [
                 outlining_string,
                 f"--iree-amd-aie-additional-peano-opt-flags={peano_opt_level_string}",
             ]
 
+            outline_to_empty_function = False
+            empty_key = "outline_to_empty_function"
+            if empty_key in test and test[empty_key] == True:
+                outline_to_empty_function = True
+
+            if outline_to_empty_function:
+                aie_compilation_flags.append(
+                    "--iree-amdaie-replace-outlined-functions-with-empty"
+                )
+
             name_suffix = "O" + str(peano_opt_level)
             if outline:
-                name_suffix += "_outline"
+                if outline_to_empty_function:
+                    name_suffix += "_outline_empty"
+                else:
+                    name_suffix += "_outline"
 
             if (transpose_a, transpose_b) == (False, False):
                 NumericTestClass = Matmul
@@ -1873,20 +1902,26 @@ class Tests:
             else:
                 raise ValueError("Transposing both LHS and RHS is not supported.")
 
-            self.register(
-                NumericTestClass(
-                    M,
-                    N,
-                    K,
-                    "bf16",
-                    "f32",
-                    use_ukernel=use_ukernel,
-                    n_repeats=2,
-                    aie_compilation_flags=aie_compilation_flags,
-                    name_suffix=name_suffix,
-                    additional_labels=["PerformanceCorrectness"],
+            # This should only be the case for benchmark tests which we expect
+            # to not pass numerically.
+            if "skip_numerics" in test and test["skip_numerics"]:
+                pass
+
+            else:
+                self.register(
+                    NumericTestClass(
+                        M,
+                        N,
+                        K,
+                        "bf16",
+                        "f32",
+                        use_ukernel=use_ukernel,
+                        n_repeats=2,
+                        aie_compilation_flags=aie_compilation_flags,
+                        name_suffix=name_suffix,
+                        additional_labels=["PerformanceCorrectness"],
+                    )
                 )
-            )
 
             self.register(
                 BenchmarkTestClass(

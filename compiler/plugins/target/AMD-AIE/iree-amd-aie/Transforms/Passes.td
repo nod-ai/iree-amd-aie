@@ -284,6 +284,14 @@ def AMDAIELinalgFunctionOutlining :
     repeated codes.
   }];
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELinalgFunctionOutliningPass()";
+  let options = [
+    Option<"emptyFunctions", "empty-functions", "bool", /*default=*/"false",
+      "A developer only option that results in incorrect numerics. "
+      "Replace all outlined functions with a function that does nothing, "
+      "ie it just returns. Useful for measuring the performance of data movement "
+      "to and from the device -- by doing zero compute, all the time is spent "
+      "moving data to/from the AIE cores.">
+    ];
 }
 
 def AMDAIEFoldDmaWaits :

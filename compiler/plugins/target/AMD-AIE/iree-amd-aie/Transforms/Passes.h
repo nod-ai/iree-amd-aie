@@ -19,8 +19,8 @@ void addAMDAIEObjectFifoLoweringPasses(
     OpPassManager &passManager, bool enablePacketFlow,
     TilePassPipeline useTilePipeline, bool enableVectorizationPasses,
     bool enableCoalescingLoops, bool enableCollapsingUnitDims,
-    bool enableFunctionOutlining, bool insertLoopAroundCoreBlock,
-    uint32_t numCols);
+    bool enableFunctionOutlining, bool replaceOutlinedFunctionsWithEmpty,
+    bool insertLoopAroundCoreBlock, uint32_t numCols);
 
 /// Add passes to lower from MLIR-AIR through AIE. This is
 /// currently the default passes used for lowering after IREEs tiling.
@@ -43,7 +43,7 @@ void buildAMDAIETransformPassPipeline(
     bool enableVectorizationPasses, const std::string &pathToUkernels,
     bool enablePacketFlow, bool enableCoalescingLoops,
     bool enableCollapsingUnitDims, bool enableFunctionOutlining,
-    bool insertLoopAroundCoreBlock);
+    bool replaceOutlinedFunctionsWithEmpty, bool insertLoopAroundCoreBlock);
 
 /// Populates passes needed to lower the IR via a Pack-Peel based approach.
 void addPackPeelBasedPassPipeline(OpPassManager &oassManager,
@@ -185,7 +185,8 @@ std::unique_ptr<Pass> createAMDAIEDmaToCircularDmaPass();
 std::unique_ptr<Pass> createAMDAIEFlattenLogicalObjectFifoPass();
 
 /// Create a pass for function outlining.
-std::unique_ptr<Pass> createAMDAIELinalgFunctionOutliningPass();
+std::unique_ptr<Pass> createAMDAIELinalgFunctionOutliningPass(
+    AMDAIELinalgFunctionOutliningOptions options = {});
 
 /// Create a pass to fuse the consumer op into the innermost last scf loop.
 std::unique_ptr<Pass> createAMDAIEFuseConsumerIntoLoopPass(
