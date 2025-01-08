@@ -300,8 +300,9 @@ SmallVector<Operation *> AIEDeviceBuilder::createFlowOps(
       for (AMDAIE::ChannelOp consumerChannel : consumerChannels) {
         Value aieConsumerTile = mapper.lookup(consumerChannel.getTile());
         AIE::FlowOp flowOp = rewriter.create<AIE::FlowOp>(
-            rewriter.getUnknownLoc(), aieProducerTile, AIE::WireBundle::DMA,
-            producerChannel.getValue(), aieConsumerTile, AIE::WireBundle::DMA,
+            rewriter.getUnknownLoc(), aieProducerTile,
+            producerChannel.getPortType(), producerChannel.getValue(),
+            aieConsumerTile, consumerChannel.getPortType(),
             consumerChannel.getValue());
         flowOps.push_back(flowOp.getOperation());
       }

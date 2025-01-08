@@ -59,6 +59,10 @@ LogicalResult assignChannels(AMDAIE::WorkgroupOp workgroupOp) {
       return connectionOp.emitOpError()
              << "expected a `LogicalObjFifoOpInterface` target";
     }
+    std::optional<AMDAIE::ConnectionType> connectionType =
+        connectionOp.getConnectionType();
+    bool isPacketFlow = connectionType && connectionType.value() ==
+                                              AMDAIE::ConnectionType::Packet;
 
     rewriter.setInsertionPoint(connectionOp);
     SmallVector<Value> sourceChannels;
@@ -66,7 +70,7 @@ LogicalResult assignChannels(AMDAIE::WorkgroupOp workgroupOp) {
       assert(tileToGeneratorMap.contains(tile) &&
              "no channel generator found for tile");
       std::optional<uint8_t> maybeChannel =
-          tileToGeneratorMap[tile].getAndAssignProducerDMAChannel();
+          tileToGeneratorMap[tile].getAndAssignProducerDMAChannel(isPacketFlow);
       if (!maybeChannel) {
         return connectionOp.emitOpError()
                << "no producer DMA channel available";
@@ -81,7 +85,7 @@ LogicalResult assignChannels(AMDAIE::WorkgroupOp workgroupOp) {
       assert(tileToGeneratorMap.contains(tile) &&
              "no channel generator found for tile");
       std::optional<uint8_t> maybeChannel =
-          tileToGeneratorMap[tile].getAndAssignConsumerDMAChannel();
+          tileToGeneratorMap[tile].getAndAssignConsumerDMAChannel(isPacketFlow);
       if (!maybeChannel) {
         return connectionOp.emitOpError()
                << "no consumer DMA channel available";

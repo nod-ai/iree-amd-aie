@@ -322,6 +322,17 @@ def AMDAIEFusePackIntoLoop :
   ];
 }
 
+def AMDAIEGenerateColumnControlOverlay : Pass<"iree-amdaie-generate-column-control-overlay"> {
+  let summary = "Spawn a streaming interconnect network for column control.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEGenerateColumnControlOverlayPass()";
+  let options = [
+    Option<"routeShimCtrlToTct", "route-shim-to-tct", "bool", /*default=*/"true",
+      "Flag to generate TCT routing between tile CTRL and shim SOUTH ports.">,
+    Option<"routeShimToTileCtrl", "route-shim-to-tile-ctrl", "bool", /*default=*/"false",
+      "Flag to generate routing between shim dma DMA and tile CTRL ports, for configuration.">
+  ];
+}
+
 def AMDAIEHoistForLoopAffineApply : Pass<"iree-amdaie-hoist-for-affine-apply"> {
   let summary = "Hoist an affine apply op on a scf.for op's induction variable.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEHoistForLoopAffineApplyPass()";
