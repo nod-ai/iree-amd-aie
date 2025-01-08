@@ -89,6 +89,12 @@ class AMDAIELinalgFunctionOutliningPass
           AMDAIELinalgFunctionOutliningPass> {
  public:
   AMDAIELinalgFunctionOutliningPass() = default;
+  AMDAIELinalgFunctionOutliningPass(const AMDAIELinalgFunctionOutliningPass &) {
+  }
+  AMDAIELinalgFunctionOutliningPass(
+      const AMDAIELinalgFunctionOutliningOptions &opts)
+      : AMDAIELinalgFunctionOutliningBase(opts) {}
+
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<linalg::LinalgDialect>();
   }
@@ -169,6 +175,7 @@ void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
     if (failed(maybeFunc)) return WalkResult::interrupt();
     func::FuncOp func = maybeFunc.value();
 
+
     rewriter.setInsertionPoint(computeOp);
     rewriter.create<func::CallOp>(computeOp.getLoc(), func,
                                   computeOp->getOperands());
@@ -182,11 +189,28 @@ void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
     op->dropAllUses();
     rewriter.eraseOp(op);
   }
+
+  // If the option is set to true, make the body of all outlined functions
+  // empty, so that only the return remains. This option to 'do no compute'
+  // is useful for benchmarking purposes.
+  if (emptyFunctions) {
+    for (auto &nameAndFuncOp : computeOpToOutlinedFuncMap) {
+      Region &region = nameAndFuncOp.second.getBody();
+      Block &block = region.front();
+      uint64_t nOperations = block.getOperations().size();
+      assert(nOperations > 0 && "expected terminator");
+      for (uint64_t i = 0; i < nOperations - 1; ++i) {
+        Operation *frontOp = &block.front();
+        rewriter.eraseOp(frontOp);
+      }
+    }
+  }
 }
 
 }  // namespace
 
-std::unique_ptr<Pass> createAMDAIELinalgFunctionOutliningPass() {
-  return std::make_unique<AMDAIELinalgFunctionOutliningPass>();
+std::unique_ptr<Pass> createAMDAIELinalgFunctionOutliningPass(
+    AMDAIELinalgFunctionOutliningOptions options) {
+  return std::make_unique<AMDAIELinalgFunctionOutliningPass>(options);
 }
 }  // namespace mlir::iree_compiler::AMDAIE

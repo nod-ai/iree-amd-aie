@@ -70,11 +70,14 @@ LogicalResult assignChannels(AMDAIE::WorkgroupOp workgroupOp) {
       assert(tileToGeneratorMap.contains(tile) &&
              "no channel generator found for tile");
       std::optional<uint8_t> maybeChannel =
-          tileToGeneratorMap[tile].getAndAssignProducerDMAChannel(isPacketFlow);
+          tileToGeneratorMap[tile].getProducerDMAChannel();
       if (!maybeChannel) {
         return connectionOp.emitOpError()
                << "no producer DMA channel available";
       }
+      // Only assign the channel if it is for circuit flow.
+      if (!isPacketFlow)
+        tileToGeneratorMap[tile].assignProducerDMAChannel(maybeChannel.value());
       auto channelOp = rewriter.create<AMDAIE::ChannelOp>(
           rewriter.getUnknownLoc(), tile, maybeChannel.value(),
           StrmSwPortType::DMA, AMDAIE::DMAChannelDir::MM2S);
@@ -85,11 +88,14 @@ LogicalResult assignChannels(AMDAIE::WorkgroupOp workgroupOp) {
       assert(tileToGeneratorMap.contains(tile) &&
              "no channel generator found for tile");
       std::optional<uint8_t> maybeChannel =
-          tileToGeneratorMap[tile].getAndAssignConsumerDMAChannel(isPacketFlow);
+          tileToGeneratorMap[tile].getConsumerDMAChannel();
       if (!maybeChannel) {
         return connectionOp.emitOpError()
                << "no consumer DMA channel available";
       }
+      // Only assign the channel if it is for circuit flow.
+      if (!isPacketFlow)
+        tileToGeneratorMap[tile].assignConsumerDMAChannel(maybeChannel.value());
       auto channelOp = rewriter.create<AMDAIE::ChannelOp>(
           rewriter.getUnknownLoc(), tile, maybeChannel.value(),
           StrmSwPortType::DMA, AMDAIE::DMAChannelDir::S2MM);

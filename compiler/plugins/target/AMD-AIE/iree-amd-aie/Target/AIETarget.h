@@ -57,6 +57,7 @@ struct AMDAIEOptions {
   bool enableCoalescingLoops{false};
   bool enableCollapsingUnitDims{false};
   bool enableFunctionOutlining{true};
+  bool replaceOutlinedFunctionsWithEmpty{false};
   bool insertLoopAroundCoreBlock{false};
   bool matmulElementwiseFusion{false};
   AMDAIEDevice AMDAIETargetDevice{AMDAIEDevice::npu1_4col};
@@ -194,6 +195,13 @@ struct AMDAIEOptions {
         llvm::cl::cat(category),
         llvm::cl::desc("Flag to enable/disable linalg-function-outlining pass."
                        "It is intended for development purposes only."));
+
+    binder.opt<bool>(
+        "iree-amdaie-replace-outlined-functions-with-empty",
+        replaceOutlinedFunctionsWithEmpty, llvm::cl::cat(category),
+        llvm::cl::desc(
+            "Flag to enable/disable replacing outlined functions with "
+            "empty functions. For development purposes only."));
 
     binder.opt<bool>(
         "iree-amdaie-enable-infinite-loop-around-core-block",

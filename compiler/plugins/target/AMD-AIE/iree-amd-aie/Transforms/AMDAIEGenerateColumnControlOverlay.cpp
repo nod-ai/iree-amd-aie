@@ -113,7 +113,7 @@ LogicalResult generateColumnControlOverlay(AMDAIE::WorkgroupOp workgroupOp,
       // shared across multiple packet flows as needed.
       std::optional<uint8_t> maybeChannel =
           shimTileToGeneratorMap[shimTileOp.getResult()]
-              .getAndAssignProducerDMAChannel(/*isPacketFlow*/ true);
+              .getProducerDMAChannel();
       if (!maybeChannel) {
         shimTileOp.emitOpError() << "no producer DMA channel available";
         return WalkResult::interrupt();
