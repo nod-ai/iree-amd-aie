@@ -28,12 +28,13 @@ class ChannelGenerator {
     assert(numProducerChannels > 0 && numConsumerChannels > 0 &&
            "Invalid number of producer/consumer channels.");
     // Initialize to the last channel for round-robin usage.
-    lastUsedProducerChannel = numProducerChannels - 1;
-    lastUsedConsumerChannel = numConsumerChannels - 1;
+    lastRetrievedProducerChannel = numProducerChannels - 1;
+    lastRetrievedConsumerChannel = numConsumerChannels - 1;
   }
 
-  /// Returns its next usable producer channel. By default, it uses round-robin
-  /// for load balancing.
+  /// Retrieves the next producer channel using the specified strategy.
+  /// Defaults to round-robin for balanced load distribution, using
+  /// `lastRetrievedProducerChannel` to track the last channel accessed.
   std::optional<uint8_t> getProducerDMAChannel(
       ChannelAssignmentMode mode = ChannelAssignmentMode::RoundRobin) {
     for (uint8_t offset = 1; offset <= numProducerChannels; ++offset) {
@@ -41,20 +42,21 @@ class ChannelGenerator {
       if (mode == ChannelAssignmentMode::FirstAvailable) {
         i = offset - 1;
       } else if (mode == ChannelAssignmentMode::RoundRobin) {
-        i = (lastUsedProducerChannel + offset) % numProducerChannels;
+        i = (lastRetrievedProducerChannel + offset) % numProducerChannels;
       } else {
         assert(false && "Unsupported ChannelAssignmentMode");
       }
       if (!assignedProducerChannels.count(i)) {
-        lastUsedProducerChannel = i;
+        lastRetrievedProducerChannel = i;
         return i;
       }
     }
     return std::nullopt;
   }
 
-  /// Returns its next usable consumer channel. By default, it uses round-robin
-  /// for load balancing.
+  /// Retrieves the next consumer channel using the specified strategy.
+  /// Defaults to round-robin for balanced load distribution, using
+  /// `lastRetrievedConsumerChannel` to track the last channel accessed.
   std::optional<uint8_t> getConsumerDMAChannel(
       ChannelAssignmentMode mode = ChannelAssignmentMode::RoundRobin) {
     for (uint8_t offset = 1; offset <= numConsumerChannels; ++offset) {
@@ -62,12 +64,12 @@ class ChannelGenerator {
       if (mode == ChannelAssignmentMode::FirstAvailable) {
         i = offset - 1;
       } else if (mode == ChannelAssignmentMode::RoundRobin) {
-        i = (lastUsedConsumerChannel + offset) % numConsumerChannels;
+        i = (lastRetrievedConsumerChannel + offset) % numConsumerChannels;
       } else {
         assert(false && "Unsupported ChannelAssignmentMode");
       }
       if (!assignedConsumerChannels.count(i)) {
-        lastUsedConsumerChannel = i;
+        lastRetrievedConsumerChannel = i;
         return i;
       }
     }
@@ -90,9 +92,10 @@ class ChannelGenerator {
   // Tracks the channels that are used by circuit flows.
   DenseSet<uint8_t> assignedProducerChannels;
   DenseSet<uint8_t> assignedConsumerChannels;
-  // Tracks the last used channel, for both circuit and packet flows.
-  uint8_t lastUsedProducerChannel = 0;
-  uint8_t lastUsedConsumerChannel = 0;
+  // Tracks the last retrieved channel in `getProducerDMAChannel` and
+  // `getConsumerDMAChannel` for round-robin usage.
+  uint8_t lastRetrievedProducerChannel = 0;
+  uint8_t lastRetrievedConsumerChannel = 0;
 };
 
 }  // namespace mlir::iree_compiler::AMDAIE
