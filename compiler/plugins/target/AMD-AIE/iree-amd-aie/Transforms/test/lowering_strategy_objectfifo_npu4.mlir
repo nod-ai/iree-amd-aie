@@ -3,11 +3,11 @@
 // CHECK:       #config = #iree_codegen.lowering_config<tile_sizes = [
 // CHECK-SAME:                [128, 128], [0, 0, 1], [1, 1, 0, 0, 0, 0]
 // CHECK-SAME:            ]>
-// CHECK:       #packingConfig = #amdaie.packing_config<packing_config = [{packedSizes = [32, 32, 32], transposePackIndices = [0, 1], unpackEmpty = [false, false],
+// CHECK:       #packingConfig = #amdaie.packing_config<packing_config = [{packedSizes = [32, 32, 32], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true],
 // CHECK-SAME:                      innerPerm = [
-// CHECK-SAME:                              [0, 1], [1, 0]
+// CHECK-SAME:                              [0, 1], [1, 0], [0, 1]
 // CHECK-SAME:                   ], outerPerm = [
-// CHECK-SAME:                              [0, 1], [0, 1]
+// CHECK-SAME:                              [0, 1], [0, 1], [1, 0]
 // CHECK-SAME:                   ]}, {packedSizes = [0, 0, 0, 8, 8, 8], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true],
 // CHECK-SAME:                      innerPerm = [
 // CHECK-SAME:                              [0, 1], [1, 0], [0, 1]
