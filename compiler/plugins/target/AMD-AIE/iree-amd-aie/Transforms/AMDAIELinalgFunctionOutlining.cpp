@@ -89,11 +89,11 @@ class AMDAIELinalgFunctionOutliningPass
           AMDAIELinalgFunctionOutliningPass> {
  public:
   AMDAIELinalgFunctionOutliningPass() = default;
+  AMDAIELinalgFunctionOutliningPass(const AMDAIELinalgFunctionOutliningPass &) {
+  }
   AMDAIELinalgFunctionOutliningPass(
-      const AMDAIELinalgFunctionOutliningPass &pass) {}
-  AMDAIELinalgFunctionOutliningPass(
-      const AMDAIELinalgFunctionOutliningOptions &options)
-      : AMDAIELinalgFunctionOutliningBase(options) {}
+      const AMDAIELinalgFunctionOutliningOptions &opts)
+      : AMDAIELinalgFunctionOutliningBase(opts) {}
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<linalg::LinalgDialect>();

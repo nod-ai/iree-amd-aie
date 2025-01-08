@@ -186,7 +186,7 @@ std::unique_ptr<Pass> createAMDAIEFlattenLogicalObjectFifoPass();
 
 /// Create a pass for function outlining.
 std::unique_ptr<Pass> createAMDAIELinalgFunctionOutliningPass(
-    AMDAIELinalgFunctionOutliningOptions options = {});
+    AMDAIELinalgFunctionOutliningOptions = {});
 
 /// Create a pass to fuse the consumer op into the innermost last scf loop.
 std::unique_ptr<Pass> createAMDAIEFuseConsumerIntoLoopPass(

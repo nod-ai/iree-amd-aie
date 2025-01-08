@@ -201,8 +201,7 @@ struct AMDAIEOptions {
         replaceOutlinedFunctionsWithEmpty, llvm::cl::cat(category),
         llvm::cl::desc(
             "Flag to enable/disable replacing outlined functions with "
-            "empty functions. It is strictly intended for development purposes "
-            "only."));
+            "empty functions. For development purposes only."));
 
     binder.opt<bool>(
         "iree-amdaie-enable-infinite-loop-around-core-block",
