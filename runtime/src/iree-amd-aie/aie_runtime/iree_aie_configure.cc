@@ -267,6 +267,17 @@ LogicalResult configureStreamSwitch(const AMDAIEDeviceModel &deviceModel,
                                     const TileLoc &tileLoc,
                                     const std::vector<Connect> &connects) {
   auto devInst = const_cast<XAie_DevInst *>(&deviceModel.devInst);
+  // mlir-air legacy, hack for TCT routing
+  // TODO copy-pasted: Support both channels
+  // TODO(max): find a way to keep track so that multiple calls don't
+  // rewrite/overwrite with same data.
+  if (tileLoc.row == 0) {
+    auto slvPortNum = 0;
+    auto mstrPortNum = 0;
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_StrmConnCctEnable, devInst, tileLoc, CTRL,
+                                slvPortNum, SOUTH, mstrPortNum);
+  }
+
   for (Connect connect : connects) {
     if (connect.interconnect == Connect::Interconnect::SWB) {
       TRY_XAIE_API_LOGICAL_RESULT(

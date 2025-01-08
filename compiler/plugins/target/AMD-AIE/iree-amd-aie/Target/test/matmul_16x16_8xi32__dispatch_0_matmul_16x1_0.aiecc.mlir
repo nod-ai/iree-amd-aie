@@ -50,7 +50,6 @@ aie.device(npu1_4col) {
     aie.next_bd ^bb6
   }
   %switchbox_0_0 = aie.switchbox(%tile_0_0) {
-    aie.connect<CTRL: 0, SOUTH : 0>
     aie.connect<SOUTH : 3, NORTH : 0>
     aie.connect<SOUTH : 7, EAST : 0>
     aie.connect<EAST : 0, SOUTH : 2>
@@ -66,7 +65,6 @@ aie.device(npu1_4col) {
   }
   %tile_1_0 = aie.tile(1, 0)
   %switchbox_1_0 = aie.switchbox(%tile_1_0) {
-    aie.connect<CTRL: 0, SOUTH : 0>
     aie.connect<WEST : 0, NORTH : 0>
     aie.connect<EAST : 0, WEST : 0>
   }
@@ -76,7 +74,6 @@ aie.device(npu1_4col) {
   }
   %tile_2_0 = aie.tile(2, 0)
   %switchbox_2_0 = aie.switchbox(%tile_2_0) {
-    aie.connect<CTRL: 0, SOUTH : 0>
     aie.connect<NORTH : 0, WEST : 0>
   }
   %switchbox_2_1 = aie.switchbox(%tile_2_1) {
@@ -257,18 +254,18 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=0, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=0, direction=1, bdId=1, repeatCount=2, enTokenIssue=0
 // CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=0, direction=1
-// CHECK: XAIE API: XAie_StrmConnCctEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 0), strmTtoStrmT(connect.src.bundle)=StrmSwPortType::CTRL, connect.src.channel=0, strmTtoStrmT(connect.dst.bundle)=StrmSwPortType::SOUTH, connect.dst.channel=0
+// CHECK: XAIE API: XAie_StrmConnCctEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 0), CTRL=StrmSwPortType::CTRL, slvPortNum=0, SOUTH=StrmSwPortType::SOUTH, mstrPortNum=0
 // CHECK: XAIE API: XAie_StrmConnCctEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 0), strmTtoStrmT(connect.src.bundle)=StrmSwPortType::SOUTH, connect.src.channel=3, strmTtoStrmT(connect.dst.bundle)=StrmSwPortType::NORTH, connect.dst.channel=0
 // CHECK: XAIE API: XAie_StrmConnCctEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 0), strmTtoStrmT(connect.src.bundle)=StrmSwPortType::SOUTH, connect.src.channel=7, strmTtoStrmT(connect.dst.bundle)=StrmSwPortType::EAST, connect.dst.channel=0
 // CHECK: XAIE API: XAie_StrmConnCctEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 0), strmTtoStrmT(connect.src.bundle)=StrmSwPortType::EAST, connect.src.channel=0, strmTtoStrmT(connect.dst.bundle)=StrmSwPortType::SOUTH, connect.dst.channel=2
 // CHECK: XAIE API: XAie_StrmConnCctEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), strmTtoStrmT(connect.src.bundle)=StrmSwPortType::SOUTH, connect.src.channel=0, strmTtoStrmT(connect.dst.bundle)=StrmSwPortType::DMA, connect.dst.channel=0
 // CHECK: XAIE API: XAie_StrmConnCctEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), strmTtoStrmT(connect.src.bundle)=StrmSwPortType::DMA, connect.src.channel=0, strmTtoStrmT(connect.dst.bundle)=StrmSwPortType::NORTH, connect.dst.channel=0
-// CHECK: XAIE API: XAie_StrmConnCctEnable with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 0), strmTtoStrmT(connect.src.bundle)=StrmSwPortType::CTRL, connect.src.channel=0, strmTtoStrmT(connect.dst.bundle)=StrmSwPortType::SOUTH, connect.dst.channel=0
+// CHECK: XAIE API: XAie_StrmConnCctEnable with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 0), CTRL=StrmSwPortType::CTRL, slvPortNum=0, SOUTH=StrmSwPortType::SOUTH, mstrPortNum=0
 // CHECK: XAIE API: XAie_StrmConnCctEnable with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 0), strmTtoStrmT(connect.src.bundle)=StrmSwPortType::WEST, connect.src.channel=0, strmTtoStrmT(connect.dst.bundle)=StrmSwPortType::NORTH, connect.dst.channel=0
 // CHECK: XAIE API: XAie_StrmConnCctEnable with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 0), strmTtoStrmT(connect.src.bundle)=StrmSwPortType::EAST, connect.src.channel=0, strmTtoStrmT(connect.dst.bundle)=StrmSwPortType::WEST, connect.dst.channel=0
 // CHECK: XAIE API: XAie_StrmConnCctEnable with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), strmTtoStrmT(connect.src.bundle)=StrmSwPortType::SOUTH, connect.src.channel=0, strmTtoStrmT(connect.dst.bundle)=StrmSwPortType::DMA, connect.dst.channel=0
 // CHECK: XAIE API: XAie_StrmConnCctEnable with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), strmTtoStrmT(connect.src.bundle)=StrmSwPortType::DMA, connect.src.channel=0, strmTtoStrmT(connect.dst.bundle)=StrmSwPortType::NORTH, connect.dst.channel=0
-// CHECK: XAIE API: XAie_StrmConnCctEnable with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 0), strmTtoStrmT(connect.src.bundle)=StrmSwPortType::CTRL, connect.src.channel=0, strmTtoStrmT(connect.dst.bundle)=StrmSwPortType::SOUTH, connect.dst.channel=0
+// CHECK: XAIE API: XAie_StrmConnCctEnable with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 0), CTRL=StrmSwPortType::CTRL, slvPortNum=0, SOUTH=StrmSwPortType::SOUTH, mstrPortNum=0
 // CHECK: XAIE API: XAie_StrmConnCctEnable with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 0), strmTtoStrmT(connect.src.bundle)=StrmSwPortType::NORTH, connect.src.channel=0, strmTtoStrmT(connect.dst.bundle)=StrmSwPortType::WEST, connect.dst.channel=0
 // CHECK: XAIE API: XAie_StrmConnCctEnable with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), strmTtoStrmT(connect.src.bundle)=StrmSwPortType::DMA, connect.src.channel=0, strmTtoStrmT(connect.dst.bundle)=StrmSwPortType::SOUTH, connect.dst.channel=0
 // CHECK: XAIE API: XAie_StrmConnCctEnable with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), strmTtoStrmT(connect.src.bundle)=StrmSwPortType::NORTH, connect.src.channel=0, strmTtoStrmT(connect.dst.bundle)=StrmSwPortType::DMA, connect.dst.channel=0
@@ -278,6 +275,7 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_StrmConnCctEnable with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 2), strmTtoStrmT(connect.src.bundle)=StrmSwPortType::SOUTH, connect.src.channel=0, strmTtoStrmT(connect.dst.bundle)=StrmSwPortType::WEST, connect.dst.channel=0
 // CHECK: XAIE API: XAie_StrmConnCctEnable with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 2), strmTtoStrmT(connect.src.bundle)=StrmSwPortType::WEST, connect.src.channel=0, strmTtoStrmT(connect.dst.bundle)=StrmSwPortType::EAST, connect.dst.channel=0
 // CHECK: XAIE API: XAie_StrmConnCctEnable with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 2), strmTtoStrmT(connect.src.bundle)=StrmSwPortType::WEST, connect.src.channel=0, strmTtoStrmT(connect.dst.bundle)=StrmSwPortType::SOUTH, connect.dst.channel=0
+// CHECK: XAIE API: XAie_StrmConnCctEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 0), CTRL=StrmSwPortType::CTRL, slvPortNum=0, SOUTH=StrmSwPortType::SOUTH, mstrPortNum=0
 // CHECK: XAIE API: XAie_EnableShimDmaToAieStrmPort with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 0), connect.dst.channel=3
 // CHECK: XAIE API: XAie_EnableShimDmaToAieStrmPort with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 0), connect.dst.channel=7
 // CHECK: XAIE API: XAie_EnableAieToShimDmaStrmPort with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 0), connect.src.channel=2
@@ -451,6 +449,8 @@ aie.device(npu1_4col) {
 // CHECK: cdo-driver: (Write64): Address:  0x000000000223F12C Data:  0x80000000
 // CHECK: cdo-driver: (Write64): Address:  0x000000000423F014 Data:  0x8000000B
 // CHECK: cdo-driver: (Write64): Address:  0x000000000423F12C Data:  0x80000000
+// CHECK: cdo-driver: (Write64): Address:  0x000000000003F008 Data:  0x80000000
+// CHECK: cdo-driver: (Write64): Address:  0x000000000003F100 Data:  0x80000000
 // CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000001F000  Mask: 0x00000C00  Data: 0x00000400
 // CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000001F000  Mask: 0x0000C000  Data: 0x00004000
 // CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000001F004  Mask: 0x00000030  Data: 0x00000010
