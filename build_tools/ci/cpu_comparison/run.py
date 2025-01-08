@@ -1906,7 +1906,6 @@ class Tests:
             # to not pass numerically.
             if "skip_numerics" in test and test["skip_numerics"]:
                 pass
-
             else:
                 self.register(
                     NumericTestClass(
