@@ -16,6 +16,8 @@ using namespace llvm;
 
 namespace mlir::iree_compiler::AMDAIE {
 
+enum class ChannelAssignmentMode { FirstAvailable, RoundRobin };
+
 /// Utility to generate valid channels.
 class ChannelGenerator {
  public:
@@ -30,13 +32,20 @@ class ChannelGenerator {
     lastUsedConsumerChannel = numConsumerChannels - 1;
   }
 
-  /// Returns its next usable producer channel.
-  std::optional<uint8_t> getAndAssignProducerDMAChannel(bool isPacketFlow) {
+  /// Returns its next usable producer channel. By default, it uses round-robin
+  /// for load balancing.
+  std::optional<uint8_t> getProducerDMAChannel(
+      ChannelAssignmentMode mode = ChannelAssignmentMode::RoundRobin) {
     for (uint8_t offset = 1; offset <= numProducerChannels; ++offset) {
-      uint8_t i = (lastUsedProducerChannel + offset) % numProducerChannels;
+      uint8_t i;
+      if (mode == ChannelAssignmentMode::FirstAvailable) {
+        i = offset - 1;
+      } else if (mode == ChannelAssignmentMode::RoundRobin) {
+        i = (lastUsedProducerChannel + offset) % numProducerChannels;
+      } else {
+        assert(false && "Unsupported ChannelAssignmentMode");
+      }
       if (!assignedProducerChannels.count(i)) {
-        // Only assign the channel if it is for the circuit flow.
-        if (!isPacketFlow) assignedProducerChannels.insert(i);
         lastUsedProducerChannel = i;
         return i;
       }
@@ -44,13 +53,20 @@ class ChannelGenerator {
     return std::nullopt;
   }
 
-  /// Returns its next usable consumer channel.
-  std::optional<uint8_t> getAndAssignConsumerDMAChannel(bool isPacketFlow) {
+  /// Returns its next usable consumer channel. By default, it uses round-robin
+  /// for load balancing.
+  std::optional<uint8_t> getConsumerDMAChannel(
+      ChannelAssignmentMode mode = ChannelAssignmentMode::RoundRobin) {
     for (uint8_t offset = 1; offset <= numConsumerChannels; ++offset) {
-      uint8_t i = (lastUsedConsumerChannel + offset) % numConsumerChannels;
+      uint8_t i;
+      if (mode == ChannelAssignmentMode::FirstAvailable) {
+        i = offset - 1;
+      } else if (mode == ChannelAssignmentMode::RoundRobin) {
+        i = (lastUsedConsumerChannel + offset) % numConsumerChannels;
+      } else {
+        assert(false && "Unsupported ChannelAssignmentMode");
+      }
       if (!assignedConsumerChannels.count(i)) {
-        // Only assign the channel if it is for the circuit flow.
-        if (!isPacketFlow) assignedConsumerChannels.insert(i);
         lastUsedConsumerChannel = i;
         return i;
       }
