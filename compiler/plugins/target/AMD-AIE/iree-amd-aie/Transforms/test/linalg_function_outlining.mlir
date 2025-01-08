@@ -1,6 +1,6 @@
 // RUN: iree-opt --split-input-file --iree-amdaie-linalg-function-outlining --verify-diagnostics --split-input-file %s | FileCheck %s
 
-// Test demonstrating multiple Matmul using different SSAs.
+// Test demonstrating multiple matmuls using different SSAs.
 
 // CHECK-LABEL: func.func private @generic_matmul_0_outlined
 // CHECK-SAME:  (%[[LHS:.*]]: memref<4x8xbf16>,

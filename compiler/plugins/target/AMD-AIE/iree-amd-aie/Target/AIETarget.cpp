@@ -229,6 +229,7 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
 
   void buildTranslationPassPipeline(IREE::HAL::ExecutableTargetAttr,
                                     OpPassManager &passManager) override {
+
     buildAMDAIETransformPassPipeline(
         passManager, options.AMDAIETargetDevice, options.AMDAIENumRows,
         options.AMDAIENumCols, options.useTilePipeline,
@@ -236,6 +237,7 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
         options.enableVectorizationPasses, options.pathToUkernels,
         options.enablePacketFlow, options.enableCoalescingLoops,
         options.enableCollapsingUnitDims, options.enableFunctionOutlining,
+        options.replaceOutlinedFunctionsWithEmpty,
         options.insertLoopAroundCoreBlock);
   }
 
