@@ -723,10 +723,6 @@ def AMDAIESplitLogicalObjFifos :
     `[1, 2, 32, 32]`, will be split to two `[1, 1, 32, 32]` buffers.
   }];
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIESplitLogicalObjFifosPass()";
-  let options = [
-    Option<"numCols", "num-cols", "uint32_t", /*default=*/"4",
-      "Number of columns used in an AIE core array">
-  ];
 }
 
 def AMDAIESplitLogicalObjFifosForConnectionReuse :
