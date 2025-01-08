@@ -377,6 +377,19 @@ static LogicalResult setRootConfigForPackPeelPipeline(
     outerPermVec.push_back(2);
   }
   SmallVector<SmallVector<int64_t>> outerPerm = {outerPermVec, outerPermVec};
+  if (isObjectFifo) {
+    // Add outer permutation for unpack. NOTE: This currently fails for some
+    // tests in the AIR pipeline.
+    transposePackIndices.push_back(2);
+    unpackEmpty.push_back(true);
+    innerPerm.push_back({0, 1});
+    if (isa<linalg::BatchMatmulOp>(linalgOp)) {
+      outerPerm.push_back({0, 2, 1});
+    } else {
+      outerPerm.push_back({1, 0});
+    }
+  }
+
   auto packingConfigLevel0Attr = getPackingConfigPackingLevelAttr(
       context, packedSizesL0, transposePackIndices, unpackEmpty, innerPerm,
       outerPerm);
