@@ -316,6 +316,23 @@ FailureOr<ParameterSetting> ParameterSetting::create(
 }
 }  // namespace
 
+/// Utility to set the packing inner permutation for A/LHS so that is packed as
+/// [? ? m k] in case of matmul and [? ? ? m k] in case of batch_matmul.
+static SmallVector<int64_t> setInnerPermA(bool isMatmulTransposeA) {
+  SmallVector<int64_t> innerPerm;
+  if (isMatmulTransposeA) {
+    innerPerm = {1, 0};
+  } else {
+    innerPerm = {0, 1};
+  }
+  return innerPerm;
+}
+
+/// Utility to set the packing inner permutation for B/RHS so that is packed as
+/// - [? ? k n] in case of matmul
+/// - [? ? ? k n] in case of batch_matmul
+/// - [? ? n k] in case of matmul_transpose_b
+/// - [? ? ? n k] in case of batch_matmul_transpose_b.
 static SmallVector<int64_t> setInnerPermB(bool isMatmulTransposeB) {
   SmallVector<int64_t> innerPerm;
   if (isMatmulTransposeB) {
@@ -326,14 +343,34 @@ static SmallVector<int64_t> setInnerPermB(bool isMatmulTransposeB) {
   return innerPerm;
 }
 
-static SmallVector<int64_t> setInnerPermA(bool isMatmulTransposeA) {
-  SmallVector<int64_t> innerPerm;
+/// Utility to set the packing outer permutation for A/LHS so that is packed as
+/// [M K ? ?] in case of matmul and [Batch M K ? ?] in case of batch_matmul.
+static SmallVector<int64_t> setOuterPermA(bool isMatmulTransposeA,
+                                          bool isBatchMatmul) {
+  SmallVector<int64_t> outerPerm;
   if (isMatmulTransposeA) {
-    innerPerm = {1, 0};
+    outerPerm = isBatchMatmul ? SmallVector<int64_t>{0, 2, 1}
+                              : SmallVector<int64_t>{1, 0};
   } else {
-    innerPerm = {0, 1};
+    outerPerm = isBatchMatmul ? SmallVector<int64_t>{0, 1, 2}
+                              : SmallVector<int64_t>{0, 1};
   }
-  return innerPerm;
+  return outerPerm;
+}
+
+/// Utility to set the packing outer permutation for B/RHS so that is packed as
+/// [N K ? ?] in case of matmul and [Batch N K ? ?] in case of batch_matmul.
+static SmallVector<int64_t> setOuterPermB(bool isMatmulTransposeB,
+                                          bool isBatchMatmul) {
+  SmallVector<int64_t> outerPerm;
+  if (isMatmulTransposeB) {
+    outerPerm = isBatchMatmul ? SmallVector<int64_t>{0, 1, 2}
+                              : SmallVector<int64_t>{0, 1};
+  } else {
+    outerPerm = isBatchMatmul ? SmallVector<int64_t>{0, 2, 1}
+                              : SmallVector<int64_t>{1, 0};
+  }
+  return outerPerm;
 }
 
 //===----------------------------------------------------------------------===//
@@ -362,7 +399,7 @@ static LogicalResult setRootConfigForPackPeelPipeline(
     packedSizesL0.insert(packedSizesL0.begin(), 0);
   }
 
-  // For matmul, transpose B matrix from [K N n k] to [K N k n]
+  // For matmul, transpose B matrix from [K N n k] to [N K k n]
   // For matmul_transpose_b, we don't have to transpose the B matrix,
   // since it is already [N K n k]
   SmallVector<int64_t> transposePackIndices = {0, 1};
@@ -372,11 +409,12 @@ static LogicalResult setRootConfigForPackPeelPipeline(
   SmallVector<int64_t> innerPermA = setInnerPermA(isMatmulTransposeA(linalgOp));
   SmallVector<int64_t> innerPermB = setInnerPermB(isMatmulTransposeB(linalgOp));
   SmallVector<SmallVector<int64_t>> innerPerm = {innerPermA, innerPermB};
-  SmallVector<int64_t> outerPermVec = {0, 1};
-  if (isa<linalg::BatchMatmulOp>(linalgOp)) {
-    outerPermVec.push_back(2);
-  }
-  SmallVector<SmallVector<int64_t>> outerPerm = {outerPermVec, outerPermVec};
+  bool isBatchMatmul = isa<linalg::BatchMatmulOp>(linalgOp);
+  SmallVector<int64_t> outerPermA =
+      setOuterPermA(isMatmulTransposeA(linalgOp), isBatchMatmul);
+  SmallVector<int64_t> outerPermB =
+      setOuterPermB(isMatmulTransposeB(linalgOp), isBatchMatmul);
+  SmallVector<SmallVector<int64_t>> outerPerm = {outerPermA, outerPermB};
   if (isObjectFifo) {
     // Add outer permutation for unpack. NOTE: This currently fails for some
     // tests in the AIR pipeline.
