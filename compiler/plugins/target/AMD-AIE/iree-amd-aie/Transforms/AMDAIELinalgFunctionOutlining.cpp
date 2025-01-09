@@ -65,13 +65,14 @@ static FailureOr<func::FuncOp> outline(IRRewriter &rewriter, ModuleOp moduleOp,
   Operation *clonedComputeOp = rewriter.clone(*computeOp, operandMap);
 
   if (noAliasFinalArg) {
-    auto args = func.getArguments();
+    ArrayRef<BlockArgument> args = func.getArguments();
+    // Find the first MemRefType argument, starting at the end.
     auto it = std::find_if(args.rbegin(), args.rend(), [](BlockArgument arg) {
       return isa<MemRefType>(arg.getType());
     });
     if (it != args.rend()) {
       int index = args.size() - std::distance(args.rbegin(), it) - 1;
-      auto noAliasAttrName = LLVM::LLVMDialect::getNoAliasAttrName();
+      StringRef noAliasAttrName = LLVM::LLVMDialect::getNoAliasAttrName();
       func.setArgAttr(index, noAliasAttrName, rewriter.getUnitAttr());
     }
   }
