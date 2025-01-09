@@ -809,8 +809,7 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
-  passManager.addNestedPass<func::FuncOp>(
-      xilinx::air::createAIRSegmentLoopFusion());
+  passManager.addNestedPass<func::FuncOp>(xilinx::air::createAIRLoopFusion());
 
   passManager.addPass(
       xilinx::air::createAIRLabelScfForLoopForPingPongPattern());
@@ -863,6 +862,12 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
   }
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(xilinx::air::createAIRLoweringPass());
+  {
+    xilinx::air::AIROptimizeShimDMABDsOptions options;
+    options.clDevice = stringifyEnum(device);
+    passManager.addNestedPass<func::FuncOp>(
+        xilinx::air::createAIROptimizeShimDMABDs(options));
+  }
   {
     xilinx::air::AffineLoopOptPassOptions options;
     // tile_sizes contains a list of N tiling factors for the N innermost loop
