@@ -419,6 +419,7 @@ LogicalResult AIEDeviceBuilder::coreFuncCallOpToAIE(
   StringRef fnName = oldCallOp.getCallee();
   auto fnDecl = dyn_cast_if_present<func::FuncOp>(
       SymbolTable::lookupSymbolIn(moduleOp, fnName));
+
   assert(fnDecl && "expected function declaration");
   // Check the mapper to see if we've already created a new function declaration
   // with the new function type. If not, create the same. We need to create a
@@ -434,19 +435,11 @@ LogicalResult AIEDeviceBuilder::coreFuncCallOpToAIE(
                                      SymbolTable::Visibility::Private);
     newFnDecl->setAttr("llvm.bareptr", rewriter.getBoolAttr(true));
 
-    // Add the 'noalias' attribute to all argument attributes, if the type is
-    // memref:
-    auto noAliasAttrName = LLVM::LLVMDialect::getNoAliasAttrName();
-    // The read-only attribute:
-    auto readOnlyAttrName = LLVM::LLVMDialect::getReadonlyAttrName();
-    for (int i = 0; i < newArgs.size(); ++i) {
-      if (isa<MemRefType>(newArgs[i].getType())) {
-        newFnDecl.setArgAttr(i, noAliasAttrName, rewriter.getUnitAttr());
-      }
-    }
-    (void)readOnlyAttrName;
-    (void)noAliasAttrName;
     fnDecl.getBody().cloneInto(&(newFnDecl.getBody()), mapper);
+    if (ArrayAttr oldAttrs = fnDecl.getAllArgAttrs()) {
+      newFnDecl.setAllArgAttrs(oldAttrs);
+    }
+
     mapper.map(fnDecl.getOperation(), newFnDecl.getOperation());
     fnDecl = newFnDecl;
   }
@@ -454,6 +447,7 @@ LogicalResult AIEDeviceBuilder::coreFuncCallOpToAIE(
   auto newFnDecl = cast<func::FuncOp>(mapper.lookupOrDefault(fnDecl));
   rewriter.create<func::CallOp>(oldCallOp->getLoc(), newFnDecl, newArgs);
   toBeErased.push_back(oldCallOp);
+
   return success();
 }
 

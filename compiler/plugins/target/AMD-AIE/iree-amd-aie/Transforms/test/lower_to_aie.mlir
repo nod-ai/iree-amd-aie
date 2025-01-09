@@ -899,8 +899,9 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 
 // CHECK:   aie.device
-// CHECK:     func.func private @ukernel_B(memref<i32, 2 : i32> {llvm.noalias}, index, memref<f32, 2 : i32> {llvm.noalias}, index) attributes {llvm.bareptr = true}
-// CHECK:     func.func private @ukernel_A(memref<i32, 2 : i32> {llvm.noalias}, index) attributes {llvm.bareptr = true}
+// CHECK-DAG: func.func private @f_with_arg_attr(%arg0: memref<i32, 2 : i32> {llvm.noalias})
+// CHECK-DAG: func.func private @ukernel_B(memref<i32, 2 : i32>, index, memref<f32, 2 : i32>, index) attributes {llvm.bareptr = true}
+// CHECK-DAG: func.func private @ukernel_A(memref<i32, 2 : i32>, index) attributes {llvm.bareptr = true}
 // CHECK:     %[[TILE_0_2:.*]] = aie.tile(0, 2)
 // CHECK:     %[[BUFFER_0_2:.*]] = aie.buffer(%[[TILE_0_2]]) {sym_name = "buff_0"} : memref<4096xi32, 2 : i32>
 // CHECK:     %[[LOCK_0_2:.*]] = aie.lock(%[[TILE_0_2]], 0) {init = 1 : i8, sym_name = "lock_0"}
@@ -926,6 +927,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func private @ukernel_A(memref<i32, 2 : i32>, index) attributes {link_with = "/path/to/ukernel.o", llvm.bareptr = true}
   func.func private @ukernel_B(memref<i32, 2 : i32>, index, memref<f32, 2 : i32>, index) attributes {link_with = "/path/to/ukernel.o", llvm.bareptr = true}
+  func.func private @f_with_arg_attr(%0 : memref<i32, 2 : i32> {llvm.noalias}) attributes {llvm.bareptr = true} { return }
+
   func.func @core_ukernel() {
     amdaie.workgroup {
       %c0 = arith.constant 0 : index
@@ -946,6 +949,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
         %base_buffer0, %offset0, %sizes0:2, %strides0:2 = memref.extract_strided_metadata %4 : memref<64x64xf32, 2 : i32> -> memref<f32, 2 : i32>, index, index, index, index, index
         func.call @ukernel_A(%base_buffer, %c0) : (memref<i32, 2 : i32>, index) -> ()
         func.call @ukernel_B(%base_buffer, %c0, %base_buffer0, %c0) : (memref<i32, 2 : i32>, index, memref<f32, 2 : i32>, index) -> ()
+        func.call @f_with_arg_attr(%base_buffer) : (memref<i32, 2 : i32>) -> ()
         amdaie.use_lock(%lock, Release(1))
         amdaie.use_lock(%lock_2, Release(1))
         amdaie.end

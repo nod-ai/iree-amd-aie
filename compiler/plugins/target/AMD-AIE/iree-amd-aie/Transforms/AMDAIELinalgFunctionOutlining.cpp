@@ -6,13 +6,11 @@
 
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
-#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
-#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
-#include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
-#include "mlir/Dialect/Linalg/Transforms/Hoisting.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
-#include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/IR/IRMapping.h"
 
 #define DEBUG_TYPE "iree-amdaie-linalg-function-outlining"
 
@@ -23,7 +21,8 @@ namespace {
 /// Utility to outline the linalg compute op.
 static FailureOr<func::FuncOp> outline(IRRewriter &rewriter, ModuleOp moduleOp,
                                        linalg::LinalgOp computeOp,
-                                       const std::string &funcName) {
+                                       const std::string &funcName,
+                                       bool noAliasFinalArg) {
   // Form outlined FunctionType.
   for (const auto &operand : computeOp->getOperands()) {
     // Function signatures where the memrefs have layouts (strides / offsets)
@@ -64,6 +63,18 @@ static FailureOr<func::FuncOp> outline(IRRewriter &rewriter, ModuleOp moduleOp,
   // Clone the compute op while mapping the operand to the function block
   // arguments.
   Operation *clonedComputeOp = rewriter.clone(*computeOp, operandMap);
+
+  if (noAliasFinalArg) {
+    auto args = func.getArguments();
+    auto it = std::find_if(args.rbegin(), args.rend(), [](BlockArgument arg) {
+      return isa<MemRefType>(arg.getType());
+    });
+    if (it != args.rend()) {
+      int index = args.size() - std::distance(args.rbegin(), it) - 1;
+      auto noAliasAttrName = LLVM::LLVMDialect::getNoAliasAttrName();
+      func.setArgAttr(index, noAliasAttrName, rewriter.getUnitAttr());
+    }
+  }
 
   // Create terminator op returning the cloned compute op's results.
   rewriter.setInsertionPointToEnd(funcBody);
@@ -143,7 +154,7 @@ class AMDAIELinalgFunctionOutliningPass
     }
 
     FailureOr<func::FuncOp> maybeFunc =
-        outline(rewriter, moduleOp, computeOp, funcName);
+        outline(rewriter, moduleOp, computeOp, funcName, noAliasFinalArg);
 
     if (succeeded(maybeFunc)) {
       computeOpToOutlinedFuncMap[computeOp] = maybeFunc.value();

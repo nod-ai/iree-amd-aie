@@ -290,7 +290,22 @@ def AMDAIELinalgFunctionOutlining :
       "Replace all outlined functions with a function that does nothing, "
       "i.e. it just returns. Useful for measuring the performance of data "
       "movement to/from the device -- by doing zero compute, all time is spent "
-      "moving data to/from the AIE cores.">
+      "moving data to/from the AIE cores.">,
+    Option<"noAliasFinalArg", "no-alias-final-arg", "bool", /*default=*/"true",
+      "A developer only option. When 'true' (the default), "
+      "the final memref argument of the outlined function "
+      "will have the 'llvm.noalias' attribute attached to "
+      "it. The motivation for having this attribute is that "
+      "sometimes the matmul code generated in llvm's opt is "
+      "much (2x) faster. The motivation for adding it manually "
+      "without any analysis is that llvm/peano cannot always "
+      "infer that this attribute can safely be attached, "
+      "because (I suppose) the analysis of all call sites, "
+      "i.e. checking that the final argument is not aliased "
+      "to any other arguments is too complicated/expensive. "
+      "The addition of this attribute in this pass is exposed "
+      "as an option, as there is no guarantee that it is valid "
+      "-- the final argument could in theory alias another argument. ">
     ];
 }
 
