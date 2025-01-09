@@ -48,7 +48,7 @@ iree_lit_test_suite(
     "fuse_consumer_into_loop.mlir"
     "fuse_fill_into_forall.mlir"
     "fuse_pack_into_loop.mlir"
-    "generate_column_control_overlay.mlir"
+    "generate_control_overlay.mlir"
     "hoist_for_affine_apply.mlir"
     "hoist_logical_obj_fifo.mlir"
     "insert_cores.mlir"

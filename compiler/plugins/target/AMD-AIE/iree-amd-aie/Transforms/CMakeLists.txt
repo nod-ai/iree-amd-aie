@@ -75,7 +75,7 @@ iree_cc_library(
     "AMDAIEFuseConsumerIntoLoop.cpp"
     "AMDAIEFuseFillIntoForall.cpp"
     "AMDAIEFusePackIntoLoop.cpp"
-    "AMDAIEGenerateColumnControlOverlay.cpp"
+    "AMDAIEGenerateControlOverlay.cpp"
     "AMDAIEHoistForAffineApply.cpp"
     "AMDAIEHoistLogicalObjFifo.cpp"
     "AMDAIEInsertCores.cpp"

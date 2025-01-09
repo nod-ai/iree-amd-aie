@@ -197,8 +197,8 @@ std::unique_ptr<Pass> createAMDAIEFuseFillIntoForallPass();
 
 /// Create pass to generate packet-flow routings for control packets entering or
 /// leaving each tile.
-std::unique_ptr<Pass> createAMDAIEGenerateColumnControlOverlayPass(
-    AMDAIEGenerateColumnControlOverlayOptions options = {});
+std::unique_ptr<Pass> createAMDAIEGenerateControlOverlayPass(
+    AMDAIEGenerateControlOverlayOptions options = {});
 
 /// Hoist an affine.apply op on a scf.for op's induction variable.
 std::unique_ptr<Pass> createAMDAIEHoistForLoopAffineApplyPass();

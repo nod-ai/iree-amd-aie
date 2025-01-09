@@ -671,7 +671,7 @@ void addAMDAIEObjectFifoLoweringPasses(
   passManager.addPass(createAMDAIETemporaryAllocBufferizationPass());
   passManager.addPass(createAMDAIEConnectionToFlowPass());
 
-  passManager.addPass(createAMDAIEGenerateColumnControlOverlayPass());
+  passManager.addPass(createAMDAIEGenerateControlOverlayPass());
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
 

@@ -1,4 +1,4 @@
-// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-generate-column-control-overlay{route-shim-to-tct=true route-shim-to-tile-ctrl=true},canonicalize,cse))" --split-input-file --verify-diagnostics %s | FileCheck %s
+// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-generate-control-overlay{route-shim-to-tct=true route-shim-to-tile-ctrl=true},canonicalize,cse))" --split-input-file --verify-diagnostics %s | FileCheck %s
 
 // Device attribute is required for route-shim-to-tile-ctrl.
 module {

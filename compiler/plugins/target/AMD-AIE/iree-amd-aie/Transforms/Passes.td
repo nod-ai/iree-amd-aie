@@ -330,9 +330,9 @@ def AMDAIEFusePackIntoLoop :
   ];
 }
 
-def AMDAIEGenerateColumnControlOverlay : Pass<"iree-amdaie-generate-column-control-overlay"> {
-  let summary = "Spawn a streaming interconnect network for column control.";
-  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEGenerateColumnControlOverlayPass()";
+def AMDAIEGenerateControlOverlay : Pass<"iree-amdaie-generate-control-overlay"> {
+  let summary = "Spawn a streaming interconnect network for CTRL ports.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEGenerateControlOverlayPass()";
   let options = [
     Option<"routeShimCtrlToTct", "route-shim-to-tct", "bool", /*default=*/"true",
       "Flag to generate TCT routing between tile CTRL and shim SOUTH ports.">,

@@ -10,7 +10,7 @@
 #include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 #include "iree-amd-aie/aie_runtime/Utils/ChannelGenerator.h"
 
-#define DEBUG_TYPE "iree-amdaie-generate-column-control-overlay"
+#define DEBUG_TYPE "iree-amdaie-generate-control-overlay"
 
 namespace mlir::iree_compiler::AMDAIE {
 
@@ -49,9 +49,11 @@ LogicalResult initializeChannelsGenerators(
         if (direction == AMDAIE::DMAChannelDir::MM2S) {
           shimTileToGeneratorMap[tileOp.getResult()].assignProducerDMAChannel(
               channel);
-        } else {
+        } else if (direction == AMDAIE::DMAChannelDir::S2MM) {
           shimTileToGeneratorMap[tileOp.getResult()].assignConsumerDMAChannel(
               channel);
+        } else {
+          assert(false && "unexpected DMA channel direction");
         }
       }
     }
@@ -60,9 +62,9 @@ LogicalResult initializeChannelsGenerators(
   return success();
 }
 
-LogicalResult generateColumnControlOverlay(AMDAIE::WorkgroupOp workgroupOp,
-                                           bool routeShimToTileCtrl,
-                                           bool routeShimCtrlToTct) {
+LogicalResult generateControlOverlay(AMDAIE::WorkgroupOp workgroupOp,
+                                     bool routeShimToTileCtrl,
+                                     bool routeShimCtrlToTct) {
   // Get the device model.
   std::optional<AMDAIEDevice> device = getConfigAMDAIEDevice(workgroupOp);
   if (!device) {
@@ -78,8 +80,7 @@ LogicalResult generateColumnControlOverlay(AMDAIE::WorkgroupOp workgroupOp,
     uint32_t col = getConstantIndexOrAssert(tileOp.getCol());
     uint32_t row = getConstantIndexOrAssert(tileOp.getRow());
     occupiedCols.insert(col);
-    if (deviceModel.getTileType(col, row) == AMDAIETileType::SHIMNOC)
-      columnToShimTile[col] = tileOp;
+    if (deviceModel.isShimNOCTile(col, row)) columnToShimTile[col] = tileOp;
   });
 
   // If the column is occupied, but the shim tile op is not present, then create
@@ -153,13 +154,13 @@ LogicalResult generateColumnControlOverlay(AMDAIE::WorkgroupOp workgroupOp,
   return success();
 }
 
-class AMDAIEGenerateColumnControlOverlayPass
-    : public impl::AMDAIEGenerateColumnControlOverlayBase<
-          AMDAIEGenerateColumnControlOverlayPass> {
+class AMDAIEGenerateControlOverlayPass
+    : public impl::AMDAIEGenerateControlOverlayBase<
+          AMDAIEGenerateControlOverlayPass> {
  public:
-  AMDAIEGenerateColumnControlOverlayPass(
-      const AMDAIEGenerateColumnControlOverlayOptions &options)
-      : AMDAIEGenerateColumnControlOverlayBase(options) {}
+  AMDAIEGenerateControlOverlayPass(
+      const AMDAIEGenerateControlOverlayOptions &options)
+      : AMDAIEGenerateControlOverlayBase(options) {}
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<AMDAIEDialect>();
@@ -168,11 +169,11 @@ class AMDAIEGenerateColumnControlOverlayPass
   void runOnOperation() override;
 };
 
-void AMDAIEGenerateColumnControlOverlayPass::runOnOperation() {
+void AMDAIEGenerateControlOverlayPass::runOnOperation() {
   Operation *parentOp = getOperation();
   WalkResult res = parentOp->walk([&](AMDAIE::WorkgroupOp workgroupOp) {
-    if (failed(generateColumnControlOverlay(workgroupOp, routeShimToTileCtrl,
-                                            routeShimCtrlToTct))) {
+    if (failed(generateControlOverlay(workgroupOp, routeShimToTileCtrl,
+                                      routeShimCtrlToTct))) {
       return WalkResult::interrupt();
     }
     return WalkResult::advance();
@@ -183,9 +184,9 @@ void AMDAIEGenerateColumnControlOverlayPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<Pass> createAMDAIEGenerateColumnControlOverlayPass(
-    AMDAIEGenerateColumnControlOverlayOptions options) {
-  return std::make_unique<AMDAIEGenerateColumnControlOverlayPass>(options);
+std::unique_ptr<Pass> createAMDAIEGenerateControlOverlayPass(
+    AMDAIEGenerateControlOverlayOptions options) {
+  return std::make_unique<AMDAIEGenerateControlOverlayPass>(options);
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE
