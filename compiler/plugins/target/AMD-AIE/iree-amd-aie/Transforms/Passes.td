@@ -291,7 +291,7 @@ def AMDAIELinalgFunctionOutlining :
       "i.e. it just returns. Useful for measuring the performance of data "
       "movement to/from the device -- by doing zero compute, all time is spent "
       "moving data to/from the AIE cores.">,
-    Option<"noAliasFinalArg", "no-alias-final-arg", "bool", /*default=*/"true",
+    Option<"noAliasMemrefArgs", "no-alias-memref-args", "bool", /*default=*/"true",
       "A developer only option. When 'true' (the default), "
       "the final memref argument of the outlined function "
       "will have the 'llvm.noalias' attribute attached to "

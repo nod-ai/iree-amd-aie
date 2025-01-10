@@ -3,8 +3,8 @@
 // Test demonstrating multiple matmuls using different SSAs.
 
 // CHECK-LABEL: func.func private @generic_matmul_0_outlined
-// CHECK-SAME:  (%[[LHS:.*]]: memref<4x8xbf16>,
-// CHECK-SAME:   %[[RHS:.*]]: memref<8x4xbf16>,
+// CHECK-SAME:  (%[[LHS:.*]]: memref<4x8xbf16> {llvm.noalias},
+// CHECK-SAME:   %[[RHS:.*]]: memref<8x4xbf16> {llvm.noalias},
 // CHECK-SAME:   %[[OUT:.*]]: memref<4x4xf32> {llvm.noalias}) {
 // CHECK:           linalg.generic
 // CHECK-SAME:          ins(%[[LHS]], %[[RHS]] :
@@ -76,8 +76,8 @@ func.func @repeated_identical_matmul(%A: memref<4x8xbf16>, %B: memref<8x4xbf16>,
 // Test demonstrating different kind of matmul operations being mapped to a
 // unique corresponding outlined function.
 
-// CHECK-DAG:  func.func private @[[MATMUL_K6:.*]]({{.*}}memref<4x6xbf16>, {{.*}}memref<6x4xbf16>, {{.*}}memref<4x4xf32> {llvm.noalias})
-// CHECK-DAG:  func.func private @[[MATMUL_K4:.*]]({{.*}}memref<4x4xbf16>, {{.*}}memref<4x4xbf16>, {{.*}}memref<4x4xf32> {llvm.noalias})
+// CHECK-DAG:  func.func private @[[MATMUL_K6:.*]]({{.*}}memref<4x6xbf16> {llvm.noalias}, {{.*}}memref<6x4xbf16> {llvm.noalias}, {{.*}}memref<4x4xf32> {llvm.noalias})
+// CHECK-DAG:  func.func private @[[MATMUL_K4:.*]]({{.*}}memref<4x4xbf16> {llvm.noalias}, {{.*}}memref<4x4xbf16> {llvm.noalias}, {{.*}}memref<4x4xf32> {llvm.noalias})
 // CHECK-NOT:  func.func private
 // CHECK:      func.func @distinct_matmul_shapes(
 // CHECK-SAME:  %[[A0:.*]]: memref<4x4xbf16>, %[[B0:.*]]: memref<4x4xbf16>,
@@ -135,7 +135,7 @@ func.func @linalg_fill_copy(%A: memref<4xf32>, %B: memref<4xf32>) {
 // a matmul or elementwise operation. Specifically, one which has not been
 // 'blacklisted' like linalg.copy has (see test linalg_fill_copy above).
 // CHECK:       func.func private @generic_0_outlined
-// CHECK-SAME:    memref<4xbf16>,
+// CHECK-SAME:    memref<4xbf16>
 // CHECK-SAME:    memref<bf16>
 // CHECK:       linalg.generic
 // CHECK-SAME:    iterator_types = ["reduction"]

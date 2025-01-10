@@ -22,7 +22,7 @@ namespace {
 static FailureOr<func::FuncOp> outline(IRRewriter &rewriter, ModuleOp moduleOp,
                                        linalg::LinalgOp computeOp,
                                        const std::string &funcName,
-                                       bool noAliasFinalArg) {
+                                       bool noAliasMemrefArgs) {
   // Form outlined FunctionType.
   for (const auto &operand : computeOp->getOperands()) {
     // Function signatures where the memrefs have layouts (strides / offsets)
@@ -64,16 +64,13 @@ static FailureOr<func::FuncOp> outline(IRRewriter &rewriter, ModuleOp moduleOp,
   // arguments.
   Operation *clonedComputeOp = rewriter.clone(*computeOp, operandMap);
 
-  if (noAliasFinalArg) {
+  if (noAliasMemrefArgs) {
+    StringRef noAliasAttrName = LLVM::LLVMDialect::getNoAliasAttrName();
     ArrayRef<BlockArgument> args = func.getArguments();
-    // Find the first MemRefType argument, starting at the end.
-    auto it = std::find_if(args.rbegin(), args.rend(), [](BlockArgument arg) {
-      return isa<MemRefType>(arg.getType());
-    });
-    if (it != args.rend()) {
-      int index = args.size() - std::distance(args.rbegin(), it) - 1;
-      StringRef noAliasAttrName = LLVM::LLVMDialect::getNoAliasAttrName();
-      func.setArgAttr(index, noAliasAttrName, rewriter.getUnitAttr());
+    for (auto iter : llvm::enumerate(args)) {
+      if (isa<MemRefType>(iter.value().getType())) {
+        func.setArgAttr(iter.index(), noAliasAttrName, rewriter.getUnitAttr());
+      }
     }
   }
 
@@ -155,7 +152,7 @@ class AMDAIELinalgFunctionOutliningPass
     }
 
     FailureOr<func::FuncOp> maybeFunc =
-        outline(rewriter, moduleOp, computeOp, funcName, noAliasFinalArg);
+        outline(rewriter, moduleOp, computeOp, funcName, noAliasMemrefArgs);
 
     if (succeeded(maybeFunc)) {
       computeOpToOutlinedFuncMap[computeOp] = maybeFunc.value();
