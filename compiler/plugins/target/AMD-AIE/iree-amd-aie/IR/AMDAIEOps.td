@@ -1279,8 +1279,9 @@ def AMDAIE_LogicalObjectFifoFromBuffersOp
 }
 
 def AMDAIE_LogicalObjectFifoFromMemrefOp
-    : AMDAIE_Op<"logicalobjectfifo.from_memref",
-    [DeclareOpInterfaceMethods<LogicalObjFifoOpInterface, ["replaceWithNewTiles"]>,
+    : AMDAIE_Op<"logicalobjectfifo.from_memref", [
+     DeclareOpInterfaceMethods<LogicalObjFifoOpInterface, ["replaceWithNewTiles"]>,
+     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
      Pure]> {
   let summary = "Create a logical objectFifo from a memref";
   let description = [{
