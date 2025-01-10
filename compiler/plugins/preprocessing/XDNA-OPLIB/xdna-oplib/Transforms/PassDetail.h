@@ -13,7 +13,6 @@ namespace mlir::iree_compiler::XDNAOPLIB {
 #define GEN_PASS_DEF_XDNAOPLIBHELLOWORLD
 #include "xdna-oplib/Transforms/Passes.h.inc"
 
-}
+}  // namespace mlir::iree_compiler::XDNAOPLIB
 
-
-#endif // IREE_XDNA_OPLIB_TRANSFORMS_PASSDETAIL_H_
+#endif  // IREE_XDNA_OPLIB_TRANSFORMS_PASSDETAIL_H_

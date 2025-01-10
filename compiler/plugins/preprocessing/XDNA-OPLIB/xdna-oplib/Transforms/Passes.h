@@ -15,12 +15,11 @@ namespace mlir::iree_compiler::XDNAOPLIB {
 void addXDNAOPLIBPreprocessingExtensions(OpPassManager &pm);
 
 // Hello world pass to show the XDNA OpLib is functional
-std::unique_ptr<OperationPass<>>
-createXDNAOPLIBHelloWorldPass();
+std::unique_ptr<OperationPass<>> createXDNAOPLIBHelloWorldPass();
 
 // Registration for all XDNA OpLib passes.
 void registerXDNAOPLIBPasses();
 
-}
+}  // namespace mlir::iree_compiler::XDNAOPLIB
 
-#endif // IREE_XDNA_OPLIB_TRANSFORMS_PASSES_H_
+#endif  // IREE_XDNA_OPLIB_TRANSFORMS_PASSES_H_
