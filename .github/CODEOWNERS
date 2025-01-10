@@ -24,4 +24,3 @@
 # Target emission
 /compiler/plugins/target/AMD-AIE/iree-amd-aie/Target/AMDAIETarget* @makslevental
 /compiler/plugins/target/AMD-AIE/iree-amd-aie/Target/XCLBinGen* @makslevental @nirvedhmeshram @newling
-
