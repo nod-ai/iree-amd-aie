@@ -392,7 +392,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
     // COLLAPSE:            linalg.generic
     // COLLAPSE-SAME:           ins(%[[SLICE_0]], %[[SLICE_1]] :
     // COLLAPSE-SAME:           outs(%[[SLICE_2]] :
-    
+
     // COALESCE:         scf.for
     // COALESCE-NOT:     scf.for
     // COALESCE:           memref.subview %[[ARG0]]

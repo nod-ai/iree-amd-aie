@@ -4,9 +4,9 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include <numeric>
-
 #include "iree-amd-aie/IR/AMDAIEDmaOpInterface.h"
+
+#include <numeric>
 
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
 
@@ -71,7 +71,6 @@ std::optional<int64_t> getSourceStaticBaseOffset(DoublyStridedOpInterface op) {
   return getStaticBaseOffset<CopyOpOperateOn::Source>(op);
 }
 
-
 std::optional<int64_t> getSourceStaticSize(DoublyStridedOpInterface op) {
   return getStaticSize<CopyOpOperateOn::Source>(op);
 }
@@ -81,7 +80,6 @@ std::optional<int64_t> getSourceStaticSize(DoublyStridedOpInterface op) {
 std::optional<int64_t> getTargetStaticBaseOffset(DoublyStridedOpInterface op) {
   return getStaticBaseOffset<CopyOpOperateOn::Target>(op);
 }
-
 
 std::optional<int64_t> getTargetStaticSize(DoublyStridedOpInterface op) {
   return getStaticSize<CopyOpOperateOn::Target>(op);

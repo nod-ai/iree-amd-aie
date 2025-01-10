@@ -175,7 +175,6 @@ void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
     if (failed(maybeFunc)) return WalkResult::interrupt();
     func::FuncOp func = maybeFunc.value();
 
-
     rewriter.setInsertionPoint(computeOp);
     rewriter.create<func::CallOp>(computeOp.getLoc(), func,
                                   computeOp->getOperands());

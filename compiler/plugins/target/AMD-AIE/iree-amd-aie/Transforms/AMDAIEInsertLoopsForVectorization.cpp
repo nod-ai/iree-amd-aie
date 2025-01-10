@@ -101,10 +101,10 @@ class AMDAIEInsertLoopsForVectorizationPass
     return tileSizes;
   }
 
-  /// Collapse unit dims of the generic op before tiling for vectorization. Since
-  /// this is optinal we need not return failure if the collapsing cannot take
-  /// place. Eg: For <2x3x4> since there aren't any unit dimensions, it'd return
-  /// failure, hence we can simply return.
+  /// Collapse unit dims of the generic op before tiling for vectorization.
+  /// Since this is optinal we need not return failure if the collapsing cannot
+  /// take place. Eg: For <2x3x4> since there aren't any unit dimensions, it'd
+  /// return failure, hence we can simply return.
   void collapseUnitDims(IRRewriter &rewriter, linalg::GenericOp &genericOp) {
     linalg::ControlDropUnitDims options;
     options.rankReductionStrategy =
@@ -142,7 +142,8 @@ class AMDAIEInsertLoopsForVectorizationPass
       std::optional<SmallVector<int64_t>> tileSizes =
           formTileSizesForElementwise(genericOp);
       if (!tileSizes) {
-        return genericOp->emitOpError()<<"unable to form tile sizes for the elementwise op";
+        return genericOp->emitOpError()
+               << "unable to form tile sizes for the elementwise op";
       }
       performTiling(rewriter, genericOp, *tileSizes);
       return success();
@@ -209,7 +210,8 @@ class AMDAIEInsertLoopsForVectorizationPass
     std::optional<SmallVector<int64_t>> tileSizes =
         formTileSizesForMatmul(genericOp);
     if (!tileSizes) {
-      return genericOp->emitOpError()<<"unable to form tile sizes for the matmul op";
+      return genericOp->emitOpError()
+             << "unable to form tile sizes for the matmul op";
     }
     performTiling(rewriter, genericOp, *tileSizes);
     return success();

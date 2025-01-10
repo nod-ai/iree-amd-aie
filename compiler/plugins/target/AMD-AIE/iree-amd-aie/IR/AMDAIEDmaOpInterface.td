@@ -40,7 +40,7 @@ def DoublyStridedOpInterface : OpInterface<"DoublyStridedOpInterface"> {
 
     The invariants of this interface are:
       1. `offsets`, `sizes` and `strides` have the same length.
-      2. if an entry of static access pattern operands is equal to a special sentinel value, 
+      2. if an entry of static access pattern operands is equal to a special sentinel value,
          namely `ShapedType::kDynamic`, then the corresponding entry is a dynamic value.
       3. `offsets`, `sizes` and `strides` operands are non-negative.
   }];
@@ -67,7 +67,7 @@ def DoublyStridedOpInterface : OpInterface<"DoublyStridedOpInterface"> {
       /*defaultImplementation=*/[{
         std::optional<::mlir::Attribute> memSpace = getTargetMemorySpace();
         if (!memSpace) return std::nullopt;
-        return memSpace.value() ? 
+        return memSpace.value() ?
           cast<::mlir::IntegerAttr>(memSpace.value()).getInt() : 0;
       }]
     >,
@@ -221,7 +221,7 @@ def DoublyStridedOpInterface : OpInterface<"DoublyStridedOpInterface"> {
       /*defaultImplementation=*/[{
         std::optional<::mlir::Attribute> memSpace = getSourceMemorySpace();
         if (!memSpace) return std::nullopt;
-        return memSpace.value() ? 
+        return memSpace.value() ?
           cast<::mlir::IntegerAttr>(memSpace.value()).getInt() : 0;
       }]
     >,

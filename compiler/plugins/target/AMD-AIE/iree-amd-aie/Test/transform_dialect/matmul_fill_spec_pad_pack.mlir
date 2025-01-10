@@ -47,7 +47,7 @@ module attributes { transform.with_named_sequence } {
 
     // Fuse fill operation into the forall loop.
     %fused_fill, %fused_loop = transform.structured.fuse_into_containing_op %fill into %forall : (!transform.any_op, !transform.any_op) -> (!transform.any_op, !transform.any_op)
-    
+
     // Pad operation.
     %padded, %pad, %__ = transform.structured.pad %tiled_matmul {
       padding_values=[0 : i32, 0 : i32, 0 : i32],

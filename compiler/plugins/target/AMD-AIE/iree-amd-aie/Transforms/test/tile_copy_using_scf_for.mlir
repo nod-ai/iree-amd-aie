@@ -28,4 +28,3 @@ func.func @matmul_example(%arg0 : tensor<64x2048xi32>, %arg1 : tensor<2048x64xi3
 // CHECK:       linalg.matmul
 // CHECK:       linalg.copy
 // CHECK:   }
-

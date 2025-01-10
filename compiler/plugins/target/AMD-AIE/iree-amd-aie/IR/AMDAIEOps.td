@@ -41,9 +41,9 @@ def AMDAIE_ControlCodeOp : AMDAIE_Op<"controlcode", [HasParent<"WorkgroupOp">,
     in a single block. Therefore, this operation is expected to always have a
     workgroup parent and is expected to be the terminator of this parent.
   }];
-  
+
   let regions = (region SizedRegion<1>:$region);
-  
+
   let assemblyFormat = [{ regions attr-dict }];
 
   let hasVerifier = 1;
@@ -70,9 +70,9 @@ def AMDAIE_CoreOp: AMDAIE_Op<"core", [SingleBlock, AttrSizedOperandSegments]>, R
   );
 
   let regions = (region SizedRegion<1>:$region);
-  
+
   let assemblyFormat = [{ `(` $tile `,` `in` `:` `[` $input_dmas `]` `,` `out` `:` `[` $output_dmas `]` `)` regions attr-dict }];
-  
+
   let builders = [
     OpBuilder<(ins "mlir::Value":$coreCol, "mlir::Value":$coreRow)>,
     OpBuilder<(ins "mlir::Value":$coreCol, "mlir::Value":$coreRow,
@@ -92,14 +92,14 @@ def AMDAIE_EndOp: AMDAIE_Op<"end", [Terminator]> {
   let assemblyFormat = [{ attr-dict }];
 }
 
-def AMDAIE_FlowOp: AMDAIE_Op<"flow", [AttrSizedOperandSegments]>, 
+def AMDAIE_FlowOp: AMDAIE_Op<"flow", [AttrSizedOperandSegments]>,
     Results<(outs Index)> {
   let summary = "The data connection between a set of source and target "
                 "channels.";
   let description = [{
-    This operation represents a connection between source and target channels. 
-    This is used to describe a logical data routing configuration between 
-    channels, to be solved by the router for actual stream switch 
+    This operation represents a connection between source and target channels.
+    This is used to describe a logical data routing configuration between
+    channels, to be solved by the router for actual stream switch
     configurations that implements it. The multiple sources and targets can
     describe different connection patterns:
     - Single source and multiple targets describes a data broadcasting pattern.
@@ -112,7 +112,7 @@ def AMDAIE_FlowOp: AMDAIE_Op<"flow", [AttrSizedOperandSegments]>,
     %channel = amdaie.channel(%tile_0_0, 0, port_type = DMA)
     %channel_1 = amdaie.channel(%tile_0_1, 0, port_type = DMA)
     %channel_2 = amdaie.channel(%tile_1_1, 0, port_type = DMA)
-    %0 = amdaie.flow({%channel} -> {%channel_1, %channel_2}) 
+    %0 = amdaie.flow({%channel} -> {%channel_1, %channel_2})
       {is_packet_flow = true, packet_id = 0 : ui8}
     ```
   }];
@@ -176,12 +176,12 @@ def AMDAIE_WorkgroupOp : AMDAIE_Op<"workgroup",
     The invariant of this op is that the workgroup contains a single block, of
     which the terminator should be a `ControlCodeOp`.
   }];
-  
+
   let regions = (region SizedRegion<1>:$region);
   let arguments = (
     ins OptionalAttr<Builtin_DenseResourceElementsAttr>:$npu_instructions
   );
-  
+
   let assemblyFormat = [{ regions attr-dict }];
 
   // Skip the default builders and provide a custom implementation which ensures
@@ -202,7 +202,7 @@ def AMDAIE_WorkgroupOp : AMDAIE_Op<"workgroup",
     static void ensureTerminator(Region &region, OpBuilder &builder,
                                  Location loc);
   }];
-  
+
   let hasVerifier = 1;
 }
 
@@ -217,7 +217,7 @@ def AMDAIE_BufferOp: AMDAIE_Op<"buffer", [
   let description = [{
     This operation represents a buffer on an AIE tile. The buffer can have an
     optional address, indicating the location of the buffer on the tile.
-    
+
     Example:
 
     ```mlir
@@ -233,7 +233,7 @@ def AMDAIE_BufferOp: AMDAIE_Op<"buffer", [
 
   let results = (outs AnyMemRef:$buffer);
 
-  let assemblyFormat = [{ 
+  let assemblyFormat = [{
     `(` $tile (`,` $address^)? `)` attr-dict `:` type($buffer)
   }];
 }
@@ -244,8 +244,8 @@ def AMDAIE_LockOp: AMDAIE_Op<"lock", [
   ]>, Results<(outs Index)> {
   let summary = "Represents a physical lock on an AIE tile.";
   let description = [{
-    This operation represents a lock on an AIE tile. The operation is fully 
-    specified through a tile and lock ID value, designating the exact physical 
+    This operation represents a lock on an AIE tile. The operation is fully
+    specified through a tile and lock ID value, designating the exact physical
     lock to be used. This op helps with guaranteeing/verifying correct reuse of
     the same lock. The op accepts an optional initialization value.
 
@@ -256,7 +256,7 @@ def AMDAIE_LockOp: AMDAIE_Op<"lock", [
     %lock = amdaie.lock(%tile(0), 2)
     ```
 
-    This creates a lock on tile (0, 0) with ID 0 that should be initialized to 
+    This creates a lock on tile (0, 0) with ID 0 that should be initialized to
     2.
   }];
 
@@ -273,16 +273,16 @@ def AMDAIE_UseLockOp: AMDAIE_Op<"use_lock"> {
   let summary = "Represents the use of a semaphore lock with a specified "
                 "action (acquire/release).";
   let description = [{
-    This operation represents the use of a semaphore lock with a specified lock 
-    `action` and `value`. The lock action could for example be `Acquire`, 
-    `AcquireGreaterOrEqual` or `Release`. The specified `value` argument 
+    This operation represents the use of a semaphore lock with a specified lock
+    `action` and `value`. The lock action could for example be `Acquire`,
+    `AcquireGreaterOrEqual` or `Release`. The specified `value` argument
     determines the value to be used in the lock action, for example:
     - `Acquire(1)`: Acquire the lock if its value is equal to 1, then subtract 1
       from it.
-    - `AcquireGreaterOrEqual(1)`: Acquire the lock if its value is greater or 
+    - `AcquireGreaterOrEqual(1)`: Acquire the lock if its value is greater or
       equal to 1, then subtract 1 from it.
     - `Release(1)`: Add 1 to the value of this lock.
-    
+
 
     Example:
 
@@ -298,7 +298,7 @@ def AMDAIE_UseLockOp: AMDAIE_Op<"use_lock"> {
         I8Attr:$value
   );
 
-  let assemblyFormat = [{ 
+  let assemblyFormat = [{
     `(` $lock `,` $action `(` $value `)` `)` attr-dict
   }];
 }
@@ -374,11 +374,11 @@ def AMDAIE_ChannelOp: AMDAIE_Op<"channel", [
     TileOp getTileOp();
   }];
 
-  let assemblyFormat = [{ 
-    `(` 
+  let assemblyFormat = [{
+    `(`
     $tile `,`
-    $value `,` 
-    `port_type` `=` $port_type `,` 
+    $value `,`
+    `port_type` `=` $port_type `,`
     `direction` `=` $direction
     `)`
     attr-dict
@@ -419,7 +419,7 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd", [
   let description = [{
     The Npu DMA operation represents a strided copy operation with an unlimited
     number of dimensions, executed by the Npu uController. This operation refers
-    to a `ConnectionOp`, which will contain the necessary information about the 
+    to a `ConnectionOp`, which will contain the necessary information about the
     source and target logical objectFifos of the operation and which will
     instantiate the DMA connection.
 
@@ -440,7 +440,7 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd", [
     Example:
 
     ```mlir
-    %2 = amdaie.connection(%1, %0) 
+    %2 = amdaie.connection(%1, %0)
       : (!amdaie.logicalobjectfifo<memref<32x64xi32, 1>>,
       !amdaie.logicalobjectfifo<memref<32x1024xi32>>)
     ...
@@ -473,7 +473,7 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd", [
 
   let results = (outs Variadic<AMDAIE_AnyAsyncTokenType>:$async_tokens);
 
-  // Use a custom assembly format because of weird spaces being inserted around 
+  // Use a custom assembly format because of weird spaces being inserted around
   // the optional `target` by the default assembly format generator.
   let hasCustomAssemblyFormat = 1;
 
@@ -488,7 +488,7 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd", [
       "ArrayRef<OpFoldResult>":$source_strides, "::mlir::Value":$source_bd_id)>,
     // Build a NpuDmaCpyNdOp with static entries.
     OpBuilder<(ins "::mlir::TypeRange":$result_types, "Value":$connection,
-      "::mlir::Value":$target, "ArrayRef<int64_t>":$target_offsets, 
+      "::mlir::Value":$target, "ArrayRef<int64_t>":$target_offsets,
       "ArrayRef<int64_t>":$target_sizes, "ArrayRef<int64_t>":$target_strides,
       "::mlir::Value":$target_bd_id, "::mlir::Value":$source,
       "ArrayRef<int64_t>":$source_offsets, "ArrayRef<int64_t>":$source_sizes,
@@ -505,14 +505,14 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd", [
   let extraClassDeclaration = [{
     // Check whether this dma operation has a wait user.
     bool hasDmaWaitOpUser();
-    
+
     // Check whether this operation has addressing on the source side.
     bool hasSourceAddressing() {
-      return !getSourceMixedOffsets().empty() || !getSourceMixedSizes().empty() 
+      return !getSourceMixedOffsets().empty() || !getSourceMixedSizes().empty()
         || !getSourceMixedStrides().empty();
     }
     // Check whether this operation has addressing on the target side.
-    bool hasTargetAddressing() { 
+    bool hasTargetAddressing() {
       return !getTargetMixedOffsets().empty() || !getTargetMixedSizes().empty()
         || !getTargetMixedStrides().empty();
     }
@@ -523,7 +523,7 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd", [
 
     // Return the source memref type. This is retrieved using information from
     // the input DMA operation.
-    MemRefType getSourceMemrefType() { 
+    MemRefType getSourceMemrefType() {
       return cast<LogicalObjectFifoType>(getConnectionOp().getSourceType())
           .getElementType();
     }
@@ -536,7 +536,7 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd", [
 
     // Return the target memref type. This is retrieved using information from
     // the input DMA operation.
-    MemRefType getTargetMemrefType() { 
+    MemRefType getTargetMemrefType() {
       return cast<LogicalObjectFifoType>(getConnectionOp().getTargetType())
           .getElementType();
     }
@@ -558,7 +558,7 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd", [
       if (!bdIdValue) return nullptr;
       return dyn_cast_if_present<BdIdOp>(bdIdValue.getDefiningOp());
     }
-    
+
     FailureOr<AMDAIE::ChannelOp> getSourceChannelOp();
 
     FailureOr<AMDAIE::ChannelOp> getTargetChannelOp();
@@ -590,26 +590,26 @@ def AMDAIE_NpuHalfDmaCpyNdOp
     operand provides information on how to use the connection, for example
     whether a packet header is needed.
 
-    The representation supports a partially-static representation for the 
-    `offsets`, `sizes` and `strides`. A special sentinel value 
+    The representation supports a partially-static representation for the
+    `offsets`, `sizes` and `strides`. A special sentinel value
     ShapedType::kDynamic encodes that the corresponding entry has a dynamic
     value.
 
-    It also supports the representation of DMA BD chaining using the, 
-    `next_bd`, and `start_bd` operands. The `next_bd` operand specifies 
+    It also supports the representation of DMA BD chaining using the,
+    `next_bd`, and `start_bd` operands. The `next_bd` operand specifies
     the BD ID of the next DMA operation in the chain, if there is any.
-    
+
     The `start_bd` operand specifies the BD ID of the first DMA operation in a sequence.
     - If `start_bd` is the same as `bd_id`, it marks the start of a chain.
-    - If `start_bd` differs from `bd_id` and `next_bd` is set, it represents 
+    - If `start_bd` differs from `bd_id` and `next_bd` is set, it represents
       an intermediate operation in the chain.
-    - If `start_bd` differs from `bd_id` and `next_bd` is not set, it represents 
+    - If `start_bd` differs from `bd_id` and `next_bd` is not set, it represents
       the end of the chain.
-      
+
     Example:
 
     ```mlir
-    %2 = amdaie.connection(%1, %0) 
+    %2 = amdaie.connection(%1, %0)
       : (!amdaie.logicalobjectfifo<memref<32x64xi32, 1>>,
       !amdaie.logicalobjectfifo<memref<32x1024xi32>>)
     %bd_id_0 = amdaie.bd_id(%tile_0_0, 0)
@@ -617,7 +617,7 @@ def AMDAIE_NpuHalfDmaCpyNdOp
     %channel = amdaie.channel(%tile_0_0, 0, port_type = DMA, direction = MM2S)
     ...
     amdaie.controlcode {
-      %5 = amdaie.logicalobjectfifo.from_memref %0, {%tile_0_0} 
+      %5 = amdaie.logicalobjectfifo.from_memref %0, {%tile_0_0}
         : memref<32x1024xi32> -> !amdaie.logicalobjectfifo<memref<32768xi32>>
       %4 = amdaie.npu.half_dma_cpy_nd async %2(%0[0, 0] [32, 64] [1024, 1]
         bd_id = %bd_id_0 channel = %channel next_bd = %bd_id_1 start_bd = %bd_id_0)
@@ -656,7 +656,7 @@ def AMDAIE_NpuHalfDmaCpyNdOp
     (`next_bd` `=` $next_bd^)?
     (`start_bd` `=` $start_bd^)?
     `)`
-    attr-dict 
+    attr-dict
     `:` type($input)
   }];
 
@@ -684,7 +684,7 @@ def AMDAIE_NpuHalfDmaCpyNdOp
     /// Return the number of leading operands before the `offsets`, `sizes` and
     /// and `strides` operands.
     static unsigned getOffsetSizeAndStrideStartOperandIndex() { return 2; }
-    
+
     /// Return the expected rank of each of the`static_offsets`, `static_sizes`
     /// and `static_strides` attributes.
     std::array<unsigned, 3> getArrayAttrMaxRanks() {
@@ -718,7 +718,7 @@ def AMDAIE_NpuHalfDmaCpyNdOp
 
     // Return the source memref type. This is retrieved using information from
     // the input DMA operation.
-    MemRefType getMemrefType() { 
+    MemRefType getMemrefType() {
       return cast<LogicalObjectFifoType>(getInput().getType())
           .getElementType();
     }
@@ -729,9 +729,9 @@ def AMDAIE_NpuHalfDmaCpyNdOp
         .getMemorySpace();
     }
 
-    // Helper method to return the memory space as an integer. If no memory 
+    // Helper method to return the memory space as an integer. If no memory
     // space attribute, this indicates a global memory space and 0 is returned.
-    // Else cast the memory space attribute to an integer. 
+    // Else cast the memory space attribute to an integer.
     uint8_t getMemorySpaceAsUInt() {
       Attribute memSpace = getMemorySpace();
       return memSpace ? cast<IntegerAttr>(memSpace).getInt() : 0;
@@ -742,13 +742,13 @@ def AMDAIE_NpuHalfDmaCpyNdOp
 
     // Compute and return the size of the DMA access if possible.
     std::optional<int64_t> getAccessStaticSize();
-    
+
     // Check whether this dma operation has a wait user.
     bool hasDmaWaitOpUser();
-    
+
     // Check whether this operation has addressing.
     bool hasAddressing() {
-      return !getMixedOffsets().empty() || !getMixedSizes().empty() 
+      return !getMixedOffsets().empty() || !getMixedSizes().empty()
         || !getMixedStrides().empty();
     }
   }];
@@ -761,8 +761,8 @@ def AMDAIE_NpuCircularDmaCpyNdOp: AMDAIE_Op<"npu.circular_dma_cpy_nd", [
   let description = [{
     The Npu circular DMA operation represents a strided copy operation with an
     unlimited number of dimensions that will go on indefinitely. This operation
-    will configure a connection to perform that copy operation. This operation 
-    refers to a `ConnectionOp` for this connection, which will contain the 
+    will configure a connection to perform that copy operation. This operation
+    refers to a `ConnectionOp` for this connection, which will contain the
     necessary information about the source and target logical objectFifos.
 
     The representation supports a partially-static representation of both the
@@ -828,23 +828,23 @@ def AMDAIE_NpuCircularDmaCpyNdOp: AMDAIE_Op<"npu.circular_dma_cpy_nd", [
     // Build a NpuCircularDmaCpyNdOp with dynamic entries.
     OpBuilder<(ins "Value":$connection, "ValueRange":$target_offsets,
       "ValueRange":$target_sizes, "ValueRange":$target_strides,
-      "ValueRange":$source_offsets, "ValueRange":$source_sizes, 
+      "ValueRange":$source_offsets, "ValueRange":$source_sizes,
       "ValueRange":$source_strides)>
   ];
 
   let extraClassDeclaration = [{
     // Check whether this operation has addressing on the source side.
     bool hasSourceAddressing() {
-      return !getSourceMixedOffsets().empty() || !getSourceMixedSizes().empty() 
+      return !getSourceMixedOffsets().empty() || !getSourceMixedSizes().empty()
         || !getSourceMixedStrides().empty();
     }
-    
+
     // Check whether this operation has addressing on the target side.
-    bool hasTargetAddressing() { 
+    bool hasTargetAddressing() {
       return !getTargetMixedOffsets().empty() || !getTargetMixedSizes().empty()
         || !getTargetMixedStrides().empty();
     }
-    
+
     // Return the input connection operation.
     ConnectionOp getConnectionOp() {
       return dyn_cast_if_present<ConnectionOp>(getConnection().getDefiningOp());
@@ -852,7 +852,7 @@ def AMDAIE_NpuCircularDmaCpyNdOp: AMDAIE_Op<"npu.circular_dma_cpy_nd", [
 
     // Return the source memref type. This is retrieved using information from
     // the input DMA operation.
-    MemRefType getSourceMemrefType() { 
+    MemRefType getSourceMemrefType() {
       return cast<LogicalObjectFifoType>(getConnectionOp().getSourceType())
           .getElementType();
     }
@@ -865,7 +865,7 @@ def AMDAIE_NpuCircularDmaCpyNdOp: AMDAIE_Op<"npu.circular_dma_cpy_nd", [
 
     // Return the target memref type. This is retrieved using information from
     // the input DMA operation.
-    MemRefType getTargetMemrefType() { 
+    MemRefType getTargetMemrefType() {
       return cast<LogicalObjectFifoType>(getConnectionOp().getTargetType())
           .getElementType();
     }
@@ -896,7 +896,7 @@ def AMDAIE_NpuDmaWaitOp: AMDAIE_Op<"npu.dma_wait", []> {
   let summary = "Wait for the Npu DMA operation to complete.";
   let description = [{
     The wait operation will block on the referenced dependent ops.
-    
+
     If a dependent op returns a `!amdaie.async_token`, this wait op will block
     on the dependent op having completed execution.
     If a dependent op returns a `!amdaie.async_source_token`, this wait op will
@@ -919,7 +919,7 @@ def AMDAIE_NpuDmaWaitOp: AMDAIE_Op<"npu.dma_wait", []> {
     ```
 
     Here, the `dma_wait` operation will wait until the referenced Npu DMA
-    operation has started execution. On the other hand, the 
+    operation has started execution. On the other hand, the
     `!amdaie.async_target_token` can be used to wait on the target side of the
     DMA, i.e. until the DMA has finished its write into the target memory:
 
@@ -1026,7 +1026,7 @@ def AMDAIE_NpuTctSyncOp: AMDAIE_Op<"npu.tct_sync"> {
   let summary = "Wait for the TCTs to be emitted.";
   let description = [{
     This NPU controller operation to synchronize the Task Completion Tokens (TCTs)
-    on the specified `channel` and `direction`. The ranges of tiles to synchronize 
+    on the specified `channel` and `direction`. The ranges of tiles to synchronize
     are defined by [col, col+col_num) and [row, row+row_num).
 
     Example:
@@ -1077,16 +1077,16 @@ def AMDAIE_ConnectionOp: AMDAIE_Op<"connection",
         Variadic<Index>:$source_channels,
         OptionalAttr<AMDAIE_ConnectionTypeAttr>:$connection_type,
         Optional<Index>:$flow
-        
+
   );
   let results = (outs Index:$result);
 
-  let assemblyFormat = [{ 
+  let assemblyFormat = [{
     `(`
     $target
-    ( ` ` `{` $target_channels^  `}` )? 
+    ( ` ` `{` $target_channels^  `}` )?
     `,`
-    $source 
+    $source
     ( ` ` `{` $source_channels^  `}` )?
     ( `,` `flow` `=` $flow^ )?
     `)`
@@ -1096,7 +1096,7 @@ def AMDAIE_ConnectionOp: AMDAIE_Op<"connection",
 
   let builders = [
     OpBuilder<(ins "Value":$target, "::mlir::Value":$source)>,
-    OpBuilder<(ins "Value":$target, "::mlir::ValueRange":$target_channels, 
+    OpBuilder<(ins "Value":$target, "::mlir::ValueRange":$target_channels,
       "::mlir::Value":$source, "::mlir::ValueRange":$source_channels)>
   ];
 
@@ -1128,7 +1128,7 @@ def AMDAIE_LogicalObjectFifoAccessOp : AMDAIE_Op<"logicalobjectfifo.access"> {
       %0 = amdaie.logicalobjectfifo.from_memref %alloc, {%tile} : memref<8x16xi32, 2>
         -> !amdaie.logicalobjectfifo<memref<8x16xi32, 2>>
       %core = amdaie.core(%tile, in : [], out : []) {
-        %1 = amdaie.logicalobjectfifo.access(%0, Read) : 
+        %1 = amdaie.logicalobjectfifo.access(%0, Read) :
           !amdaie.logicalobjectfifo<memref<8x16xi32, 2>> ->  memref<8x16xi32, 2>
     ```
   }];
@@ -1136,7 +1136,7 @@ def AMDAIE_LogicalObjectFifoAccessOp : AMDAIE_Op<"logicalobjectfifo.access"> {
   let arguments = (
     ins AnyAMDAIELogicalObjectFifoType:$input,
         MemoryAccess:$access_type
-  ); 
+  );
 
   let results = (outs AnyMemRef:$output);
 
@@ -1158,7 +1158,7 @@ def AMDAIE_LogicalObjectFifoAccessOp : AMDAIE_Op<"logicalobjectfifo.access"> {
   let cppNamespace = "mlir::iree_compiler::AMDAIE";
 }
 
-def AMDAIE_LogicalObjectFifoAcquire: 
+def AMDAIE_LogicalObjectFifoAcquire:
     AMDAIE_Op<"logicalobjectfifo.acquire", []> {
   let summary = "Semaphore operation to acquire objects from a logical"
                 "objectFifo DMA operation.";
@@ -1201,7 +1201,7 @@ def AMDAIE_LogicalObjectFifoAcquire:
 }
 
 def AMDAIE_LogicalObjectFifoFromBuffersOp
-    : AMDAIE_Op<"logicalobjectfifo.from_buffers", 
+    : AMDAIE_Op<"logicalobjectfifo.from_buffers",
     [DeclareOpInterfaceMethods<LogicalObjFifoOpInterface, ["replaceWithNewTiles"]>,
      Pure, AttrSizedOperandSegments]> {
   let summary = "Create a logical objectFifo from a set of buffers";
@@ -1218,7 +1218,7 @@ def AMDAIE_LogicalObjectFifoFromBuffersOp
       %lock = amdaie.lock(%tile(0), 2)
       %lock_1 = amdaie.lock(%tile(1), 0)
       %0 = amdaie.logicalobjectfifo.from_buffers({%buffer, %buffer_1}, {%lock}, {%lock_1})
-      : memref<1024xi32, 1 : i32>, memref<1024xi32, 1 : i32> 
+      : memref<1024xi32, 1 : i32>, memref<1024xi32, 1 : i32>
       -> !amdaie.logicalobjectfifo<memref<1024xi32, 1 : i32>, 2>
     ```
   }];
@@ -1227,12 +1227,12 @@ def AMDAIE_LogicalObjectFifoFromBuffersOp
     ins Variadic<AnyMemRef>:$buffers,
         Variadic<Index>:$producerLocks,
         Variadic<Index>:$consumerLocks
-  ); 
+  );
 
   let results = (outs AnyAMDAIELogicalObjectFifoType:$output);
 
   let assemblyFormat = [{
-    `(` `{` $buffers `}` `,` `{` $producerLocks `}` `,` `{` $consumerLocks `}` `)` 
+    `(` `{` $buffers `}` `,` `{` $producerLocks `}` `,` `{` $consumerLocks `}` `)`
     attr-dict `:` type($buffers) `->` type($output)
   }];
 
@@ -1252,18 +1252,18 @@ def AMDAIE_LogicalObjectFifoFromBuffersOp
 
     // Helper method to return the memory space as an integer. If no memory
     // space attribute, this indicates a global memory space and we return 0.
-    // Else cast the memory space attribute to an integer. 
+    // Else cast the memory space attribute to an integer.
     uint8_t getMemorySpaceAsUInt() {
       Attribute memSpace = getMemorySpace();
       return memSpace ? cast<IntegerAttr>(memSpace).getInt() : 0;
     }
 
     // Return the source memref type.
-    MemRefType getMemrefType() { 
+    MemRefType getMemrefType() {
       return cast<LogicalObjectFifoType>(getOutput().getType())
         .getElementType();
     }
-  
+
     // Return the encapsulated buffers on the requested tile.
     llvm::SmallVector<BufferOp> getBuffersOnTile(TileOp tileOp);
 
@@ -1279,8 +1279,8 @@ def AMDAIE_LogicalObjectFifoFromBuffersOp
 }
 
 def AMDAIE_LogicalObjectFifoFromMemrefOp
-    : AMDAIE_Op<"logicalobjectfifo.from_memref", 
-    [DeclareOpInterfaceMethods<LogicalObjFifoOpInterface, ["replaceWithNewTiles"]>, 
+    : AMDAIE_Op<"logicalobjectfifo.from_memref",
+    [DeclareOpInterfaceMethods<LogicalObjFifoOpInterface, ["replaceWithNewTiles"]>,
      Pure]> {
   let summary = "Create a logical objectFifo from a memref";
   let description = [{
@@ -1300,7 +1300,7 @@ def AMDAIE_LogicalObjectFifoFromMemrefOp
   let arguments = (
     ins AnyMemRef:$memref,
         Variadic<Index>:$tiles
-  ); 
+  );
 
   let results = (outs AnyAMDAIELogicalObjectFifoType:$output);
 
@@ -1314,7 +1314,7 @@ def AMDAIE_LogicalObjectFifoFromMemrefOp
     // Build `LogicalObjectFifoFromMemrefOp` with an array of static tile
     // locations.
     OpBuilder<
-      (ins "mlir::Value":$memref, 
+      (ins "mlir::Value":$memref,
            "::llvm::ArrayRef<std::pair<int64_t, int64_t>>":$tileLocations)>
   ];
 
@@ -1332,14 +1332,14 @@ def AMDAIE_LogicalObjectFifoFromMemrefOp
 
     // Helper method to return the memory space as an integer. If no memory
     // space attribute, this indicates a global memory space and we return 0.
-    // Else cast the memory space attribute to an integer. 
+    // Else cast the memory space attribute to an integer.
     uint8_t getMemorySpaceAsUInt() {
       Attribute memSpace = getMemorySpace();
       return memSpace ? cast<IntegerAttr>(memSpace).getInt() : 0;
     }
 
     // Return the source memref type.
-    MemRefType getMemrefType() { 
+    MemRefType getMemrefType() {
       return cast<LogicalObjectFifoType>(getOutput().getType())
         .getElementType();
     }
@@ -1353,7 +1353,7 @@ def AMDAIE_LogicalObjectFifoFromMemrefOp
   let cppNamespace = "mlir::iree_compiler::AMDAIE";
 }
 
-def AMDAIE_LogicalObjectFifoPlaceholderOp: 
+def AMDAIE_LogicalObjectFifoPlaceholderOp:
     AMDAIE_Op<"logicalobjectfifo.placeholder", [
       DeclareOpInterfaceMethods<LogicalObjFifoOpInterface, ["replaceWithNewTiles"]>,
       Pure]> {
@@ -1366,12 +1366,12 @@ def AMDAIE_LogicalObjectFifoPlaceholderOp:
 
     Example:
     ```mlir
-    %0 = hal.interface.binding.subspan layout(#pipeline_layout) set(0) 
+    %0 = hal.interface.binding.subspan layout(#pipeline_layout) set(0)
       binding(0) alignment(64) offset(%c0) flags(ReadOnly) : memref<1024xi32>
     %alloc = memref.alloc() : memref<1024xi32, 1 : i32>
     %obj0 = amdaie.logicalobjectfifo.from_memref %alloc, {%tile_0_1}
       : memref<1024xi32, 1> -> !amdaie.logicalobjectfifo<memref<1024xi32, 1 : i32>>
-    %ph = amdaie.logicalobjectfifo.placeholder{} 
+    %ph = amdaie.logicalobjectfifo.placeholder{}
       : !amdaie.logicalobjectfifo<memref<2048xi32>>
     %connection = amdaie.circular_dma_cpy_nd(%obj0[] [] [], %ph[] [] [])
       : (!amdaie.logicalobjectfifo<memref<1024xi32, 1 : i32>>,
@@ -1379,8 +1379,8 @@ def AMDAIE_LogicalObjectFifoPlaceholderOp:
     amdaie.controlcode {
       %obj1 = amdaie.logicalobjectfifo.from_memref %0, {%tile_0_0}
         : memref<1024xi32> -> !amdaie.logicalobjectfifo<memref<1024xi32>>
-      %npu_dma = amdaie.npu.dma_cpy_nd async_source %connection([] [] [], 
-        %obj0[%c0, %c32] [%c32, %c32] [%c32, %c1]) 
+      %npu_dma = amdaie.npu.dma_cpy_nd async_source %connection([] [] [],
+        %obj0[%c0, %c32] [%c32, %c32] [%c32, %c1])
         : source_type = !amdaie.logicalobjectfifo<memref<1024xi32>>
       amdaie.end
     }
@@ -1407,21 +1407,21 @@ def AMDAIE_LogicalObjectFifoPlaceholderOp:
 
     // Helper method to return the memory space as an integer. If no memory
     // space attribute, this indicates a global memory space and we return 0.
-    // Else cast the memory space attribute to an integer. 
+    // Else cast the memory space attribute to an integer.
     uint8_t getMemorySpaceAsUInt() {
       Attribute memSpace = getMemorySpace();
       return memSpace ? cast<IntegerAttr>(memSpace).getInt() : 0;
     }
 
     // Return the source memref type.
-    MemRefType getMemrefType() { 
+    MemRefType getMemrefType() {
       return cast<LogicalObjectFifoType>(getOutput().getType())
         .getElementType();
     }
   }];
 }
 
-def AMDAIE_LogicalObjectFifoRelease: 
+def AMDAIE_LogicalObjectFifoRelease:
     AMDAIE_Op<"logicalobjectfifo.release", []> {
   let summary = "Semaphore operation to release objects from a logical"
                 "objectFifo DMA operation.";
@@ -1472,7 +1472,7 @@ class AMDAIE_DmaCpyNdBaseOp<string mnemonic, list<Trait> traits = []> :
     The representation supports a partially-static representation of both the source and
     target `offsets`, `sizes` and `strides`. A special sentinel value ShapedType::kDynamic
     encodes that the corresponding entry has a dynamic value.
-    
+
     Example:
 
     ```mlir
@@ -1550,7 +1550,7 @@ class AMDAIE_DmaCpyNdBaseOp<string mnemonic, list<Trait> traits = []> :
     std::optional<Attribute> getTargetMemorySpace() {
       return cast<LogicalObjectFifoType>(getTargetType()).getMemorySpace();
     }
-    
+
     // A utility to create a new doubly strided operation from this one with a
     // new set of source and target offsets, sizes and strides.
     DoublyStridedOpInterface createDoublyStridedOp(
@@ -1574,7 +1574,7 @@ def AMDAIE_DmaCpyNdOp: AMDAIE_DmaCpyNdBaseOp<"dma_cpy_nd", []> {
     which is similar, but keeps copying data indefinitely, waiting for data to be
     produced on the source logical objectFifo and producing into the target logical
     objectFifo.
-    
+
     Example:
 
     ```mlir
@@ -1596,10 +1596,10 @@ def AMDAIE_CircularDmaCpyNdOp: AMDAIE_DmaCpyNdBaseOp<"circular_dma_cpy_nd", [Pur
   let description = [{
     The DMA operation represents a strided copy operation with an unlimited number of
     dimensions from a source to a target logical objectFifo as specified by the
-    `DmaCpyNdBaseOp` base class. This operation keeps copying data indefinitely, waiting 
+    `DmaCpyNdBaseOp` base class. This operation keeps copying data indefinitely, waiting
     for data to be produced on the source logical objectFifo and producing into the target
     logical objectfifo.
-    
+
     Example:
 
     ```mlir

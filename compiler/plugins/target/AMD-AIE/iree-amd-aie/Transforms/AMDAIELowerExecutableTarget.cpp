@@ -53,8 +53,8 @@ class AMDAIELowerExecutableTargetPass
   }
 
   AMDAIELowerExecutableTargetPass() = default;
-  AMDAIELowerExecutableTargetPass(const AMDAIELowerExecutableTargetPass &pass) {
-  };
+  AMDAIELowerExecutableTargetPass(
+      const AMDAIELowerExecutableTargetPass &pass){};
   AMDAIELowerExecutableTargetPass(
       const AMDAIELowerExecutableTargetOptions &options)
       : AMDAIELowerExecutableTargetBase(options) {}

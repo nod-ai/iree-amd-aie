@@ -147,7 +147,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
-// Ensure no subsumption happens in case of other circular connection users in nested blocks. 
+// Ensure no subsumption happens in case of other circular connection users in nested blocks.
 // The innermost block contains two `amdaie.npu.circular_dma_cpy_nd` to avoid them being subsumed as well.
 // CHECK-LABEL: @nested_blockers
 // CHECK:       %[[CONNECTION:.+]] = amdaie.connection

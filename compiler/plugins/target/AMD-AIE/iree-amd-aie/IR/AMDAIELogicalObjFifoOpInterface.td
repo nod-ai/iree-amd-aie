@@ -100,7 +100,7 @@ def LogicalObjFifoOpInterface : OpInterface<"LogicalObjFifoOpInterface"> {
     >,
     InterfaceMethod<
       /*desc=*/[{
-        A utility to replace this logical objectFifo operation with a new one with new tiles. 
+        A utility to replace this logical objectFifo operation with a new one with new tiles.
       }],
       /*retTy=*/"::llvm::FailureOr<::mlir::iree_compiler::AMDAIE::LogicalObjFifoOpInterface>",
       /*methodName=*/"replaceWithNewTiles",

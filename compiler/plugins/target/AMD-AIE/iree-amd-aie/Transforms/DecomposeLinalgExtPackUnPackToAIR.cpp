@@ -316,8 +316,7 @@ void AMDAIEDecomposeLinalgExtPackUnPackToAIRPass::runOnOperation() {
   // Second-stage lowering of pack and unpack ops.
   RewritePatternSet patterns(ctx);
   patterns.add<LowerPackPattern, LowerUnPackPattern>(ctx);
-  if (failed(
-          applyPatternsGreedily(getOperation(), std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
     return signalPassFailure();
   }
 }

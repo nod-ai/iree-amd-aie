@@ -513,7 +513,7 @@ struct SubsumeLoopIntoDMA
           npuCircularDmaOp.getSourceMemorySpaceAsUInt();
       std::optional<uint8_t> targetMemspaceInt =
           npuCircularDmaOp.getTargetMemorySpaceAsUInt();
-        if (!sourceMemspaceInt.has_value() || !targetMemspaceInt.has_value()) {
+      if (!sourceMemspaceInt.has_value() || !targetMemspaceInt.has_value()) {
         return rewriter.notifyMatchFailure(
             op, "Needs a memory space for both source and target");
       }

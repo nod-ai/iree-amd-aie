@@ -7,13 +7,12 @@
 #ifndef IREE_COMPILER_AMDAIE_TYPES_H_
 #define IREE_COMPILER_AMDAIE_TYPES_H_
 
+#include "iree-amd-aie/IR/AMDAIEAttrs.h"
+#include "iree-amd-aie/IR/AMDAIEDmaOpInterface.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
-
-#include "iree-amd-aie/IR/AMDAIEAttrs.h"
-#include "iree-amd-aie/IR/AMDAIEDmaOpInterface.h"
 
 // clang-format off
 #define GET_TYPEDEF_CLASSES

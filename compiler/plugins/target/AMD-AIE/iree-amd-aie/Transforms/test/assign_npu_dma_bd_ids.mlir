@@ -242,7 +242,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
-// Expect two DMA copy operations at the innermost loop have BD IDs as expressions. #map0: 1~15, #map1: 0~15 
+// Expect two DMA copy operations at the innermost loop have BD IDs as expressions. #map0: 1~15, #map1: 0~15
 
 // CHECK: #map = affine_map<(d0) -> (d0 mod 15 + 1)>
 // CHECK: #map1 = affine_map<(d0) -> (d0 mod 16)>
@@ -389,7 +389,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
           amdaie.npu.dma_wait(%0 : !amdaie.async_source_token)
           scf.for %arg5 = %c0 to %c2 step %c1 {
             %1 = amdaie.npu.dma_cpy_nd async_target %connection_1(%from_memref_2[] [] [], [] [] []) : target_type = !amdaie.logicalobjectfifo<memref<8x16xi32>>
-            %2 = amdaie.npu.dma_cpy_nd async_source %connection_2([] [] [], %from_memref_3[] [] []) : source_type = !amdaie.logicalobjectfifo<memref<8x16xi32>>            
+            %2 = amdaie.npu.dma_cpy_nd async_source %connection_2([] [] [], %from_memref_3[] [] []) : source_type = !amdaie.logicalobjectfifo<memref<8x16xi32>>
             amdaie.npu.dma_wait(%1 : !amdaie.async_target_token)
             amdaie.npu.dma_wait(%2 : !amdaie.async_source_token)
           }
@@ -462,10 +462,10 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
           %0 = amdaie.npu.dma_cpy_nd async_source %connection_0([] [] [], %from_memref_1[] [] []) : source_type = !amdaie.logicalobjectfifo<memref<8x16xi32>>
           scf.for %arg5 = %c0 to %c2 step %c1 {
             %1 = amdaie.npu.dma_cpy_nd async_target %connection_1(%from_memref_2[] [] [], [] [] []) : target_type = !amdaie.logicalobjectfifo<memref<8x16xi32>>
-            %2 = amdaie.npu.dma_cpy_nd async_source %connection_2([] [] [], %from_memref_3[] [] []) : source_type = !amdaie.logicalobjectfifo<memref<8x16xi32>>            
+            %2 = amdaie.npu.dma_cpy_nd async_source %connection_2([] [] [], %from_memref_3[] [] []) : source_type = !amdaie.logicalobjectfifo<memref<8x16xi32>>
             amdaie.npu.dma_wait(%1 : !amdaie.async_target_token)
             amdaie.npu.dma_wait(%2 : !amdaie.async_source_token)
-          }          
+          }
           amdaie.npu.dma_wait(%0 : !amdaie.async_source_token)
         }
         amdaie.end

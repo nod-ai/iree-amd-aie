@@ -261,6 +261,3 @@ func.func @pack_without_slice(%arg0: tensor<1x1x32x512xi32>, %arg1: tensor<1x1x3
 // DEPTH-1-DAG:   %[[PACK_2:.*]] = tensor.pack %{{.*}} into %{{.*}} : tensor<1x1x32x32xi32> -> tensor<1x1x4x8x4x8xi32>
 // DEPTH-1:       linalg.generic
 // DEPTH-1-SAME:  ins(%[[PACK_2]], %[[PACK_1]]
-
-
-

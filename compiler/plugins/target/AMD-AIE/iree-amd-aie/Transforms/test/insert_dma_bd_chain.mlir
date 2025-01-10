@@ -223,7 +223,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:         %[[OBJECT_FIFO_1:.+]] = amdaie.logicalobjectfifo.from_memref
 // CHECK:         amdaie.npu.half_dma_cpy_nd  %[[CONNECTION_0]](%[[OBJECT_FIFO_0]] [] [] [] bd_id = %[[BD_ID_0]] channel = %[[CHANNEL_0]] next_bd = %[[BD_ID_2]] start_bd = %[[BD_ID_0]])
 // CHECK:         amdaie.npu.half_dma_cpy_nd  %[[CONNECTION_1]](%[[OBJECT_FIFO_1]] [] [] [] bd_id = %[[BD_ID_1]] channel = %[[CHANNEL_2]] next_bd = %[[BD_ID_3]] start_bd = %[[BD_ID_1]])
-// CHECK:         %[[TOKEN_0:.+]] = amdaie.npu.half_dma_cpy_nd async %[[CONNECTION_0]](%[[OBJECT_FIFO_0]] [] [] [] bd_id = %[[BD_ID_2]] channel = %[[CHANNEL_0]] start_bd = %[[BD_ID_0]]) 
+// CHECK:         %[[TOKEN_0:.+]] = amdaie.npu.half_dma_cpy_nd async %[[CONNECTION_0]](%[[OBJECT_FIFO_0]] [] [] [] bd_id = %[[BD_ID_2]] channel = %[[CHANNEL_0]] start_bd = %[[BD_ID_0]])
 // CHECK:         %[[TOKEN_1:.+]] = amdaie.npu.half_dma_cpy_nd async %[[CONNECTION_1]](%[[OBJECT_FIFO_1]] [] [] [] bd_id = %[[BD_ID_3]] channel = %[[CHANNEL_2]] start_bd = %[[BD_ID_1]])
 // CHECK:         amdaie.npu.dma_wait(%[[TOKEN_0]] : !amdaie.async_token)
 // CHECK:         amdaie.npu.dma_wait(%[[TOKEN_1]] : !amdaie.async_token)
