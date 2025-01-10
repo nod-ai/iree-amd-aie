@@ -23,8 +23,7 @@ struct Port {
 
   // mlir-air legacy
   Port() : bundle(), channel() {}
-  Port(StrmSwPortType b, int c)
-      : bundle(b), channel(c) {}
+  Port(StrmSwPortType b, int c) : bundle(b), channel(c) {}
   typedef std::tuple<StrmSwPortType, int> TupleType;
   Port(TupleType t) : Port(std::get<0>(t), std::get<1>(t)) {}
   operator TupleType() const { return {bundle, channel}; }
@@ -173,7 +172,6 @@ TO_STRINGS(TO_STRING_DECL)
   _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::PhysPort)      \
   _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::PhysPortAndID) \
   _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::PhysPort::Direction)
-
 
 BOTH_OSTREAM_OPS_FORALL_ROUTER_TYPES(OSTREAM_OP_DECL, BOTH_OSTREAM_OP)
 

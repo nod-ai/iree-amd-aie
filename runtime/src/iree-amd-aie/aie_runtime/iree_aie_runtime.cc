@@ -695,8 +695,8 @@ static constexpr uint32_t getElementTypeKey(uint32_t a, uint32_t b,
 /// This first line says that if 'lhs' is an i8 tensor, 'rhs' is an i4 tensor
 /// and 'accumulator' is an i32 tensor, then there is an AIE instruction for
 /// matmul with m = 4, n = 8, k = 16.
-static llvm::DenseMap<uint32_t, std::array<uint32_t, 3>>
-    &getNpu1IntegerMatmulInstructionSizeMap() {
+static llvm::DenseMap<uint32_t, std::array<uint32_t, 3>> &
+getNpu1IntegerMatmulInstructionSizeMap() {
   // Sanity check.
   static_assert(getElementTypeKey(1, 2, 3) == 1 + 2 * 256 + 3 * 65536);
 

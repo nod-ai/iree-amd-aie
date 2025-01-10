@@ -4,8 +4,8 @@
 // https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: # Apache-2.0 WITH LLVM-exception
 
-#include "xaiengine/xaiegbl_defs.h"
 #include "xaiengine/xaiegbl.h"
+#include "xaiengine/xaiegbl_defs.h"
 #undef s8
 #undef u8
 #undef u16
@@ -104,7 +104,6 @@ const int XAIEML_AIE_TILE_NUM_ROWS = XAIE_AIE_TILE_NUM_ROWS;
 const int XAIEML_NUM_NOC_INTR_OFFSET = XAIE_NUM_NOC_INTR_OFFSET;
 
 const uint64_t XAIEML_PARTITION_BASE_ADDR = XAIE_BASE_ADDR;
-
 
 #undef XAIE_BASE_ADDR
 #undef XAIE_NPI_BASEADDR
