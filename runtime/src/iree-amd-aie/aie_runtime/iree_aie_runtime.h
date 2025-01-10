@@ -368,6 +368,7 @@ struct AMDAIEDeviceModel {
   uint32_t getMemNorthBaseAddress() const;
   uint32_t getMemEastBaseAddress() const;
   uint32_t getLocalMemorySize(uint8_t col, uint8_t row) const;
+  uint32_t getMemTileSizeInBytes() const;
   uint32_t getMemTileSize(uint8_t col, uint8_t row) const;
   uint32_t getCoreTileLocalMemorySize() const;
 

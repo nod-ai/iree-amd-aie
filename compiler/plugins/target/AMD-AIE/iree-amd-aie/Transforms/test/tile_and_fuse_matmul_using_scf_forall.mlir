@@ -1,6 +1,6 @@
-// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-tile-and-fuse{tiling-level=0}))' --split-input-file %s                        | FileCheck %s --check-prefix=TILE-LEVEL-0
-// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-tile-and-fuse{tiling-level=1}))' --split-input-file --verify-diagnostics %s   | FileCheck %s --check-prefix=TILE-LEVEL-1
-// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-tile-and-fuse{tiling-level=0 tile-elementwise=false}))' --split-input-file %s | FileCheck %s --check-prefix=TILE-MATMUL-ONLY
+// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-tile-and-fuse{tiling-level=0 hardware-mapping=block}))' --split-input-file %s                        | FileCheck %s --check-prefix=TILE-LEVEL-0
+// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-tile-and-fuse{tiling-level=1 hardware-mapping=core}))' --split-input-file --verify-diagnostics %s   | FileCheck %s --check-prefix=TILE-LEVEL-1
+// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-tile-and-fuse{tiling-level=0 hardware-mapping=block tile-elementwise=false}))' --split-input-file %s | FileCheck %s --check-prefix=TILE-MATMUL-ONLY
 
 func.func @matmul_static(%arg0: tensor<8x16xi32>, %arg1 : tensor<16x8xi32>) -> tensor<8x8xi32> {
   %c0 = arith.constant 0 : index
