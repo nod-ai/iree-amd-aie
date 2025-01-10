@@ -3,6 +3,12 @@
 # Licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# History in iree-amd-aie: copied from IREE January 2025.
+# To apply fixes locally, something like the following should work
+# > pip-install pre-commit
+# > pre-commit run --all-files
+# Fixes of tabs (replace with space) must be done manually.
 
 name: Lint
 

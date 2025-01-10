@@ -1,6 +1,9 @@
 # Pre-commit (https://pre-commit.com) configuration for assorted lint checks.
 #
 # See https://pre-commit.com/hooks.html for more hooks.
+#
+# History in iree-amd-aie. January 2025: copied from IREE and trimmed down to
+# the subset of hooks that are relevant.
 
 exclude: "third_party/"
 
