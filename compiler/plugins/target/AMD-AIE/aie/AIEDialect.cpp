@@ -489,10 +489,9 @@ LogicalResult DMABDOp::verify() {
                << "Invalid step size; must be a positive integer.";
       }
       if (dim.getStride() > bufferType.getNumElements()) {
-        return emitOpError()
-               << "Step size " << std::to_string(dim.getStride()) << " "
-               << "exceeds memref size "
-               << std::to_string(bufferType.getNumElements());
+        return emitOpError() << "Step size " << std::to_string(dim.getStride())
+                             << " " << "exceeds memref size "
+                             << std::to_string(bufferType.getNumElements());
       }
       if (dim.getSize() >= ((1UL << 10) - 1)) {
         return emitOpError() << "Size may not exceed " << ((1UL << 10) - 1);
