@@ -1367,16 +1367,26 @@ SmallVector<AMDAIE::NpuDmaCpyNdOp> NpuDmaWaitOp::getDmaOps() {
 // AMDAIE_TileOp
 //===----------------------------------------------------------------------===//
 
+// Example: if the column is an integer value (3) and the row is not, the SSA
+// value might be `%tile_3_r`, where the `_r` denotes that the row is not known.
 void TileOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
   std::optional<int64_t> iCol = getConstantIntValue(getCol());
   std::optional<int64_t> iRow = getConstantIntValue(getRow());
-  std::string name{"tile"};
-  if (iCol.has_value() && iRow.has_value()) {
-    std::string sCol = std::to_string(iCol.value());
-    std::string sRow = std::to_string(iRow.value());
-    name += "_" + sCol + "_" + sRow;
+  std::ostringstream name;
+  name << "tile";
+
+  auto add = [&](std::optional<int64_t> maybeValue, char unknown) {
+    if (maybeValue.has_value()) {
+      name << '_' << maybeValue.value();
+    } else {
+      name << '_' << unknown;
+    }
+  };
+  if (iCol.has_value() || iRow.has_value()) {
+    add(iCol, 'c');
+    add(iRow, 'r');
   }
-  setNameFn(getResult(), name);
+  setNameFn(getResult(), name.str());
 }
 
 bool TileOp::hasStaticLocation() {
