@@ -78,11 +78,11 @@ clang-format on
  *memory at ouput address (output_add = 0x4000) .After I am comparing the input
  *and output buffer.
  *
- * @param	None.
+ * @param None.
  *
- * @return	0 on success and error code on failure.
+ * @return 0 on success and error code on failure.
  *
- * @note		None.
+ * @note None.
  ******************************************************************************/
 int main(int argc, char **argv) {
   AieRC RC = XAIE_OK;
