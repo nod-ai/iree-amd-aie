@@ -29,7 +29,7 @@ iree_status_t iree_hal_xrt_buffer_wrap(
 xrt::bo* iree_hal_xrt_buffer_handle(const iree_hal_buffer_t* buffer);
 
 #ifdef __cplusplus
-}       // extern "C"
+}  // extern "C"
 #endif  // __cplusplus
 
 #endif  // IREE_AMD_AIE_DRIVER_XRT_XRT_BUFFER_H_
