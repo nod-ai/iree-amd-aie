@@ -67,11 +67,11 @@ module attributes {transform.with_named_sequence} {
             ins(%lhs, %rhs : tensor<8192x2432xf32>, tensor<2432x9728xf32>)
                 outs(%fill :  tensor<8192x9728xf32>) ->  tensor<8192x9728xf32>
       %add = linalg.generic {
-        indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, 
-                        affine_map<(d0, d1) -> (d1)>, 
-                        affine_map<(d0, d1) -> (d0, d1)>], 
-        iterator_types = ["parallel", "parallel"]} 
-        ins(%matmul, %bias : tensor<8192x9728xf32>, tensor<9728xf32>) 
+        indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>,
+                        affine_map<(d0, d1) -> (d1)>,
+                        affine_map<(d0, d1) -> (d0, d1)>],
+        iterator_types = ["parallel", "parallel"]}
+        ins(%matmul, %bias : tensor<8192x9728xf32>, tensor<9728xf32>)
         outs(%init2 : tensor<8192x9728xf32>) {
       ^bb0(%in: f32, %in_18629: f32, %out: f32):
         %33290 = arith.addf %in, %in_18629 : f32

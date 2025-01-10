@@ -200,7 +200,7 @@ function run_matmul_test() {
   # should still be checked to compile (set num_repeat_runs=0 in this case).
   local num_repeat_runs="1"
 
-  # Run the test 'num_corruption_repeat_runs' times without an NPU reset in 
+  # Run the test 'num_corruption_repeat_runs' times without an NPU reset in
   # between. This can be used to check for corruption, i.e. the AIE might be
   # left in a bad state in between runs. Additionally, this increases the speed
   # of the repeated test
@@ -570,7 +570,7 @@ run_matmul_test \
 # ObjectFifo Matmul tests
 ###################################################################
 
-# Run repeatedly to check for non-deterministic hangs and numerical 
+# Run repeatedly to check for non-deterministic hangs and numerical
 # issues.
 repeat_shapes=(
   '32x32x32'

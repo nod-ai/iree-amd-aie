@@ -52,7 +52,7 @@ pdl.pattern @mlp : benefit(1) {
   %lhs = pdl.operand
   %rhs = pdl.operand
   %empty = pdl.operand
-  
+
   %lhs_type = pdl.type : tensor<1x8x768xbf16>
   %rhs_type = pdl.type : tensor<1x768x768xbf16>
   %matmul_type = pdl.type : tensor<1x8x768xbf16>
@@ -69,11 +69,11 @@ pdl.pattern @mlp : benefit(1) {
   %zero_bf16_op = pdl.operation "arith.constant" {"value" = %zero_val_bf16} -> (%bf16_type : !pdl.type)
   %zero_bf16 = pdl.result 0 of %zero_bf16_op
 
-  
+
   %fill_op = pdl.operation "linalg.fill" (%zero_bf16, %empty : !pdl.value, !pdl.value) -> (%matmul_type : !pdl.type)
   %fill = pdl.result 0 of %fill_op
   %matmul = pdl.operation "linalg.batch_matmul" (%lhs, %rhs, %fill : !pdl.value, !pdl.value, !pdl.value) -> (%matmul_type : !pdl.type)
-  
+
   pdl.rewrite %matmul {
     %i32_type = pdl.type : i32
     %m_op = pdl.operation "arith.constant" {"value" = %fixed_M} -> (%i32_type : !pdl.type)

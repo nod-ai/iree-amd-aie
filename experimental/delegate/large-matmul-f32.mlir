@@ -62,4 +62,3 @@ module @example attributes {hal.device.targets = [#cpu_target]} {
 // Check that the matmul has been replaced with a call to the external function with the right types
 // TRANSFORM: util.func public @mlp_invocation({{.+}}) -> {{.+}} {
 // TRANSFORM: flow.dispatch @executable::@mlp({{.+}}) : (tensor<8192x2432xf32>, tensor<2432x9728xf32>, i32, i32, i32) -> tensor<8192x9728xf32>
-

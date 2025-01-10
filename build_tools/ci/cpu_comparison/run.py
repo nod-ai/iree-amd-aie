@@ -95,7 +95,6 @@ class BaseTest(ABC):
             self.aie_compilation_flags = list(set(self.aie_compilation_flags))
 
     def run(self, config):
-
         # If the target device is not in the set of devices to run on, then
         # return False. ie. don't raise an error because is legitimate,
         # we just won't run the test.
@@ -237,7 +236,6 @@ class BaseMatmul(BaseTest):
         self.function_name = function_name
 
     def vs_cpu(self, config):
-
         filename = self.get_filename(config)
 
         if self.use_ukernel and not config.vitis_dir:
@@ -256,7 +254,6 @@ class BaseMatmul(BaseTest):
         return True
 
     def benchmark(self, config):
-
         filename = self.get_filename(config)
 
         if self.use_ukernel and not config.vitis_dir:
@@ -277,7 +274,6 @@ class BaseMatmul(BaseTest):
         return True
 
     def generate(self, config, template_name):
-
         generate_matmul_test(
             self.get_filename(config),
             template_name,
@@ -883,7 +879,6 @@ def shell_out(cmd: list, workdir=None, verbose: int = 0, raise_on_error=True, en
 
 
 def print_program_memory_size(test_dir):
-
     # Get all the .elf files in `test_dir`.
     # These elfs contain many sections, one of which is the program memory. Some digging into the elf format
     # see https://github.com/newling/aie-rt/commit/d0f08bc4a37092a919d6a0d51a44d9f0ae274bb9
@@ -1560,7 +1555,6 @@ def aie_vs_llvm_cpu(
 
 
 class Tests:
-
     def add_aie_compilation_flags(self, flags):
         for test in self.tests:
             test.add_aie_compilation_flags(flags)
@@ -2119,7 +2113,6 @@ def all_tests(
     not_match = []
 
     for test in tests.tests:
-
         skip = test.name in skip_test_set or any(
             (label in skip_test_set for label in test.labels)
         )

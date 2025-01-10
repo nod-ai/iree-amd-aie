@@ -39,7 +39,6 @@ class depthwise_conv_2d_nhwc_hwc:
 
 
 class ConvolutionMlirGenerator:
-
     def __init__(
         self,
         conv_type,

@@ -51,7 +51,7 @@ module @example attributes {hal.device.targets = [#cpu_target]} {
       %884 = arith.addf %in, %in_372 : bf16
       linalg.yield %884 : bf16
     } -> tensor<1x8x768xbf16>
-    
+
     %cst_191 = arith.constant dense<1.31072e+05> : tensor<768xbf16>
     %69 = linalg.batch_matmul ins(%66, %rhs : tensor<1x8x768xbf16>, tensor<1x768x768xbf16>) outs(%64 : tensor<1x8x768xbf16>) -> tensor<1x8x768xbf16>
 
