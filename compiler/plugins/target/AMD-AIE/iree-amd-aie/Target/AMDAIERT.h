@@ -3,7 +3,9 @@
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-#pragma once
+
+#ifndef IREE_AMD_AIE_TARGET_AMDAIERT_H_
+#define IREE_AMD_AIE_TARGET_AMDAIERT_H_
 
 #include <filesystem>
 
@@ -28,3 +30,5 @@ LogicalResult addInitConfig(const AMDAIEDeviceModel &deviceModel,
                             xilinx::AIE::DeviceOp &device);
 
 }  // namespace mlir::iree_compiler::AMDAIE
+
+#endif  // IREE_AMD_AIE_TARGET_AMDAIERT_H_

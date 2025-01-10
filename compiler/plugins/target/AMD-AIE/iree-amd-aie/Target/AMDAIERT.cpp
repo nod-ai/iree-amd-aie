@@ -132,8 +132,8 @@ LogicalResult configureLocksAndBd(Block &block, const TileLoc &tileLoc,
     return failure();
   }
 
-  // pull metadata related to packet routing, bdid, buffer length, size, stride
-  // to pass to aie-rt
+  // Pull metadata related to packet routing, bdId, buffer length, size, stride
+  // to pass to aie-rt.
   DMABDOp bdOp = *block.getOps<DMABDOp>().begin();
   assert(bdOp.getBdId().has_value() &&
          "DMABDOp must have assigned bd_id; did you forget to run "
@@ -208,7 +208,7 @@ LogicalResult addInitConfig(const AMDAIEDeviceModel &deviceModel,
     }
   }
 
-  // Set locks with explicit initializers
+  // Set locks with explicit initializers.
   WalkResult r;
   r = device.walk<WalkOrder::PreOrder>([&](LockOp lockOp) {
     if (lockOp.getLockID() && lockOp.getInit()) {
@@ -232,7 +232,7 @@ LogicalResult addInitConfig(const AMDAIEDeviceModel &deviceModel,
       continue;
     }
 
-    // handle DMA ops separately
+    // Handle DMA ops separately.
     for (Block &block : memOp->getRegion(0)) {
       if (block.getOps<DMABDOp>().empty()) continue;
       if (failed(configureLocksAndBd(block, tileLoc, deviceModel)))
@@ -254,7 +254,7 @@ LogicalResult addInitConfig(const AMDAIEDeviceModel &deviceModel,
     }
   }
 
-  // StreamSwitch (switchbox) configuration
+  // StreamSwitch (switchbox) configuration.
   for (auto switchboxOp : device.getOps<SwitchboxOp>()) {
     TileOp t = xilinx::AIE::getTileOp(*switchboxOp.getOperation());
     TileLoc tileLoc = {t.getCol(), t.getRow()};
