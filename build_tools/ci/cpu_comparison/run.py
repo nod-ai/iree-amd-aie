@@ -363,6 +363,7 @@ class MatmulBenchmark(BaseMatmul):
         name_suffix="",
         use_ukernel=False,
         run_on_target=["npu1_4col"],
+        tile_pipeline="pack-peel",
         additional_labels=None,
         aie_compilation_flags=None,
         n_repeats=1,
@@ -380,7 +381,7 @@ class MatmulBenchmark(BaseMatmul):
             K=K,
             input_type=input_type,
             acc_type=acc_type,
-            tile_pipeline="pack-peel",
+            tile_pipeline=tile_pipeline,
             use_ukernel=use_ukernel,
             n_repeats=n_repeats,
             n_kernel_runs=n_kernel_runs,
@@ -417,6 +418,7 @@ class MatmulTransposeB(BaseMatmul):
         name_suffix="",
         use_ukernel=False,
         run_on_target=["npu1_4col"],
+        tile_pipeline="pack-peel",
         additional_labels=None,
         aie_compilation_flags=None,
         n_repeats=1,
@@ -429,6 +431,7 @@ class MatmulTransposeB(BaseMatmul):
             K=K,
             input_type=input_type,
             acc_type=acc_type,
+            tile_pipeline=tile_pipeline,
             use_ukernel=use_ukernel,
             function_name="matmul_transpose_b",
             n_repeats=n_repeats,
@@ -471,6 +474,7 @@ class MatmulTransposeBBenchmark(BaseMatmul):
         name_suffix="",
         use_ukernel=False,
         run_on_target=["npu1_4col"],
+        tile_pipeline="pack-peel",
         additional_labels=None,
         aie_compilation_flags=None,
         n_repeats=1,
@@ -488,7 +492,7 @@ class MatmulTransposeBBenchmark(BaseMatmul):
             K=K,
             input_type=input_type,
             acc_type=acc_type,
-            tile_pipeline="pack-peel",
+            tile_pipeline=tile_pipeline,
             use_ukernel=use_ukernel,
             n_repeats=n_repeats,
             n_kernel_runs=n_kernel_runs,
@@ -526,6 +530,7 @@ class MatmulTransposeA(BaseMatmul):
         name_suffix="",
         use_ukernel=False,
         run_on_target=["npu1_4col"],
+        tile_pipeline="pack-peel",
         additional_labels=None,
         aie_compilation_flags=None,
         n_repeats=1,
@@ -538,6 +543,7 @@ class MatmulTransposeA(BaseMatmul):
             K=K,
             input_type=input_type,
             acc_type=acc_type,
+            tile_pipeline=tile_pipeline,
             use_ukernel=use_ukernel,
             function_name="matmul_transpose_a",
             n_repeats=n_repeats,
@@ -580,6 +586,7 @@ class MatmulTransposeABenchmark(BaseMatmul):
         name_suffix="",
         use_ukernel=False,
         run_on_target=["npu1_4col"],
+        tile_pipeline="pack-peel",
         additional_labels=None,
         aie_compilation_flags=None,
         n_repeats=1,
@@ -597,7 +604,7 @@ class MatmulTransposeABenchmark(BaseMatmul):
             K=K,
             input_type=input_type,
             acc_type=acc_type,
-            tile_pipeline="pack-peel",
+            tile_pipeline=tile_pipeline,
             use_ukernel=use_ukernel,
             n_repeats=n_repeats,
             n_kernel_runs=n_kernel_runs,
@@ -1734,6 +1741,7 @@ class Tests:
                 "outline": False,
                 "transpose_a": False,
                 "transpose_b": False,
+                "tile_pipeline": "pack-peel",
             },
             {
                 "M": 512,
@@ -1744,6 +1752,7 @@ class Tests:
                 "outline": True,
                 "transpose_a": False,
                 "transpose_b": False,
+                "tile_pipeline": "pack-peel",
             },
             {
                 "M": 512,
@@ -1754,6 +1763,7 @@ class Tests:
                 "outline": False,
                 "transpose_a": False,
                 "transpose_b": False,
+                "tile_pipeline": "pack-peel",
             },
             {
                 "M": 512,
@@ -1764,6 +1774,7 @@ class Tests:
                 "outline": True,
                 "transpose_a": False,
                 "transpose_b": False,
+                "tile_pipeline": "pack-peel",
             },
             {
                 "M": 512,
@@ -1774,6 +1785,7 @@ class Tests:
                 "outline": True,
                 "transpose_a": False,
                 "transpose_b": False,
+                "tile_pipeline": "pack-peel",
             },
             {
                 "M": 512,
@@ -1784,6 +1796,7 @@ class Tests:
                 "outline": True,
                 "transpose_a": False,
                 "transpose_b": False,
+                "tile_pipeline": "pack-peel",
             },
             {
                 "M": 512,
@@ -1794,6 +1807,7 @@ class Tests:
                 "outline": True,
                 "transpose_a": False,
                 "transpose_b": False,
+                "tile_pipeline": "pack-peel",
             },
             {
                 "M": 512,
@@ -1804,6 +1818,7 @@ class Tests:
                 "outline": True,
                 "transpose_a": False,
                 "transpose_b": True,
+                "tile_pipeline": "pack-peel",
             },
             {
                 "M": 4096,
@@ -1814,6 +1829,7 @@ class Tests:
                 "outline": True,
                 "transpose_a": False,
                 "transpose_b": False,
+                "tile_pipeline": "pack-peel",
             },
             {
                 "M": 4096,
@@ -1824,6 +1840,7 @@ class Tests:
                 "outline": True,
                 "transpose_a": False,
                 "transpose_b": False,
+                "tile_pipeline": "pack-peel",
             },
             {
                 "M": 4096,
@@ -1834,6 +1851,7 @@ class Tests:
                 "outline": True,
                 "transpose_a": True,
                 "transpose_b": False,
+                "tile_pipeline": "pack-peel",
             },
             # Test where the compute is omitted, this should help triangulate
             # how much performance gain can be obtained with better matmul
@@ -1849,6 +1867,45 @@ class Tests:
                 "transpose_a": False,
                 "transpose_b": False,
                 "skip_numerics": True,
+                "tile_pipeline": "pack-peel",
+            },
+            {
+                "M": 512,
+                "N": 4096,
+                "K": 512,
+                "use_ukernel": False,
+                "peano_opt_level": 3,
+                "outline": True,
+                "transpose_a": False,
+                "transpose_b": False,
+                "tile_pipeline": "pack-peel-4-level-tiling",
+            },
+            {
+                "M": 512,
+                "N": 4096,
+                "K": 512,
+                "use_ukernel": True,
+                "peano_opt_level": 3,
+                "outline": True,
+                "transpose_a": False,
+                "transpose_b": False,
+                "tile_pipeline": "pack-peel-4-level-tiling",
+            },
+            # Test where the compute is omitted, this should help triangulate
+            # how much performance gain can be obtained with better matmul
+            # on core vs data movement.
+            {
+                "M": 512,
+                "N": 4096,
+                "K": 512,
+                "use_ukernel": False,
+                "peano_opt_level": 3,
+                "outline": True,
+                "outline_to_empty_function": True,
+                "transpose_a": False,
+                "transpose_b": False,
+                "skip_numerics": True,
+                "tile_pipeline": "pack-peel-4-level-tiling",
             },
         ]
 
@@ -1862,6 +1919,7 @@ class Tests:
             outline = test["outline"]
             transpose_a = test["transpose_a"]
             transpose_b = test["transpose_b"]
+            tile_pipeline = test["tile_pipeline"]
 
             outlining_string = "--iree-amdaie-enable-function-outlining=" + str(
                 int(outline)
@@ -1902,6 +1960,9 @@ class Tests:
             else:
                 raise ValueError("Transposing both LHS and RHS is not supported.")
 
+            if tile_pipeline == "pack-peel-4-level-tiling":
+                name_suffix += "_4_level_tiling"
+
             # This should only be the case for benchmark tests which we expect
             # to not pass numerically.
             if "skip_numerics" in test and test["skip_numerics"]:
@@ -1914,6 +1975,7 @@ class Tests:
                         K,
                         "bf16",
                         "f32",
+                        tile_pipeline=tile_pipeline,
                         use_ukernel=use_ukernel,
                         n_repeats=2,
                         aie_compilation_flags=aie_compilation_flags,
@@ -1929,6 +1991,7 @@ class Tests:
                     K,
                     "bf16",
                     "f32",
+                    tile_pipeline=tile_pipeline,
                     additional_labels=["Performance"],
                     use_ukernel=use_ukernel,
                     n_repeats=5,

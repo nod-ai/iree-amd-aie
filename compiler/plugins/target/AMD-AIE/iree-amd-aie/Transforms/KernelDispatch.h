@@ -25,6 +25,7 @@ enum class LowerToAIEPassPipeline {
 /// This is an enum to pick different pass pipelines in IREE.
 enum class TilePassPipeline {
   PackPeelPipeline,
+  PackPeel4LevelTilingPipeline,
   PadPackPipeline,
   ConvDecomposePipeline,
   None
@@ -35,6 +36,13 @@ enum class PeelingType { First, Last, FirstLast };
 
 /// Enum for operands to be bufferized to allocation.
 enum class BufferizeOperand { LinalgInputOutput, LinalgInput, LinalgOutput, PackInput };
+
+/// Enum for hardware mapping attributes.
+enum class HardwareMapping {
+  Core,
+  Block,
+  None
+};
 
 LogicalResult initAIELaunchConfig(FunctionOpInterface funcOp,
                                   TilePassPipeline useTilePipeline,

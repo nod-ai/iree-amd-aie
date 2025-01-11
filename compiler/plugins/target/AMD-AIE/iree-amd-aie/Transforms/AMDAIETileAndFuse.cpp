@@ -400,10 +400,14 @@ void AMDAIETileAndFusePass::runOnOperation() {
           "expected to be an scf.forall operation.");
       signalPassFailure();
     }
-    auto groupType =
-        tilingLevel == 0 ? GPUGroupType::Block : GPUGroupType::Thread;
-    if (failed(setGpuAttributeOnForall(groupType, loopForAll, consumerOp))) {
-      return signalPassFailure();
+    if (hardwareMapping == HardwareMapping::Core ||
+        hardwareMapping == HardwareMapping::Block) {
+      auto groupType = hardwareMapping == HardwareMapping::Core
+                           ? GPUGroupType::Thread
+                           : GPUGroupType::Block;
+      if (failed(setGpuAttributeOnForall(groupType, loopForAll, consumerOp))) {
+        return signalPassFailure();
+      }
     }
   }
 }
