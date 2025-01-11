@@ -4,6 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "air/Util/Util.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
@@ -102,8 +103,8 @@ void AMDAIEBridgeToAIRPass::runOnOperation() {
   patterns
       .insert<LinalgCopyToMemRefCopy, SCFForAllToParallelOp, AffineApplyOnSym>(
           context);
-  if (failed(
-          applyPatternsGreedily(getOperation(), std::move(patterns)))) {
+  xilinx::air::populateBufferMemrefToFuncArgsPattern(patterns);
+  if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
     return signalPassFailure();
   }
 }
