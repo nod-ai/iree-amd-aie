@@ -43,6 +43,3 @@ func.func @reduction(%A: memref<4xbf16>, %B: memref<bf16>) {
   }
   return
 }
-
-
-
