@@ -1024,8 +1024,7 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
-  passManager.addNestedPass<func::FuncOp>(
-      xilinx::air::createAIRSegmentLoopFusion());
+  passManager.addNestedPass<func::FuncOp>(xilinx::air::createAIRLoopFusion());
 
   passManager.addPass(
       xilinx::air::createAIRLabelScfForLoopForPingPongPattern());
@@ -1075,6 +1074,12 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
     options.clDevice = stringifyEnum(device);
     options.clEmitWhileLoop = true;
     passManager.addPass(xilinx::air::createAIRToAIEPass(options));
+  }
+  {
+    xilinx::air::AIROptimizeShimDMABDsOptions options;
+    options.clDevice = stringifyEnum(device);
+    passManager.addNestedPass<func::FuncOp>(
+        xilinx::air::createAIROptimizeShimDMABDs(options));
   }
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(xilinx::air::createAIRLoweringPass());
