@@ -365,7 +365,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %lock_5 = amdaie.lock(%tile_0_1(1), 0)
       %buffer_3 = amdaie.buffer(%tile_0_2) : memref<2048xi32, 2 : i32>
       %lock_6 = amdaie.lock(%tile_0_2(0), 1)
-      %lock_7 = amdaie.lock(%tile_0_2(1), 0) 
+      %lock_7 = amdaie.lock(%tile_0_2(1), 0)
       %0 = amdaie.logicalobjectfifo.from_buffers({%buffer}, {%lock}, {%lock_1}) : memref<4096xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>
       %1 = amdaie.logicalobjectfifo.from_buffers({%buffer_1}, {%lock_2}, {%lock_3}) : memref<4096xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 1>
       %channel = amdaie.channel(%tile_0_1, 0, port_type = DMA, direction = MM2S)
@@ -625,11 +625,11 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // -----
 
 // Tests lowering of a circular DMA operation to a DMA chain.
-// Checks that a circular DMA operation with an 'outer' repetition which is not 
-// part of the objectFifo's repetition count (same repetition on each 
+// Checks that a circular DMA operation with an 'outer' repetition which is not
+// part of the objectFifo's repetition count (same repetition on each
 // connection), is lowered to a chain of `dma_bd` operations with a lock
 // acquire at the beginning of the chain and a lock release at the end. Note
-// that this lowering to multiple `dma_bd` operations is needed because 
+// that this lowering to multiple `dma_bd` operations is needed because
 // `stride == 0` is not supported in hardware and/or because there are more
 // dimensions needed than supported in `dma_bd`.
 // CHECK:     aie.device(npu1_4col)
@@ -695,10 +695,10 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // -----
 
 // Tests lowering of a circular DMA operation to a DMA chain.
-// Checks that a circular DMA operation with an 'inner' repetition (a dimension 
-// with `stride == 0` after a dimension with `stride != 0`), is lowered to a 
+// Checks that a circular DMA operation with an 'inner' repetition (a dimension
+// with `stride == 0` after a dimension with `stride != 0`), is lowered to a
 // chain of `dma_bd` operations with a lock acquire at the beginning of the chain
-// and a lock release at the end. Note that this lowering to multiple `dma_bd` 
+// and a lock release at the end. Note that this lowering to multiple `dma_bd`
 // operations is needed because `stride == 0` is not supported in hardware and/or
 // because there are more dimensions needed than supported in `dma_bd`.
 // CHECK:     aie.device(npu1_4col)

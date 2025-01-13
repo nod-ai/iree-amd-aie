@@ -10,4 +10,3 @@ set -e
 sudo modprobe -r amdxdna
 sudo modprobe drm_shmem_helper
 sudo modprobe amdxdna dyndbg==pflm timeout_in_sec=10
-

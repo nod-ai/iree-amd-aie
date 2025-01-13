@@ -10,6 +10,8 @@
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
 
+// clang-format off: must include AIEEnums.h.inc after the above includes
 #include "aie/AIEEnums.h.inc"
+// clang-format on
 
 #endif

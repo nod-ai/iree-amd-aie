@@ -52,6 +52,14 @@ void addPackPeelBasedPassPipeline(OpPassManager &oassManager,
                                   bool enableVectorizationPasses,
                                   TilePassPipeline useTilePipeline);
 
+/// Populates passes needed to lower the IR via a Pack-Peel based approach with
+/// 4 levels of tiling.
+void addPackPeel4LevelTilingBasedPassPipeline(OpPassManager &oassManager,
+                                              TilingConfig &tilingConfig,
+                                              const std::string &pathToUkernels,
+                                              bool enableVectorizationPasses,
+                                              TilePassPipeline useTilePipeline);
+
 /// Populates passes needed to lower the IR via a Pad-Pack based approach.
 void addPadPackBasedPassPipeline(OpPassManager &passManager,
                                  TilingConfig &tilingConfig,
@@ -194,6 +202,11 @@ std::unique_ptr<Pass> createAMDAIEFuseConsumerIntoLoopPass(
 
 /// Create a pass to fuse the linalg.fill into the forall loops.
 std::unique_ptr<Pass> createAMDAIEFuseFillIntoForallPass();
+
+/// Create pass to generate packet-flow routings for control packets entering or
+/// leaving each tile.
+std::unique_ptr<Pass> createAMDAIEGenerateControlOverlayPass(
+    AMDAIEGenerateControlOverlayOptions options = {});
 
 /// Hoist an affine.apply op on a scf.for op's induction variable.
 std::unique_ptr<Pass> createAMDAIEHoistForLoopAffineApplyPass();

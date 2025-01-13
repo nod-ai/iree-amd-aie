@@ -59,7 +59,7 @@ class AMDAIEConvertCoreForallToForPass
 
   AMDAIEConvertCoreForallToForPass() = default;
   AMDAIEConvertCoreForallToForPass(
-      const AMDAIEConvertCoreForallToForPass &pass) {};
+      const AMDAIEConvertCoreForallToForPass &pass){};
   void runOnOperation() override;
 };
 

@@ -276,8 +276,7 @@ void AMDAIELowerToUKernelsPass::runOnOperation() {
                                                            pathToUkernels);
   patterns.insert<LowerToUKernelPattern<linalg::FillOp>>(context, allTargets,
                                                          pathToUkernels);
-  if (failed(
-          applyPatternsGreedily(getOperation(), std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
     return signalPassFailure();
   }
 }

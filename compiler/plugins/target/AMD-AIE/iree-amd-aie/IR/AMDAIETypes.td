@@ -22,7 +22,7 @@ class AMDAIEDialect_Type<string name, string typeMnemonic, list<Trait> traits = 
 def AMDAIE_AsyncTokenType : AMDAIEDialect_Type<"AsyncToken", "async_token">;
 def AMDAIE_AsyncSourceTokenType : AMDAIEDialect_Type<"AsyncSourceToken", "async_source_token">;
 def AMDAIE_AsyncTargetTokenType : AMDAIEDialect_Type<"AsyncTargetToken", "async_target_token">;
-def AMDAIE_AnyAsyncTokenType 
+def AMDAIE_AnyAsyncTokenType
   : AnyTypeOf<[AMDAIE_AsyncTokenType, AMDAIE_AsyncSourceTokenType, AMDAIE_AsyncTargetTokenType]>;
 
 def AMDAIE_LogicalObjectFifoType :
@@ -30,7 +30,7 @@ def AMDAIE_LogicalObjectFifoType :
   let summary = "The logical objectfifo type encapsulating a memref";
   let description = [{
     The logical objectfifo type encapulates a memref and provides synchronized
-    access operations to retrieve the underlying memref. This type is similar and 
+    access operations to retrieve the underlying memref. This type is similar and
     based on the MLIR-AIE ObjectFifo type. For now, this type only works with
     static memrefs.
 
@@ -45,7 +45,7 @@ def AMDAIE_LogicalObjectFifoType :
   let genVerifyDecl = 1;
 
   let assemblyFormat = "`<` $element_type (`,` $depth^)? `>`";
-  
+
   let builders = [
     TypeBuilderWithInferredContext<(ins "MemRefType":$elementType), [{
       return $_get(elementType.getContext(), elementType, 1);
@@ -60,9 +60,9 @@ def AMDAIE_LogicalObjectFifoType :
       return getElementType().getMemorySpace();
     }
 
-    /// Helper method to return the memory space as an integer. If no memory 
-    /// space attribute exists, this indicates a global memory space and we 
-    /// return 0. Else we cast the memory space attribute to an integer. 
+    /// Helper method to return the memory space as an integer. If no memory
+    /// space attribute exists, this indicates a global memory space and we
+    /// return 0. Else we cast the memory space attribute to an integer.
     uint8_t getMemorySpaceAsUInt() {
       Attribute memSpace = getMemorySpace();
       return memSpace ? llvm::cast<IntegerAttr>(memSpace).getInt() : 0;

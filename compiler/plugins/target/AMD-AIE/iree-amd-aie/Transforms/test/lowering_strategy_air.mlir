@@ -2,7 +2,7 @@
 // RUN: iree-opt --split-input-file --pass-pipeline='builtin.module(iree-amdaie-lowering-strategy{use-lower-to-aie-pipeline=air use-tile-pipeline=pack-peel})' %s | FileCheck %s --check-prefix=CHECK-PACK-PEEL
 
 // CHECK-PAD-PACK{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[64, 64], [0, 0, 256], [16, 16], [0, 0, 2]]>
-// CHECK-PAD-PACK{LITERAL}: #packingConfig = #amdaie.packing_config<packing_config = [{packedSizes = [4, 4, 8], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [1, 0], [0, 1]], outerPerm = [[1, 0], [1, 0], [1, 0]]}]>
+// CHECK-PAD-PACK{LITERAL}: #amdaie.packing_config<packing_config = [{packedSizes = [4, 4, 8], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [1, 0], [0, 1]], outerPerm = [[1, 0], [1, 0], [1, 0]]}]>
 #pipeline_layout = #hal.pipeline.layout<bindings = [
   <storage_buffer>,
   <storage_buffer>,
@@ -19,7 +19,7 @@ builtin.module {
     %4 = flow.dispatch.tensor.load %1, offsets = [0, 0], sizes = [2048, 2048], strides = [1, 1] : !flow.dispatch.tensor<readonly:tensor<2048x2048xi64>> -> tensor<2048x2048xi64>
     %5 = tensor.empty() : tensor<2048x2048xi64>
     %6 = linalg.fill ins(%c0_i64 : i64) outs(%5 : tensor<2048x2048xi64>) -> tensor<2048x2048xi64>
-    // CHECK:  linalg.matmul {lowering_config = #config, packing_config = #packingConfig} 
+    // CHECK:  linalg.matmul {lowering_config = #config, packing_config = #packingConfig}
     %7 = linalg.matmul ins(%3, %4 : tensor<2048x2048xi64>, tensor<2048x2048xi64>) outs(%6 : tensor<2048x2048xi64>) -> tensor<2048x2048xi64>
     flow.dispatch.tensor.store %7, %2, offsets = [0, 0], sizes = [2048, 2048], strides = [1, 1] : tensor<2048x2048xi64> -> !flow.dispatch.tensor<writeonly:tensor<2048x2048xi64>>
     return
@@ -29,7 +29,7 @@ builtin.module {
 // -----
 
 // CHECK-PAD-PACK{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[128, 128], [0, 0, 256], [32, 32], [0, 0, 4]]>
-// CHECK-PAD-PACK{LITERAL}: #packingConfig = #amdaie.packing_config<packing_config = [{packedSizes = [4, 4, 8], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [1, 0], [0, 1]], outerPerm = [[1, 0], [1, 0], [1, 0]]}]>
+// CHECK-PAD-PACK{LITERAL}: #amdaie.packing_config<packing_config = [{packedSizes = [4, 4, 8], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [1, 0], [0, 1]], outerPerm = [[1, 0], [1, 0], [1, 0]]}]>
 #pipeline_layout = #hal.pipeline.layout<bindings = [
   <storage_buffer>,
   <storage_buffer>,
@@ -46,7 +46,7 @@ builtin.module {
     %4 = flow.dispatch.tensor.load %1, offsets = [0, 0], sizes = [2048, 2048], strides = [1, 1] : !flow.dispatch.tensor<readonly:tensor<2048x2048xi32>> -> tensor<2048x2048xi32>
     %5 = tensor.empty() : tensor<2048x2048xi32>
     %6 = linalg.fill ins(%c0_i32 : i32) outs(%5 : tensor<2048x2048xi32>) -> tensor<2048x2048xi32>
-    // CHECK:  linalg.matmul {lowering_config = #config, packing_config = #packingConfig} 
+    // CHECK:  linalg.matmul {lowering_config = #config, packing_config = #packingConfig}
     %7 = linalg.matmul ins(%3, %4 : tensor<2048x2048xi32>, tensor<2048x2048xi32>) outs(%6 : tensor<2048x2048xi32>) -> tensor<2048x2048xi32>
     flow.dispatch.tensor.store %7, %2, offsets = [0, 0], sizes = [2048, 2048], strides = [1, 1] : tensor<2048x2048xi32> -> !flow.dispatch.tensor<writeonly:tensor<2048x2048xi32>>
     return
@@ -73,7 +73,7 @@ builtin.module {
     %4 = flow.dispatch.tensor.load %1, offsets = [0, 0], sizes = [2048, 2048], strides = [1, 1] : !flow.dispatch.tensor<readonly:tensor<2048x2048xbf16>> -> tensor<2048x2048xbf16>
     %5 = tensor.empty() : tensor<2048x2048xbf16>
     %6 = linalg.fill ins(%c0_bf16 : bf16) outs(%5 : tensor<2048x2048xbf16>) -> tensor<2048x2048xbf16>
-    // CHECK:  linalg.matmul {lowering_config = #config, packing_config = #packingConfig} 
+    // CHECK:  linalg.matmul {lowering_config = #config, packing_config = #packingConfig}
     %7 = linalg.matmul ins(%3, %4 : tensor<2048x2048xbf16>, tensor<2048x2048xbf16>) outs(%6 : tensor<2048x2048xbf16>) -> tensor<2048x2048xbf16>
     flow.dispatch.tensor.store %7, %2, offsets = [0, 0], sizes = [2048, 2048], strides = [1, 1] : tensor<2048x2048xbf16> -> !flow.dispatch.tensor<writeonly:tensor<2048x2048xbf16>>
     return
@@ -100,7 +100,7 @@ builtin.module {
     %4 = flow.dispatch.tensor.load %1, offsets = [0, 0], sizes = [16, 32], strides = [1, 1] : !flow.dispatch.tensor<readonly:tensor<16x32xi64>> -> tensor<16x32xi64>
     %5 = tensor.empty() : tensor<8x32xi64>
     %6 = linalg.fill ins(%c0_i64 : i64) outs(%5 : tensor<8x32xi64>) -> tensor<8x32xi64>
-    // CHECK:  linalg.matmul {lowering_config = #config, packing_config = #packingConfig} 
+    // CHECK:  linalg.matmul {lowering_config = #config, packing_config = #packingConfig}
     %7 = linalg.matmul ins(%3, %4 : tensor<8x16xi64>, tensor<16x32xi64>) outs(%6 : tensor<8x32xi64>) -> tensor<8x32xi64>
     flow.dispatch.tensor.store %7, %2, offsets = [0, 0], sizes = [8, 32], strides = [1, 1] : tensor<8x32xi64> -> !flow.dispatch.tensor<writeonly:tensor<8x32xi64>>
     return
@@ -127,7 +127,7 @@ builtin.module {
     %4 = flow.dispatch.tensor.load %1, offsets = [0, 0], sizes = [16, 32], strides = [1, 1] : !flow.dispatch.tensor<readonly:tensor<16x32xi32>> -> tensor<16x32xi32>
     %5 = tensor.empty() : tensor<8x32xi32>
     %6 = linalg.fill ins(%c0_i32 : i32) outs(%5 : tensor<8x32xi32>) -> tensor<8x32xi32>
-    // CHECK:  linalg.matmul {lowering_config = #config, packing_config = #packingConfig} 
+    // CHECK:  linalg.matmul {lowering_config = #config, packing_config = #packingConfig}
     %7 = linalg.matmul ins(%3, %4 : tensor<8x16xi32>, tensor<16x32xi32>) outs(%6 : tensor<8x32xi32>) -> tensor<8x32xi32>
     flow.dispatch.tensor.store %7, %2, offsets = [0, 0], sizes = [8, 32], strides = [1, 1] : tensor<8x32xi32> -> !flow.dispatch.tensor<writeonly:tensor<8x32xi32>>
     return
@@ -154,7 +154,7 @@ builtin.module {
     %4 = flow.dispatch.tensor.load %1, offsets = [0, 0], sizes = [16, 32], strides = [1, 1] : !flow.dispatch.tensor<readonly:tensor<16x32xbf16>> -> tensor<16x32xbf16>
     %5 = tensor.empty() : tensor<8x32xbf16>
     %6 = linalg.fill ins(%c0_bf16 : bf16) outs(%5 : tensor<8x32xbf16>) -> tensor<8x32xbf16>
-    // CHECK:  linalg.matmul {lowering_config = #config, packing_config = #packingConfig} 
+    // CHECK:  linalg.matmul {lowering_config = #config, packing_config = #packingConfig}
     %7 = linalg.matmul ins(%3, %4 : tensor<8x16xbf16>, tensor<16x32xbf16>) outs(%6 : tensor<8x32xbf16>) -> tensor<8x32xbf16>
     flow.dispatch.tensor.store %7, %2, offsets = [0, 0], sizes = [8, 32], strides = [1, 1] : tensor<8x32xbf16> -> !flow.dispatch.tensor<writeonly:tensor<8x32xbf16>>
     return
@@ -190,7 +190,7 @@ builtin.module {
 // -----
 
 // CHECK-PACK-PEEL{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[64, 64], [0, 0, 1], [1, 1, 0, 0, 0, 0]]>
-// CHECK-PACK-PEEL{LITERAL}: #packingConfig = #amdaie.packing_config<packing_config = [{packedSizes = [32, 32, 32], transposePackIndices = [0, 1], unpackEmpty = [false, false], innerPerm = [[0, 1], [1, 0]], outerPerm = [[0, 1], [0, 1]]}, {packedSizes = [0, 0, 0, 4, 4, 8], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [1, 0], [0, 1]], outerPerm = [[0, 1, 3, 2], [0, 1, 3, 2], [0, 1, 3, 2]]}]>
+// CHECK-PACK-PEEL{LITERAL}: #amdaie.packing_config<packing_config = [{packedSizes = [128, 128, 128], transposePackIndices = [0, 1], unpackEmpty = [false, false], innerPerm = [[0, 1], [1, 0]], outerPerm = [[0, 1], [1, 0]]}, {packedSizes = [0, 0, 0, 4, 8, 8], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [1, 0], [0, 1]], outerPerm = [[0, 1, 3, 2], [0, 1, 3, 2], [0, 1, 3, 2]]}]>
 #pipeline_layout = #hal.pipeline.layout<bindings = [
   <storage_buffer>,
   <storage_buffer>,
@@ -217,7 +217,7 @@ builtin.module {
 // -----
 
 // CHECK-PACK-PEEL{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[44, 128], [0, 0, 1], [1, 1, 0, 0, 0, 0]]>
-// CHECK-PACK-PEEL{LITERAL}: #packingConfig = #amdaie.packing_config<packing_config = [{packedSizes = [44, 32, 64], transposePackIndices = [0, 1], unpackEmpty = [false, false], innerPerm = [[0, 1], [1, 0]], outerPerm = [[0, 1], [0, 1]]}, {packedSizes = [0, 0, 0, 4, 4, 8], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [1, 0], [0, 1]], outerPerm = [[0, 1, 3, 2], [0, 1, 3, 2], [0, 1, 3, 2]]}]>
+// CHECK-PACK-PEEL{LITERAL}: #amdaie.packing_config<packing_config = [{packedSizes = [44, 32, 64], transposePackIndices = [0, 1], unpackEmpty = [false, false], innerPerm = [[0, 1], [1, 0]], outerPerm = [[0, 1], [1, 0]]}, {packedSizes = [0, 0, 0, 4, 4, 8], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [1, 0], [0, 1]], outerPerm = [[0, 1, 3, 2], [0, 1, 3, 2], [0, 1, 3, 2]]}]>
 #pipeline_layout = #hal.pipeline.layout<bindings = [
   <storage_buffer>,
   <storage_buffer>,
@@ -245,7 +245,7 @@ module {
 // CHECK-PAD-PACK{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[128, 128], [0, 0, 256], [32, 32], [0, 0, 4]]>
 // CHECK-PAD-PACK{LITERAL}: #packingConfig = #amdaie.packing_config<packing_config = [{packedSizes = [4, 4, 8], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [0, 1], [0, 1]], outerPerm = [[1, 0], [1, 0], [1, 0]]}]>
 // CHECK-PACK-PEEL{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[128, 128], [0, 0, 1], [1, 1, 0, 0, 0, 0]]>
-// CHECK-PACK-PEEL{LITERAL}: #packingConfig = #amdaie.packing_config<packing_config = [{packedSizes = [32, 32, 32], transposePackIndices = [0, 1], unpackEmpty = [false, false], innerPerm = [[0, 1], [0, 1]], outerPerm = [[0, 1], [0, 1]]}, {packedSizes = [0, 0, 0, 4, 4, 8], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [0, 1], [0, 1]], outerPerm = [[0, 1, 3, 2], [0, 1, 3, 2], [0, 1, 3, 2]]}]>
+// CHECK-PACK-PEEL{LITERAL}: #amdaie.packing_config<packing_config = [{packedSizes = [32, 32, 32], transposePackIndices = [0, 1], unpackEmpty = [false, false], innerPerm = [[0, 1], [0, 1]], outerPerm = [[0, 1], [0, 1]]}, {packedSizes = [0, 0, 0, 4, 4, 8], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [0, 1], [0, 1]], outerPerm = [[0, 1, 3, 2], [0, 1, 3, 2], [0, 1, 3, 2]]}]>
 #pipeline_layout = #hal.pipeline.layout<bindings = [
   <storage_buffer>,
   <storage_buffer>,

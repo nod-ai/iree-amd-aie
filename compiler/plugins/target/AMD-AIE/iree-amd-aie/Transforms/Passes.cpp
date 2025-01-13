@@ -83,7 +83,9 @@ static void addAMDAIEBufferizePasses(OpPassManager &pm,
                         ValueRange dynamicSizes, unsigned _alignment) {
         int64_t numDims = memRefType.getShape().size();
         AMDAIEMemSpace memSpace = AMDAIEMemSpace::Local;
-        if (useTilePipeline == TilePassPipeline::PackPeelPipeline &&
+        if ((useTilePipeline == TilePassPipeline::PackPeelPipeline ||
+             useTilePipeline ==
+                 TilePassPipeline::PackPeel4LevelTilingPipeline) &&
             numDims == 4) {
           memSpace = AMDAIEMemSpace::Shared;
         }
@@ -131,6 +133,7 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   // First level tiling using scf.forall
   {
     AMDAIETileAndFuseOptions tileFuseOptions;
+    tileFuseOptions.hardwareMapping = HardwareMapping::Block;
     tileFuseOptions.tilingLevel = 0;
     tileFuseOptions.useSCFFor = false;
     funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
@@ -218,6 +221,7 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   // Second level tiling using scf.forall
   {
     AMDAIETileAndFuseOptions tileFuseOptions;
+    tileFuseOptions.hardwareMapping = HardwareMapping::Core;
     tileFuseOptions.tilingLevel = 2;
     tileFuseOptions.useSCFFor = false;
     tileFuseOptions.tileElementwise = false;
@@ -298,6 +302,205 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
 }
 
+void addPackPeel4LevelTilingBasedPassPipeline(
+    OpPassManager &funcPassManager, TilingConfig &tilingConfig,
+    const std::string &pathToUkernels, bool enableVectorizationPasses,
+    TilePassPipeline useTilePipeline) {
+  // First level tiling using scf.forall
+  {
+    AMDAIETileAndFuseOptions tileFuseOptions;
+    tileFuseOptions.tilingLevel = 0;
+    tileFuseOptions.useSCFFor = false;
+    funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
+  }
+  funcPassManager.addPass(createAMDAIECleanupPass());
+  funcPassManager.addPass(createCanonicalizerPass());
+  funcPassManager.addPass(createCSEPass());
+
+  // First level packing
+  {
+    AMDAIEPackAndTransposeOptions packOptions;
+    packOptions.packLevel = 0;
+    funcPassManager.addPass(createAMDAIEPackAndTransposePass(packOptions));
+  }
+
+  // Propagate pack ops for the elementwise op
+  funcPassManager.addPass(createAMDAIEPropagateDataLayoutPass());
+  funcPassManager.addPass(createCanonicalizerPass());
+  funcPassManager.addPass(createCSEPass());
+
+  // Promote the matmul output to shared memory
+  {
+    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
+    bufferizeOptions.memorySpace = 1;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgOutput;
+    funcPassManager.addPass(
+        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
+  }
+
+  // Promote the elementwise input to shared memory
+  {
+    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
+    bufferizeOptions.memorySpace = 1;
+    bufferizeOptions.bufferizeElementwise = true;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgInput;
+    funcPassManager.addPass(
+        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
+  }
+
+  // Second level packing
+  {
+    AMDAIEPackAndTransposeOptions packOptions;
+    packOptions.packLevel = 1;
+    funcPassManager.addPass(createAMDAIEPackAndTransposePass(packOptions));
+  }
+
+  // Propagate pack ops for the elementwise op
+  funcPassManager.addPass(createAMDAIEPropagateDataLayoutPass());
+  funcPassManager.addPass(createCanonicalizerPass());
+  funcPassManager.addPass(createCSEPass());
+
+  // Second level tiling using scf.forall.
+  {
+    AMDAIETileAndFuseOptions tileFuseOptions;
+    tileFuseOptions.tilingLevel = 1;
+    tileFuseOptions.useSCFFor = false;
+    funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
+  }
+  funcPassManager.addPass(createAMDAIECleanupPass());
+  funcPassManager.addPass(createCanonicalizerPass());
+  funcPassManager.addPass(createCSEPass());
+
+  // Fuse the second level of pack ops into forall loop
+  {
+    AMDAIEFusePackIntoLoopOptions fusePackOptions;
+    fusePackOptions.fusePackDepth = 1;
+    fusePackOptions.useSCFFor = false;
+    funcPassManager.addPass(createAMDAIEFusePackIntoLoopPass(fusePackOptions));
+  }
+  funcPassManager.addPass(createCanonicalizerPass());
+  funcPassManager.addPass(createCSEPass());
+
+  // Tile the reduction dimension using scf.for
+  {
+    AMDAIETileAndFuseOptions tileFuseOptions;
+    tileFuseOptions.tilingLevel = 2;
+    tileFuseOptions.useSCFFor = true;
+    tileFuseOptions.tileElementwise = false;
+    funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
+  }
+  funcPassManager.addPass(createAMDAIECleanupPass());
+  funcPassManager.addPass(createCanonicalizerPass());
+  funcPassManager.addPass(createCSEPass());
+
+  // Fuse the second level of pack ops into for loop
+  {
+    AMDAIEFusePackIntoLoopOptions fusePackOptions;
+    fusePackOptions.fusePackDepth = 1;
+    fusePackOptions.useSCFFor = true;
+    funcPassManager.addPass(createAMDAIEFusePackIntoLoopPass(fusePackOptions));
+  }
+  funcPassManager.addPass(createCanonicalizerPass());
+  funcPassManager.addPass(createCSEPass());
+
+  // Promote the operands of pack at depth 2 from the linalg ops to shared
+  // memory.
+  {
+    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
+    bufferizeOptions.memorySpace = 1;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::PackInput;
+    bufferizeOptions.packDepth = 2;
+    funcPassManager.addPass(
+        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
+  }
+
+  // Third level tiling using scf.forall
+  {
+    AMDAIETileAndFuseOptions tileFuseOptions;
+    tileFuseOptions.hardwareMapping = HardwareMapping::Core;
+    tileFuseOptions.tilingLevel = 3;
+    tileFuseOptions.useSCFFor = false;
+    tileFuseOptions.tileElementwise = false;
+    funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
+  }
+  funcPassManager.addPass(createAMDAIECleanupPass());
+  funcPassManager.addPass(createCanonicalizerPass());
+  funcPassManager.addPass(createCSEPass());
+
+  // Fuse second level pack ops into forall loop
+  {
+    AMDAIEFusePackIntoLoopOptions fusePackOptions;
+    fusePackOptions.fusePackDepth = 1;
+    fusePackOptions.useSCFFor = false;
+    funcPassManager.addPass(createAMDAIEFusePackIntoLoopPass(fusePackOptions));
+  }
+  funcPassManager.addPass(createCanonicalizerPass());
+  funcPassManager.addPass(createCSEPass());
+
+  // Promote the matmul inputs to local memory
+  {
+    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
+    bufferizeOptions.memorySpace = 2;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgInput;
+    funcPassManager.addPass(
+        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
+  }
+
+  // Hoist static allocations
+  funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
+  funcPassManager.addPass(createCanonicalizerPass());
+  funcPassManager.addPass(createCSEPass());
+
+  // Peel the first and last iteration. Note: Do not run CSE pass afterwards,
+  // because it may bring problem for bufferization.
+  funcPassManager.addPass(createAMDAIEPeelForLoopPass());
+  funcPassManager.addPass(createCanonicalizerPass());
+
+  // Fuse fill op into the first inner forall loop
+  funcPassManager.addPass(createAMDAIEFuseFillIntoForallPass());
+
+  // Fuse unpack/elementwise consumer ops into the last inner forall loop
+  funcPassManager.addPass(createAMDAIEFuseConsumerIntoLoopPass());
+
+  // Note: canonicalizer pass should not run starting from here until
+  // bufferization to avoid creating redundant allocation and data copy.
+  // TODO (vivian): solve the bufferization problem upstream
+
+  // Fuse pack ops into the last inner forall loop
+  {
+    AMDAIEFusePackIntoLoopOptions fusePackOptions;
+    fusePackOptions.fusePackDepth = 1;
+    fusePackOptions.useSCFFor = false;
+    fusePackOptions.targetElementwise = true;
+    funcPassManager.addPass(createAMDAIEFusePackIntoLoopPass(fusePackOptions));
+  }
+
+  // Promote the elementwise input to local memory
+  {
+    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
+    bufferizeOptions.memorySpace = 2;
+    bufferizeOptions.bufferizeElementwise = true;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgInput;
+    funcPassManager.addPass(
+        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
+  }
+
+  // Lower to UKernels.
+  {
+    AMDAIELowerToUKernelsOptions options;
+    // windows
+    options.pathToUkernels = escapeCommandLineComponent(pathToUkernels);
+    funcPassManager.addPass(createAMDAIELowerToUKernelsPass(options));
+  }
+
+  // Comprehensive bufferization
+  addAMDAIEBufferizePasses(funcPassManager, useTilePipeline);
+  funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
+  funcPassManager.addPass(createCanonicalizerPass());
+  funcPassManager.addPass(createCSEPass());
+  funcPassManager.addPass(createCanonicalizerPass());
+}
+
 void addPadPackBasedPassPipeline(OpPassManager &funcPassManager,
                                  TilingConfig &tilingConfig,
                                  const std::string &pathToUkernels,
@@ -306,6 +509,7 @@ void addPadPackBasedPassPipeline(OpPassManager &funcPassManager,
   // First level tiling using scf.forall
   {
     AMDAIETileAndFuseOptions tileFuseOptions;
+    tileFuseOptions.hardwareMapping = HardwareMapping::Block;
     tileFuseOptions.tilingLevel = 0;
     tileFuseOptions.useSCFFor = false;
     funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
@@ -343,6 +547,7 @@ void addPadPackBasedPassPipeline(OpPassManager &funcPassManager,
   // Second level tiling using scf.forall
   {
     AMDAIETileAndFuseOptions tileFuseOptions;
+    tileFuseOptions.hardwareMapping = HardwareMapping::Core;
     tileFuseOptions.tilingLevel = 2;
     tileFuseOptions.useSCFFor = false;
     funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
@@ -421,6 +626,7 @@ void addConvDecomposePassPipeline(OpPassManager &funcPassManager,
   // First level tiling using scf.forall
   {
     AMDAIETileAndFuseOptions tileFuseOptions;
+    tileFuseOptions.hardwareMapping = HardwareMapping::Block;
     tileFuseOptions.tilingLevel = 0;
     tileFuseOptions.useSCFFor = false;
     funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
@@ -446,6 +652,7 @@ void addConvDecomposePassPipeline(OpPassManager &funcPassManager,
   // Second level tiling using scf.forall
   {
     AMDAIETileAndFuseOptions tileFuseOptions;
+    tileFuseOptions.hardwareMapping = HardwareMapping::Core;
     tileFuseOptions.tilingLevel = 1;
     tileFuseOptions.useSCFFor = false;
     funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
@@ -610,7 +817,8 @@ void addAMDAIEObjectFifoLoweringPasses(
 
   passManager.addPass(createAMDAIESplitLogicalObjFifosForConnectionReusePass());
   // Currently, SplitLogicalObjFifos pass only works for matmul-like ops.
-  if (useTilePipeline == TilePassPipeline::PackPeelPipeline)
+  if (useTilePipeline == TilePassPipeline::PackPeelPipeline ||
+      useTilePipeline == TilePassPipeline::PackPeel4LevelTilingPipeline)
     passManager.addPass(createAMDAIESplitLogicalObjFifosPass());
 
   passManager.addPass(createCSEPass());
@@ -670,6 +878,11 @@ void addAMDAIEObjectFifoLoweringPasses(
   passManager.addPass(createAMDAIEObjFifoBufferizationPass());
   passManager.addPass(createAMDAIETemporaryAllocBufferizationPass());
   passManager.addPass(createAMDAIEConnectionToFlowPass());
+
+  passManager.addPass(createAMDAIEGenerateControlOverlayPass());
+  passManager.addPass(createCSEPass());
+  passManager.addPass(createCanonicalizerPass());
+
   passManager.addPass(createAMDAIEAssignPacketIdsPass());
 
   passManager.addPass(createAMDAIENpuDmaToHalfDmaCpyNdPass());
@@ -777,7 +990,8 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
   passManager.addPass(createCSEPass());
 
   passManager.addPass(xilinx::air::createAIRDependencyPass());
-  if (!(useTilePipeline == TilePassPipeline::PackPeelPipeline &&
+  if (!((useTilePipeline == TilePassPipeline::PackPeelPipeline ||
+         useTilePipeline == TilePassPipeline::PackPeel4LevelTilingPipeline) &&
         matmulElementwiseFusion)) {
     passManager.addPass(xilinx::air::createAIRDependencyScheduleOptPass());
     passManager.addPass(xilinx::air::createAIRSpecializeDmaBroadcast());
@@ -793,7 +1007,8 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
   passManager.addPass(createCSEPass());
   {
     xilinx::air::AIRFuseChannelsOptions options;
-    if (useTilePipeline == TilePassPipeline::PackPeelPipeline &&
+    if ((useTilePipeline == TilePassPipeline::PackPeelPipeline ||
+         useTilePipeline == TilePassPipeline::PackPeel4LevelTilingPipeline) &&
         matmulElementwiseFusion) {
       const static llvm::SmallVector<std::string> mode = {"L1"};
       options.clAggressiveMode = mode;
@@ -875,7 +1090,8 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
     // with given factors, and subsequently unrolled in
     // AIRUnrollOuterPerfectlyNestedLoopsPass, to enforce SHIM DMA BD count
     // within the hardware limit.
-    if (useTilePipeline == TilePassPipeline::PackPeelPipeline) {
+    if (useTilePipeline == TilePassPipeline::PackPeelPipeline ||
+        useTilePipeline == TilePassPipeline::PackPeel4LevelTilingPipeline) {
       const static llvm::SmallVector<unsigned> tile_sizes = {2, 2};
       options.clTileSizes = tile_sizes;
     } else if (useTilePipeline == TilePassPipeline::PadPackPipeline) {

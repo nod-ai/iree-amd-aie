@@ -22,7 +22,7 @@
 // CHECK:   }
 
 //
-// one-to-one shim DMA destination 
+// one-to-one shim DMA destination
 //
 module @aie_module  {
  aie.device(xcvc1902) {

@@ -330,6 +330,17 @@ def AMDAIEFusePackIntoLoop :
   ];
 }
 
+def AMDAIEGenerateControlOverlay : Pass<"iree-amdaie-generate-control-overlay"> {
+  let summary = "Spawn a streaming interconnect network for CTRL ports.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEGenerateControlOverlayPass()";
+  let options = [
+    Option<"routeShimCtrlToTct", "route-shim-to-tct", "bool", /*default=*/"true",
+      "Flag to generate TCT routing between tile CTRL and shim SOUTH ports.">,
+    Option<"routeShimToTileCtrl", "route-shim-to-tile-ctrl", "bool", /*default=*/"false",
+      "Flag to generate routing between shim dma DMA and tile CTRL ports, for configuration.">
+  ];
+}
+
 def AMDAIEHoistForLoopAffineApply : Pass<"iree-amdaie-hoist-for-affine-apply"> {
   let summary = "Hoist an affine apply op on a scf.for op's induction variable.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEHoistForLoopAffineApplyPass()";
@@ -450,6 +461,8 @@ def AMDAIELowerExecutableTarget :
       [{::llvm::cl::values(
         clEnumValN(mlir::iree_compiler::AMDAIE::TilePassPipeline::PackPeelPipeline, "pack-peel",
                    "Use the pack-peel based lowering strategy for matmul-like ops."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::TilePassPipeline::PackPeel4LevelTilingPipeline, "pack-peel-4-level-tiling",
+                   "Use the pack-peel based lowering strategy with 4 tiling levels for matmul-like ops."),
         clEnumValN(mlir::iree_compiler::AMDAIE::TilePassPipeline::PadPackPipeline, "pad-pack",
                    "Use the pad-pack based lowering strategy for matmul-like ops."),
         clEnumValN(mlir::iree_compiler::AMDAIE::TilePassPipeline::ConvDecomposePipeline, "conv-decompose",
@@ -473,6 +486,8 @@ def AMDAIELoweringStrategy :
       [{::llvm::cl::values(
         clEnumValN(mlir::iree_compiler::AMDAIE::TilePassPipeline::PackPeelPipeline, "pack-peel",
                    "Use the pack-peel based lowering strategy for matmul-like ops."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::TilePassPipeline::PackPeel4LevelTilingPipeline, "pack-peel-4-level-tiling",
+                   "Use the pack-peel based lowering strategy with 4 tiling levels for matmul-like ops."),
         clEnumValN(mlir::iree_compiler::AMDAIE::TilePassPipeline::PadPackPipeline, "pad-pack",
                    "Use the pad-pack based lowering strategy for matmul-like ops."),
         clEnumValN(mlir::iree_compiler::AMDAIE::TilePassPipeline::ConvDecomposePipeline, "conv-decompose",
@@ -775,7 +790,19 @@ def AMDAIETileAndFuse :
     Option<"tilingLevel", "tiling-level", "int64_t", /*default=*/"-1",
       "Use default tiling level used to retrieve the configuration from lowering_config">,
     Option<"tileElementwise", "tile-elementwise", "bool", /*default=*/"true",
-      "Option to whether tile and fuse the elementwise op">
+      "Option to whether tile and fuse the elementwise op">,
+    Option<"hardwareMapping", "hardware-mapping",
+      "mlir::iree_compiler::AMDAIE::HardwareMapping",
+      /*default=*/"mlir::iree_compiler::AMDAIE::HardwareMapping::None",
+      "The hardware mapping to use for this tiling level.",
+      [{::llvm::cl::values(
+        clEnumValN(mlir::iree_compiler::AMDAIE::HardwareMapping::None, "none",
+                   "No hardware mapping for this tiling level."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::HardwareMapping::Core, "core",
+                   "Map this tiling level to cores."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::HardwareMapping::Block, "block",
+                   "Map this tiling level to blocks.")
+      )}]>,
   ];
 }
 

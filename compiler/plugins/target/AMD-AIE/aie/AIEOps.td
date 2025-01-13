@@ -175,7 +175,7 @@ def AIE_FlowOp: AIE_Op<"flow"> {
   }];
   let builders = [
     OpBuilder<(
-      ins "::mlir::Value":$source, 
+      ins "::mlir::Value":$source,
           "::mlir::iree_compiler::AMDAIE::StrmSwPortType":$source_bundle,
           "uint8_t":$source_channel,
           "::mlir::Value":$dest,

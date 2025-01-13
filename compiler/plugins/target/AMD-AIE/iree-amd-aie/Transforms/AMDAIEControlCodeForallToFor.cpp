@@ -32,7 +32,8 @@ LogicalResult forallToFor(RewriterBase &rewriter, Operation *op) {
       return WalkResult::advance();
     }
     if (failed(scf::forallToForLoop(rewriter, forallOp))) {
-      forallOp.emitOpError() << "was not transformed from `scf.forall` to `scf.for`";
+      forallOp.emitOpError()
+          << "was not transformed from `scf.forall` to `scf.for`";
       return WalkResult::interrupt();
     }
     return WalkResult::advance();

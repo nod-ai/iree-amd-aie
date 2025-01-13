@@ -440,7 +440,7 @@ class AMDAIECreateAIEWorkgroupPass
   }
 
   AMDAIECreateAIEWorkgroupPass() = default;
-  AMDAIECreateAIEWorkgroupPass(const AMDAIECreateAIEWorkgroupPass &pass) {};
+  AMDAIECreateAIEWorkgroupPass(const AMDAIECreateAIEWorkgroupPass &pass){};
   void runOnOperation() override;
 };
 

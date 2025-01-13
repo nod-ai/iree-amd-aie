@@ -34,7 +34,7 @@ git \
   git@github.com:nod-ai/iree-amd-aie.git # https://github.com/nod-ai/iree-amd-aie.git
 ```
 
-The above avoids cloning entire repo histories for submodules, and skips a few, currently, unused, 
+The above avoids cloning entire repo histories for submodules, and skips a few, currently, unused,
 submodules that are nested in IREE.
 
 ### Dependencies
@@ -78,7 +78,7 @@ cmake --build <WHERE_YOU_WOULD_LIKE_TO_BUILD>
 
 ### Instructions
 
-The bare minimum configure command for IREE with the amd-aie plugin 
+The bare minimum configure command for IREE with the amd-aie plugin
 
 ```
 cmake \
@@ -106,7 +106,7 @@ you can opt-out of everything (except the `llvm-cpu` backend) with
   -DIREE_INPUT_TOSA=OFF \
   -DIREE_HAL_DRIVER_DEFAULTS=OFF \
   -DIREE_TARGET_BACKEND_DEFAULTS=OFF \
-  -DIREE_TARGET_BACKEND_LLVM_CPU=ON 
+  -DIREE_TARGET_BACKEND_LLVM_CPU=ON
 ```
 
 With the above you can also skip cloning the `stablehlo` and `torch-mlir` submodules/repos but in this case you will need to add
@@ -121,14 +121,14 @@ If you're "bringing your own LLVM", i.e., you have a prebuilt/compiled distribut
   -DIREE_BUILD_BUNDLED_LLVM=OFF
 ```
 
-In this case you will need `lit` somewhere in your environment and you will need to add to CMake `-DLLVM_EXTERNAL_LIT=<SOMEWHERE>` 
+In this case you will need `lit` somewhere in your environment and you will need to add to CMake `-DLLVM_EXTERNAL_LIT=<SOMEWHERE>`
 (e.g., `pip install lit; SOMEWHERE=$(which lit)`).
 
 See [Bringing your own LLVM](#bringing-your-own-llvm) below for more information on using prebuilt/compiled distributions of LLVM.
 
 ## Testing
 
-Lit tests (i.e., compiler tests) specific to AIE can be run with something like 
+Lit tests (i.e., compiler tests) specific to AIE can be run with something like
 
 ```
 cd <WHERE_YOU_WOULD_LIKE_TO_BUILD>
@@ -137,7 +137,7 @@ ctest -R amd-aie --output-on-failure -j 10
 
 (the `-j 10` runs `10` tests in parallel)
 
-Other tests, which run on device, are in the `build_tools` subdirectory. 
+Other tests, which run on device, are in the `build_tools` subdirectory.
 See [build_tools/ci/run_all_runtime_tests.sh](build_tools/ci/run_all_runtime_tests.sh) for an example script that shows how to run all the runtime tests.
 
 ## Pro-tips
@@ -181,4 +181,3 @@ Note, this is roughly equivalent to [passing](https://github.com/nod-ai/iree-amd
 ## Architectural overview (out of date)
 
 ![image](https://github.com/nod-ai/iree-amd-aie/assets/74956/3fa73139-5fdf-4658-86c3-0705352c4ea0)
-

@@ -38,8 +38,8 @@
 #include "mlir/Transforms/Mem2Reg.h"
 
 #define GET_OP_CLASSES
-#include "aievec/XLLVMDialect.h.inc"
 #include "aievec/XLLVMAIE2IntrOps.h.inc"
+#include "aievec/XLLVMDialect.h.inc"
 
 namespace llvm {
 

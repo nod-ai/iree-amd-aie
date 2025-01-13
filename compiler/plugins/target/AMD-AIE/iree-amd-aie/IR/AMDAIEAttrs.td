@@ -22,7 +22,7 @@ def AMDAIE_ConnectionType: I32EnumAttr<"ConnectionType",
   let genSpecializedAttr = 0;
 }
 
-def AMDAIE_ConnectionTypeAttr 
+def AMDAIE_ConnectionTypeAttr
   : EnumAttr<AMDAIE_Dialect, AMDAIE_ConnectionType, "connection_type">;
 
 def AMDAIE_CopyOpOperateOn: I32EnumAttr<"CopyOpOperateOn",
@@ -40,7 +40,7 @@ def AMDAIE_LockAction: I32EnumAttr<"LockAction",
   [
     I32EnumAttrCase<"Acquire", 0>,
     I32EnumAttrCase<"AcquireGreaterOrEqual", 1>,
-    I32EnumAttrCase<"Release", 2> 
+    I32EnumAttrCase<"Release", 2>
   ]
   > {
   let cppNamespace = "mlir::iree_compiler::AMDAIE";
@@ -88,7 +88,7 @@ def AMDAIE_PermLevelAttr :
   let parameters = (ins
     ArrayRefParameter<"int64_t","">:$perm
   );
-  
+
   let assemblyFormat = [{
     `[` $perm `]`
   }];
@@ -116,7 +116,7 @@ def AMDAIE_PackingConfigPackingLevelAttr :
     AttrParameter<"PermLevelsAttr",
         "Attributes for outer dimension permutation">:$outerPerm
   );
-  
+
   let assemblyFormat = [{
     `{` `packedSizes` `=` `[` $packedSizes `]` `,` `transposePackIndices` `=` `[` $transposePackIndices `]` `,` `unpackEmpty` `=` `[` $unpackEmpty `]` `,` `innerPerm` `=` $innerPerm `,` `outerPerm` `=` $outerPerm `}`
   }];
@@ -150,7 +150,7 @@ def AMDAIE_PackingConfigAttr :
     AttrParameter<"PackingConfigPackingLevelsAttr",
         "The packing config at different levels">:$packingLevels
   );
-  
+
   let extraClassDeclaration = [{
     // Returns the packing config for a level set for the op.
     PackingConfigPackingLevelAttr getPackingConfigVals(unsigned level);

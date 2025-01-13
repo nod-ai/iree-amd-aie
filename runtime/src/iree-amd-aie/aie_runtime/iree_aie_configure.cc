@@ -267,7 +267,7 @@ LogicalResult configureStreamSwitch(const AMDAIEDeviceModel &deviceModel,
                                     const TileLoc &tileLoc,
                                     const std::vector<Connect> &connects) {
   auto devInst = const_cast<XAie_DevInst *>(&deviceModel.devInst);
-  // FIXME hack for TCT routing
+  // mlir-air legacy, hack for TCT routing
   // TODO copy-pasted: Support both channels
   // TODO(max): find a way to keep track so that multiple calls don't
   // rewrite/overwrite with same data.

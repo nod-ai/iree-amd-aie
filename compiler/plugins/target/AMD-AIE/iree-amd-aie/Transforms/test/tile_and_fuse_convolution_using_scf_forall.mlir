@@ -1,8 +1,8 @@
 // In these tests, we tile at just level 0.
-// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-tile-and-fuse{tiling-level=0}))' --split-input-file %s | FileCheck %s --check-prefix=TILE-LEVEL-0
+// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-tile-and-fuse{tiling-level=0 hardware-mapping=block}))' --split-input-file %s | FileCheck %s --check-prefix=TILE-LEVEL-0
 
 // In these tests, we tile at level 0, and then at level 1.
-// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-tile-and-fuse{tiling-level=0}, iree-amdaie-tile-and-fuse{tiling-level=1}))' --split-input-file --verify-diagnostics %s | FileCheck %s --check-prefix=TILE-LEVEL-1
+// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-tile-and-fuse{tiling-level=0 hardware-mapping=block}, iree-amdaie-tile-and-fuse{tiling-level=1 hardware-mapping=core}))' --split-input-file --verify-diagnostics %s | FileCheck %s --check-prefix=TILE-LEVEL-1
 
 // -----
 
@@ -125,5 +125,3 @@ module {
 
 
 // -----
-
-
