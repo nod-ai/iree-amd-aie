@@ -49,5 +49,3 @@ module {
     aie.flow(%t20, DMA : 0, %t30, DMA : 1)
   }
 }
-
-

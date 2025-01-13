@@ -4,7 +4,7 @@
 // CHECK:       %[[TILE:.+]] = amdaie.tile
 // CHECK:       amdaie.core(%[[TILE]], in : [], out : []) {
 // CHECK-NOT:     scf.while
-// CHECK-NOT:     scf.for 
+// CHECK-NOT:     scf.for
 // CHECK:         amdaie.end
 // CHECK:       }
 func.func @empty_core() {

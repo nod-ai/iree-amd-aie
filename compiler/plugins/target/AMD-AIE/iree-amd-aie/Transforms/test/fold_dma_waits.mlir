@@ -131,7 +131,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // -----
 
 // Same connection, but different BD IDs are used. Expect the DMA waits to be folded.
-// DMA queue has a maximum size of 4. To optimize, starting from the end of the control code, 
+// DMA queue has a maximum size of 4. To optimize, starting from the end of the control code,
 // retain every 4th DMA wait operation, while folding the others and removing their tokens.
 // CHECK-LABEL: @fold_dma_waits_max_queue_size
 // CHECK:       %[[OBJECT_FIFO_0:.+]] = amdaie.logicalobjectfifo.from_buffers
@@ -442,7 +442,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %channel = amdaie.channel(%tile_0, 0, port_type = DMA, direction = MM2S)
       %channel_7 = amdaie.channel(%tile_0, 1, port_type = DMA, direction = MM2S)
       %channel_8 = amdaie.channel(%tile, 0, port_type = DMA, direction = S2MM)
-      %channel_9 = amdaie.channel(%tile, 1, port_type = DMA, direction = S2MM) 
+      %channel_9 = amdaie.channel(%tile, 1, port_type = DMA, direction = S2MM)
       %6 = amdaie.flow({%channel} -> {%channel_7}) {is_packet_flow = false}
       %7 = amdaie.flow({%channel_8} -> {%channel_9}) {is_packet_flow = false}
       %8 = amdaie.connection(%0 {%channel_7}, %2 {%channel}, flow = %6) {connection_type = #amdaie<connection_type Packet>} : (!amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 2>, !amdaie.logicalobjectfifo<memref<64x32xi32>>)

@@ -211,4 +211,3 @@ func.func @unoutlineable_strided_layout(%A: memref<4x8xbf16, strided<[9,1]>>, %B
   }
   return
 }
-

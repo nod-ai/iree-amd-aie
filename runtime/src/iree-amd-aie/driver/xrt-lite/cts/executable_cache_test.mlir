@@ -35,4 +35,3 @@ hal.executable.source public @amdaie_fb {
     }
   }
 }
-

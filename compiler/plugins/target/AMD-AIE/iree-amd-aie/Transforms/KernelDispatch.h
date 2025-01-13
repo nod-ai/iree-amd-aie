@@ -14,11 +14,7 @@
 namespace mlir::iree_compiler::AMDAIE {
 
 /// Enum for AIE lowering pipelines to pick.
-enum class LowerToAIEPassPipeline {
-  AIR,
-  ObjectFifo,
-  None
-};
+enum class LowerToAIEPassPipeline { AIR, ObjectFifo, None };
 
 /// Enum for tiling pass pipelines to pick. Because of how the pass-pipeline
 /// enums are implemented using tablegen in IREE, it isnt extensible.
@@ -35,7 +31,12 @@ enum class TilePassPipeline {
 enum class PeelingType { First, Last, FirstLast };
 
 /// Enum for operands to be bufferized to allocation.
-enum class BufferizeOperand { LinalgInputOutput, LinalgInput, LinalgOutput, PackInput };
+enum class BufferizeOperand {
+  LinalgInputOutput,
+  LinalgInput,
+  LinalgOutput,
+  PackInput
+};
 
 /// Enum for hardware mapping attributes.
 enum class HardwareMapping {

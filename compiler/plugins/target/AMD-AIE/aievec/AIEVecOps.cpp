@@ -605,7 +605,6 @@ ParseResult FMAElemOp::parse(OpAsmParser &parser, OperationState &result) {
   return parseMulFMAElemOp(parser, result, true);
 }
 
-
 //===----------------------------------------------------------------------===//
 // ExtOp
 //===----------------------------------------------------------------------===//
@@ -627,20 +626,21 @@ LogicalResult ExtOp::verify() {
   // Verify the types
   VectorType sourceType = llvm::dyn_cast<VectorType>(getSource().getType());
   VectorType resultType = llvm::dyn_cast<VectorType>(getResult().getType());
-  if (!sourceType || !resultType)
-    return emitError("requires vector type");
+  if (!sourceType || !resultType) return emitError("requires vector type");
 
   // Check the number of lanes
   unsigned sourceLanes = getVectorLaneSize(sourceType);
   unsigned resultLanes = getVectorLaneSize(resultType);
   // Source lanes must be greater than result lanes
   if (sourceLanes / resultLanes <= 1)
-    return emitError("lanes in source vector must be at least "
-                     "twice that of result vector");
+    return emitError(
+        "lanes in source vector must be at least "
+        "twice that of result vector");
   // Source lanes must be a multiple of result lanes
   if (sourceLanes % resultLanes != 0)
-    return emitError("lanes in result vector must be a multiple "
-                     "of source vector lanes");
+    return emitError(
+        "lanes in result vector must be a multiple "
+        "of source vector lanes");
 
   // Verify validity of index
   unsigned factor = sourceLanes / resultLanes;
@@ -663,8 +663,7 @@ ParseResult ExtOp::parse(OpAsmParser &parser, OperationState &result) {
   OpAsmParser::UnresolvedOperand source;
 
   // Parse the source vector
-  if (parser.parseOperand(source))
-    return failure();
+  if (parser.parseOperand(source)) return failure();
 
   // Parse all the attributes and types
   if (parser.parseOptionalAttrDict(result.attributes) ||
@@ -715,15 +714,13 @@ void ShiftOp::print(OpAsmPrinter &p) {
 LogicalResult ShiftOp::verify() {
   // Verify the types
   VectorType resultType = llvm::dyn_cast<VectorType>(getResult().getType());
-  if (!resultType)
-    return emitError("requires vector type");
+  if (!resultType) return emitError("requires vector type");
 
   // lhs, rhs and result must have the same type
   VectorType lhsType = llvm::dyn_cast<VectorType>(getLhs().getType());
   VectorType rhsType = llvm::dyn_cast<VectorType>(getRhs().getType());
 
-  if (!lhsType || !rhsType)
-    return emitError("requires vector type");
+  if (!lhsType || !rhsType) return emitError("requires vector type");
   if (lhsType != resultType || rhsType != resultType)
     return emitError("All vectors must have same type");
 
@@ -765,8 +762,7 @@ ParseResult ShiftOp::parse(OpAsmParser &parser, OperationState &result) {
   if (!lhsType || !rhsType || !resultType)
     return parser.emitError(typesLoc, "requires vector type");
 
-  if (!shiftType)
-    return parser.emitError(typesLoc, "requires integer type");
+  if (!shiftType) return parser.emitError(typesLoc, "requires integer type");
 
   // Populate the lhs vector, rhs vectors and shift in result
   if (parser.resolveOperand(lhs, lhsType, result.operands) ||

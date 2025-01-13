@@ -181,7 +181,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
-// Expect four `push_to_queue` operations on the same `row`, `direction`, and `channel` 
+// Expect four `push_to_queue` operations on the same `row`, `direction`, and `channel`
 // but with different `col` values. The order of the `col` values is 0, 3, 2, 1.
 // After sorting the `col` values, the batched `dma_wait` operation will be converted to
 // a single `tct_sync` operation, with the `col` set to 0 and `col_num` set to 4.

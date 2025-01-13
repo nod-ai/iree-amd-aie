@@ -37,7 +37,7 @@ iree_cc_test(
     test_0335_aie_dma_tile_dma_packet_switch_mode
   SRCS
     test_packet_switch_mode.cc
-  COPTS    
+  COPTS
     $<$<PLATFORM_ID:Linux>:-Wno-format>
     $<$<PLATFORM_ID:Darwin>:-Wno-format>
     $<$<PLATFORM_ID:Windows>:/wd4777>

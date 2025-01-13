@@ -15,8 +15,8 @@ module {
 
 // -----
 
-// Shim tile (0, 0) has two producer (MM2S) channels, 
-// both of which are already utilized by existing circuit flows. 
+// Shim tile (0, 0) has two producer (MM2S) channels,
+// both of which are already utilized by existing circuit flows.
 // No producer DMA channel is available for route-shim-to-tile-ctrl.
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
@@ -44,7 +44,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
-// Successfully inserted six packet flows from shim DMA channels to tile CTRL channels, 
+// Successfully inserted six packet flows from shim DMA channels to tile CTRL channels,
 // and one circuit flow from shim CTRL to shim SOUTH 0.
 // CHECK-LABEL: @column_control_overlay
 // CHECK:    %[[C0:.*]] = arith.constant 0 : index

@@ -32,10 +32,10 @@ table ExecutableDef {
   // A map of entry point ordinals to the indices of the containing XCLBINs (the following field).
   // This list has the same size as the entry_points list.
   // This list currently is just a range (0, number of entry points] but will change when we start doing
-  // kernel merging in the backend. 
+  // kernel merging in the backend.
   pdi_indices:[uint32];
 
-  
+
   // PDI strings of the entry points.
   pdis: [PdiDef];
 

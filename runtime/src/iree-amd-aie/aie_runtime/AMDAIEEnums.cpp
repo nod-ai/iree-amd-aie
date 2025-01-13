@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "iree-amd-aie/aie_runtime/AMDAIEEnums.h"
+
 #include "mlir/Dialect/Arith/IR/Arith.h"
 
 #define GET_ATTRDEF_CLASSES

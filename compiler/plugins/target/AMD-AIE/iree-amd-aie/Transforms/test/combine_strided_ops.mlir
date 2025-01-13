@@ -473,7 +473,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // DMA ordering checks
 //===----------------------------------------------------------------------===//
 
-// We combine across wait operations, which should be ok as no other actor should 
+// We combine across wait operations, which should be ok as no other actor should
 // touch the circular DMA in between. Therefore, the wait can be removed.
 // CHECK-LABEL: @wait_after_first
 // CHECK:       %[[CONNECTION:.+]] = amdaie.connection
@@ -568,7 +568,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 //===----------------------------------------------------------------------===//
 // npu.circular_dma_cpy_nd
-// Note: only a few checks as most logic is the same for 
+// Note: only a few checks as most logic is the same for
 // `npu.circular_dma_cpy_nd` and `npu.dma_cpy_nd`.
 //===----------------------------------------------------------------------===//
 

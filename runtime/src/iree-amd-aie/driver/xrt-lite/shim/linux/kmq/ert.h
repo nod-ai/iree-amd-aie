@@ -855,20 +855,23 @@ uint32_t ert_base_addr = 0;
 #define ERT_INTC_CU_0_31_IPR (ERT_INTC_CU_0_31_ADDR + 0x4)  /* pending */
 #define ERT_INTC_CU_0_31_IER (ERT_INTC_CU_0_31_ADDR + 0x8)  /* enable */
 #define ERT_INTC_CU_0_31_IAR (ERT_INTC_CU_0_31_ADDR + 0x0C) /* acknowledge */
-#define ERT_INTC_CU_0_31_MER (ERT_INTC_CU_0_31_ADDR + 0x1C) /* master enable \
-                                                             */
+#define ERT_INTC_CU_0_31_MER                      \
+  (ERT_INTC_CU_0_31_ADDR + 0x1C) /* master enable \
+                                  */
 
-#define ERT_INTC_CU_32_63_IPR (ERT_INTC_CU_32_63_ADDR + 0x4)  /* pending */
-#define ERT_INTC_CU_32_63_IER (ERT_INTC_CU_32_63_ADDR + 0x8)  /* enable */
-#define ERT_INTC_CU_32_63_IAR (ERT_INTC_CU_32_63_ADDR + 0x0C) /* acknowledge \
-                                                               */
+#define ERT_INTC_CU_32_63_IPR (ERT_INTC_CU_32_63_ADDR + 0x4) /* pending */
+#define ERT_INTC_CU_32_63_IER (ERT_INTC_CU_32_63_ADDR + 0x8) /* enable */
+#define ERT_INTC_CU_32_63_IAR                    \
+  (ERT_INTC_CU_32_63_ADDR + 0x0C) /* acknowledge \
+                                   */
 #define ERT_INTC_CU_32_63_MER \
   (ERT_INTC_CU_32_63_ADDR + 0x1C) /* master enable */
 
-#define ERT_INTC_CU_64_95_IPR (ERT_INTC_CU_64_95_ADDR + 0x4)  /* pending */
-#define ERT_INTC_CU_64_95_IER (ERT_INTC_CU_64_95_ADDR + 0x8)  /* enable */
-#define ERT_INTC_CU_64_95_IAR (ERT_INTC_CU_64_95_ADDR + 0x0C) /* acknowledge \
-                                                               */
+#define ERT_INTC_CU_64_95_IPR (ERT_INTC_CU_64_95_ADDR + 0x4) /* pending */
+#define ERT_INTC_CU_64_95_IER (ERT_INTC_CU_64_95_ADDR + 0x8) /* enable */
+#define ERT_INTC_CU_64_95_IAR                    \
+  (ERT_INTC_CU_64_95_ADDR + 0x0C) /* acknowledge \
+                                   */
 #define ERT_INTC_CU_64_95_MER \
   (ERT_INTC_CU_64_95_ADDR + 0x1C) /* master enable */
 

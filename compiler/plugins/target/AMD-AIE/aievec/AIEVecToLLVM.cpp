@@ -798,12 +798,12 @@ class ShuffleOpConversion
 };
 
 class ShiftOpConversion : public mlir::ConvertOpToLLVMPattern<aievec::ShiftOp> {
-public:
+ public:
   using ConvertOpToLLVMPattern<aievec::ShiftOp>::ConvertOpToLLVMPattern;
 
-  LogicalResult
-  matchAndRewrite(aievec::ShiftOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(
+      aievec::ShiftOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
 
     Value result = op.getResult();
@@ -856,12 +856,12 @@ public:
 };
 
 class ExtOpConversion : public mlir::ConvertOpToLLVMPattern<aievec::ExtOp> {
-public:
+ public:
   using ConvertOpToLLVMPattern<aievec::ExtOp>::ConvertOpToLLVMPattern;
 
-  LogicalResult
-  matchAndRewrite(aievec::ExtOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(
+      aievec::ExtOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
 
     Value src = adaptor.getSource();
@@ -954,7 +954,6 @@ public:
     return success();
   }
 };
-
 
 void populateAIEVecToLLVMConversionPatterns(mlir::LLVMTypeConverter &converter,
                                             mlir::RewritePatternSet &patterns) {

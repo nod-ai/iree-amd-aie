@@ -86,7 +86,7 @@ module {
 //       CHECK:       amdaie.dma_cpy_nd
 //       CHECK:       %[[L1_OBJECTFIFO_0:.*]] = amdaie.logicalobjectfifo.from_memref %[[L1_ALLOC]], {%[[TILE_0]]}
 //       CHECK:       %[[DMA_CPY_ND_L2_TO_L1_0:.*]] = amdaie.dma_cpy_nd(
-//  CHECK-SAME:                                         %[[L1_OBJECTFIFO_0]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1] 
+//  CHECK-SAME:                                         %[[L1_OBJECTFIFO_0]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1]
 //  CHECK-SAME:                                         %[[L2_OBJECTFIFO_0]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [2048, 1024, 4, 128, 32, 1]
 //       CHECK:       amdaie.core(%[[TILE_0]], in : [%{{.*}}, %{{.*}}, %[[DMA_CPY_ND_L2_TO_L1_0]]], out :
 //       CHECK:         linalg.generic
@@ -242,7 +242,7 @@ module {
 //       CHECK:       }
 //       CHECK:       %[[L1_OBJECTFIFO_0:.*]] = amdaie.logicalobjectfifo.from_memref %[[L1_ALLOC]], {%[[TILE_1]]}
 //       CHECK:       %[[DMA_CPY_ND_L2_TO_L1_0:.*]] = amdaie.dma_cpy_nd(
-//  CHECK-SAME:                                          %[[L1_OBJECTFIFO_0]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1] 
+//  CHECK-SAME:                                          %[[L1_OBJECTFIFO_0]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1]
 //  CHECK-SAME:                                          %[[L2_OBJECTFIFO_0]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [2048, 1024, 4, 128, 32, 1]
 //       CHECK:       amdaie.core(%[[TILE_1]], in : [%{{.*}}, %{{.*}}, %[[DMA_CPY_ND_L2_TO_L1_0]]], out :
 //       CHECK:         linalg.generic
@@ -254,7 +254,7 @@ module {
 //       CHECK:       }
 //       CHECK:       %[[L1_OBJECTFIFO_1:.*]] = amdaie.logicalobjectfifo.from_memref %[[L1_ALLOC]], {%[[TILE_0]]}
 //       CHECK:       %[[DMA_CPY_ND_L2_TO_L1_1:.*]] = amdaie.dma_cpy_nd(
-//  CHECK-SAME:                                          %[[L1_OBJECTFIFO_1]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1] 
+//  CHECK-SAME:                                          %[[L1_OBJECTFIFO_1]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1]
 //  CHECK-SAME:                                          %[[L2_OBJECTFIFO_1]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [2048, 1024, 4, 128, 32, 1]
 //       CHECK:       amdaie.core(%[[TILE_0]], in : [%{{.*}}, %{{.*}}, %[[DMA_CPY_ND_L2_TO_L1_1]]], out :
 //       CHECK:         linalg.generic
@@ -262,7 +262,7 @@ module {
 //       CHECK:       }
 //       CHECK:       %[[L1_OBJECTFIFO_2:.*]] = amdaie.logicalobjectfifo.from_memref %[[L1_ALLOC]], {%[[TILE_2]]}
 //       CHECK:       %[[DMA_CPY_ND_L2_TO_L1_2:.*]] = amdaie.dma_cpy_nd(
-//  CHECK-SAME:                                          %[[L1_OBJECTFIFO_2]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1] 
+//  CHECK-SAME:                                          %[[L1_OBJECTFIFO_2]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1]
 //  CHECK-SAME:                                          %[[L2_OBJECTFIFO_2]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [2048, 1024, 4, 128, 32, 1]
 //       CHECK:       amdaie.core(%[[TILE_2]], in : [%{{.*}}, %{{.*}}, %[[DMA_CPY_ND_L2_TO_L1_2]]], out :
 //       CHECK:         linalg.generic
@@ -270,7 +270,7 @@ module {
 //       CHECK:       }
 //       CHECK:       %[[L1_OBJECTFIFO_3:.*]] = amdaie.logicalobjectfifo.from_memref %[[L1_ALLOC]], {%[[TILE_3]]}
 //       CHECK:       %[[DMA_CPY_ND_L2_TO_L1_3:.*]] = amdaie.dma_cpy_nd(
-//  CHECK-SAME:                                          %[[L1_OBJECTFIFO_3]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1] 
+//  CHECK-SAME:                                          %[[L1_OBJECTFIFO_3]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1]
 //  CHECK-SAME:                                          %[[L2_OBJECTFIFO_3]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [2048, 1024, 4, 128, 32, 1]
 //       CHECK:       amdaie.core(%[[TILE_3]], in : [%{{.*}}, %{{.*}}, %[[DMA_CPY_ND_L2_TO_L1_3]]], out :
 //       CHECK:         linalg.generic
@@ -474,7 +474,7 @@ module {
 //       CHECK:       }
 //       CHECK:       %[[L1_OBJECTFIFO_0:.*]] = amdaie.logicalobjectfifo.from_memref %[[L1_ALLOC]], {%[[TILE_1]]}
 //       CHECK:       %[[DMA_CPY_ND_L2_TO_L1_0:.*]] = amdaie.dma_cpy_nd(
-//  CHECK-SAME:                                          %[[L1_OBJECTFIFO_0]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1] 
+//  CHECK-SAME:                                          %[[L1_OBJECTFIFO_0]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1]
 //  CHECK-SAME:                                          %[[L2_OBJECTFIFO_0]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [2048, 1024, 4, 128, 32, 1]
 //       CHECK:       amdaie.core(%[[TILE_1]], in : [%{{.*}}, %{{.*}}, %[[DMA_CPY_ND_L2_TO_L1_0]]], out :
 //       CHECK:         linalg.generic
@@ -486,7 +486,7 @@ module {
 //       CHECK:       }
 //       CHECK:       %[[L1_OBJECTFIFO_1:.*]] = amdaie.logicalobjectfifo.from_memref %[[L1_ALLOC]], {%[[TILE_0]]}
 //       CHECK:       %[[DMA_CPY_ND_L2_TO_L1_1:.*]] = amdaie.dma_cpy_nd(
-//  CHECK-SAME:                                          %[[L1_OBJECTFIFO_1]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1] 
+//  CHECK-SAME:                                          %[[L1_OBJECTFIFO_1]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1]
 //  CHECK-SAME:                                          %[[L2_OBJECTFIFO_1]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [2048, 1024, 4, 128, 32, 1]
 //       CHECK:       amdaie.core(%[[TILE_0]], in : [%{{.*}}, %{{.*}}, %[[DMA_CPY_ND_L2_TO_L1_1]]], out :
 //       CHECK:         linalg.generic
@@ -494,7 +494,7 @@ module {
 //       CHECK:       }
 //       CHECK:       %[[L1_OBJECTFIFO_2:.*]] = amdaie.logicalobjectfifo.from_memref %[[L1_ALLOC]], {%[[TILE_2]]}
 //       CHECK:       %[[DMA_CPY_ND_L2_TO_L1_2:.*]] = amdaie.dma_cpy_nd(
-//  CHECK-SAME:                                          %[[L1_OBJECTFIFO_2]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1] 
+//  CHECK-SAME:                                          %[[L1_OBJECTFIFO_2]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1]
 //  CHECK-SAME:                                          %[[L2_OBJECTFIFO_2]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [2048, 1024, 4, 128, 32, 1]
 //       CHECK:       amdaie.core(%[[TILE_2]], in : [%{{.*}}, %{{.*}}, %[[DMA_CPY_ND_L2_TO_L1_2]]], out :
 //       CHECK:         linalg.generic
@@ -502,7 +502,7 @@ module {
 //       CHECK:       }
 //       CHECK:       %[[L1_OBJECTFIFO_3:.*]] = amdaie.logicalobjectfifo.from_memref %[[L1_ALLOC]], {%[[TILE_3]]}
 //       CHECK:       %[[DMA_CPY_ND_L2_TO_L1_3:.*]] = amdaie.dma_cpy_nd(
-//  CHECK-SAME:                                          %[[L1_OBJECTFIFO_3]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1] 
+//  CHECK-SAME:                                          %[[L1_OBJECTFIFO_3]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1]
 //  CHECK-SAME:                                          %[[L2_OBJECTFIFO_3]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [2048, 1024, 4, 128, 32, 1]
 //       CHECK:       amdaie.core(%[[TILE_3]], in : [%{{.*}}, %{{.*}}, %[[DMA_CPY_ND_L2_TO_L1_3]]], out :
 //       CHECK:         linalg.generic
@@ -682,7 +682,7 @@ module {
 //       CHECK:       amdaie.dma_cpy_nd
 //       CHECK:       %[[L1_OBJECTFIFO_0:.*]] = amdaie.logicalobjectfifo.from_memref %[[L1_ALLOC]], {%[[TILE_0]]}
 //       CHECK:       %[[DMA_CPY_ND_L2_TO_L1_0:.*]] = amdaie.dma_cpy_nd(
-//  CHECK-SAME:                                         %[[L1_OBJECTFIFO_0]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1] 
+//  CHECK-SAME:                                         %[[L1_OBJECTFIFO_0]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1]
 //  CHECK-SAME:                                         %[[L2_OBJECTFIFO_0]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [2048, 1024, 4, 128, 32, 1]
 //       CHECK:       amdaie.core(%[[TILE_0]], in : [%{{.*}}, %{{.*}}, %[[DMA_CPY_ND_L2_TO_L1_0]]], out :
 //       CHECK:         linalg.generic
@@ -817,7 +817,7 @@ module {
 //       CHECK:       amdaie.dma_cpy_nd
 //       CHECK:       %[[L1_OBJECTFIFO_0:.*]] = amdaie.logicalobjectfifo.from_memref %[[L1_ALLOC]], {%[[TILE_0]]}
 //       CHECK:       %[[DMA_CPY_ND_L2_TO_L1_0:.*]] = amdaie.dma_cpy_nd(
-//  CHECK-SAME:                                         %[[L1_OBJECTFIFO_0]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1] 
+//  CHECK-SAME:                                         %[[L1_OBJECTFIFO_0]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1]
 //  CHECK-SAME:                                         %[[L2_OBJECTFIFO_0]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [2048, 1024, 4, 128, 32, 1]
 //       CHECK:       amdaie.core(%[[TILE_0]], in : [%{{.*}}, %{{.*}}, %[[DMA_CPY_ND_L2_TO_L1_0]]], out :
 //       CHECK:         linalg.generic
@@ -951,7 +951,7 @@ module {
 //       CHECK:       amdaie.dma_cpy_nd
 //       CHECK:       %[[L1_OBJECTFIFO_0:.*]] = amdaie.logicalobjectfifo.from_memref %[[L1_ALLOC]], {%[[TILE_0]]}
 //       CHECK:       %[[DMA_CPY_ND_L2_TO_L1_0:.*]] = amdaie.dma_cpy_nd(
-//  CHECK-SAME:                                         %[[L1_OBJECTFIFO_0]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1] 
+//  CHECK-SAME:                                         %[[L1_OBJECTFIFO_0]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1]
 //  CHECK-SAME:                                         %[[L2_OBJECTFIFO_0]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [2048, 1024, 4, 128, 32, 1]
 //       CHECK:       amdaie.core(%[[TILE_0]], in : [%{{.*}}, %{{.*}}, %[[DMA_CPY_ND_L2_TO_L1_0]]], out :
 //       CHECK:         linalg.generic

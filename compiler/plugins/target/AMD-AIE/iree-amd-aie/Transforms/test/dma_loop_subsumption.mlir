@@ -486,7 +486,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
-// Don't subsume if inter size (dim 0 in a four dimensional size array) or intra size 
+// Don't subsume if inter size (dim 0 in a four dimensional size array) or intra size
 // (dim 1, 2, 3 in a four dimensional size array) is too large.
 // CHECK-LABEL: @exceed_max_size_source
 // CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
@@ -530,7 +530,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
-// Don't subsume if inter size (dim 0 in a four dimensional size array) or intra size 
+// Don't subsume if inter size (dim 0 in a four dimensional size array) or intra size
 // (dim 1, 2, 3 in a four dimensional size array) is too large.
 // CHECK-LABEL: @exceed_max_size_target
 // CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
@@ -573,7 +573,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
-// Don't subsume if inter stride (dim 0 in a four dimensional size array) or intra stride 
+// Don't subsume if inter stride (dim 0 in a four dimensional size array) or intra stride
 // (dim 1, 2, 3 in a four dimensional size array) is too large.
 // CHECK:       #[[$MAP:.+]] = affine_map<(d0) -> (d0 * 1048577)>
 // CHECK-LABEL: @exceed_max_stride_source
@@ -628,7 +628,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
-// Don't subsume if inter stride (dim 0 in a four dimensional size array) or intra stride 
+// Don't subsume if inter stride (dim 0 in a four dimensional size array) or intra stride
 // (dim 1, 2, 3 in a four dimensional size array) is too large.
 // CHECK:       #[[$MAP:.+]] = affine_map<(d0) -> (d0 * 1048577)>
 // CHECK-LABEL: @exceed_max_stride_target
@@ -684,7 +684,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // -----
 
 //===----------------------------------------------------------------------===//
-// Checks for loops with no dependencies, which should be subsumed. 
+// Checks for loops with no dependencies, which should be subsumed.
 //===----------------------------------------------------------------------===//
 
 // Subsume loop iteration into strided op without dependency.
@@ -1161,7 +1161,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 }
 
 //===----------------------------------------------------------------------===//
-// Checks for dependencies via induction variables (no affine.apply) on both 
+// Checks for dependencies via induction variables (no affine.apply) on both
 // source and target sides.
 //===----------------------------------------------------------------------===//
 

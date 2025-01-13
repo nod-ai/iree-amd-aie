@@ -49,21 +49,21 @@ pdl.pattern @mlp : benefit(1) {
   //   tensor<1x512x16384xbf16>) outs(%64 : tensor<1x16384x16384xbf16>) ->
   //   tensor<1x16384x16384xbf16>
   // ```
-  
+
   %lhs_type = pdl.type : tensor<1x16384x512xbf16>
   %rhs_type = pdl.type : tensor<1x512x16384xbf16>
   %matmul_type = pdl.type : tensor<1x16384x16384xf32>
   %fixed_M = pdl.attribute = 16384 : i32
   %fixed_N = pdl.attribute = 16384 : i32
   %fixed_K = pdl.attribute = 512 : i32
-  
+
   // %index_type = pdl.type : index
 
   %zero_attr = pdl.attribute = 0.0 : f32
   %zero_type = pdl.type : f32
   %zero_op = pdl.operation "arith.constant" {"value" = %zero_attr} -> (%zero_type : !pdl.type)
   %zero = pdl.result 0 of %zero_op
-  
+
   %empty = pdl.operand
   %fill_op = pdl.operation "linalg.fill" (%zero, %empty : !pdl.value, !pdl.value) -> (%matmul_type : !pdl.type)
   %fill = pdl.result 0 of %fill_op
@@ -71,7 +71,7 @@ pdl.pattern @mlp : benefit(1) {
   %lhs = pdl.operand : %lhs_type
   %rhs = pdl.operand : %rhs_type
   %matmul = pdl.operation "linalg.batch_matmul" (%lhs, %rhs, %fill : !pdl.value, !pdl.value, !pdl.value) -> (%matmul_type : !pdl.type)
-  
+
   pdl.rewrite %matmul {
     %i32_type = pdl.type : i32
     %m_op = pdl.operation "arith.constant" {"value" = %fixed_M} -> (%i32_type : !pdl.type)

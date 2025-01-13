@@ -105,9 +105,9 @@ void printObjectFifoProducerTile(mlir::OpAsmPrinter &printer,
     llvm::SmallVectorImpl<mlir::OpAsmParser::UnresolvedOperand> &tiles,
     BDDimLayoutArrayArrayAttr &dimensions);
 
-[[maybe_unused]] void printObjectFifoConsumerTiles(mlir::OpAsmPrinter &printer,
-                                  mlir::Operation *op, mlir::OperandRange tiles,
-                                  BDDimLayoutArrayArrayAttr dimsPerTileAttr);
+[[maybe_unused]] void printObjectFifoConsumerTiles(
+    mlir::OpAsmPrinter &printer, mlir::Operation *op, mlir::OperandRange tiles,
+    BDDimLayoutArrayArrayAttr dimsPerTileAttr);
 
 TileOp getTileOp(mlir::Operation &op);
 int32_t getBufferElementTypeWidthInBytes(DMABDOp &op);

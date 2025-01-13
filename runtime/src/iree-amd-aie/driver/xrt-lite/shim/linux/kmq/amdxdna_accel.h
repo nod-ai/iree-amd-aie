@@ -30,8 +30,8 @@ extern "C" {
  * Example code:
  *
  * struct amdxdna_drm_example_data {
- *	.ext = (uintptr_t)&example_data_ext;
- *	...
+ *  .ext = (uintptr_t)&example_data_ext;
+ *  ...
  * };
  *
  * We don't have extension now. The extension struct will define in the future.
@@ -174,7 +174,7 @@ enum amdxdna_drm_config_hwctx_param {
  *              structure passed in via param_val.
  * @param_val: A structure specified by the param_type struct member.
  * @param_val_size: Size of the parameter buffer pointed to by the param_val.
- *		    If param_val is not a pointer, driver can ignore this.
+ *                  If param_val is not a pointer, driver can ignore this.
  * @pad: Structure padding.
  *
  * Note: if the param_val is a pointer pointing to a buffer, the maximum size
@@ -189,11 +189,11 @@ struct amdxdna_drm_config_hwctx {
 };
 
 /*
- * AMDXDNA_BO_SHMEM:	DRM GEM SHMEM bo
+ * AMDXDNA_BO_SHMEM:  DRM GEM SHMEM bo
  * AMDXDNA_BO_DEV_HEAP: Shared host memory to device as heap memory
- * AMDXDNA_BO_DEV_BO:	Allocated from BO_DEV_HEAP
- * AMDXDNA_BO_CMD:	User and driver accessible bo
- * AMDXDNA_BO_DMA:	DRM GEM DMA bo
+ * AMDXDNA_BO_DEV_BO: Allocated from BO_DEV_HEAP
+ * AMDXDNA_BO_CMD:  User and driver accessible bo
+ * AMDXDNA_BO_DMA:  DRM GEM DMA bo
  */
 enum amdxdna_bo_type {
   AMDXDNA_BO_INVALID = 0,

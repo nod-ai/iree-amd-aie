@@ -297,15 +297,15 @@ module attributes {hal.executable.target = #executable_target_amdaie_pdi_fb} {
 // Tests splitting a producer DMA with the consumer DMAs' offsets depending on a loop induction variable through an affine expression with a scale/stride.
 // This results in a splitting factor that is different from the size of the dimension being split and more complex splitting along the stride.
 // For example, if the data in a 4x4 objectFifo at some point is:
-// 
+//
 // [0, 0, 0, 0]
 // [1, 1, 1, 1]
 // [2, 2, 2, 2]
 // [3, 3, 3, 3]
-// 
+//
 // and for an `index` from 0 -> 2, two consumer DMAs access the following rows:
-// 
-// consumer 1: 2 * `index`  (thus rows 0 and 2) 
+//
+// consumer 1: 2 * `index`  (thus rows 0 and 2)
 // consumer 2: 2 * `index` + 1  (thus rows 1 and 3)
 //
 // Therefore, the objectFifo is split into two objectFifos in the following way:

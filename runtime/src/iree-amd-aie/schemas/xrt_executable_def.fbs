@@ -31,28 +31,28 @@ table ExecutableDef {
   // A map of entry point ordinals to string names as used in XCLBIN(s)
   entry_points:[string];
 
-  // xclbin container format (also known as AXLF) is defined in file xclbin.h. 
+  // xclbin container format (also known as AXLF) is defined in file xclbin.h.
   // The file uses xclbin2 as the magic word. AXLF is sections based extensible container.
   // Different sections store different parts of compiled application like bitstreams for PL (FPGA fabric),
-  // ELF for AIE tiles and embedded processors like Microblaze. 
-  // It also contains well structured metadata to define memory topology, 
-  // IP layout of instantiated peripherals and compute kernels, 
+  // ELF for AIE tiles and embedded processors like Microblaze.
+  // It also contains well structured metadata to define memory topology,
+  // IP layout of instantiated peripherals and compute kernels,
   // clocking details and kernel connectivity for each compute kernel.
 
-  // The compiler generates unique xclbin file tagged with UUID for every application compiled. 
-  // Each xclbin also has another UUID which defines its compatbility to the Shell. 
-  // Vitis compiler, v++ generates this file as part of linking stage. 
-  // End-users load this file via XRT xclLoadXclbin() API. 
-  // XRT userspace and kernel space components consume different sections of xclbin by 
+  // The compiler generates unique xclbin file tagged with UUID for every application compiled.
+  // Each xclbin also has another UUID which defines its compatbility to the Shell.
+  // Vitis compiler, v++ generates this file as part of linking stage.
+  // End-users load this file via XRT xclLoadXclbin() API.
+  // XRT userspace and kernel space components consume different sections of xclbin by
   // programming the hardware and initializing key data structures in XRT userspace libraries and XRT kernel drivers.
 
   // A map of entry point ordinals to the indices of the containing XCLBINs (the following field).
   // This list has the same size as the entry_points list.
   // This list currently is just a range (0, number of entry points] but will change when we start doing
-  // kernel merging in the backend. 
+  // kernel merging in the backend.
   xclbin_indices:[uint32];
 
-  
+
   // XCLBIN strings of the entry points.
   xclbins: [XclbinDef];
 

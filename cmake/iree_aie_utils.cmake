@@ -42,4 +42,3 @@ function(replace_string_in_file _file _match_string _replace_string)
   file(WRITE "${_file}" "${_file_contents}")
   file(LOCK "${_lock_file}" RELEASE)
 endfunction()
-

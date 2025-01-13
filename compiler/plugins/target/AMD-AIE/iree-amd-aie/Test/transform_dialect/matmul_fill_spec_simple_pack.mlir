@@ -178,4 +178,3 @@ module attributes { transform.with_named_sequence } {
 //       CHECK:   memref.dealloc %{{.*}} : memref<1x1x64x512xi32, 1>
 //       CHECK:   memref.dealloc %{{.*}} : memref<1x1x64x64xi32, 1>
 //       CHECK: }
-

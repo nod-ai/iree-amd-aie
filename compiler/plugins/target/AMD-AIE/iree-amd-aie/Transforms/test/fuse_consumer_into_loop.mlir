@@ -106,7 +106,7 @@ module {
 // CHECK-SAME:              ins(%[[MATMUL]], %[[OPERAND2]] :
 // CHECK-SAME:              outs(%[[OPERAND3]] :
 // CHECK:                 {
-// CHECK:                   arith.addi  
+// CHECK:                   arith.addi
 // CHECK:                 }
 // CHECK-DAG:             %[[YIELD_MATMUL:.*]] = tensor.insert_slice %[[MATMUL]] into %[[ITER_ARG_1]]
 // CHECK-DAG:             %[[YIELD_ELEM:.*]] = tensor.insert_slice %[[FUSED_CONSUMER]] into %[[ITER_ARG_2]]
@@ -300,13 +300,13 @@ module {
 // CHECK:         %[[SECOND_LOOP:.*]]:3 = scf.forall (%[[IV0:.*]], %[[IV1:.*]]) in (2, 2) shared_outs(%[[ITER_ARG_1:.*]] = %[[FIRST_LOOP]], %[[ITER_ARG_2:.*]] = %[[ELEM_OUT]], %[[ITER_ARG_3:.*]] = %[[UNPACK_OUT]])
 // CHECK-SAME:    {
 // CHECK:           %[[MATMUL:.*]] = linalg.generic
-// CHECK:           %[[OPERAND2:.*]] = tensor.extract_slice %[[ELEM_OUT]][0, 0, %[[IV1]], %[[IV0]], 0, 0] [1, 1, 4, 8, 4, 8] [1, 1, 1, 1, 1, 1] 
+// CHECK:           %[[OPERAND2:.*]] = tensor.extract_slice %[[ELEM_OUT]][0, 0, %[[IV1]], %[[IV0]], 0, 0] [1, 1, 4, 8, 4, 8] [1, 1, 1, 1, 1, 1]
 // CHECK:           %[[OPERAND3:.*]] = tensor.extract_slice %[[ITER_ARG_2]][0, 0, %[[IV1]], %[[IV0]], 0, 0] [1, 1, 4, 8, 4, 8] [1, 1, 1, 1, 1, 1]
 // CHECK:           %[[FUSED_CONSUMER:.*]] = linalg.generic
 // CHECK-SAME:        ins(%[[MATMUL]], %[[OPERAND2]] :
 // CHECK-SAME:        outs(%[[OPERAND3]] :
 // CHECK:           {
-// CHECK:             arith.addi  
+// CHECK:             arith.addi
 // CHECK:           }
 // CHECK-DAG:       %[[iv0:.*]] = affine.apply #[[UNPACK_RESULT_MAP0]](%[[IV0]])
 // CHECK-DAG:       %[[iv1:.*]] = affine.apply #[[UNPACK_RESULT_MAP1]](%[[IV1]])

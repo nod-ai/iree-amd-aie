@@ -20,12 +20,12 @@ aie.device(npu1_4col) {
   %lock_0_2_5 = aie.lock(%tile_0_2, 2) {init = 0 : i8}
   %lock_0_2_6 = aie.lock(%tile_0_2, 1) {init = 1 : i8}
   %lock_0_2_7 = aie.lock(%tile_0_2, 0) {init = 0 : i8}
-  %buf5 = aie.buffer(%tile_0_1) {address = 0 : i32, mem_bank = 0 : i32, sym_name = "buf5"} : memref<8x16xi32> 
-  %buf4 = aie.buffer(%tile_1_1) {address = 0 : i32, mem_bank = 0 : i32, sym_name = "buf4"} : memref<16x32xi32> 
-  %buf3 = aie.buffer(%tile_2_1) {address = 0 : i32, mem_bank = 0 : i32, sym_name = "buf3"} : memref<8x32xi32> 
-  %buf2 = aie.buffer(%tile_0_2) {address = 1024 : i32, mem_bank = 0 : i32, sym_name = "buf2"} : memref<2x2x4x8xi32> 
-  %buf1 = aie.buffer(%tile_0_2) {address = 1536 : i32, mem_bank = 0 : i32, sym_name = "buf1"} : memref<8x2x8x4xi32> 
-  %buf0 = aie.buffer(%tile_0_2) {address = 3584 : i32, mem_bank = 0 : i32, sym_name = "buf0"} : memref<8x2x4x4xi32> 
+  %buf5 = aie.buffer(%tile_0_1) {address = 0 : i32, mem_bank = 0 : i32, sym_name = "buf5"} : memref<8x16xi32>
+  %buf4 = aie.buffer(%tile_1_1) {address = 0 : i32, mem_bank = 0 : i32, sym_name = "buf4"} : memref<16x32xi32>
+  %buf3 = aie.buffer(%tile_2_1) {address = 0 : i32, mem_bank = 0 : i32, sym_name = "buf3"} : memref<8x32xi32>
+  %buf2 = aie.buffer(%tile_0_2) {address = 1024 : i32, mem_bank = 0 : i32, sym_name = "buf2"} : memref<2x2x4x8xi32>
+  %buf1 = aie.buffer(%tile_0_2) {address = 1536 : i32, mem_bank = 0 : i32, sym_name = "buf1"} : memref<8x2x8x4xi32>
+  %buf0 = aie.buffer(%tile_0_2) {address = 3584 : i32, mem_bank = 0 : i32, sym_name = "buf0"} : memref<8x2x4x4xi32>
   %mem_0_2 = aie.mem(%tile_0_2) {
     %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb5, repeat_count = 1)
   ^bb1:  // 2 preds: ^bb0, ^bb1
@@ -321,210 +321,210 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_EnableShimDmaToAieStrmPort with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 0), connect.dst.channel=3
 // CHECK: XAIE API: XAie_EnableShimDmaToAieStrmPort with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 0), connect.dst.channel=7
 // CHECK: XAIE API: XAie_EnableAieToShimDmaStrmPort with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 0), connect.src.channel=2
-// CHECK: cdo-driver: (NOP Command): Payload Length: 0 
-// CHECK: cdo-driver: (NOP Command): Payload Length: 0 
-// CHECK: cdo-driver: (Write64): Address:  0x00000000021C0010 Data:  0x00000001  
-// CHECK: cdo-driver: (Write64): Address:  0x00000000021C0000 Data:  0x00000000  
-// CHECK: cdo-driver: (Write64): Address:  0x00000000001C0010 Data:  0x00000001  
-// CHECK: cdo-driver: (Write64): Address:  0x00000000001C0000 Data:  0x00000000  
-// CHECK: cdo-driver: (Write64): Address:  0x00000000041C0010 Data:  0x00000001  
-// CHECK: cdo-driver: (Write64): Address:  0x00000000041C0000 Data:  0x00000000  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000021F050 Data:  0x00000001  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000021F040 Data:  0x00000000  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000021F030 Data:  0x00000001  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000021F020 Data:  0x00000000  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000021F010 Data:  0x00000001  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000021F000 Data:  0x00000000  
-// CHECK: cdo-driver: (NOP Command): Payload Length: 2 
+// CHECK: cdo-driver: (NOP Command): Payload Length: 0
+// CHECK: cdo-driver: (NOP Command): Payload Length: 0
+// CHECK: cdo-driver: (Write64): Address:  0x00000000021C0010 Data:  0x00000001
+// CHECK: cdo-driver: (Write64): Address:  0x00000000021C0000 Data:  0x00000000
+// CHECK: cdo-driver: (Write64): Address:  0x00000000001C0010 Data:  0x00000001
+// CHECK: cdo-driver: (Write64): Address:  0x00000000001C0000 Data:  0x00000000
+// CHECK: cdo-driver: (Write64): Address:  0x00000000041C0010 Data:  0x00000001
+// CHECK: cdo-driver: (Write64): Address:  0x00000000041C0000 Data:  0x00000000
+// CHECK: cdo-driver: (Write64): Address:  0x000000000021F050 Data:  0x00000001
+// CHECK: cdo-driver: (Write64): Address:  0x000000000021F040 Data:  0x00000000
+// CHECK: cdo-driver: (Write64): Address:  0x000000000021F030 Data:  0x00000001
+// CHECK: cdo-driver: (Write64): Address:  0x000000000021F020 Data:  0x00000000
+// CHECK: cdo-driver: (Write64): Address:  0x000000000021F010 Data:  0x00000001
+// CHECK: cdo-driver: (Write64): Address:  0x000000000021F000 Data:  0x00000000
+// CHECK: cdo-driver: (NOP Command): Payload Length: 2
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000021D000  Size: 6
-// CHECK: cdo-driver:     Address: 0x000000000021D000  Data is: 0x00400080 
-// CHECK: cdo-driver:     Address: 0x000000000021D004  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x000000000021D008  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x000000000021D00C  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x000000000021D010  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x000000000021D014  Data is: 0x06045FE3 
+// CHECK: cdo-driver:     Address: 0x000000000021D000  Data is: 0x00400080
+// CHECK: cdo-driver:     Address: 0x000000000021D004  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x000000000021D008  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x000000000021D00C  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x000000000021D010  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x000000000021D014  Data is: 0x06045FE3
 
-// CHECK: cdo-driver: (NOP Command): Payload Length: 2 
+// CHECK: cdo-driver: (NOP Command): Payload Length: 2
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000021D020  Size: 6
-// CHECK: cdo-driver:     Address: 0x000000000021D020  Data is: 0x00600100 
-// CHECK: cdo-driver:     Address: 0x000000000021D024  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x000000000021D028  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x000000000021D02C  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x000000000021D030  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x000000000021D034  Data is: 0x16001FE5 
+// CHECK: cdo-driver:     Address: 0x000000000021D020  Data is: 0x00600100
+// CHECK: cdo-driver:     Address: 0x000000000021D024  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x000000000021D028  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x000000000021D02C  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x000000000021D030  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x000000000021D034  Data is: 0x16001FE5
 
-// CHECK: cdo-driver: (NOP Command): Payload Length: 2 
+// CHECK: cdo-driver: (NOP Command): Payload Length: 2
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000021D040  Size: 6
-// CHECK: cdo-driver:     Address: 0x000000000021D040  Data is: 0x00A00100 
-// CHECK: cdo-driver:     Address: 0x000000000021D044  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x000000000021D048  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x000000000021D04C  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x000000000021D050  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x000000000021D054  Data is: 0x0E048000 
+// CHECK: cdo-driver:     Address: 0x000000000021D040  Data is: 0x00A00100
+// CHECK: cdo-driver:     Address: 0x000000000021D044  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x000000000021D048  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x000000000021D04C  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x000000000021D050  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x000000000021D054  Data is: 0x0E048000
 
-// CHECK: cdo-driver: (NOP Command): Payload Length: 2 
+// CHECK: cdo-driver: (NOP Command): Payload Length: 2
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000021D060  Size: 6
-// CHECK: cdo-driver:     Address: 0x000000000021D060  Data is: 0x00E00040 
-// CHECK: cdo-driver:     Address: 0x000000000021D064  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x000000000021D068  Data is: 0x0003E000 
-// CHECK: cdo-driver:     Address: 0x000000000021D06C  Data is: 0x01008003 
-// CHECK: cdo-driver:     Address: 0x000000000021D070  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x000000000021D074  Data is: 0x26001FE0 
+// CHECK: cdo-driver:     Address: 0x000000000021D060  Data is: 0x00E00040
+// CHECK: cdo-driver:     Address: 0x000000000021D064  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x000000000021D068  Data is: 0x0003E000
+// CHECK: cdo-driver:     Address: 0x000000000021D06C  Data is: 0x01008003
+// CHECK: cdo-driver:     Address: 0x000000000021D070  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x000000000021D074  Data is: 0x26001FE0
 
-// CHECK: cdo-driver: (NOP Command): Payload Length: 2 
+// CHECK: cdo-driver: (NOP Command): Payload Length: 2
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000021D080  Size: 6
-// CHECK: cdo-driver:     Address: 0x000000000021D080  Data is: 0x00E20040 
-// CHECK: cdo-driver:     Address: 0x000000000021D084  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x000000000021D088  Data is: 0x0003E000 
-// CHECK: cdo-driver:     Address: 0x000000000021D08C  Data is: 0x01008003 
-// CHECK: cdo-driver:     Address: 0x000000000021D090  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x000000000021D094  Data is: 0x2E000000 
+// CHECK: cdo-driver:     Address: 0x000000000021D080  Data is: 0x00E20040
+// CHECK: cdo-driver:     Address: 0x000000000021D084  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x000000000021D088  Data is: 0x0003E000
+// CHECK: cdo-driver:     Address: 0x000000000021D08C  Data is: 0x01008003
+// CHECK: cdo-driver:     Address: 0x000000000021D090  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x000000000021D094  Data is: 0x2E000000
 
-// CHECK: cdo-driver: (NOP Command): Payload Length: 2 
+// CHECK: cdo-driver: (NOP Command): Payload Length: 2
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000021D0A0  Size: 6
-// CHECK: cdo-driver:     Address: 0x000000000021D0A0  Data is: 0x00E40040 
-// CHECK: cdo-driver:     Address: 0x000000000021D0A4  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x000000000021D0A8  Data is: 0x0003E000 
-// CHECK: cdo-driver:     Address: 0x000000000021D0AC  Data is: 0x01008003 
-// CHECK: cdo-driver:     Address: 0x000000000021D0B0  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x000000000021D0B4  Data is: 0x36000000 
+// CHECK: cdo-driver:     Address: 0x000000000021D0A0  Data is: 0x00E40040
+// CHECK: cdo-driver:     Address: 0x000000000021D0A4  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x000000000021D0A8  Data is: 0x0003E000
+// CHECK: cdo-driver:     Address: 0x000000000021D0AC  Data is: 0x01008003
+// CHECK: cdo-driver:     Address: 0x000000000021D0B0  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x000000000021D0B4  Data is: 0x36000000
 
-// CHECK: cdo-driver: (NOP Command): Payload Length: 2 
+// CHECK: cdo-driver: (NOP Command): Payload Length: 2
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000021D0C0  Size: 6
-// CHECK: cdo-driver:     Address: 0x000000000021D0C0  Data is: 0x00E60040 
-// CHECK: cdo-driver:     Address: 0x000000000021D0C4  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x000000000021D0C8  Data is: 0x0003E000 
-// CHECK: cdo-driver:     Address: 0x000000000021D0CC  Data is: 0x01008003 
-// CHECK: cdo-driver:     Address: 0x000000000021D0D0  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x000000000021D0D4  Data is: 0x1E042000 
+// CHECK: cdo-driver:     Address: 0x000000000021D0C0  Data is: 0x00E60040
+// CHECK: cdo-driver:     Address: 0x000000000021D0C4  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x000000000021D0C8  Data is: 0x0003E000
+// CHECK: cdo-driver:     Address: 0x000000000021D0CC  Data is: 0x01008003
+// CHECK: cdo-driver:     Address: 0x000000000021D0D0  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x000000000021D0D4  Data is: 0x1E042000
 
-// CHECK: cdo-driver: (Write64): Address:  0x000000000021DE04 Data:  0x00010000  
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000021DE00  Mask: 0x00000000  Data: 0x00000001 
-// CHECK: cdo-driver: (Write64): Address:  0x000000000021DE0C Data:  0x00010001  
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000021DE08  Mask: 0x00000000  Data: 0x00000001 
-// CHECK: cdo-driver: (Write64): Address:  0x000000000021DE14 Data:  0x00010003  
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000021DE10  Mask: 0x00000000  Data: 0x00000001 
+// CHECK: cdo-driver: (Write64): Address:  0x000000000021DE04 Data:  0x00010000
+// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000021DE00  Mask: 0x00000000  Data: 0x00000001
+// CHECK: cdo-driver: (Write64): Address:  0x000000000021DE0C Data:  0x00010001
+// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000021DE08  Mask: 0x00000000  Data: 0x00000001
+// CHECK: cdo-driver: (Write64): Address:  0x000000000021DE14 Data:  0x00010003
+// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000021DE10  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x00000000041A0000  Size: 8
-// CHECK: cdo-driver:     Address: 0x00000000041A0000  Data is: 0x00000100 
-// CHECK: cdo-driver:     Address: 0x00000000041A0004  Data is: 0x000A0000 
-// CHECK: cdo-driver:     Address: 0x00000000041A0008  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x00000000041A000C  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x00000000041A0010  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x00000000041A0014  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x00000000041A0018  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x00000000041A001C  Data is: 0x8140FF41 
+// CHECK: cdo-driver:     Address: 0x00000000041A0000  Data is: 0x00000100
+// CHECK: cdo-driver:     Address: 0x00000000041A0004  Data is: 0x000A0000
+// CHECK: cdo-driver:     Address: 0x00000000041A0008  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x00000000041A000C  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x00000000041A0010  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x00000000041A0014  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x00000000041A0018  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x00000000041A001C  Data is: 0x8140FF41
 
-// CHECK: cdo-driver: (NOP Command): Payload Length: 0 
+// CHECK: cdo-driver: (NOP Command): Payload Length: 0
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x00000000041A0020  Size: 8
-// CHECK: cdo-driver:     Address: 0x00000000041A0020  Data is: 0x00000100 
-// CHECK: cdo-driver:     Address: 0x00000000041A0024  Data is: 0x001A0000 
-// CHECK: cdo-driver:     Address: 0x00000000041A0028  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x00000000041A002C  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x00000000041A0030  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x00000000041A0034  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x00000000041A0038  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x00000000041A003C  Data is: 0x8141FF40 
+// CHECK: cdo-driver:     Address: 0x00000000041A0020  Data is: 0x00000100
+// CHECK: cdo-driver:     Address: 0x00000000041A0024  Data is: 0x001A0000
+// CHECK: cdo-driver:     Address: 0x00000000041A0028  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x00000000041A002C  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x00000000041A0030  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x00000000041A0034  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x00000000041A0038  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x00000000041A003C  Data is: 0x8141FF40
 
-// CHECK: cdo-driver: (Write64): Address:  0x00000000041A0604 Data:  0x00010000  
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000041A0600  Mask: 0x00000000  Data: 0x00000001 
-// CHECK: cdo-driver: (Write64): Address:  0x00000000041A0634 Data:  0x00010001  
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000041A0630  Mask: 0x00000000  Data: 0x00000001 
-// CHECK: cdo-driver: (NOP Command): Payload Length: 2 
+// CHECK: cdo-driver: (Write64): Address:  0x00000000041A0604 Data:  0x00010000
+// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000041A0600  Mask: 0x00000000  Data: 0x00000001
+// CHECK: cdo-driver: (Write64): Address:  0x00000000041A0634 Data:  0x00010001
+// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000041A0630  Mask: 0x00000000  Data: 0x00000001
+// CHECK: cdo-driver: (NOP Command): Payload Length: 2
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x00000000001A0000  Size: 8
-// CHECK: cdo-driver:     Address: 0x00000000001A0000  Data is: 0x00000080 
-// CHECK: cdo-driver:     Address: 0x00000000001A0004  Data is: 0x000A0000 
-// CHECK: cdo-driver:     Address: 0x00000000001A0008  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x00000000001A000C  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x00000000001A0010  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x00000000001A0014  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x00000000001A0018  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x00000000001A001C  Data is: 0x8140FF41 
+// CHECK: cdo-driver:     Address: 0x00000000001A0000  Data is: 0x00000080
+// CHECK: cdo-driver:     Address: 0x00000000001A0004  Data is: 0x000A0000
+// CHECK: cdo-driver:     Address: 0x00000000001A0008  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x00000000001A000C  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x00000000001A0010  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x00000000001A0014  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x00000000001A0018  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x00000000001A001C  Data is: 0x8140FF41
 
-// CHECK: cdo-driver: (NOP Command): Payload Length: 0 
+// CHECK: cdo-driver: (NOP Command): Payload Length: 0
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x00000000001A0020  Size: 8
-// CHECK: cdo-driver:     Address: 0x00000000001A0020  Data is: 0x00000080 
-// CHECK: cdo-driver:     Address: 0x00000000001A0024  Data is: 0x001A0000 
-// CHECK: cdo-driver:     Address: 0x00000000001A0028  Data is: 0x00100000 
-// CHECK: cdo-driver:     Address: 0x00000000001A002C  Data is: 0x0010000F 
-// CHECK: cdo-driver:     Address: 0x00000000001A0030  Data is: 0x00040007 
-// CHECK: cdo-driver:     Address: 0x00000000001A0034  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x00000000001A0038  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x00000000001A003C  Data is: 0x8141FF40 
+// CHECK: cdo-driver:     Address: 0x00000000001A0020  Data is: 0x00000080
+// CHECK: cdo-driver:     Address: 0x00000000001A0024  Data is: 0x001A0000
+// CHECK: cdo-driver:     Address: 0x00000000001A0028  Data is: 0x00100000
+// CHECK: cdo-driver:     Address: 0x00000000001A002C  Data is: 0x0010000F
+// CHECK: cdo-driver:     Address: 0x00000000001A0030  Data is: 0x00040007
+// CHECK: cdo-driver:     Address: 0x00000000001A0034  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x00000000001A0038  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x00000000001A003C  Data is: 0x8141FF40
 
-// CHECK: cdo-driver: (Write64): Address:  0x00000000001A0604 Data:  0x00010000  
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000001A0600  Mask: 0x00000000  Data: 0x00000001 
-// CHECK: cdo-driver: (Write64): Address:  0x00000000001A0634 Data:  0x00010001  
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000001A0630  Mask: 0x00000000  Data: 0x00000001 
-// CHECK: cdo-driver: (NOP Command): Payload Length: 2 
+// CHECK: cdo-driver: (Write64): Address:  0x00000000001A0604 Data:  0x00010000
+// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000001A0600  Mask: 0x00000000  Data: 0x00000001
+// CHECK: cdo-driver: (Write64): Address:  0x00000000001A0634 Data:  0x00010001
+// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000001A0630  Mask: 0x00000000  Data: 0x00000001
+// CHECK: cdo-driver: (NOP Command): Payload Length: 2
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x00000000021A0000  Size: 8
-// CHECK: cdo-driver:     Address: 0x00000000021A0000  Data is: 0x00000200 
-// CHECK: cdo-driver:     Address: 0x00000000021A0004  Data is: 0x000A0000 
-// CHECK: cdo-driver:     Address: 0x00000000021A0008  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x00000000021A000C  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x00000000021A0010  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x00000000021A0014  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x00000000021A0018  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x00000000021A001C  Data is: 0x8140FF41 
+// CHECK: cdo-driver:     Address: 0x00000000021A0000  Data is: 0x00000200
+// CHECK: cdo-driver:     Address: 0x00000000021A0004  Data is: 0x000A0000
+// CHECK: cdo-driver:     Address: 0x00000000021A0008  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x00000000021A000C  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x00000000021A0010  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x00000000021A0014  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x00000000021A0018  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x00000000021A001C  Data is: 0x8140FF41
 
-// CHECK: cdo-driver: (NOP Command): Payload Length: 0 
+// CHECK: cdo-driver: (NOP Command): Payload Length: 0
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x00000000021A0020  Size: 8
-// CHECK: cdo-driver:     Address: 0x00000000021A0020  Data is: 0x00000200 
-// CHECK: cdo-driver:     Address: 0x00000000021A0024  Data is: 0x001A0000 
-// CHECK: cdo-driver:     Address: 0x00000000021A0028  Data is: 0x00080000 
-// CHECK: cdo-driver:     Address: 0x00000000021A002C  Data is: 0x0020001F 
-// CHECK: cdo-driver:     Address: 0x00000000021A0030  Data is: 0x00100003 
-// CHECK: cdo-driver:     Address: 0x00000000021A0034  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x00000000021A0038  Data is: 0x00000000 
-// CHECK: cdo-driver:     Address: 0x00000000021A003C  Data is: 0x8141FF40 
+// CHECK: cdo-driver:     Address: 0x00000000021A0020  Data is: 0x00000200
+// CHECK: cdo-driver:     Address: 0x00000000021A0024  Data is: 0x001A0000
+// CHECK: cdo-driver:     Address: 0x00000000021A0028  Data is: 0x00080000
+// CHECK: cdo-driver:     Address: 0x00000000021A002C  Data is: 0x0020001F
+// CHECK: cdo-driver:     Address: 0x00000000021A0030  Data is: 0x00100003
+// CHECK: cdo-driver:     Address: 0x00000000021A0034  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x00000000021A0038  Data is: 0x00000000
+// CHECK: cdo-driver:     Address: 0x00000000021A003C  Data is: 0x8141FF40
 
-// CHECK: cdo-driver: (Write64): Address:  0x00000000021A0604 Data:  0x00010000  
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000021A0600  Mask: 0x00000000  Data: 0x00000001 
-// CHECK: cdo-driver: (Write64): Address:  0x00000000021A0634 Data:  0x00010001  
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000021A0630  Mask: 0x00000000  Data: 0x00000001 
-// CHECK: cdo-driver: (Write64): Address:  0x000000000003F008 Data:  0x80000000  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000003F100 Data:  0x80000000  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000003F030 Data:  0x80000005  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000003F114 Data:  0x80000000  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000003F048 Data:  0x80000009  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000003F124 Data:  0x80000000  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000003F010 Data:  0x80000012  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000003F148 Data:  0x80000000  
-// CHECK: cdo-driver: (Write64): Address:  0x00000000001B0000 Data:  0x80000007  
-// CHECK: cdo-driver: (Write64): Address:  0x00000000001B011C Data:  0x80000000  
-// CHECK: cdo-driver: (Write64): Address:  0x00000000001B002C Data:  0x80000000  
-// CHECK: cdo-driver: (Write64): Address:  0x00000000001B0100 Data:  0x80000000  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000203F008 Data:  0x80000000  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000203F100 Data:  0x80000000  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000203F030 Data:  0x8000000A  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000203F128 Data:  0x80000000  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000203F020 Data:  0x80000012  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000203F148 Data:  0x80000000  
-// CHECK: cdo-driver: (Write64): Address:  0x00000000021B0000 Data:  0x80000007  
-// CHECK: cdo-driver: (Write64): Address:  0x00000000021B011C Data:  0x80000000  
-// CHECK: cdo-driver: (Write64): Address:  0x00000000021B002C Data:  0x80000000  
-// CHECK: cdo-driver: (Write64): Address:  0x00000000021B0100 Data:  0x80000000  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000403F008 Data:  0x80000000  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000403F100 Data:  0x80000000  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000403F020 Data:  0x8000000E  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000403F138 Data:  0x80000000  
-// CHECK: cdo-driver: (Write64): Address:  0x00000000041B001C Data:  0x80000000  
-// CHECK: cdo-driver: (Write64): Address:  0x00000000041B0100 Data:  0x80000000  
-// CHECK: cdo-driver: (Write64): Address:  0x00000000041B0000 Data:  0x8000000D  
-// CHECK: cdo-driver: (Write64): Address:  0x00000000041B0134 Data:  0x80000000  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000023F004 Data:  0x80000005  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000023F114 Data:  0x80000000  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000023F008 Data:  0x80000013  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000023F14C Data:  0x80000000  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000023F04C Data:  0x80000001  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000023F104 Data:  0x80000000  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000223F024 Data:  0x80000005  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000223F114 Data:  0x80000000  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000223F04C Data:  0x8000000B  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000223F12C Data:  0x80000000  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000423F014 Data:  0x8000000B  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000423F12C Data:  0x80000000  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000003F008 Data:  0x80000000  
-// CHECK: cdo-driver: (Write64): Address:  0x000000000003F100 Data:  0x80000000  
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000001F000  Mask: 0x00000C00  Data: 0x00000400 
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000001F000  Mask: 0x0000C000  Data: 0x00004000 
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000001F004  Mask: 0x00000030  Data: 0x00000010 
+// CHECK: cdo-driver: (Write64): Address:  0x00000000021A0604 Data:  0x00010000
+// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000021A0600  Mask: 0x00000000  Data: 0x00000001
+// CHECK: cdo-driver: (Write64): Address:  0x00000000021A0634 Data:  0x00010001
+// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000021A0630  Mask: 0x00000000  Data: 0x00000001
+// CHECK: cdo-driver: (Write64): Address:  0x000000000003F008 Data:  0x80000000
+// CHECK: cdo-driver: (Write64): Address:  0x000000000003F100 Data:  0x80000000
+// CHECK: cdo-driver: (Write64): Address:  0x000000000003F030 Data:  0x80000005
+// CHECK: cdo-driver: (Write64): Address:  0x000000000003F114 Data:  0x80000000
+// CHECK: cdo-driver: (Write64): Address:  0x000000000003F048 Data:  0x80000009
+// CHECK: cdo-driver: (Write64): Address:  0x000000000003F124 Data:  0x80000000
+// CHECK: cdo-driver: (Write64): Address:  0x000000000003F010 Data:  0x80000012
+// CHECK: cdo-driver: (Write64): Address:  0x000000000003F148 Data:  0x80000000
+// CHECK: cdo-driver: (Write64): Address:  0x00000000001B0000 Data:  0x80000007
+// CHECK: cdo-driver: (Write64): Address:  0x00000000001B011C Data:  0x80000000
+// CHECK: cdo-driver: (Write64): Address:  0x00000000001B002C Data:  0x80000000
+// CHECK: cdo-driver: (Write64): Address:  0x00000000001B0100 Data:  0x80000000
+// CHECK: cdo-driver: (Write64): Address:  0x000000000203F008 Data:  0x80000000
+// CHECK: cdo-driver: (Write64): Address:  0x000000000203F100 Data:  0x80000000
+// CHECK: cdo-driver: (Write64): Address:  0x000000000203F030 Data:  0x8000000A
+// CHECK: cdo-driver: (Write64): Address:  0x000000000203F128 Data:  0x80000000
+// CHECK: cdo-driver: (Write64): Address:  0x000000000203F020 Data:  0x80000012
+// CHECK: cdo-driver: (Write64): Address:  0x000000000203F148 Data:  0x80000000
+// CHECK: cdo-driver: (Write64): Address:  0x00000000021B0000 Data:  0x80000007
+// CHECK: cdo-driver: (Write64): Address:  0x00000000021B011C Data:  0x80000000
+// CHECK: cdo-driver: (Write64): Address:  0x00000000021B002C Data:  0x80000000
+// CHECK: cdo-driver: (Write64): Address:  0x00000000021B0100 Data:  0x80000000
+// CHECK: cdo-driver: (Write64): Address:  0x000000000403F008 Data:  0x80000000
+// CHECK: cdo-driver: (Write64): Address:  0x000000000403F100 Data:  0x80000000
+// CHECK: cdo-driver: (Write64): Address:  0x000000000403F020 Data:  0x8000000E
+// CHECK: cdo-driver: (Write64): Address:  0x000000000403F138 Data:  0x80000000
+// CHECK: cdo-driver: (Write64): Address:  0x00000000041B001C Data:  0x80000000
+// CHECK: cdo-driver: (Write64): Address:  0x00000000041B0100 Data:  0x80000000
+// CHECK: cdo-driver: (Write64): Address:  0x00000000041B0000 Data:  0x8000000D
+// CHECK: cdo-driver: (Write64): Address:  0x00000000041B0134 Data:  0x80000000
+// CHECK: cdo-driver: (Write64): Address:  0x000000000023F004 Data:  0x80000005
+// CHECK: cdo-driver: (Write64): Address:  0x000000000023F114 Data:  0x80000000
+// CHECK: cdo-driver: (Write64): Address:  0x000000000023F008 Data:  0x80000013
+// CHECK: cdo-driver: (Write64): Address:  0x000000000023F14C Data:  0x80000000
+// CHECK: cdo-driver: (Write64): Address:  0x000000000023F04C Data:  0x80000001
+// CHECK: cdo-driver: (Write64): Address:  0x000000000023F104 Data:  0x80000000
+// CHECK: cdo-driver: (Write64): Address:  0x000000000223F024 Data:  0x80000005
+// CHECK: cdo-driver: (Write64): Address:  0x000000000223F114 Data:  0x80000000
+// CHECK: cdo-driver: (Write64): Address:  0x000000000223F04C Data:  0x8000000B
+// CHECK: cdo-driver: (Write64): Address:  0x000000000223F12C Data:  0x80000000
+// CHECK: cdo-driver: (Write64): Address:  0x000000000423F014 Data:  0x8000000B
+// CHECK: cdo-driver: (Write64): Address:  0x000000000423F12C Data:  0x80000000
+// CHECK: cdo-driver: (Write64): Address:  0x000000000003F008 Data:  0x80000000
+// CHECK: cdo-driver: (Write64): Address:  0x000000000003F100 Data:  0x80000000
+// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000001F000  Mask: 0x00000C00  Data: 0x00000400
+// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000001F000  Mask: 0x0000C000  Data: 0x00004000
+// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000001F004  Mask: 0x00000030  Data: 0x00000010

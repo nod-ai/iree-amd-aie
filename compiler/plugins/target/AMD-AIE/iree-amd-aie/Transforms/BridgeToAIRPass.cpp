@@ -102,8 +102,7 @@ void AMDAIEBridgeToAIRPass::runOnOperation() {
   patterns
       .insert<LinalgCopyToMemRefCopy, SCFForAllToParallelOp, AffineApplyOnSym>(
           context);
-  if (failed(
-          applyPatternsGreedily(getOperation(), std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
     return signalPassFailure();
   }
 }

@@ -43,7 +43,6 @@ def bf16_to_f32(bfloat16_array):
 
 
 def generate_bfloat16_data(nb_values, lower_bound, upper_bound, rng):
-
     float_data = rng.integers(lower_bound, upper_bound, nb_values).astype(np.float32)
 
     # Convert float32 data to bfloat16

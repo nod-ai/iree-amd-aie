@@ -138,7 +138,7 @@ Recompile IREE if you have made any code changes.
 
 ```
 iree-compile --iree-preprocessing-pdl-spec-filename=opt.pdl.mlir matmul.mlir -o matmul.vmfb
- 
+
 iree-run-module --device=local-sync --executable_plugin=$PATH_TO_DELEGATE --module=matmul.vmfb --function=mlp_invocation --input="1x8x768xbf16=2" --input="1x768x768xbf16=3"
 ```
 ### Compililng and running demo 3 (OPT)
@@ -165,7 +165,7 @@ Recompile IREE if you have made any code changes.
 
 ```
 iree-compile large-matmul.mlir -o large-matmul.vmfb --iree-preprocessing-pdl-spec-filename=large-matmul.pdl.mlir
- 
+
 iree-run-module --device=local-sync --executable_plugin=$PATH_TO_DELEGATE --module=large-matmul.vmfb --function=mlp_invocation --input="8192x2432xbf16=2" --input="2432x9728xbf16=3"
 ```
 
@@ -182,7 +182,7 @@ Recompile IREE if you have made any code changes.
 
 ```
 iree-compile large-matmul-f32.mlir -o large-matmul-f32.vmfb --iree-preprocessing-pdl-spec-filename=large-matmul-f32.pdl.mlir
- 
+
 iree-run-module --device=local-sync --executable_plugin=$PATH_TO_DELEGATE --module=large-matmul-f32.vmfb --function=mlp_invocation --input="8192x2432xf32=2" --input="2432x9728xf32=3"
 ```
 

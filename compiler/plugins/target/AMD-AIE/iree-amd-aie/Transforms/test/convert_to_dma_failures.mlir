@@ -30,4 +30,3 @@ func.func @failure_case() {
   }
   return
 }
-

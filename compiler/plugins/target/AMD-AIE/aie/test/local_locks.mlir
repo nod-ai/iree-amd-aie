@@ -22,4 +22,3 @@ module @local_locks {
   }
  }
 }
-

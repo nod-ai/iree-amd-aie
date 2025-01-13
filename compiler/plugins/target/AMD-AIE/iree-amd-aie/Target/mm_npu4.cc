@@ -62,7 +62,7 @@ void matmul_vectorized_bf16_f32(const bfloat16 * __restrict pA, unsigned offsetA
   const unsigned size_B = L0_K * L0_N;
   const unsigned size_C = L0_M * L0_N;
   using MMUL = aie::detail::mmul_bfp16_bfp16<L0_M, L0_K, L0_N, bfp16ebs8, bfp16ebs8, 32>;
-  
+
   v32accfloat * restrict pOut = (v32accfloat *) (pC + offsetC);
 
   for (unsigned z = 0; z < rowA; z += 2)
