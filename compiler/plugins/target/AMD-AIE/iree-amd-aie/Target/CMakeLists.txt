@@ -10,7 +10,7 @@ iree_cc_library(
   NAME
     AMDAIERT
   HDRS
-    "AMDAIERT.h"  
+    "AMDAIERT.h"
   SRCS
     "AMDAIERT.cpp"
   DEPS

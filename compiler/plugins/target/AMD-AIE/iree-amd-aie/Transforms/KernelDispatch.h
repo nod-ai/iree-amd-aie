@@ -39,11 +39,7 @@ enum class BufferizeOperand {
 };
 
 /// Enum for hardware mapping attributes.
-enum class HardwareMapping {
-  Core,
-  Block,
-  None
-};
+enum class HardwareMapping { Core, Block, None };
 
 LogicalResult initAIELaunchConfig(FunctionOpInterface funcOp,
                                   TilePassPipeline useTilePipeline,
