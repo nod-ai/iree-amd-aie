@@ -860,14 +860,14 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
     options.clEmitWhileLoop = true;
     passManager.addPass(xilinx::air::createAIRToAIEPass(options));
   }
-  passManager.addPass(createCanonicalizerPass());
-  passManager.addPass(xilinx::air::createAIRLoweringPass());
   {
     xilinx::air::AIROptimizeShimDMABDsOptions options;
     options.clDevice = stringifyEnum(device);
     passManager.addNestedPass<func::FuncOp>(
         xilinx::air::createAIROptimizeShimDMABDs(options));
   }
+  passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(xilinx::air::createAIRLoweringPass());
   {
     xilinx::air::AffineLoopOptPassOptions options;
     // tile_sizes contains a list of N tiling factors for the N innermost loop
