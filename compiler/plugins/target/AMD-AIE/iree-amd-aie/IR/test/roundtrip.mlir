@@ -503,20 +503,28 @@ func.func @reference_to() {
 
 // -----
 
-// Test that if the row and column are statically known, the tile operation is
+// Test that if the row OR column is statically known, the tile operation is
 // printed with the row and column in the SSA value.
 func.func @tile_a_b(%i : index) {
   %c2 = arith.constant 2: index
   %c3 = arith.constant 3 : index
   amdaie.workgroup {
+
     // CHECK: %tile_2_3 = amdaie.tile
     %t_23 = amdaie.tile(%c2, %c3)
+
     // CHECK: %tile_2_3_0 = amdaie.tile
     %t_231 = amdaie.tile(%c2, %c3)
-    // CHECK: %tile = amdaie.tile
+
+    // CHECK: %tile_c_3 = amdaie.tile
     %t_i3 = amdaie.tile(%i, %c3)
-    // CHECK: %tile_1 = amdaie.tile
+
+    // CHECK: %tile_2_r  = amdaie.tile
     %t_2i = amdaie.tile(%c2, %i)
+
+    // CHECK: %tile = amdaie.tile
+    %t_uu = amdaie.tile(%i, %i)
+
     amdaie.controlcode {
       amdaie.end
     }
