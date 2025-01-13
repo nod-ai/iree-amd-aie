@@ -625,6 +625,58 @@ LogicalObjectFifoFromBuffersOp::replaceWithNewTiles(
 // AMDAIE_LogicalObjectFifoFromMemrefOp
 //===----------------------------------------------------------------------===//
 
+void LogicalObjectFifoFromMemrefOp::getAsmResultNames(
+    function_ref<void(Value, StringRef)> setNameFn) {
+  // 'lof' for 'logical object fifo'
+  constexpr const char *const name = "lof";
+
+  auto tiles = getTiles();
+
+  if (tiles.empty()) {
+    setNameFn(getResult(), name);
+    return;
+  }
+
+  // Denotes one or more tiles with multiple possible row/column values.
+  constexpr int64_t multiple{-2};
+  constexpr int64_t unset{-1};
+  int64_t col{unset};
+  int64_t row{unset};
+
+  for (Value index : tiles) {
+    TileOp tile = dyn_cast<TileOp>(index.getDefiningOp());
+    if (!tile) {
+      col = multiple;
+      row = multiple;
+    } else {
+      std::optional<int64_t> maybeCol = getConstantIntValue(tile.getCol());
+      if (!maybeCol) col = multiple;
+      if (col >= 0 && maybeCol.value() != col) col = multiple;
+      if (col == unset) col = maybeCol.value();
+
+      std::optional<int64_t> maybeRow = getConstantIntValue(tile.getRow());
+      if (!maybeRow) row = multiple;
+      if (row >= 0 && maybeRow.value() != row) row = multiple;
+      if (row == unset) row = maybeRow.value();
+    }
+  }
+
+  std::ostringstream namestream;
+  namestream << name << '_';
+
+  if (col >= 0) {
+    namestream << col;
+  } else {
+    namestream << 'c';
+  }
+  if (row >= 0) {
+    namestream << '_' << row;
+  } else {
+    namestream << '_' << 'r';
+  }
+  setNameFn(getResult(), namestream.str());
+}
+
 /// Build with an array of static tile locations.
 void LogicalObjectFifoFromMemrefOp::build(
     OpBuilder &b, mlir::OperationState &result, Value memref,
