@@ -91,49 +91,6 @@ FailureOr<std::array<uint32_t, 3>> getPackedSize(linalg::LinalgOp linalgOp,
 // vector-instruction sizes for vectorizable types.
 class ParameterSetting {
  public:
-  SmallVector<int64_t> getPackSizeL0() const {
-    return {m0Pack, n0Pack, k0Pack};
-  }
-  SmallVector<int64_t> getPackSizeL1() const {
-    return {m1Pack, n1Pack, k1Pack};
-  }
-
-  static FailureOr<ParameterSetting> create(linalg::LinalgOp linalgOp,
-                                            bool isPackPeel, bool isObjectFifo,
-                                            AMDAIEDevice targetDevice,
-                                            uint32_t numRows, uint32_t numCols);
-
-  uint32_t getM0() const { return M0; }
-  uint32_t getN0() const { return N0; }
-  uint32_t getK0() const { return K0; }
-  uint32_t getM1() const { return M1; }
-  uint32_t getN1() const { return N1; }
-  uint32_t getK1() const { return K1; }
-  uint32_t getM0Pack() const { return m0Pack; }
-  uint32_t getN0Pack() const { return n0Pack; }
-  uint32_t getK0Pack() const { return k0Pack; }
-  uint32_t getM1Pack() const { return m1Pack; }
-  uint32_t getN1Pack() const { return n1Pack; }
-  uint32_t getK1Pack() const { return k1Pack; }
-
- private:
-  ParameterSetting(uint32_t M0, uint32_t N0, uint32_t K0, uint32_t M1,
-                   uint32_t N1, uint32_t K1, uint32_t m0Pack, uint32_t n0Pack,
-                   uint32_t k0Pack, uint32_t m1Pack, uint32_t n1Pack,
-                   uint32_t k1Pack)
-      : M0(M0),
-        N0(N0),
-        K0(K0),
-        M1(M1),
-        N1(N1),
-        K1(K1),
-        m0Pack(m0Pack),
-        n0Pack(n0Pack),
-        k0Pack(k0Pack),
-        m1Pack(m1Pack),
-        n1Pack(n1Pack),
-        k1Pack(k1Pack) {}
-
   uint32_t M0;
   uint32_t N0;
   uint32_t K0;
@@ -146,6 +103,49 @@ class ParameterSetting {
   uint32_t m1Pack;
   uint32_t n1Pack;
   uint32_t k1Pack;
+  uint32_t M;
+  uint32_t N;
+  uint32_t K;
+  uint32_t nBitsLhs;
+  uint32_t nBitsRhs;
+  uint32_t nBitsInit;
+
+  SmallVector<int64_t> getPackSizeL0() const {
+    return {m0Pack, n0Pack, k0Pack};
+  }
+  SmallVector<int64_t> getPackSizeL1() const {
+    return {m1Pack, n1Pack, k1Pack};
+  }
+
+  static FailureOr<ParameterSetting> create(linalg::LinalgOp linalgOp,
+                                            bool isPackPeel, bool isObjectFifo,
+                                            AMDAIEDevice targetDevice,
+                                            uint32_t numRows, uint32_t numCols);
+
+ private:
+  ParameterSetting(uint32_t M0, uint32_t N0, uint32_t K0, uint32_t M1,
+                   uint32_t N1, uint32_t K1, uint32_t m0Pack, uint32_t n0Pack,
+                   uint32_t k0Pack, uint32_t m1Pack, uint32_t n1Pack,
+                   uint32_t k1Pack, uint32_t M, uint32_t N, uint32_t K,
+                   uint32_t nBitsLhs, uint32_t nBitsRhs, uint32_t nBitsInit)
+      : M0(M0),
+        N0(N0),
+        K0(K0),
+        M1(M1),
+        N1(N1),
+        K1(K1),
+        m0Pack(m0Pack),
+        n0Pack(n0Pack),
+        k0Pack(k0Pack),
+        m1Pack(m1Pack),
+        n1Pack(n1Pack),
+        k1Pack(k1Pack),
+        M(M),
+        N(N),
+        K(K),
+        nBitsLhs(nBitsLhs),
+        nBitsRhs(nBitsRhs),
+        nBitsInit(nBitsInit) {}
 };
 
 FailureOr<ParameterSetting> ParameterSetting::create(
@@ -153,11 +153,17 @@ FailureOr<ParameterSetting> ParameterSetting::create(
     AMDAIEDevice targetDevice, uint32_t numRows, uint32_t numCols) {
   auto initType =
       llvm::cast<ShapedType>(linalgOp.getDpsInitOperand(0)->get().getType());
+  unsigned nBitsInit = initType.getElementTypeBitWidth();
   ArrayRef<int64_t> initShape = initType.getShape();
 
   auto lhsType =
       llvm::cast<ShapedType>(linalgOp.getDpsInputOperand(0)->get().getType());
+  unsigned nBitsLhs = lhsType.getElementTypeBitWidth();
   ArrayRef<int64_t> lhsShape = lhsType.getShape();
+
+  auto rhsType =
+      llvm::cast<ShapedType>(linalgOp.getDpsInputOperand(1)->get().getType());
+  unsigned nBitsRhs = rhsType.getElementTypeBitWidth();
 
   // Shape of the full matmul operation.
   if (isa<linalg::BatchMatmulOp>(linalgOp)) {
@@ -241,8 +247,9 @@ FailureOr<ParameterSetting> ParameterSetting::create(
     uint32_t m0Pack = (M0 / numRows) % m1Pack == 0 ? (M0 / numRows) : M0;
     uint32_t n0Pack = (N0 / numCols) % n1Pack == 0 ? (N0 / numCols) : N0;
 
-    return ParameterSetting{M0,     N0,     K0,     M1,     N1,     K1,
-                            m0Pack, n0Pack, k0Pack, m1Pack, n1Pack, k1Pack};
+    return ParameterSetting(M0, N0, K0, M1, N1, K1, m0Pack, n0Pack, k0Pack,
+                            m1Pack, n1Pack, k1Pack, M, N, K, nBitsLhs, nBitsRhs,
+                            nBitsInit);
   } else {
     // Assume working on a (numRows, numCols) AIE array. The tile sizes are
     // chosen empirically for large GEMM sizes, which are [64*s, 64*s, 256] for
@@ -310,8 +317,9 @@ FailureOr<ParameterSetting> ParameterSetting::create(
     // size (vector instruction size).
     assert(M1 >= m1Pack && N1 >= n1Pack);
 
-    return ParameterSetting{M0,     N0,     K0,     M1,     N1,     K1,
-                            m0Pack, n0Pack, k0Pack, m1Pack, n1Pack, k1Pack};
+    return ParameterSetting(M0, N0, K0, M1, N1, K1, m0Pack, n0Pack, k0Pack,
+                            m1Pack, n1Pack, k1Pack, M, N, K, nBitsLhs, nBitsRhs,
+                            nBitsInit);
   }
 }
 }  // namespace
@@ -377,6 +385,132 @@ static SmallVector<int64_t> setOuterPermB(bool isMatmulTransposeB,
 // Configuration for Matmul Pipelines
 //===----------------------------------------------------------------------===//
 
+static LogicalResult setRootConfigForPackPeel4LevelTilingPipeline(
+    mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
+    AMDAIEDevice targetDevice, uint32_t numRows, uint32_t numCols) {
+  auto maybePackPeelTiling = ParameterSetting::create(
+      linalgOp, /*isPackPeel=*/true, /*isObjectFifo=*/true, targetDevice,
+      numRows, numCols);
+  if (failed(maybePackPeelTiling)) return failure();
+  auto packPeelTiling = maybePackPeelTiling.value();
+
+  AMDAIEDeviceModel deviceModel = getDeviceModel(targetDevice);
+
+  // ------------------------------------------------------
+  // --------------- Set packing config -------------------
+  // ------------------------------------------------------
+  MLIRContext *context = entryPointFn.getContext();
+
+  SmallVector<int64_t> packedSizesL0 = packPeelTiling.getPackSizeL0();
+  if (isa<linalg::BatchMatmulOp>(linalgOp)) {
+    packedSizesL0.insert(packedSizesL0.begin(), 0);
+  }
+
+  // For matmul, transpose B matrix from [K N n k] to [N K k n]
+  // For matmul_transpose_b, we don't have to transpose the B matrix,
+  // since it is already [N K n k]
+  SmallVector<int64_t> transposePackIndices = {0, 1, 2};
+  // There is no corresponding unpack for the specified pack operation
+  // 0 is used when unpack is empty
+  SmallVector<bool> unpackEmpty = {false, false, true};
+  SmallVector<int64_t> innerPermA = setInnerPermA(isMatmulTransposeA(linalgOp));
+  SmallVector<int64_t> innerPermB = setInnerPermB(isMatmulTransposeB(linalgOp));
+  SmallVector<SmallVector<int64_t>> innerPerm = {
+      innerPermA, innerPermB, {0, 1}};
+  bool isBatchMatmul = isa<linalg::BatchMatmulOp>(linalgOp);
+  SmallVector<int64_t> outerPermA =
+      setOuterPermA(isMatmulTransposeA(linalgOp), isBatchMatmul);
+  SmallVector<int64_t> outerPermB =
+      setOuterPermB(isMatmulTransposeB(linalgOp), isBatchMatmul);
+  SmallVector<SmallVector<int64_t>> outerPerm = {outerPermA, outerPermB};
+  // Add outer permutation for unpack. NOTE: This currently fails for some
+  // tests in the AIR pipeline.
+  if (isa<linalg::BatchMatmulOp>(linalgOp)) {
+    outerPerm.push_back({0, 2, 1});
+  } else {
+    outerPerm.push_back({1, 0});
+  }
+
+  auto packingConfigLevel0Attr = getPackingConfigPackingLevelAttr(
+      context, packedSizesL0, transposePackIndices, unpackEmpty, innerPerm,
+      outerPerm);
+
+  // Pack level => 2.
+  // packed size for [M, N, K, m, n, k]
+  SmallVector<int64_t> packedSizesL1 = {0,
+                                        0,
+                                        0,
+                                        packPeelTiling.m1Pack,
+                                        packPeelTiling.n1Pack,
+                                        packPeelTiling.k1Pack};
+
+  if (isa<linalg::BatchMatmulOp>(linalgOp)) {
+    packedSizesL1.insert(packedSizesL1.begin(), 0);
+  }
+
+  // Transpose A matrix from [M K m k m0 k0] to [M K k m m0 k0]
+  // Transpose C matrix from [M N m n m0 n0] to [M N n m m0 n0]
+  // For matmul, transpose B matrix from [K N k n n0 k0] to [K N n k k0 n0]
+  // For matmul_transpose_b, transpose B matrix from [N K n k n0 k0] to
+  // [N K k n n0 k0]
+  transposePackIndices = {0, 1, 2};
+  // Only the third pack operation has a corresponding unpack operation
+  unpackEmpty = {false, false, true};
+  innerPerm = {innerPermA, innerPermB, {0, 1}};
+  if (isa<linalg::BatchMatmulOp>(linalgOp)) {
+    outerPerm = {{0, 1, 2, 4, 3}, {0, 1, 2, 4, 3}, {0, 1, 2, 4, 3}};
+  } else {
+    outerPerm = {{0, 1, 3, 2}, {0, 1, 3, 2}, {0, 1, 3, 2}};
+  }
+  auto packingConfigLevel1Attr = getPackingConfigPackingLevelAttr(
+      context, packedSizesL1, transposePackIndices, unpackEmpty, innerPerm,
+      outerPerm);
+
+  SmallVector<PackingConfigPackingLevelAttr> packingConfigLevelsVal = {
+      packingConfigLevel0Attr, packingConfigLevel1Attr};
+  auto packingConfigLevels =
+      PackingConfigPackingLevelsAttr::get(context, packingConfigLevelsVal);
+  auto config = PackingConfigAttr::get(context, packingConfigLevels);
+  setPackingConfig(linalgOp, config);
+
+  // ------------------------------------------------------
+  // -------------- Set lowering config -------------------
+  // ------------------------------------------------------
+  // Check if we can scale L2 size of A and B with a factor of 2. TODO(jornt):
+  // generalize to find largest scaling factor possible.
+  int64_t l2SizeA =
+      2 * packPeelTiling.M0 * packPeelTiling.K * packPeelTiling.nBitsLhs / 8;
+  int64_t l2SizeB =
+      2 * packPeelTiling.N0 * packPeelTiling.K * packPeelTiling.nBitsRhs / 8;
+  int64_t l2SizeInit =
+      4 * packPeelTiling.M0 * packPeelTiling.N0 * packPeelTiling.nBitsInit / 8;
+
+  bool fitsInL2 = (l2SizeA + l2SizeB + l2SizeInit) <
+                  (deviceModel.getMemTileSizeInBytes() * numCols);
+  int64_t scaleL0 = !isBatchMatmul && fitsInL2 ? 2 : 1;
+  SmallVector<int64_t> tileSizeLevel0 = {packPeelTiling.M0 * scaleL0,
+                                         packPeelTiling.N0 * scaleL0};
+  SmallVector<int64_t> tileSizeLevel1 = {numRows, numCols, 0};
+  SmallVector<int64_t> tileSizeLevel2 = {0, 0, 1};
+  SmallVector<int64_t> tileSizeLevel3 = {1, 1, 0, 0, 0, 0};
+
+  if (isa<linalg::BatchMatmulOp>(linalgOp)) {
+    tileSizeLevel0.insert(tileSizeLevel0.begin(), 1);
+    tileSizeLevel1.insert(tileSizeLevel1.begin(), 0);
+    tileSizeLevel2.insert(tileSizeLevel2.begin(), 0);
+    tileSizeLevel3.insert(tileSizeLevel3.begin(), 0);
+  }
+
+  TileSizesListType tileSizes = {tileSizeLevel0, tileSizeLevel1, tileSizeLevel2,
+                                 tileSizeLevel3};
+  if (failed(setOpConfigAndEntryPointFnTranslation(
+          entryPointFn, linalgOp, tileSizes,
+          IREE::Codegen::DispatchLoweringPassPipeline::Custom))) {
+    return failure();
+  }
+  return success();
+}
+
 static LogicalResult setRootConfigForPackPeelPipeline(
     mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
     LowerToAIEPassPipeline useLowerToAIEPipeline, AMDAIEDevice targetDevice,
@@ -437,9 +571,9 @@ static LogicalResult setRootConfigForPackPeelPipeline(
   SmallVector<int64_t> packedSizesL1 = {0,
                                         0,
                                         0,
-                                        packPeelTiling.getM1Pack(),
-                                        packPeelTiling.getN1Pack(),
-                                        packPeelTiling.getK1Pack()};
+                                        packPeelTiling.m1Pack,
+                                        packPeelTiling.n1Pack,
+                                        packPeelTiling.k1Pack};
 
   if (isa<linalg::BatchMatmulOp>(linalgOp)) {
     packedSizesL1.insert(packedSizesL1.begin(), 0);
@@ -473,9 +607,8 @@ static LogicalResult setRootConfigForPackPeelPipeline(
   // ------------------------------------------------------
   // -------------- Set lowering config -------------------
   // ------------------------------------------------------
-  SmallVector<int64_t> tileSizeLevel0 = {packPeelTiling.getM0(),
-                                         packPeelTiling.getN0()};
-  SmallVector<int64_t> tileSizeLevel1 = {0, 0, packPeelTiling.getK0()};
+  SmallVector<int64_t> tileSizeLevel0 = {packPeelTiling.M0, packPeelTiling.N0};
+  SmallVector<int64_t> tileSizeLevel1 = {0, 0, packPeelTiling.K0};
   SmallVector<int64_t> tileSizeLevel2 = {1, 1, 0, 0, 0, 0};
 
   if (isa<linalg::BatchMatmulOp>(linalgOp)) {
@@ -534,10 +667,10 @@ static LogicalResult setRootConfigForPadPackPipeline(
   // ------------------------------------------------------
   // -------------- Set lowering config -------------------
   // ------------------------------------------------------
-  SmallVector<int64_t> level0{padPackTiling.getM0(), padPackTiling.getN0()};
-  SmallVector<int64_t> level1{0, 0, padPackTiling.getK0()};
-  SmallVector<int64_t> level2{padPackTiling.getM1(), padPackTiling.getN1()};
-  SmallVector<int64_t> level3{0, 0, padPackTiling.getK1()};
+  SmallVector<int64_t> level0{padPackTiling.M0, padPackTiling.N0};
+  SmallVector<int64_t> level1{0, 0, padPackTiling.K0};
+  SmallVector<int64_t> level2{padPackTiling.M1, padPackTiling.N1};
+  SmallVector<int64_t> level3{0, 0, padPackTiling.K1};
   TileSizesListType tileSizes = {level0, level1, level2, level3};
 
   if (failed(setOpConfigAndEntryPointFnTranslation(
@@ -710,13 +843,19 @@ static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
     return genericOp.emitOpError(
         "Current pipelines are only set for matmul-like ops.");
 
-  if (passPipeline == TilePassPipeline::PackPeelPipeline)
+  if (passPipeline == TilePassPipeline::PackPeelPipeline) {
     return setRootConfigForPackPeelPipeline(entryPointFn, genericOp,
                                             useLowerToAIEPipeline, targetDevice,
                                             numRows, numCols);
-  if (passPipeline == TilePassPipeline::PadPackPipeline)
+  }
+  if (passPipeline == TilePassPipeline::PackPeel4LevelTilingPipeline) {
+    return setRootConfigForPackPeel4LevelTilingPipeline(
+        entryPointFn, genericOp, targetDevice, numRows, numCols);
+  }
+  if (passPipeline == TilePassPipeline::PadPackPipeline) {
     return setRootConfigForPadPackPipeline(entryPointFn, genericOp,
                                            targetDevice, numRows, numCols);
+  }
   return genericOp.emitError("Unhandled pass pipeline in setRootConfig.");
 }
 
@@ -745,13 +884,19 @@ static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
   // TODO (nmeshram) : This needs to be moved in a separate more generalized
   // logic. Also, need a flag to experiment between pad based and pack based
   // approach which will have different tile sizes and pass pipelines
-  if (passPipeline == TilePassPipeline::PackPeelPipeline)
+  if (passPipeline == TilePassPipeline::PackPeelPipeline) {
     return setRootConfigForPackPeelPipeline(entryPointFn, linalgOp,
                                             useLowerToAIEPipeline, targetDevice,
                                             numRows, numCols);
-  if (passPipeline == TilePassPipeline::PadPackPipeline)
+  }
+  if (passPipeline == TilePassPipeline::PackPeel4LevelTilingPipeline) {
+    return setRootConfigForPackPeel4LevelTilingPipeline(
+        entryPointFn, linalgOp, targetDevice, numRows, numCols);
+  }
+  if (passPipeline == TilePassPipeline::PadPackPipeline) {
     return setRootConfigForPadPackPipeline(entryPointFn, linalgOp, targetDevice,
                                            numRows, numCols);
+  }
   return linalgOp.emitError("Unhandled pass pipeline in setRootConfig.");
 }
 

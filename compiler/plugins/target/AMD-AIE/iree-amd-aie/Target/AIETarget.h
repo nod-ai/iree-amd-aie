@@ -153,6 +153,11 @@ struct AMDAIEOptions {
             clEnumValN(TilePassPipeline::PackPeelPipeline, "pack-peel",
                        "Use the pack-peel based lowering strategy for "
                        "matmul-like ops"),
+            clEnumValN(TilePassPipeline::PackPeel4LevelTilingPipeline,
+                       "pack-peel-4-level-tiling",
+                       "Use the pack-peel based lowering strategy with 4 "
+                       "levels of tiling for "
+                       "matmul-like ops"),
             clEnumValN(
                 TilePassPipeline::PadPackPipeline, "pad-pack",
                 "Use the pad-pack based lowering strategy for matmul-like ops"),

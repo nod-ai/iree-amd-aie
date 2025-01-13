@@ -320,6 +320,11 @@ uint32_t AMDAIEDeviceModel::getMemInternalBaseAddress() const {
   return getMemEastBaseAddress();
 }
 
+uint32_t AMDAIEDeviceModel::getMemTileSizeInBytes() const {
+  return devInst.DevProp.DevMod[static_cast<uint8_t>(AMDAIETileType::MEMTILE)]
+      .MemMod->Size;
+}
+
 uint32_t AMDAIEDeviceModel::getMemTileSize(uint8_t col, uint8_t row) const {
   AMDAIETileType tileType = getTileType(col, row);
   assert(tileType == AMDAIETileType::MEMTILE && "expected memtile");

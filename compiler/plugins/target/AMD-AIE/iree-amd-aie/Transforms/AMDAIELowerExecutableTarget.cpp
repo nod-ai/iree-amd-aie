@@ -111,6 +111,12 @@ void AMDAIELowerExecutableTargetPass::runOnOperation() {
         addPackPeelBasedPassPipeline(executableLoweringPipeline, tilingConfig,
                                      pathToUkernels, enableVectorizationPasses,
                                      TilePassPipeline::PackPeelPipeline);
+      } else if (useTilePipeline ==
+                 TilePassPipeline::PackPeel4LevelTilingPipeline) {
+        addPackPeel4LevelTilingBasedPassPipeline(
+            executableLoweringPipeline, tilingConfig, pathToUkernels,
+            enableVectorizationPasses,
+            TilePassPipeline::PackPeel4LevelTilingPipeline);
       } else if (useTilePipeline == TilePassPipeline::PadPackPipeline) {
         addPadPackBasedPassPipeline(executableLoweringPipeline, tilingConfig,
                                     pathToUkernels, enableVectorizationPasses,

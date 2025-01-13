@@ -8,6 +8,17 @@ iree_add_all_subdirs()
 
 iree_cc_library(
   NAME
+    AMDAIERT
+  HDRS
+    "AMDAIERT.h"  
+  SRCS
+    "AMDAIERT.cpp"
+  DEPS
+    iree-amd-aie::aie_runtime::iree_aie_runtime_static
+)
+
+iree_cc_library(
+  NAME
     AIETargets
   SRCS
     "AMDAIETargetBCF.cpp"
@@ -15,6 +26,7 @@ iree_cc_library(
     "AMDAIETargetLdScript.cpp"
     "XCLBinGen.cpp"
   DEPS
+    ::AMDAIERT
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
     iree::target::amd-aie::Transforms
     iree-aie-bootgen
@@ -33,6 +45,7 @@ iree_cc_library(
     "AIETarget.cpp"
   DEPS
     ::AIETargets
+    ::AMDAIERT
     iree-amd-aie::schemas::xrt_executable_def_c_fbs
     iree-amd-aie::schemas::pdi_executable_def_c_fbs
     iree::base::internal::flatcc::building
