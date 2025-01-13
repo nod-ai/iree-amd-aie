@@ -29,7 +29,7 @@ LogicalResult getUserTiles(AMDAIE::LogicalObjFifoOpInterface logicalObjectFifo,
       auto target = dyn_cast_if_present<AMDAIE::LogicalObjFifoOpInterface>(
           copyOp.getTarget().getDefiningOp());
       if (!source || !target) continue;
-      ValueRange tileIndices;
+      SmallVector<Value> tileIndices;
       if constexpr (OperateOn == CopyOpOperateOn::Source) {
         if (target != logicalObjectFifo) continue;
         tileIndices = source.getTiles();
