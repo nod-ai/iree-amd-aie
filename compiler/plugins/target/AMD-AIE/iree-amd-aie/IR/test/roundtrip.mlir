@@ -523,3 +523,105 @@ func.func @tile_a_b(%i : index) {
   }
   return
 }
+
+// -----
+
+// CHECK-LABEL: func.func @from_memref_known_tiles
+func.func @from_memref_known_tiles(%arg0 : memref<8xi32>, %t0 : index) {
+  %c2 = arith.constant 2: index
+  %c3 = arith.constant 3 : index
+  amdaie.workgroup {
+    %tile_2_3 = amdaie.tile(%c2, %c3)
+    %tile_3_3 = amdaie.tile(%c3, %c3)
+    %tile_3_2 = amdaie.tile(%c3, %c2)
+    %tile_2_2 = amdaie.tile(%c2, %c2)
+    // logicalobjectfifo without any tiles:
+    // CHECK: %lof =
+    %fifo0 = amdaie.logicalobjectfifo.from_memref %arg0, {} :
+      memref<8xi32> -> !amdaie.logicalobjectfifo<memref<8xi32>>
+    // logicalobjectfifo with one known tile:
+    // CHECK: %lof_2_3 =
+    %fifo3 = amdaie.logicalobjectfifo.from_memref %arg0, {%tile_2_3} :
+      memref<8xi32> -> !amdaie.logicalobjectfifo<memref<8xi32>>
+    // logicalobjectfifo with two known tiles, in the same column.
+    // 'r' in the SSA value denotes multiple rows.
+    // CHECK: %lof_2_r =
+    %fifo4 = amdaie.logicalobjectfifo.from_memref %arg0, {%tile_2_3, %tile_2_2} :
+      memref<8xi32> -> !amdaie.logicalobjectfifo<memref<8xi32>>
+    // logicalobjectfifo with two known tiles, in the same row.
+    // 'c' in the SSA value denotes multiple columns.
+    // CHECK: %lof_c_3 =
+    %fifo5 = amdaie.logicalobjectfifo.from_memref %arg0, {%tile_2_3, %tile_3_3} :
+      memref<8xi32> -> !amdaie.logicalobjectfifo<memref<8xi32>>
+    // logicalobjectfifo with two known tiles, in different rows and columns:
+    // CHECK: %lof_c_r =
+    %fifo6 = amdaie.logicalobjectfifo.from_memref %arg0, {%tile_2_3, %tile_3_2} :
+      memref<8xi32> -> !amdaie.logicalobjectfifo<memref<8xi32>>
+    // logicalobjectfifo with 4 tiles, spanning 2 rows and 2 columns:
+    // CHECK: %lof_c_r_0 =
+    %fifo7 = amdaie.logicalobjectfifo.from_memref %arg0,
+      {%tile_2_3, %tile_3_3, %tile_3_2, %tile_2_2} :
+      memref<8xi32> -> !amdaie.logicalobjectfifo<memref<8xi32>>
+    amdaie.controlcode {
+      amdaie.end
+    }
+  }
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func.func @from_memref_unknown_row
+func.func @from_memref_unknown_row(%arg0 : memref<8xi32>, %t0 : index) {
+  %c2 = arith.constant 2: index
+  amdaie.workgroup {
+    %tile_2_u = amdaie.tile(%c2, %t0)
+    // CHECK: %lof_2_r =
+    %fifo = amdaie.logicalobjectfifo.from_memref %arg0, {%tile_2_u} :
+      memref<8xi32> -> !amdaie.logicalobjectfifo<memref<8xi32>>
+    amdaie.controlcode {
+      amdaie.end
+    }
+  }
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func.func @from_memref_unknown_column
+func.func @from_memref_unknown_column(%arg0 : memref<8xi32>, %t0 : index) {
+  %c3 = arith.constant 3 : index
+  amdaie.workgroup {
+    %tile_u_3 = amdaie.tile(%t0, %c3)
+    // CHECK: %lof_c_3 =
+    %fifo = amdaie.logicalobjectfifo.from_memref %arg0, {%tile_u_3} :
+      memref<8xi32> -> !amdaie.logicalobjectfifo<memref<8xi32>>
+    amdaie.controlcode {
+      amdaie.end
+    }
+  }
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func.func @from_memref_unknown_row_column
+func.func @from_memref_unknown_row_column(%arg0 : memref<8xi32>, %t0 : index) {
+  amdaie.workgroup {
+    %c2 = arith.constant 2: index
+    %tile_2_2 = amdaie.tile(%c2, %c2)
+    %tile_u_u = amdaie.tile(%t0, %t0)
+    // logicalobjectfifo with a single tile with unknown row and column:
+    // CHECK: %lof_c_r =
+    %fifo1 = amdaie.logicalobjectfifo.from_memref %arg0, {%tile_u_u} :
+      memref<8xi32> -> !amdaie.logicalobjectfifo<memref<8xi32>>
+    // logicalobjectfifo with one unknown tile, and one known tile:
+    // CHECK: %lof_c_r_0 =
+    %fifo2 = amdaie.logicalobjectfifo.from_memref %arg0, {%tile_2_2, %tile_u_u} :
+      memref<8xi32> -> !amdaie.logicalobjectfifo<memref<8xi32>>
+    amdaie.controlcode {
+      amdaie.end
+    }
+  }
+  return
+}
