@@ -38,9 +38,12 @@ LogicalResult coreForallToFor(RewriterBase &rewriter, AMDAIE::CoreOp coreOp) {
     SmallVector<scf::ForOp> forOps = llvm::map_to_vector(
         forOpResults,
         [](Operation *loop) { return dyn_cast<scf::ForOp>(loop); });
-    if (failed(coalesceLoops(rewriter, forOps))) {
-      coreOp.emitOpError() << "failed to coalesce for loops";
-      return WalkResult::interrupt();
+
+    if (forOps.size() > 1) {
+      if (failed(coalesceLoops(rewriter, forOps))) {
+        coreOp.emitOpError() << "failed to coalesce for loops";
+        return WalkResult::interrupt();
+      }
     }
 
     return WalkResult::advance();
