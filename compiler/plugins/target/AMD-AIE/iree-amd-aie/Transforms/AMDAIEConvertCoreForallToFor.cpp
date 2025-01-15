@@ -39,6 +39,10 @@ LogicalResult coreForallToFor(RewriterBase &rewriter, AMDAIE::CoreOp coreOp) {
         forOpResults,
         [](Operation *loop) { return dyn_cast<scf::ForOp>(loop); });
 
+    // The upstream function colaesceLoops, rather than silently doing nothing
+    // if there is only one loop, will emit an error. So we need to confirm that
+    // there is more than one loop before calling it. If there is still an error
+    // with 2+ for loops, this might be something serious and so the pass fails.
     if (forOps.size() > 1) {
       if (failed(coalesceLoops(rewriter, forOps))) {
         coreOp.emitOpError() << "failed to coalesce for loops";
