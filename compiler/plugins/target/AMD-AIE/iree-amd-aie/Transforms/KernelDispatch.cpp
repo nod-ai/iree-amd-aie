@@ -120,7 +120,8 @@ class ParameterSetting {
   static FailureOr<ParameterSetting> create(linalg::LinalgOp linalgOp,
                                             bool isPackPeel, bool isObjectFifo,
                                             AMDAIEDevice targetDevice,
-                                            uint32_t numRows, uint32_t numCols);
+                                            uint32_t numRows, uint32_t numCols,
+                                            uint32_t kPackScaleL1 = 1);
 
  private:
   ParameterSetting(uint32_t M0, uint32_t N0, uint32_t K0, uint32_t M1,
@@ -150,7 +151,8 @@ class ParameterSetting {
 
 FailureOr<ParameterSetting> ParameterSetting::create(
     linalg::LinalgOp linalgOp, bool isPackPeel, bool isObjectFifo,
-    AMDAIEDevice targetDevice, uint32_t numRows, uint32_t numCols) {
+    AMDAIEDevice targetDevice, uint32_t numRows, uint32_t numCols,
+    uint32_t kPackScaleL1) {
   auto initType =
       llvm::cast<ShapedType>(linalgOp.getDpsInitOperand(0)->get().getType());
   unsigned nBitsInit = initType.getElementTypeBitWidth();
@@ -237,7 +239,7 @@ FailureOr<ParameterSetting> ParameterSetting::create(
     uint32_t K1 = 0;
     uint32_t K0 = 1;
     uint32_t maxL1SizeK = 16 * scaleFactor;
-    uint32_t k0Pack = findLargestFactor(K, maxL1SizeK);
+    uint32_t k0Pack = findLargestFactor(K, kPackScaleL1 * maxL1SizeK);
 
     // Instead of directly packing to (1, 1, M0, N0), the new strategy is making
     // the pack size as (numRows, numCols, M0/numRows, N0/numCols) to avoid the
@@ -388,9 +390,11 @@ static SmallVector<int64_t> setOuterPermB(bool isMatmulTransposeB,
 static LogicalResult setRootConfigForPackPeel4LevelTilingPipeline(
     mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
     AMDAIEDevice targetDevice, uint32_t numRows, uint32_t numCols) {
+  // Scale the L1 K with a factor of 2 compared with the outer dimenions M and N
+  // to increase the L1 memory usage.
   auto maybePackPeelTiling = ParameterSetting::create(
       linalgOp, /*isPackPeel=*/true, /*isObjectFifo=*/true, targetDevice,
-      numRows, numCols);
+      numRows, numCols, /*kPackScaleL1=*/2);
   if (failed(maybePackPeelTiling)) return failure();
   auto packPeelTiling = maybePackPeelTiling.value();
 

@@ -98,13 +98,13 @@ uint32_t import_drm_bo(const shim_xdna::pdev &dev,
   return imp_bo.handle;
 }
 
-bool is_power_of_two(size_t x) { return x > 0 && (x & x - 1) == 0; }
+bool is_power_of_two(size_t x) { return x > 0 && (x & (x - 1)) == 0; }
 
 void *addr_align(void *p, size_t align) {
   if (!is_power_of_two(align))
     shim_xdna::shim_err(EINVAL, "Alignment 0x%lx is not power of two", align);
 
-  return reinterpret_cast<void *>((uintptr_t)p + align & ~(align - 1));
+  return reinterpret_cast<void *>(((uintptr_t)p + align) & ~(align - 1));
 }
 
 amdxdna_bo_type flag_to_type(shim_xcl_bo_flags flags) {

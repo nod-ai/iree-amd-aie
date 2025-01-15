@@ -98,14 +98,20 @@ void AMDAIEFuseConsumerIntoLoopPass::runOnOperation() {
     // with any depth instead.
     for (unsigned depth = 1; depth <= fuseDepth; depth++) {
       do {
-        Value::user_range users = producerOp->getResult(0).getUsers();
-        if (!llvm::hasSingleElement(users)) {
+        ResultRange results = producerOp->getResults();
+        SmallVector<Operation *> allUsers = std::accumulate(
+            results.begin(), results.end(), SmallVector<Operation *>{},
+            [](SmallVector<Operation *> init, OpResult res) {
+              for (Operation *op : res.getUsers()) init.push_back(op);
+              return init;
+            });
+        if (allUsers.size() != 1) {
           LLVM_DEBUG(llvm::dbgs()
                      << "Expected only one user of the compute op\n");
           break;
         }
 
-        Operation *candidateSliceOp = *(users.begin());
+        Operation *candidateSliceOp = allUsers[0];
         if (!(isa<tensor::InsertSliceOp, tensor::ParallelInsertSliceOp>(
                 candidateSliceOp))) {
           producerOp = producerOp->getParentOfType<LoopLikeOpInterface>();
@@ -127,7 +133,15 @@ void AMDAIEFuseConsumerIntoLoopPass::runOnOperation() {
         }
         changed = true;
         fusedConsumer->origConsumerOperand->getOwner()->erase();
-        producerOp = fusedConsumer->tiledAndFusedConsumerOperand->getOwner();
+        Operation *fusedOp =
+            fusedConsumer->tiledAndFusedConsumerOperand->getOwner();
+        if (getAncestorInBlock(fusedOp, computeOp->getBlock()) != nullptr) {
+          // The consumer is fused all the way into the producer's block, so
+          // operate on this op from now on, but with reduced depth.
+          computeOp = fusedOp;
+          fuseDepth -= 1;
+        }
+        producerOp = fusedOp;
         break;
       } while (producerOp && producerOp->getParentOp() != funcOp);
     }
