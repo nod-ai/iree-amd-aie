@@ -350,7 +350,9 @@ LogicalResult assignNonLocalTiles(RewriterBase &rewriter, Operation *op,
   };
 
   // After filling tile candidates, find and assign a specific one.
-  DenseMap<MemRefType, int64_t> logicalObjFifoToTileId;
+  DenseMap<Value, SmallVector<AMDAIE::TileOp>> memrefToTileMap;
+  Block *prevBlock = nullptr;
+  bool pickFromBefore = false;
   WalkResult res =
       op->walk([&](AMDAIE::LogicalObjFifoOpInterface logicalObjectFifo) {
         uint8_t memSpace = logicalObjectFifo.getMemorySpaceAsUInt();
@@ -365,9 +367,34 @@ LogicalResult assignNonLocalTiles(RewriterBase &rewriter, Operation *op,
             llvm::map_to_vector(logicalObjectFifo.getTiles(), [](Value tile) {
               return dyn_cast_if_present<TileOp>(tile.getDefiningOp());
             });
-        AMDAIE::TileOp assignedTileOp =
-            *std::min_element(tiles.begin(), tiles.end(), tileLocAndUsageCmp);
+        bool hasMultipleTileCandidates = tiles.size() > 1;
+        auto fromMemrefOp = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+            logicalObjectFifo.getOperation());
+        Value memref = nullptr;
+        if (fromMemrefOp) {
+          memref = fromMemrefOp.getMemref();
+          if (hasMultipleTileCandidates && memSpace == 0) {
+            if (prevBlock && logicalObjectFifo->getBlock() != prevBlock) {
+              pickFromBefore = true;
+            }
+            prevBlock = logicalObjectFifo->getBlock();
+          }
+        }
 
+        AMDAIE::TileOp assignedTileOp = nullptr;
+        if (pickFromBefore && memrefToTileMap.contains(memref)) {
+          SmallVector<AMDAIE::TileOp> tiles = memrefToTileMap[memref];
+          assignedTileOp = tiles[0];
+          memrefToTileMap[memref].erase(memrefToTileMap[memref].begin());
+          memrefToTileMap[memref].push_back(assignedTileOp);
+        } else {
+          assignedTileOp =
+              *std::min_element(tiles.begin(), tiles.end(), tileLocAndUsageCmp);
+          if (hasMultipleTileCandidates && memSpace == 0) {
+            if (!memrefToTileMap.contains(memref)) memrefToTileMap[memref] = {};
+            memrefToTileMap[memref].push_back(assignedTileOp);
+          }
+        }
         // Increase usage of the chosen tile as a new logical objectFifo will be
         // assigned to it. This allows distributing the logical objectFifos
         // evenly across the available tile resources.
