@@ -870,9 +870,6 @@ void addAMDAIEObjectFifoLoweringPasses(
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createAMDAIEDmaCSEPass());
 
-  passManager.addPass(createAMDAIECanonicalizeDoublyStridedOpPass());
-  passManager.addPass(createCanonicalizerPass());
-
   passManager.addPass(createAMDAIEConvertCoreForallToForPass());
   passManager.addPass(createCanonicalizerPass());
 

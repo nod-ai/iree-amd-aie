@@ -328,8 +328,8 @@ struct DmaDimConfig {
   }
   virtual ~DmaDimConfig(){};
 
-  bool isValidAccessPattern(ArrayRef<int64_t> sizes,
-                            ArrayRef<int64_t> strides) const;
+  bool isValidAccessPattern(SmallVector<int64_t> sizes,
+                            SmallVector<int64_t> strides) const;
 
   /// Return a vector containing the max size values for every dimension.
   virtual SmallVector<int64_t> getMaxSizes(
