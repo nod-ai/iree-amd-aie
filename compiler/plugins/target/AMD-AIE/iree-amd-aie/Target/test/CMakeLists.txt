@@ -26,6 +26,17 @@ iree_cc_binary(
   TESTONLY
 )
 
+iree_cc_binary(
+  NAME
+    AMDAIEControlPacketTest
+  SRCS
+    AMDAIEControlPacketTest.cpp
+  DEPS
+    iree::target::amd-aie::aie::AIEDialectIR
+    iree::target::amd-aie::Target::Target
+  TESTONLY
+)
+
 iree_cc_test(
   NAME
     AMDAIEXCLBinGenTest
@@ -47,6 +58,7 @@ iree_lit_test_suite(
     ${IREE_LLD_TARGET}
     ::aie_cdo_gen_test
     ::aie2xclbin_test
+    ::AMDAIEControlPacketTest
     FileCheck
     iree-compile
   LABELS

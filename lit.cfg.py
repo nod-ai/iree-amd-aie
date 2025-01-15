@@ -19,7 +19,7 @@ config.name = "IREE"
 config.suffixes = [".mlir", ".txt"]
 config.test_format = lit.formats.ShTest(execute_external=True)
 # Forward all IREE environment variables
-passthrough_env_vars = ["VK_ICD_FILENAMES"]
+passthrough_env_vars = ["VK_ICD_FILENAMES", "PEANO_INSTALL_DIR"]
 config.environment.update(
     {
         k: v

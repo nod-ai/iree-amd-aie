@@ -1172,7 +1172,8 @@ LogicalResult emitNpuInstructions(AIE::DeviceOp deviceOp,
 }
 
 LogicalResult aie2xclbin(
-    MLIRContext *ctx, AIE::DeviceOp deviceOp, const std::string &outputNPU,
+    MLIRContext *ctx, AIE::DeviceOp deviceOp,
+    const std::optional<std::string> &outputNPU,
     const std::string &artifactPath, bool printIRBeforeAll,
     bool printIRAfterAll, bool printIRModuleScope, bool timing,
     const std::string &tempDir, bool useChess, bool verbose,
@@ -1184,7 +1185,10 @@ LogicalResult aie2xclbin(
     const std::optional<std::string> &InputXCLBin,
     const std::optional<std::string> &ukernel,
     const std::string &additionalPeanoOptFlags) {
-  if (failed(emitNpuInstructions(deviceOp, outputNPU))) return failure();
+  if (outputNPU.has_value() &&
+      failed(emitNpuInstructions(deviceOp, outputNPU.value()))) {
+    return failure();
+  }
 
   Path tempDirPath{tempDir};
   tempDirPath.make_preferred();

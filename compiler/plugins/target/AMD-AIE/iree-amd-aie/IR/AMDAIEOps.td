@@ -1047,6 +1047,31 @@ def AMDAIE_NpuTctSyncOp: AMDAIE_Op<"npu.tct_sync"> {
   let assemblyFormat = [{ attr-dict }];
 }
 
+def AMDAIE_NpuControlPacketOp: AMDAIE_Op<"npu.control_packet"> {
+  let summary = "AIE control packet.";
+  let description = [{
+    Represent an AIE control packet header and optional payload,
+    including a header with `address`, `length`, `opcode`, and `stream_id`.
+    An optional `data` attribute provides a payload for writing.
+
+    Example:
+
+    ```mlir
+    amdaie.npu.control_packet {address = 0 : ui32, data = array<i32: 2>
+      length = 1 : ui32, opcode = 0 : ui32, stream_id = 0 : ui32}
+    ```
+  }];
+  let arguments = (
+    ins UI32Attr:$address,
+        UI32Attr:$length,
+        UI32Attr:$opcode,
+        UI32Attr:$stream_id,
+        OptionalAttr<DenseI32ArrayAttr>:$data
+  );
+  let assemblyFormat = [{ attr-dict }];
+  let hasVerifier = 1;
+}
+
 //===----------------------------------------------------------------------===//
 // IREE AMDAIE LogicalObjectFifo Ops
 //===----------------------------------------------------------------------===//

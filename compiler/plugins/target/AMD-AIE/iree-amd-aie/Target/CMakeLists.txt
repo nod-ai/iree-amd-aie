@@ -19,6 +19,18 @@ iree_cc_library(
 
 iree_cc_library(
   NAME
+    AMDAIEControlPacket
+  HDRS
+    "AMDAIEControlPacket.h"
+  SRCS
+     "AMDAIEControlPacket.cpp"
+  DEPS
+     ::AMDAIERT
+     iree::compiler::Dialect::HAL::IR::HALDialect
+)
+
+iree_cc_library(
+  NAME
     AIETargets
   SRCS
     "AMDAIETargetBCF.cpp"
@@ -46,6 +58,7 @@ iree_cc_library(
   DEPS
     ::AIETargets
     ::AMDAIERT
+    ::AMDAIEControlPacket
     iree-amd-aie::schemas::xrt_executable_def_c_fbs
     iree-amd-aie::schemas::pdi_executable_def_c_fbs
     iree::base::internal::flatcc::building
