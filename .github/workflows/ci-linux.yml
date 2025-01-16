@@ -19,7 +19,7 @@ concurrency:
 jobs:
   build_and_ctest:
     name: Build and Test (linux, ASSERTIONS)
-    runs-on: nod-ai-shared-cpubuilder-manylinux-x86_64
+    runs-on: azure-cpubuilder-linux-scale
     strategy:
       fail-fast: true
     env:
