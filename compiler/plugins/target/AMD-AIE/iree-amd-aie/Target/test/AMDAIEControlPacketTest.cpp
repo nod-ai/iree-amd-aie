@@ -62,7 +62,7 @@ int main(int argc, char **argv) {
   auto moduleOp = llvm::cast<ModuleOp>(
       mlir::parseSourceFile(sourceMlirPath, parserConfig).release());
 
-  // Find the xilinx.aie.device op.
+  // Find the `xilinx.aie.device` op.
   SmallVector<xilinx::AIE::DeviceOp> deviceOps(
       moduleOp.getOps<xilinx::AIE::DeviceOp>());
   if (deviceOps.size() != 1) {
@@ -70,31 +70,18 @@ int main(int argc, char **argv) {
     return 1;
   }
   xilinx::AIE::DeviceOp deviceOp = deviceOps[0];
-  AMDAIEDevice device = deviceOp.getDevice();
 
-  // TODO(zhewen): The logic here is currently copied from AIETarget.cpp.
-  // Refactor this to use enums for `npuVersion` and `targetArch`.
-  std::string npuVersion;
-  std::string targetArch;
-  switch (device) {
-    case AMDAIEDevice::npu1:
-    case AMDAIEDevice::npu1_1col:
-    case AMDAIEDevice::npu1_2col:
-    case AMDAIEDevice::npu1_3col:
-    case AMDAIEDevice::npu1_4col:
-      npuVersion = "npu1";
-      targetArch = "AIE2";
-      break;
-    case AMDAIEDevice::npu4:
-      npuVersion = "npu4";
-      targetArch = "AIE2P";
-      break;
-    default:
-      std::cerr << "Error: unhandled NPU partitioning.\n";
-      return 1;
+  // Get the `npuVersion` and `targetArch` strings necessary for elf generation.
+  AMDAIEDeviceModel deviceModel = getDeviceModel(deviceOp.getDevice());
+  std::optional<std::string> npuVersion = deviceModel.getNPUVersionString();
+  std::optional<std::string> targetArch = deviceModel.getTargetArchString();
+  if (!npuVersion.has_value() || !targetArch.has_value()) {
+    std::cerr << "Error: unhandled NPU partitioning.\n";
+    return 1;
   }
 
-  // Generate the elf files, which are required for generating control packets.
+  // Generate the elf files, which are required for generating control
+  // packets.
   if (failed(aie2xclbin(
           /*ctx=*/&context,
           /*deviceOp=*/deviceOp,
@@ -108,8 +95,8 @@ int main(int argc, char **argv) {
           /*useChess=*/false,
           /*verbose=*/false,
           /*vitisDir=*/std::nullopt,
-          /*targetArch=*/targetArch,
-          /*npuVersion=*/npuVersion,
+          /*targetArch=*/targetArch.value(),
+          /*npuVersion=*/npuVersion.value(),
           /*peanoDir=*/std::getenv("PEANO_INSTALL_DIR"),
           /*deviceHal=*/AMDAIEOptions::DeviceHAL::XRT_LITE,
           /*xclBinKernelID=*/"",

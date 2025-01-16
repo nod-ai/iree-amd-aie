@@ -34,6 +34,7 @@ LogicalResult convertAieToControlPacket(ModuleOp moduleOp,
     return failure();
   if (failed(addInitConfig(deviceModel, deviceOp))) return failure();
   if (failed(addAllCoreEnable(deviceModel, deviceOp))) return failure();
+
   // Export the transactions to a binary buffer.
   uint8_t *txn_ptr =
       XAie_ExportSerializedTransaction(&deviceModel.devInst, 0, 0);
@@ -69,13 +70,14 @@ LogicalResult convertAieToControlPacket(ModuleOp moduleOp,
   builder.setInsertionPointToStart(controlCodeBlock);
 
   // Masked writes are not natively supported in control packets. To emulate
-  // this functionality, we buffer the most recent data written to to each
+  // this functionality, we buffer the most recent data written to each
   // specified address.
   DenseMap<uint64_t, uint32_t> emulationBuffer;
 
   // Set `opcode` and `stream_id` to 0 for writing to the NPU.
   uint32_t opcode = 0;
   uint32_t stream_id = 0;
+
   // Process each operation in the transaction.
   for (uint32_t i = 0; i < NumOps; i++) {
     XAie_OpHdr *op_header = (XAie_OpHdr *)txn_ptr;
@@ -104,22 +106,19 @@ LogicalResult convertAieToControlPacket(ModuleOp moduleOp,
         auto payload = reinterpret_cast<uint32_t *>(
             txn_ptr + sizeof(XAie_BlockWrite32Hdr));
         // Payload length in 32-bit words.
-        size_t length = (bw_header->Size - sizeof(XAie_BlockWrite32Hdr)) / 4;
-        // Split payload into beats of 4 or less, in int32_t.
-        for (size_t i = 0; i < length; i += 4) {
-          size_t end = std::min(i + 4, length);
-          SmallVector<int32_t> splitData(payload + i, payload + end);
-          builder.create<AMDAIE::NpuControlPacketOp>(
-              builder.getUnknownLoc(),
-              /*address=*/builder.getUI32IntegerAttr(addr),
-              /*length=*/builder.getUI32IntegerAttr(splitData.size()),
-              /*opcode=*/builder.getUI32IntegerAttr(opcode),
-              /*stream_id=*/builder.getUI32IntegerAttr(stream_id),
-              /*data=*/builder.getDenseI32ArrayAttr(splitData));
-          for (size_t j = 0; j < splitData.size(); j++) {
-            emulationBuffer[addr] = splitData[j];
-            addr += sizeof(int32_t);
-          }
+        uint32_t length = (bw_header->Size - sizeof(XAie_BlockWrite32Hdr)) / 4;
+        SmallVector<int32_t> data(payload, payload + length);
+        builder.create<AMDAIE::NpuControlPacketOp>(
+            builder.getUnknownLoc(),
+            /*address=*/builder.getUI32IntegerAttr(addr),
+            /*length=*/builder.getUI32IntegerAttr(length),
+            /*opcode=*/builder.getUI32IntegerAttr(opcode),
+            /*stream_id=*/builder.getUI32IntegerAttr(stream_id),
+            /*data=*/builder.getDenseI32ArrayAttr(data));
+        // Update the emulation buffer for the whole block of data.
+        for (size_t i = 0; i < length; i += 1) {
+          emulationBuffer[addr] = data[i];
+          addr += sizeof(int32_t);
         }
         txn_ptr += bw_header->Size;
         break;

@@ -387,6 +387,29 @@ struct AMDAIEDeviceModel {
                              uint8_t srcChan, StrmSwPortType dstBundle,
                              uint8_t dstChan) const;
 
+  /// The returned string is used by `chess` to identify the device.
+  std::optional<std::string> getNPUVersionString() const {
+    switch (configPtr.AieGen) {
+      case XAIE_DEV_GEN_AIE2IPU:
+        return "npu1";
+      case XAIE_DEV_GEN_AIE2P_STRIX_B0:
+        return "npu4";
+      default:
+        return std::nullopt;
+    }
+  }
+  /// The returned string is used by `peano` to identify the device.
+  std::optional<std::string> getTargetArchString() const {
+    switch (configPtr.AieGen) {
+      case XAIE_DEV_GEN_AIE2IPU:
+        return "AIE2";
+      case XAIE_DEV_GEN_AIE2P_STRIX_B0:
+        return "AIE2P";
+      default:
+        return std::nullopt;
+    }
+  }
+
   uint32_t getColumnShift() const;
   uint32_t getRowShift() const;
 

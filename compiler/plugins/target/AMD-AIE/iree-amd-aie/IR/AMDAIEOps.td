@@ -1054,6 +1054,10 @@ def AMDAIE_NpuControlPacketOp: AMDAIE_Op<"npu.control_packet"> {
     including a header with `address`, `length`, `opcode`, and `stream_id`.
     An optional `data` attribute provides a payload for writing.
 
+    `opcode = 0`: Write configuration data to the AIE. `stream_id` has no effect in this case.
+    `opcode = 1`: Request data from the AIE. `stream_id` specifies the header of the returning data.
+    When `opcode = 1`, `stream_id` should match the `packet_id` if CTRL MM2S is routed in packet mode.
+
     Example:
 
     ```mlir

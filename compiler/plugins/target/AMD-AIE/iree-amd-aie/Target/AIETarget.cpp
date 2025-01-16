@@ -469,24 +469,12 @@ LogicalResult AIETargetBackend::serializeExecutable(
 
     // TODO(max): this should be an enum
     // TODO(max): this needs to be pulled from PCIE
-    std::string npuVersion;
-    std::string targetArch;
-    switch (options.AMDAIETargetDevice) {
-      case AMDAIEDevice::npu1:
-      case AMDAIEDevice::npu1_1col:
-      case AMDAIEDevice::npu1_2col:
-      case AMDAIEDevice::npu1_3col:
-      case AMDAIEDevice::npu1_4col:
-        npuVersion = "npu1";
-        targetArch = "AIE2";
-        break;
-      case AMDAIEDevice::npu4:
-        npuVersion = "npu4";
-        targetArch = "AIE2P";
-        break;
-      default:
-        llvm::errs() << "unhandled NPU partitioning.\n";
-        return failure();
+    AMDAIEDeviceModel deviceModel = getDeviceModel(options.AMDAIETargetDevice);
+    std::optional<std::string> npuVersion = deviceModel.getNPUVersionString();
+    std::optional<std::string> targetArch = deviceModel.getTargetArchString();
+    if (!npuVersion.has_value() || !targetArch.has_value()) {
+      llvm::errs() << "unhandled NPU partitioning.\n";
+      return failure();
     }
 
     if (failed(aie2xclbin(
@@ -503,8 +491,8 @@ LogicalResult AIETargetBackend::serializeExecutable(
             /*vitisDir=*/options.vitisInstallDir.empty()
                 ? std::nullopt
                 : std::optional<std::string>{options.vitisInstallDir},
-            /*targetArch=*/targetArch,
-            /*npuVersion=*/npuVersion,
+            /*targetArch=*/targetArch.value(),
+            /*npuVersion=*/npuVersion.value(),
             /*peanoDir=*/options.peanoInstallDir,
             /*deviceHal=*/options.deviceHal,
             /*xclBinKernelID=*/ordinalHex.str(),
