@@ -7,10 +7,16 @@
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 
 #include <numeric>
+#include <optional>
+#include <sstream>
 
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
+#include "iree-amd-aie/IR/AMDAIELogicalObjFifoOpInterface.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Linalg/Utils/Utils.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/OpDefinition.h"
 
@@ -55,12 +61,242 @@ static void printAsyncTokenType(OpAsmPrinter &p, Operation *op,
   }
 }
 
+namespace {
+
+template <typename T>
+SmallVector<Operation *> getSourceAndTarget(T op) {
+  return {op.getSource().getDefiningOp(), op.getTarget().getDefiningOp()};
+}
+
+/// Depending on what type of operation `op` is, we select a different set of
+/// results/operands (consumers/producers) to traverse through in our search for
+/// a compute operation. See `getComputeOpIndex` for more details.
+SmallVector<Operation *> getNeighbors(Operation *op) {
+  auto appendUserRange = [&](Operation *op, SmallVector<Operation *> &ops) {
+    if (op) {
+      for (auto user : op->getUsers()) {
+        ops.push_back(user);
+      }
+    }
+  };
+
+  auto getUserRange = [&](Operation *op) -> SmallVector<Operation *> {
+    SmallVector<Operation *> ops;
+    appendUserRange(op, ops);
+    return ops;
+  };
+
+  auto isFifo = [](Operation *op) -> bool {
+    return op && (isa<LogicalObjectFifoFromMemrefOp>(op) ||
+                  isa<LogicalObjectFifoFromBuffersOp>(op));
+  };
+
+  auto appendWithFifoUsers = [&](Operation *op, SmallVector<Operation *> &ops) {
+    if (op) {
+      ops.push_back(op);
+      for (auto user : op->getUsers()) {
+        if (isFifo(user)) {
+          ops.push_back(user);
+        }
+      }
+    }
+  };
+
+  if (auto connection = dyn_cast<AMDAIE::ConnectionOp>(op)) {
+    auto neighbors = getSourceAndTarget(connection);
+    appendUserRange(connection, neighbors);
+    return neighbors;
+  } else if (auto dma_cpy_nd_op = dyn_cast<AMDAIE::DmaCpyNdOp>(op)) {
+    return getSourceAndTarget(dma_cpy_nd_op);
+  } else if (auto circular = dyn_cast<AMDAIE::CircularDmaCpyNdOp>(op)) {
+    return getSourceAndTarget(circular);
+  } else if (auto from_memref =
+                 dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(op)) {
+    auto memref = from_memref.getMemref().getDefiningOp();
+    if (memref) {
+      SmallVector<Operation *> neighbors = getUserRange(from_memref);
+      appendWithFifoUsers(memref, neighbors);
+      return neighbors;
+    }
+  } else if (auto from_buffers =
+                 dyn_cast<AMDAIE::LogicalObjectFifoFromBuffersOp>(op)) {
+    SmallVector<Operation *> neighbors = getUserRange(from_buffers);
+    for (auto buffer : from_buffers.getBuffers()) {
+      appendWithFifoUsers(buffer.getDefiningOp(), neighbors);
+    }
+    return neighbors;
+  } else if (auto access = dyn_cast<AMDAIE::LogicalObjectFifoAccessOp>(op)) {
+    return getUserRange(access);
+  } else if (auto reinterpret = dyn_cast<mlir::memref::ReinterpretCastOp>(op)) {
+    return getUserRange(reinterpret);
+  } else if (auto acquire = dyn_cast<AMDAIE::LogicalObjectFifoAcquire>(op)) {
+    return getUserRange(acquire);
+  } else if (auto buffer = dyn_cast<AMDAIE::BufferOp>(op)) {
+    return getUserRange(buffer);
+  }
+  // All other ops are currently considered `dead ends` in the graph, not
+  // leading to computation ops.
+  return {};
+}
+
+/// For most workloads, there is set of operations of type
+///
+/// buffer &
+///  from_memref &
+///   from_buffers &
+///    dma_cpy_nd &
+///     circular_dma_cpy_nd &
+///      connection &
+///       access &
+///        acquire &
+///         etc etc.
+///
+/// all of which have a 1:1 correspondence with an operand/result of the
+/// high level linalg op(s) being lowered. For example for
+/// matmul, most operations created during lowering are used exclusively
+/// to move one of the A, B, and C tensors to/from the AIE (where the
+/// matmul is C = A@B). It can be very useful to see which of the matmul
+/// operands each new low-level operation corresponds to when trying to
+/// understand the IR.
+///
+/// This function attempts to find the index of the compute operation that
+/// `root` corresponds to. For example if `root` is a `dma_cpy_nd` op for
+/// moving a sub-tensor of B from L2 to L1, then this function will return
+/// 1 (because B is operand number 1 of a matmul).
+///
+/// If there is any ambiguity about which operand of the high-level operation
+/// `root` corresponds to, the nullopt is returned.
+
+std::optional<uint32_t> getComputeOpIndex(Operation *root) {
+  // Traverse the graph defined by `getNeighbors` to find the compute
+  // ops that use the buffer/memref.
+  DenseSet<Operation *> visited{root};
+  SmallVector<Operation *> toTraverse{root};
+  std::optional<uint32_t> index{};
+  while (!toTraverse.empty()) {
+    auto nxt = toTraverse.back();
+    toTraverse.pop_back();
+    for (auto neighbor : getNeighbors(nxt)) {
+      if (neighbor) {
+        if (!visited.contains(neighbor)) {
+          visited.insert(neighbor);
+          toTraverse.push_back(neighbor);
+        }
+      }
+    }
+    for (auto &use : nxt->getUses()) {
+      Operation *owner = use.getOwner();
+      if (isa<linalg::GenericOp>(owner) || isa<func::CallOp>(owner)) {
+        int32_t nxtIndex = use.getOperandNumber();
+        // The case where this is the first compute operation:
+        if (!index.has_value()) {
+          index = nxtIndex;
+        }
+
+        // The case where this is not the first compute operation, and the
+        // indices used at are different:
+        else if (index.value() != nxtIndex) {
+          return std::optional<uint32_t>{};
+        }
+      }
+    }
+  }
+
+  return index;
+}
+
+/// This function is a thin wrapper around `getComputeOpIndex` that returns
+/// '_A' if the index is 0
+/// '_B' if the index is 1
+/// etc.
+std::string getGenericOperandSuffix(Operation *root) {
+  std::optional<uint32_t> maybeIndex = getComputeOpIndex(root);
+
+  // The case where no compute operation was found:
+  if (!maybeIndex.has_value()) return "";
+
+  // The case where one or more compute operation was found, and all used the
+  // buffer/memref at the same index:
+  char c = ('A' + maybeIndex.value());
+  std::ostringstream oss;
+  oss << '_' << c;
+  return oss.str();
+}
+
+/// String describing the column and row of `tileOp`. Example: if the column
+/// of `tileOp` an integer value (3) and the row is not, the returned string
+/// might be `_3_r`, where the `_r` denotes that the row is not known.
+std::string getTileSuffix(TileOp tileOp) {
+  std::optional<int64_t> iCol = getConstantIntValue(tileOp.getCol());
+  std::optional<int64_t> iRow = getConstantIntValue(tileOp.getRow());
+  std::ostringstream oss;
+  auto add = [&](std::optional<int64_t> maybeValue, char unknown) {
+    oss << '_';
+    if (maybeValue.has_value()) {
+      oss << maybeValue.value();
+    } else {
+      oss << unknown;
+    }
+  };
+
+  if (iCol.has_value() || iRow.has_value()) {
+    add(iCol, 'c');
+    add(iRow, 'r');
+  }
+  return oss.str();
+}
+
+std::string getMultiTileSuffix(ArrayRef<TileOp> tiles) {
+  if (tiles.empty()) return "";
+
+  // Denotes one or more tiles with multiple possible row/column values.
+  constexpr int64_t multiple{-2};
+  constexpr int64_t unset{-1};
+  int64_t col{unset};
+  int64_t row{unset};
+
+  for (TileOp tile : tiles) {
+    if (!tile) {
+      col = multiple;
+      row = multiple;
+    } else {
+      std::optional<int64_t> maybeCol = getConstantIntValue(tile.getCol());
+      if (!maybeCol) col = multiple;
+      if (col >= 0 && maybeCol.value() != col) col = multiple;
+      if (col == unset) col = maybeCol.value();
+
+      std::optional<int64_t> maybeRow = getConstantIntValue(tile.getRow());
+      if (!maybeRow) row = multiple;
+      if (row >= 0 && maybeRow.value() != row) row = multiple;
+      if (row == unset) row = maybeRow.value();
+    }
+  }
+
+  std::ostringstream namestream;
+  namestream << '_';
+
+  if (col >= 0) {
+    namestream << col;
+  } else {
+    namestream << 'c';
+  }
+  if (row >= 0) {
+    namestream << '_' << row;
+  } else {
+    namestream << '_' << 'r';
+  }
+  return namestream.str();
+}
+}  // namespace
+
 //===----------------------------------------------------------------------===//
 // AMDAIE_BdIdOp
 //===----------------------------------------------------------------------===//
 
 void BdIdOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
-  setNameFn(getResult(), "bd_id");
+  TileOp tileOp = getTile().getDefiningOp<TileOp>();
+  assert(tileOp && "expected `amdaie.tile` for `amdaie.bd_id`");
+  setNameFn(getResult(), "bd_id" + getTileSuffix(tileOp));
 }
 
 //===----------------------------------------------------------------------===//
@@ -69,7 +305,10 @@ void BdIdOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
 
 void BufferOp::getAsmResultNames(
     function_ref<void(Value, StringRef)> setNameFn) {
-  setNameFn(getResult(), "buffer");
+  TileOp tileOp = getTile().getDefiningOp<TileOp>();
+  assert(tileOp && "expected `amdaie.tile` for amdaie.buffer");
+  setNameFn(getResult(), "buffer" + getTileSuffix(tileOp) +
+                             getGenericOperandSuffix(getOperation()));
 }
 
 //===----------------------------------------------------------------------===//
@@ -78,7 +317,9 @@ void BufferOp::getAsmResultNames(
 
 void ChannelOp::getAsmResultNames(
     function_ref<void(Value, StringRef)> setNameFn) {
-  setNameFn(getResult(), "channel");
+  TileOp tileOp = getTile().getDefiningOp<TileOp>();
+  assert(tileOp && "expected `amdaie.tile` for `amdaie.channel`");
+  setNameFn(getResult(), "channel" + getTileSuffix(tileOp));
 }
 
 TileOp ChannelOp::getTileOp() {
@@ -474,6 +715,12 @@ void CircularDmaCpyNdOp::getCanonicalizationPatterns(RewritePatternSet &results,
 // AMDAIE_ConnectionOp
 //===----------------------------------------------------------------------===//
 
+void ConnectionOp::getAsmResultNames(
+    function_ref<void(Value, StringRef)> setNameFn) {
+  setNameFn(getResult(),
+            "connection" + getGenericOperandSuffix(getOperation()));
+}
+
 void ConnectionOp::build(mlir::OpBuilder &b, mlir::OperationState &result,
                          Value target, Value source) {
   build(b, result, target, {}, source, {}, nullptr, nullptr);
@@ -522,7 +769,9 @@ LogicalResult FlowOp::verify() {
 //===----------------------------------------------------------------------===//
 
 void LockOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
-  setNameFn(getResult(), "lock");
+  TileOp tileOp = getTile().getDefiningOp<TileOp>();
+  assert(tileOp && "expected `amdaie.tile` for `amdaie.lock`");
+  setNameFn(getResult(), "lock" + getTileSuffix(tileOp));
 }
 
 //===----------------------------------------------------------------------===//
@@ -555,6 +804,17 @@ void LogicalObjectFifoAcquire::build(OpBuilder &b, mlir::OperationState &result,
 //===----------------------------------------------------------------------===//
 // AMDAIE_LogicalObjectFifoFromBuffersOp
 //===----------------------------------------------------------------------===//
+
+void LogicalObjectFifoFromBuffersOp::getAsmResultNames(
+    function_ref<void(Value, StringRef)> setNameFn) {
+  SmallVector<TileOp> tiles;
+  tiles.reserve(getTiles().size());
+  for (auto index : getTiles()) {
+    tiles.push_back(dyn_cast<TileOp>(index.getDefiningOp()));
+  }
+  setNameFn(getResult(), "lof" + getMultiTileSuffix(tiles) +
+                             getGenericOperandSuffix(getOperation()));
+}
 
 SmallVector<AMDAIE::BufferOp> LogicalObjectFifoFromBuffersOp::getBuffersOnTile(
     TileOp tileOp) {
@@ -627,54 +887,28 @@ LogicalObjectFifoFromBuffersOp::replaceWithNewTiles(
 
 void LogicalObjectFifoFromMemrefOp::getAsmResultNames(
     function_ref<void(Value, StringRef)> setNameFn) {
-  // 'lof' for 'logical object fifo'
-  constexpr const char *const name = "lof";
-
-  auto tiles = getTiles();
-
-  if (tiles.empty()) {
-    setNameFn(getResult(), name);
-    return;
+  SmallVector<TileOp> tiles;
+  tiles.reserve(getTiles().size());
+  for (auto index : getTiles()) {
+    tiles.push_back(dyn_cast<TileOp>(index.getDefiningOp()));
   }
 
-  // Denotes one or more tiles with multiple possible row/column values.
-  constexpr int64_t multiple{-2};
-  constexpr int64_t unset{-1};
-  int64_t col{unset};
-  int64_t row{unset};
+  auto multiTileSuffix = getMultiTileSuffix(tiles);
+  auto genericOperandSuffix = getGenericOperandSuffix(getOperation());
 
-  for (Value index : tiles) {
-    TileOp tile = dyn_cast<TileOp>(index.getDefiningOp());
-    if (!tile) {
-      col = multiple;
-      row = multiple;
-    } else {
-      std::optional<int64_t> maybeCol = getConstantIntValue(tile.getCol());
-      if (!maybeCol) col = multiple;
-      if (col >= 0 && maybeCol.value() != col) col = multiple;
-      if (col == unset) col = maybeCol.value();
-
-      std::optional<int64_t> maybeRow = getConstantIntValue(tile.getRow());
-      if (!maybeRow) row = multiple;
-      if (row >= 0 && maybeRow.value() != row) row = multiple;
-      if (row == unset) row = maybeRow.value();
+  if (multiTileSuffix == "_c_r" || multiTileSuffix == "") {
+    // rather use the memory space:
+    auto type = getMemref().getType();
+    auto memspace = type.getMemorySpaceAsInt();
+    if (memspace == 0) {
+      multiTileSuffix = "_L3";
+    } else if (memspace == 1) {
+      multiTileSuffix = "_L2";
+    } else if (memspace == 2) {
+      multiTileSuffix = "_L1";
     }
   }
-
-  std::ostringstream namestream;
-  namestream << name << '_';
-
-  if (col >= 0) {
-    namestream << col;
-  } else {
-    namestream << 'c';
-  }
-  if (row >= 0) {
-    namestream << '_' << row;
-  } else {
-    namestream << '_' << 'r';
-  }
-  setNameFn(getResult(), namestream.str());
+  setNameFn(getResult(), "lof" + multiTileSuffix + genericOperandSuffix);
 }
 
 /// Build with an array of static tile locations.
@@ -774,8 +1008,8 @@ void LogicalObjectFifoRelease::build(OpBuilder &b, mlir::OperationState &result,
 // AMDAIE_NpuDmaCpyNdOp
 //===----------------------------------------------------------------------===//
 
-// Build a NpuDmaCpyNdOp with mixed static and dynamic entries and target and
-// source BD IDs.
+// Build a NpuDmaCpyNdOp with mixed static and dynamic entries and target
+// and source BD IDs.
 void NpuDmaCpyNdOp::build(
     OpBuilder &b, OperationState &result, TypeRange resultTypes,
     Value connection, Value target, ArrayRef<OpFoldResult> targetOffsets,
@@ -1419,26 +1653,8 @@ SmallVector<AMDAIE::NpuDmaCpyNdOp> NpuDmaWaitOp::getDmaOps() {
 // AMDAIE_TileOp
 //===----------------------------------------------------------------------===//
 
-// Example: if the column is an integer value (3) and the row is not, the SSA
-// value might be `%tile_3_r`, where the `_r` denotes that the row is not known.
 void TileOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
-  std::optional<int64_t> iCol = getConstantIntValue(getCol());
-  std::optional<int64_t> iRow = getConstantIntValue(getRow());
-  std::ostringstream name;
-  name << "tile";
-
-  auto add = [&](std::optional<int64_t> maybeValue, char unknown) {
-    if (maybeValue.has_value()) {
-      name << '_' << maybeValue.value();
-    } else {
-      name << '_' << unknown;
-    }
-  };
-  if (iCol.has_value() || iRow.has_value()) {
-    add(iCol, 'c');
-    add(iRow, 'r');
-  }
-  setNameFn(getResult(), name.str());
+  setNameFn(getResult(), "tile" + getTileSuffix(*this));
 }
 
 bool TileOp::hasStaticLocation() {

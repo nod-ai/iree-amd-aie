@@ -56,6 +56,7 @@ iree_cc_library(
     MLIRParser
     MLIRSupport
     MLIRViewLikeInterface
+    MLIRLinalgDialect
   PUBLIC
 )
 

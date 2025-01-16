@@ -544,7 +544,7 @@ func.func @from_memref_known_tiles(%arg0 : memref<8xi32>, %t0 : index) {
     %tile_3_2 = amdaie.tile(%c3, %c2)
     %tile_2_2 = amdaie.tile(%c2, %c2)
     // logicalobjectfifo without any tiles:
-    // CHECK: %lof =
+    // CHECK: %lof_L3 =
     %fifo0 = amdaie.logicalobjectfifo.from_memref %arg0, {} :
       memref<8xi32> -> !amdaie.logicalobjectfifo<memref<8xi32>>
     // logicalobjectfifo with one known tile:
@@ -562,11 +562,11 @@ func.func @from_memref_known_tiles(%arg0 : memref<8xi32>, %t0 : index) {
     %fifo5 = amdaie.logicalobjectfifo.from_memref %arg0, {%tile_2_3, %tile_3_3} :
       memref<8xi32> -> !amdaie.logicalobjectfifo<memref<8xi32>>
     // logicalobjectfifo with two known tiles, in different rows and columns:
-    // CHECK: %lof_c_r =
+    // CHECK: %lof_L3_0 =
     %fifo6 = amdaie.logicalobjectfifo.from_memref %arg0, {%tile_2_3, %tile_3_2} :
       memref<8xi32> -> !amdaie.logicalobjectfifo<memref<8xi32>>
     // logicalobjectfifo with 4 tiles, spanning 2 rows and 2 columns:
-    // CHECK: %lof_c_r_0 =
+    // CHECK: %lof_L3_1 =
     %fifo7 = amdaie.logicalobjectfifo.from_memref %arg0,
       {%tile_2_3, %tile_3_3, %tile_3_2, %tile_2_2} :
       memref<8xi32> -> !amdaie.logicalobjectfifo<memref<8xi32>>
@@ -620,16 +620,165 @@ func.func @from_memref_unknown_row_column(%arg0 : memref<8xi32>, %t0 : index) {
     %tile_2_2 = amdaie.tile(%c2, %c2)
     %tile_u_u = amdaie.tile(%t0, %t0)
     // logicalobjectfifo with a single tile with unknown row and column:
-    // CHECK: %lof_c_r =
+    // CHECK: %lof_L3 =
     %fifo1 = amdaie.logicalobjectfifo.from_memref %arg0, {%tile_u_u} :
       memref<8xi32> -> !amdaie.logicalobjectfifo<memref<8xi32>>
     // logicalobjectfifo with one unknown tile, and one known tile:
-    // CHECK: %lof_c_r_0 =
+    // CHECK: %lof_L3_0 =
     %fifo2 = amdaie.logicalobjectfifo.from_memref %arg0, {%tile_2_2, %tile_u_u} :
       memref<8xi32> -> !amdaie.logicalobjectfifo<memref<8xi32>>
     amdaie.controlcode {
       amdaie.end
     }
   }
+  return
+}
+
+
+// -----
+
+
+
+#pipeline_layout = #hal.pipeline.layout<bindings = [#hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, Indirect>], flags = Indirect>
+
+func.func private @generic_matmul_0_outlined(%arg0: memref<1x1x4x8x4x8xbf16, 2 : i32>, %arg1: memref<1x1x8x4x8x4xbf16, 2 : i32>, %arg2: memref<1x1x8x8x4x4xf32, 2 : i32>) {
+  return
+}
+
+// CHECK-LABEL: func.func @operand_matching
+func.func @operand_matching()  {
+  %c0 = arith.constant 0 : index
+  %c2 = arith.constant 2 : index
+  %c1 = arith.constant 1 : index
+  amdaie.workgroup {
+    // CHECK: %tile_0_1 =
+    %tile = amdaie.tile(%c0, %c1)
+
+    // CHECK: %buffer_0_1_A =
+    %buffer = amdaie.buffer(%tile) : memref<1024xbf16, 1 : i32>
+
+    // CHECK: %lock_0_1 =
+    %lock = amdaie.lock(%tile(4), 1)
+    %lock_0 = amdaie.lock(%tile(5), 0)
+
+    // CHECK: %buffer_0_1_B =
+    %buffer_1 = amdaie.buffer(%tile) : memref<1024xbf16, 1 : i32>
+    %lock_2 = amdaie.lock(%tile(2), 1)
+    %lock_3 = amdaie.lock(%tile(3), 0)
+
+    // CHECK: %buffer_0_1_C =
+    %buffer_4 = amdaie.buffer(%tile) : memref<1024xf32, 1 : i32>
+    %lock_5 = amdaie.lock(%tile(0), 1)
+    %lock_6 = amdaie.lock(%tile(1), 0)
+
+    // CHECK: %lof_0_1_C =
+    %lof = amdaie.logicalobjectfifo.from_buffers({%buffer_4}, {%lock_5}, {%lock_6}) : memref<1024xf32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<1024xf32, 1 : i32>>
+
+    // CHECK: %lof_0_1_B =
+    %lof_7 = amdaie.logicalobjectfifo.from_buffers({%buffer_1}, {%lock_2}, {%lock_3}) : memref<1024xbf16, 1 : i32> -> !amdaie.logicalobjectfifo<memref<1024xbf16, 1 : i32>>
+
+    // CHECK: %lof_0_1_A =
+    %lof_8 = amdaie.logicalobjectfifo.from_buffers({%buffer}, {%lock}, {%lock_0}) : memref<1024xbf16, 1 : i32> -> !amdaie.logicalobjectfifo<memref<1024xbf16, 1 : i32>>
+    %0 = hal.interface.binding.subspan layout(#pipeline_layout) binding(0) alignment(64) offset(%c0) flags("ReadOnly|Indirect") : memref<32x32xbf16>
+    memref.assume_alignment %0, 64 : memref<32x32xbf16>
+    %1 = hal.interface.binding.subspan layout(#pipeline_layout) binding(1) alignment(64) offset(%c0) flags("ReadOnly|Indirect") : memref<32x32xbf16>
+    memref.assume_alignment %1, 64 : memref<32x32xbf16>
+    %2 = hal.interface.binding.subspan layout(#pipeline_layout) binding(2) alignment(64) offset(%c0) flags(Indirect) : memref<32x32xf32>
+    memref.assume_alignment %2, 64 : memref<32x32xf32>
+
+    // CHECK: %tile_0_0 =
+    %tile_9 = amdaie.tile(%c0, %c0)
+    %3 = amdaie.logicalobjectfifo.placeholder{%tile_9} : !amdaie.logicalobjectfifo<memref<32x32xbf16>>
+
+    // CHECK: %channel_0_0 =
+    %channel = amdaie.channel(%tile_9, 0, port_type = DMA, direction = MM2S)
+    %channel_10 = amdaie.channel(%tile, 0, port_type = DMA, direction = S2MM)
+    %4 = amdaie.flow({%channel} -> {%channel_10}) {is_packet_flow = false}
+
+    // CHECK: %connection_A =
+    %connection = amdaie.connection(%lof_8 {%channel_10}, %3 {%channel}, flow = %4) {connection_type = #amdaie<connection_type Circuit>} : (!amdaie.logicalobjectfifo<memref<1024xbf16, 1 : i32>>, !amdaie.logicalobjectfifo<memref<32x32xbf16>>)
+    %channel_11 = amdaie.channel(%tile_9, 1, port_type = DMA, direction = MM2S)
+    %channel_12 = amdaie.channel(%tile, 1, port_type = DMA, direction = S2MM)
+    %5 = amdaie.flow({%channel_11} -> {%channel_12}) {is_packet_flow = false}
+
+    // CHECK: %connection_B =
+    %connection_13 = amdaie.connection(%lof_7 {%channel_12}, %3 {%channel_11}, flow = %5) {connection_type = #amdaie<connection_type Circuit>} : (!amdaie.logicalobjectfifo<memref<1024xbf16, 1 : i32>>, !amdaie.logicalobjectfifo<memref<32x32xbf16>>)
+    %tile_14 = amdaie.tile(%c0, %c2)
+
+    // CHECK: %buffer_0_2_B =
+    %buffer_15 = amdaie.buffer(%tile_14) : memref<1024xbf16, 2 : i32>
+    %lock_16 = amdaie.lock(%tile_14(4), 1)
+    %lock_17 = amdaie.lock(%tile_14(5), 0)
+
+    // CHECK: %buffer_0_2_A =
+    %buffer_18 = amdaie.buffer(%tile_14) : memref<1024xbf16, 2 : i32>
+    %lock_19 = amdaie.lock(%tile_14(2), 1)
+    %lock_20 = amdaie.lock(%tile_14(3), 0)
+
+    // CHECK: %buffer_0_2_C =
+    %buffer_21 = amdaie.buffer(%tile_14) : memref<1024xf32, 2 : i32>
+    %lock_22 = amdaie.lock(%tile_14(0), 1)
+    %lock_23 = amdaie.lock(%tile_14(1), 0)
+
+    // CHECK: %lof_0_2_C =
+    %lof_24 = amdaie.logicalobjectfifo.from_buffers({%buffer_21}, {%lock_22}, {%lock_23}) : memref<1024xf32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<1024xf32, 2 : i32>>
+    %lof_25 = amdaie.logicalobjectfifo.from_buffers({%buffer_18}, {%lock_19}, {%lock_20}) : memref<1024xbf16, 2 : i32> -> !amdaie.logicalobjectfifo<memref<1024xbf16, 2 : i32>>
+    %lof_26 = amdaie.logicalobjectfifo.from_buffers({%buffer_15}, {%lock_16}, {%lock_17}) : memref<1024xbf16, 2 : i32> -> !amdaie.logicalobjectfifo<memref<1024xbf16, 2 : i32>>
+    %channel_27 = amdaie.channel(%tile, 0, port_type = DMA, direction = MM2S)
+    %channel_28 = amdaie.channel(%tile_14, 0, port_type = DMA, direction = S2MM)
+    %6 = amdaie.flow({%channel_27} -> {%channel_28}) {is_packet_flow = false}
+    %connection_29 = amdaie.connection(%lof_26 {%channel_28}, %lof_7 {%channel_27}, flow = %6) {connection_type = #amdaie<connection_type Circuit>} : (!amdaie.logicalobjectfifo<memref<1024xbf16, 2 : i32>>, !amdaie.logicalobjectfifo<memref<1024xbf16, 1 : i32>>)
+    %channel_30 = amdaie.channel(%tile, 1, port_type = DMA, direction = MM2S)
+    %channel_31 = amdaie.channel(%tile_14, 1, port_type = DMA, direction = S2MM)
+    %7 = amdaie.flow({%channel_30} -> {%channel_31}) {is_packet_flow = false}
+    %connection_32 = amdaie.connection(%lof_25 {%channel_31}, %lof_8 {%channel_30}, flow = %7) {connection_type = #amdaie<connection_type Circuit>} : (!amdaie.logicalobjectfifo<memref<1024xbf16, 2 : i32>>, !amdaie.logicalobjectfifo<memref<1024xbf16, 1 : i32>>)
+    %channel_33 = amdaie.channel(%tile_14, 0, port_type = DMA, direction = MM2S)
+    %channel_34 = amdaie.channel(%tile, 2, port_type = DMA, direction = S2MM)
+    %8 = amdaie.flow({%channel_33} -> {%channel_34}) {is_packet_flow = false}
+
+    // CHECK: %connection_C =
+    %connection_35 = amdaie.connection(%lof {%channel_34}, %lof_24 {%channel_33}, flow = %8) {connection_type = #amdaie<connection_type Circuit>} : (!amdaie.logicalobjectfifo<memref<1024xf32, 1 : i32>>, !amdaie.logicalobjectfifo<memref<1024xf32, 2 : i32>>)
+    %9 = amdaie.core(%tile_14, in : [%connection_29, %connection_32], out : [%connection_35]) {
+      %cst = arith.constant 0.000000e+00 : f32
+      amdaie.use_lock(%lock_22, AcquireGreaterOrEqual(1))
+      %reinterpret_cast = memref.reinterpret_cast %buffer_21 to offset: [0], sizes: [1, 1, 8, 8, 4, 4], strides: [1024, 1024, 128, 16, 4, 1] : memref<1024xf32, 2 : i32> to memref<1x1x8x8x4x4xf32, 2 : i32>
+      linalg.fill ins(%cst : f32) outs(%reinterpret_cast : memref<1x1x8x8x4x4xf32, 2 : i32>)
+      amdaie.use_lock(%lock_20, AcquireGreaterOrEqual(1))
+      %reinterpret_cast_41 = memref.reinterpret_cast %buffer_18 to offset: [0], sizes: [1, 1, 4, 8, 4, 8], strides: [1024, 1024, 256, 32, 8, 1] : memref<1024xbf16, 2 : i32> to memref<1x1x4x8x4x8xbf16, 2 : i32>
+      amdaie.use_lock(%lock_17, AcquireGreaterOrEqual(1))
+      %reinterpret_cast_42 = memref.reinterpret_cast %buffer_15 to offset: [0], sizes: [1, 1, 8, 4, 8, 4], strides: [1024, 1024, 128, 32, 4, 1] : memref<1024xbf16, 2 : i32> to memref<1x1x8x4x8x4xbf16, 2 : i32>
+      func.call @generic_matmul_0_outlined(%reinterpret_cast_41, %reinterpret_cast_42, %reinterpret_cast) : (memref<1x1x4x8x4x8xbf16, 2 : i32>, memref<1x1x8x4x8x4xbf16, 2 : i32>, memref<1x1x8x8x4x4xf32, 2 : i32>) -> ()
+      amdaie.use_lock(%lock_19, Release(1))
+      amdaie.use_lock(%lock_16, Release(1))
+      amdaie.use_lock(%lock_23, Release(1))
+      amdaie.end
+    }
+    %10 = amdaie.logicalobjectfifo.placeholder{%tile_9} : !amdaie.logicalobjectfifo<memref<32x32xf32>>
+    %channel_36 = amdaie.channel(%tile, 2, port_type = DMA, direction = MM2S)
+    %channel_37 = amdaie.channel(%tile_9, 0, port_type = DMA, direction = S2MM)
+    %11 = amdaie.flow({%channel_36} -> {%channel_37}) {is_packet_flow = false}
+    %connection_38 = amdaie.connection(%10 {%channel_37}, %lof {%channel_36}, flow = %11) {connection_type = #amdaie<connection_type Circuit>} : (!amdaie.logicalobjectfifo<memref<32x32xf32>>, !amdaie.logicalobjectfifo<memref<1024xf32, 1 : i32>>)
+    %channel_39 = amdaie.channel(%tile_9, 0, port_type = CTRL, direction = MM2S)
+    %channel_40 = amdaie.channel(%tile_9, 0, port_type = SOUTH, direction = S2MM)
+    %12 = amdaie.flow({%channel_39} -> {%channel_40}) {is_packet_flow = false}
+    amdaie.controlcode {
+      memref.assume_alignment %0, 64 : memref<32x32xbf16>
+      memref.assume_alignment %1, 64 : memref<32x32xbf16>
+      memref.assume_alignment %2, 64 : memref<32x32xf32>
+
+      // CHECK: amdaie.npu.circular_dma_cpy_nd %connection_A([0, 0] [32, 32] [32, 1], [] [] [])
+      %13 = amdaie.npu.circular_dma_cpy_nd %connection([0, 0] [32, 32] [32, 1], [] [] [])
+
+      // CHECK: amdaie.npu.circular_dma_cpy_nd %connection_B([0, 0] [32, 32] [32, 1], [] [] [])
+      %14 = amdaie.npu.circular_dma_cpy_nd %connection_13([0, 0] [32, 32] [32, 1], [] [] [])
+      %15 = amdaie.npu.circular_dma_cpy_nd %connection_29([0, 0, 0] [32, 8, 4] [4, 128, 1], [0, 0] [32, 32] [32, 1])
+      %16 = amdaie.npu.circular_dma_cpy_nd %connection_32([0, 0, 0] [32, 4, 8] [8, 256, 1], [0, 0] [32, 32] [32, 1])
+
+      // CHECK: amdaie.npu.circular_dma_cpy_nd %connection_C([0, 0] [32, 32] [32, 1], [0, 0, 0] [32, 8, 4] [4, 128, 1])
+      %17 = amdaie.npu.circular_dma_cpy_nd %connection_35([0, 0] [32, 32] [32, 1], [0, 0, 0] [32, 8, 4] [4, 128, 1])
+      %18 = amdaie.npu.circular_dma_cpy_nd %connection_38([] [] [], [0, 0] [32, 32] [32, 1])
+      amdaie.end
+    }
+  } {npu_instructions = dense_resource<npu_instructions> : tensor<106xui32>}
   return
 }
