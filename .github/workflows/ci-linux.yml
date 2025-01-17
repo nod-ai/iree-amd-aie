@@ -236,9 +236,9 @@ jobs:
             $DEVICE_TEST_DIR/$t --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS
           done
 
-      # Only publish the performance results on main branch pushes.
+      # Only publish the performance results for `main` branch.
       - name: Publish performance results
-        if: github.event_name == 'push' && github.ref == 'zhewen_track_perf'
+        if: github.ref == 'zhewen_track_perf'
         run: |
           cp build_tools/ci/cpu_comparison/performance_publish.py .
           git fetch origin zhewen-gh-pages
