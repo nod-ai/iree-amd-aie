@@ -290,8 +290,8 @@ bool isMatmulTransposeA(linalg::LinalgOp linalgOp) {
 /// matmul_transpose_b op.
 bool isMatmulTransposeB(linalg::LinalgOp linalgOp) {
   // Step 0. Test if the op itself is a linalg.matmul_transpose_b op.
-  if (isa<linalg::MatmulTransposeBOp, linalg::BatchMatmulTransposeBOp>(
-          linalgOp))
+  if (isa<linalg::MatmulTransposeBOp, linalg::BatchMatmulTransposeBOp,
+          linalg::Mmt4DOp>(linalgOp))
     return true;
   if (!isa<linalg::GenericOp>(linalgOp)) return false;
 
@@ -341,7 +341,8 @@ bool isMatmulInDefChain(Value operand) {
 /// Utility to identify if `linalgOp` is an elementwise operation with a
 /// matmul-like op upstream in its computation tree.
 bool isMatmulProducerOfElementwise(linalg::LinalgOp linalgOp) {
-  if (!linalg::isElementwise(linalgOp) || isa<linalg::FillOp>(linalgOp)) {
+  if (!linalg::isElementwise(linalgOp) ||
+      isa<linalg::FillOp, linalg::CopyOp>(linalgOp)) {
     return false;
   }
   // Check if any of the defining op is a matmul-like op.

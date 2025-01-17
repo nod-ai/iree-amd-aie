@@ -162,4 +162,15 @@ def AMDAIE_PackingConfigAttr :
   }];
 }
 
+def AMDAIE_NumInputLoopsAttr :
+  AttrDef<AMDAIE_Dialect, "NumInputLoops", []>
+{
+  let mnemonic = "num_input_loops";
+  let parameters = (ins
+    "int64_t":$numLoops
+  );
+
+  let assemblyFormat = "`<` $numLoops `>`";
+}
+
 #endif // IREE_COMPILER_AMDAIE_DIALECT_IREEAMDAIEATTRS

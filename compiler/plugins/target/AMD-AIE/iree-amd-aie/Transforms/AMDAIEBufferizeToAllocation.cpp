@@ -172,7 +172,7 @@ void AMDAIEBufferizeToAllocationPass::runOnOperation() {
         !linalg::isaConvolutionOpInterface(op)) {
       return WalkResult::advance();
     }
-    if (isa<linalg::FillOp>(op)) {
+    if (isa<linalg::FillOp, linalg::CopyOp>(op)) {
       return WalkResult::advance();
     }
     // Use flag `bufferizeElementwise` to indicate whether the target for
