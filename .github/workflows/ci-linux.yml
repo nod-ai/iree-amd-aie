@@ -238,7 +238,6 @@ jobs:
 
       # Only publish the performance results on main branch pushes.
       # github.event_name == 'push' && github.ref_name == 'main'
-      # testing
       - name: Publish performance results
         if: github.ref_name == '1035/merge'
         run: |
