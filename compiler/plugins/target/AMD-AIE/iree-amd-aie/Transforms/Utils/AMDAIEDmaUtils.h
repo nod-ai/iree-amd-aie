@@ -93,7 +93,7 @@ bool areAccessPatternsCombinable(const SmallVector<OpFoldResult> &offsetsA,
                                  const SmallVector<OpFoldResult> &offsetsB,
                                  const SmallVector<OpFoldResult> &sizesB,
                                  const SmallVector<OpFoldResult> &stridesB,
-                                 size_t maxNbDims);
+                                 function_ref<bool(size_t)> exceedsNbDims);
 
 /// Combine two access patterns into a single one. Assumes that access pattern A
 /// belongs to a strided op which is ordered before the strided op B. Takes a
@@ -110,7 +110,7 @@ LogicalResult combineAccessPatterns(RewriterBase &rewriter,
                                     SmallVector<OpFoldResult> &newOffsets,
                                     SmallVector<OpFoldResult> &newSizes,
                                     SmallVector<OpFoldResult> &newStrides,
-                                    size_t maxNbDims);
+                                    function_ref<bool(size_t)> exceedsNbDims);
 
 /// Fold subsequent dimensions within a strided access pattern that describe a
 /// single linear access. Returns `success` if folding took place.
