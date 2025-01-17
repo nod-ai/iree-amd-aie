@@ -35,11 +35,6 @@ jobs:
           timezoneMacos: "Asia/Singapore"
           timezoneWindows: "Singapore Standard Time"
 
-      - name: Configure local git mirrors
-        run: |
-          /gitmirror/scripts/trigger_update_mirrors.sh
-          /gitmirror/scripts/git_config.sh
-
       - name: "Checking out repository"
         env:
           BRANCH_NAME: ${{ github.ref }}
