@@ -83,7 +83,9 @@ jobs:
 
       - name: Build packages
         run: |
-          sudo apt install cmake ninja-build clang lld -y 
+          sudo snap install cmake --classic
+          cmake --version
+          sudo apt install ninja-build clang lld -y 
           export cache_dir="${{ env.CACHE_DIR }}"
           export CCACHE_COMPILERCHECK="string:$(clang --version)"
           bash build_tools/build_llvm.sh
