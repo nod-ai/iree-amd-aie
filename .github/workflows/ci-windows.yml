@@ -19,6 +19,7 @@ on:
         description: 'Force save ccache'
         required: false
         default: false
+  pull_request:
   merge_group:
   push:
     branches:
