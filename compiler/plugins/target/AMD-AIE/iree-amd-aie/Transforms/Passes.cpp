@@ -308,8 +308,9 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
 
 void addPackPeel4LevelTilingBasedPassPipeline(
     OpPassManager &funcPassManager, TilingConfig &tilingConfig,
-    const std::string &pathToUkernels, bool enableVectorizationPasses,
-    TilePassPipeline useTilePipeline) {
+    NumInputLoopsAttr numLoopsAttr, const std::string &pathToUkernels,
+    bool enableVectorizationPasses, TilePassPipeline useTilePipeline) {
+  int64_t numInputLoops = numLoopsAttr.getNumLoops();
   // First level tiling using scf.forall
   {
     AMDAIETileAndFuseOptions tileFuseOptions;
@@ -321,17 +322,28 @@ void addPackPeel4LevelTilingBasedPassPipeline(
   funcPassManager.addPass(createCanonicalizerPass());
   funcPassManager.addPass(createCSEPass());
 
-  // First level packing
-  {
-    AMDAIEPackAndTransposeOptions packOptions;
-    packOptions.packLevel = 0;
-    funcPassManager.addPass(createAMDAIEPackAndTransposePass(packOptions));
+  // First level pack or pad operation depending on the number of input loops.
+  if (numInputLoops <= 4) {
+    // First level packing
+    {
+      AMDAIEPackAndTransposeOptions packOptions;
+      packOptions.packLevel = 0;
+      funcPassManager.addPass(createAMDAIEPackAndTransposePass(packOptions));
+    }
+    // Propagate pack ops for the elementwise op
+    funcPassManager.addPass(createAMDAIEPropagateDataLayoutPass());
+    funcPassManager.addPass(createCanonicalizerPass());
+    funcPassManager.addPass(createCSEPass());
+  } else {
+    // First level pad
+    {
+      AMDAIEPadOptions padOptions;
+      padOptions.paddingLevel = 0;
+      funcPassManager.addPass(createAMDAIEPadPass(padOptions));
+    }
+    funcPassManager.addPass(createCanonicalizerPass());
+    funcPassManager.addPass(createCSEPass());
   }
-
-  // Propagate pack ops for the elementwise op
-  funcPassManager.addPass(createAMDAIEPropagateDataLayoutPass());
-  funcPassManager.addPass(createCanonicalizerPass());
-  funcPassManager.addPass(createCSEPass());
 
   // Promote the matmul output to shared memory
   {
@@ -355,7 +367,7 @@ void addPackPeel4LevelTilingBasedPassPipeline(
   // Second level packing
   {
     AMDAIEPackAndTransposeOptions packOptions;
-    packOptions.packLevel = 1;
+    packOptions.packLevel = numInputLoops <= 4 ? 1 : 0;
     funcPassManager.addPass(createAMDAIEPackAndTransposePass(packOptions));
   }
 

@@ -4,6 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "iree-amd-aie/IR/AMDAIEAttrs.h"
 #include "iree-amd-aie/Transforms/KernelDispatch.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree/compiler/Codegen/Common/Passes.h"
@@ -88,6 +89,15 @@ static TilingConfig getTilingConfigForPipeline(FunctionOpInterface funcOp) {
   return {*maybeLoweringConfig};
 }
 
+static NumInputLoopsAttr getNumInputLoopsForPipeline(
+    FunctionOpInterface funcOp) {
+  SmallVector<Operation *> computeOps = getComputeOps(funcOp);
+  FailureOr<Operation *> rootOp = getRootOperation(computeOps);
+  assert(succeeded(rootOp) && "Pipeline requires a root op");
+  NumInputLoopsAttr numInputLoops = getNumInputLoopsAttr(rootOp.value());
+  return numInputLoops;
+}
+
 void AMDAIELowerExecutableTargetPass::runOnOperation() {
   auto funcOp = getOperation();
   auto target = IREE::HAL::ExecutableTargetAttr::lookup(funcOp);
@@ -107,6 +117,7 @@ void AMDAIELowerExecutableTargetPass::runOnOperation() {
       return;
     case IREE::Codegen::DispatchLoweringPassPipeline::Custom: {
       TilingConfig tilingConfig = getTilingConfigForPipeline(funcOp);
+      NumInputLoopsAttr numInputLoops = getNumInputLoopsForPipeline(funcOp);
       if (useTilePipeline == TilePassPipeline::PackPeelPipeline) {
         addPackPeelBasedPassPipeline(executableLoweringPipeline, tilingConfig,
                                      pathToUkernels, enableVectorizationPasses,
@@ -114,8 +125,8 @@ void AMDAIELowerExecutableTargetPass::runOnOperation() {
       } else if (useTilePipeline ==
                  TilePassPipeline::PackPeel4LevelTilingPipeline) {
         addPackPeel4LevelTilingBasedPassPipeline(
-            executableLoweringPipeline, tilingConfig, pathToUkernels,
-            enableVectorizationPasses,
+            executableLoweringPipeline, tilingConfig, numInputLoops,
+            pathToUkernels, enableVectorizationPasses,
             TilePassPipeline::PackPeel4LevelTilingPipeline);
       } else if (useTilePipeline == TilePassPipeline::PadPackPipeline) {
         addPadPackBasedPassPipeline(executableLoweringPipeline, tilingConfig,
