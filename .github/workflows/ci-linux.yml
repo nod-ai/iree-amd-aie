@@ -55,7 +55,7 @@ jobs:
           sudo apt install software-properties-common -y
           sudo add-apt-repository ppa:deadsnakes/ppa -y
           sudo apt install python3.11 -y
-          sudo apt-get install python3-pip python3.11-dev python-is-python3 python3.11-venv build-essential -y
+          sudo apt-get install python3.11-dev python3.11-venv build-essential python3-pip -y
 
       - name: ccache
         uses: hendrikmuhs/ccache-action@53911442209d5c18de8a31615e0923161e435875 # v1.2.16
@@ -164,7 +164,7 @@ jobs:
         run: |
           python -m venv .venv
           source .venv/bin/activate
-          pip3 install -r tests/requirements.txt
+          pip3.11 install -r tests/requirements.txt
 
       - name: Query device info
         run: |
@@ -266,7 +266,7 @@ jobs:
         run: |
           python -m venv .venv
           source .venv/bin/activate
-          pip3 install -r tests/requirements.txt
+          pip3.11 install -r tests/requirements.txt
 
       - name: Query device info
         run: |
