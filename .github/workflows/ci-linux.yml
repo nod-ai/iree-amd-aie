@@ -87,8 +87,6 @@ jobs:
         run: |
           sudo apt remove cmake -y
           bash build_tools/ci/install_cmake.sh
-          cmake --version
-          ctest --version
           sudo apt-get install ninja-build clang lld libudev-dev uuid-dev -y
 
       - name: Build packages
