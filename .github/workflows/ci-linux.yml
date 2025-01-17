@@ -54,6 +54,18 @@ jobs:
         with:
           python-version: 3.11
 
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@53911442209d5c18de8a31615e0923161e435875 # v1.2.16
+        with:
+          key: ${{ github.job }}
+          save: ${{ needs.setup.outputs.write-caches == 1 }}
+
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@53911442209d5c18de8a31615e0923161e435875 # v1.2.16
+        with:
+          key: ${{ github.job }}-${{ matrix.name }}
+          save: ${{ needs.setup.outputs.write-caches == 1 }}
+
       - name: Python deps
         run: |
           pip install -r third_party/iree/runtime/bindings/python/iree/runtime/build_requirements.txt
@@ -74,6 +86,7 @@ jobs:
 
       - name: Build packages
         run: |
+          sudo apt install cmake ninja-build clang lld -y 
           export cache_dir="${{ env.CACHE_DIR }}"
           export CCACHE_COMPILERCHECK="string:$(clang --version)"
           bash build_tools/build_llvm.sh
