@@ -22,7 +22,7 @@ permissions:
 jobs:
   build_and_ctest:
     name: Build and Test (linux, ASSERTIONS)
-    runs-on: nod-ai-shared-cpubuilder-manylinux-x86_64
+    runs-on: azure-cpubuilder-linux-scale
     strategy:
       fail-fast: true
     env:
@@ -38,11 +38,6 @@ jobs:
           timezoneMacos: "Asia/Singapore"
           timezoneWindows: "Singapore Standard Time"
 
-      - name: Configure local git mirrors
-        run: |
-          /gitmirror/scripts/trigger_update_mirrors.sh
-          /gitmirror/scripts/git_config.sh
-
       - name: "Checking out repository"
         env:
           BRANCH_NAME: ${{ github.ref }}
@@ -57,10 +52,26 @@ jobs:
               -c submodule."third_party/XRT".update=none \
               submodule update --init --recursive --depth 1 --single-branch -j 10
 
+      - name: "Setting up Python"
+        run: |
+          sudo apt update
+          sudo apt install software-properties-common -y
+          sudo add-apt-repository ppa:deadsnakes/ppa -y
+          sudo apt install python3.11 python3-pip -y
+          sudo apt-get install python3.11-dev python3.11-venv build-essential -y
+
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@53911442209d5c18de8a31615e0923161e435875 # v1.2.16
+        with:
+          key: ${{ github.job }}
+          save: ${{ needs.setup.outputs.write-caches == 1 }}
+
       - name: Python deps
         run: |
+          python3.11 -m venv .venv
+          source .venv/bin/activate
           pip install -r third_party/iree/runtime/bindings/python/iree/runtime/build_requirements.txt
-          pip install pyyaml pybind11==2.13.6 nanobind==2.4.0
+          pip install pyyaml pybind11[global]==2.13.6 nanobind==2.4.0
 
       - name: Enable cache
         uses: actions/cache/restore@v3
@@ -75,8 +86,15 @@ jobs:
           echo "PEANO_INSTALL_DIR=$PWD/llvm-aie" >> $GITHUB_ENV
           echo "ENABLE_XRT_LITE_CTS_TESTS=ON" >> $GITHUB_ENV
 
+      - name: Install linux deps
+        run: |
+          sudo apt remove cmake -y
+          bash build_tools/ci/install_cmake.sh
+          sudo apt-get install ninja-build clang lld libudev-dev uuid-dev -y
+
       - name: Build packages
         run: |
+          source .venv/bin/activate
           export cache_dir="${{ env.CACHE_DIR }}"
           export CCACHE_COMPILERCHECK="string:$(clang --version)"
           bash build_tools/build_llvm.sh
