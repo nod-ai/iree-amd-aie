@@ -21,6 +21,8 @@
 
 #define DEBUG_TYPE "iree-amdaie-combine-strided-ops"
 
+using namespace std::placeholders;
+
 namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
@@ -43,6 +45,8 @@ struct CombineStridedOps
     Block *block = op->getBlock();
     if (!block) return failure();
 
+    std::unique_ptr<DmaDimConfig> sourceDmaDimConfig;
+    std::unique_ptr<DmaDimConfig> targetDmaDimConfig;
     SmallVector<Operation *> userOpsToBeErased;
     AMDAIE::DoublyStridedOpInterface nextStridedOp;
     if (auto npuDmaOp = dyn_cast<AMDAIE::NpuDmaCpyNdOp>(op.getOperation())) {
@@ -60,6 +64,20 @@ struct CombineStridedOps
       if (failed(maybeNextNpuDmaOp)) return failure();
       nextStridedOp = cast<AMDAIE::DoublyStridedOpInterface>(
           maybeNextNpuDmaOp->getOperation());
+      if (!nextStridedOp) return failure();
+
+      std::optional<uint8_t> sourceMemspaceInt =
+          nextStridedOp.getSourceMemorySpaceAsUInt();
+      std::optional<uint8_t> targetMemspaceInt =
+          nextStridedOp.getTargetMemorySpaceAsUInt();
+      if (!sourceMemspaceInt || !targetMemspaceInt) {
+        return rewriter.notifyMatchFailure(
+            nextStridedOp, "expected a source and target memory space");
+      }
+      sourceDmaDimConfig = std::make_unique<DmaDimConfig>(
+          deviceModel, sourceMemspaceInt.value());
+      targetDmaDimConfig = std::make_unique<DmaDimConfig>(
+          deviceModel, targetMemspaceInt.value());
     } else if (auto npuCircularDmaOp =
                    dyn_cast<AMDAIE::NpuCircularDmaCpyNdOp>(op.getOperation())) {
       LLVM_DEBUG(llvm::dbgs()
@@ -69,24 +87,23 @@ struct CombineStridedOps
       if (failed(maybeNextNpuCircDmaOp)) return failure();
       nextStridedOp = cast<AMDAIE::DoublyStridedOpInterface>(
           maybeNextNpuCircDmaOp->getOperation());
+      if (!nextStridedOp) return failure();
+
+      std::optional<uint8_t> sourceMemspaceInt =
+          nextStridedOp.getSourceMemorySpaceAsUInt();
+      std::optional<uint8_t> targetMemspaceInt =
+          nextStridedOp.getTargetMemorySpaceAsUInt();
+      if (!sourceMemspaceInt || !targetMemspaceInt) {
+        return rewriter.notifyMatchFailure(
+            nextStridedOp, "expected a source and target memory space");
+      }
+      sourceDmaDimConfig = std::make_unique<CircularDmaDimConfig>(
+          deviceModel, sourceMemspaceInt.value());
+      targetDmaDimConfig = std::make_unique<CircularDmaDimConfig>(
+          deviceModel, targetMemspaceInt.value());
     } else {
       return failure();
     }
-
-    if (!nextStridedOp) return failure();
-
-    std::optional<uint8_t> sourceMemspaceInt =
-        nextStridedOp.getSourceMemorySpaceAsUInt();
-    std::optional<uint8_t> targetMemspaceInt =
-        nextStridedOp.getTargetMemorySpaceAsUInt();
-    if (!sourceMemspaceInt || !targetMemspaceInt) {
-      return rewriter.notifyMatchFailure(
-          nextStridedOp, "expected a source and target memory space");
-    }
-    DmaDimConfig sourceDmaDimConfig(deviceModel, sourceMemspaceInt.value());
-    size_t sourceMaxNbDims = sourceDmaDimConfig.maxNbDims;
-    DmaDimConfig targetDmaDimConfig(deviceModel, targetMemspaceInt.value());
-    size_t targetMaxNbDims = targetDmaDimConfig.maxNbDims;
 
     SmallVector<OpFoldResult> sourceOffsetsA = op.getSourceMixedOffsets();
     SmallVector<OpFoldResult> sourceSizesA = op.getSourceMixedSizes();
@@ -99,7 +116,9 @@ struct CombineStridedOps
         nextStridedOp.getSourceMixedStrides();
     bool areSourcesCombinable = areAccessPatternsCombinable(
         sourceOffsetsA, sourceSizesA, sourceStridesA, sourceOffsetsB,
-        sourceSizesB, sourceStridesB, sourceMaxNbDims);
+        sourceSizesB, sourceStridesB,
+        std::bind(&DmaDimConfig::exceedsNbDims, std::ref(sourceDmaDimConfig),
+                  _1));
 
     SmallVector<OpFoldResult> targetOffsetsA = op.getTargetMixedOffsets();
     SmallVector<OpFoldResult> targetSizesA = op.getTargetMixedSizes();
@@ -112,7 +131,14 @@ struct CombineStridedOps
         nextStridedOp.getTargetMixedStrides();
     bool areTargetsCombinable = areAccessPatternsCombinable(
         targetOffsetsA, targetSizesA, targetStridesA, targetOffsetsB,
-        targetSizesB, targetStridesB, targetMaxNbDims);
+        targetSizesB, targetStridesB,
+        std::bind(&DmaDimConfig::exceedsNbDims, std::ref(targetDmaDimConfig),
+                  _1));
+
+    LLVM_DEBUG(llvm::dbgs()
+               << "areSourcesCombinable: " << areSourcesCombinable << "\n");
+    LLVM_DEBUG(llvm::dbgs()
+               << "areTargetsCombinable: " << areTargetsCombinable << "\n");
 
     if (areSourcesCombinable && areTargetsCombinable) {
       SmallVector<OpFoldResult> newSourceOffsets;
@@ -121,7 +147,9 @@ struct CombineStridedOps
       if (failed(combineAccessPatterns(
               rewriter, sourceOffsetsA, sourceSizesA, sourceStridesA,
               sourceOffsetsB, sourceSizesB, sourceStridesB, newSourceOffsets,
-              newSourceSizes, newSourceStrides, sourceMaxNbDims))) {
+              newSourceSizes, newSourceStrides,
+              std::bind(&DmaDimConfig::exceedsNbDims,
+                        std::ref(sourceDmaDimConfig), _1)))) {
         return failure();
       }
 
@@ -131,7 +159,9 @@ struct CombineStridedOps
       if (failed(combineAccessPatterns(
               rewriter, targetOffsetsA, targetSizesA, targetStridesA,
               targetOffsetsB, targetSizesB, targetStridesB, newTargetOffsets,
-              newTargetSizes, newTargetStrides, targetMaxNbDims))) {
+              newTargetSizes, newTargetStrides,
+              std::bind(&DmaDimConfig::exceedsNbDims,
+                        std::ref(targetDmaDimConfig), _1)))) {
         return failure();
       }
 

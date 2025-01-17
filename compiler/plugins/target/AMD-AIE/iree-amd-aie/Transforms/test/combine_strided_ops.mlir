@@ -615,13 +615,13 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
-// CHECK-LABEL: @circular_not_enough_dims_source
+// CHECK-LABEL: @circular_any_num_dims_source
 // CHECK:       %[[CONNECTION:.+]] = amdaie.connection
-// CHECK:       amdaie.npu.circular_dma_cpy_nd %[[CONNECTION]]([] [] [], [0, 0, 0, 0] [8, 16, 8, 16] [8, 32, 8, 1])
-// CHECK:       amdaie.npu.circular_dma_cpy_nd %[[CONNECTION]]([] [] [], [0, 0, 0, 32] [8, 16, 8, 16] [8, 32, 8, 1])
+// CHECK:       amdaie.npu.circular_dma_cpy_nd %[[CONNECTION]]([] [] [], [0, 0, 0, 0, 0] [2, 8, 16, 8, 16] [32, 8, 32, 8, 1])
+// CHECK-NOT:   amdaie.npu.circular_dma_cpy_nd
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
-  func.func @circular_not_enough_dims_source(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32>>) {
+  func.func @circular_any_num_dims_source(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32>>) {
     amdaie.workgroup {
       %0 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32>>)
       amdaie.controlcode {
@@ -636,13 +636,13 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
-// CHECK-LABEL: @circular_not_enough_dims_target
+// CHECK-LABEL: @circular_any_num_dims_target
 // CHECK:       %[[CONNECTION:.+]] = amdaie.connection
-// CHECK:       amdaie.npu.circular_dma_cpy_nd %[[CONNECTION]]([0, 0, 0, 0] [8, 16, 8, 16] [8, 32, 8, 1], [] [] [])
-// CHECK:       amdaie.npu.circular_dma_cpy_nd %[[CONNECTION]]([0, 0, 0, 32] [8, 16, 8, 16] [8, 32, 8, 1], [] [] [])
+// CHECK:       amdaie.npu.circular_dma_cpy_nd %[[CONNECTION]]([0, 0, 0, 0, 0] [2, 8, 16, 8, 16] [32, 8, 32, 8, 1], [] [] [])
+// CHECK-NOT:   amdaie.npu.circular_dma_cpy_nd
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
-  func.func @circular_not_enough_dims_target(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
+  func.func @circular_any_num_dims_target(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
     amdaie.workgroup {
       %0 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
       amdaie.controlcode {
