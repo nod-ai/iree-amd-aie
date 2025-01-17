@@ -242,8 +242,8 @@ jobs:
         if: github.ref_name == '1035/merge'
         run: |
           cp build_tools/ci/cpu_comparison/performance_publish.py .
-          git fetch origin zhewen-gh-pages
-          git checkout zhewen-gh-pages
+          git fetch origin gh-pages
+          git checkout gh-pages
           python performance_publish.py results.json results_history.json results_history.html
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
