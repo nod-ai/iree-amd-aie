@@ -80,12 +80,16 @@ jobs:
           bash build_tools/download_peano.sh
           echo "PEANO_INSTALL_DIR=$PWD/llvm-aie" >> $GITHUB_ENV
           echo "ENABLE_XRT_LITE_CTS_TESTS=ON" >> $GITHUB_ENV
-
-      - name: Build packages
+      
+      - name: Install linux deps
         run: |
+          sudo apt remove cmake -y
           bash build_tools/ci/install_cmake.sh
           cmake --version
           sudo apt install ninja-build clang lld -y 
+
+      - name: Build packages
+        run: |
           export cache_dir="${{ env.CACHE_DIR }}"
           export CCACHE_COMPILERCHECK="string:$(clang --version)"
           bash build_tools/build_llvm.sh
