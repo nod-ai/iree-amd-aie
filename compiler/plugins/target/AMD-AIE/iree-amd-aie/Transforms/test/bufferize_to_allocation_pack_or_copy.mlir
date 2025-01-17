@@ -1,4 +1,4 @@
-// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-bufferize-to-allocation{memory-space=1 bufferize-operand=pack-input pack-depth=2}))' --split-input-file --verify-diagnostics %s | FileCheck %s
+// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-bufferize-to-allocation{memory-space=1 bufferize-operand=pack-or-copy-input input-depth=2}))' --split-input-file --verify-diagnostics %s | FileCheck %s
 
 // Checks for packs with interleaved extract slices.
 // CHECK-LABEL:  @matmul_tensor_extract_slice
@@ -84,6 +84,46 @@ func.func @matmul_tensor_extract_slice() {
 
 // -----
 
+// CHECK-LABEL:  @copy_pack_matmul
+// CHECK:        memref.alloc() : memref<4x1x32x32xi32, 1 : i32>
+// CHECK:        bufferization.to_tensor
+// CHECK:        linalg.copy
+// CHECK-NOT:    memref.alloc
+// CHECK:        tensor.pack
+// CHECK:        memref.alloc() : memref<4x1x32x32xi32, 1 : i32>
+// CHECK:        bufferization.to_tensor
+// CHECK:        linalg.copy
+// CHECK-NOT:    memref.alloc
+// CHECK:        tensor.pack
+// CHECK:        linalg.generic
+#map = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d2, d5, d3, d6, d8)>
+#map1 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d1, d2, d5, d4, d7, d8)>
+#map2 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d1, d4, d3, d6, d7)>
+func.func @copy_pack_matmul(%arg0: tensor<4x1x32x32xi32>, %arg1: tensor<4x1x32x32xi32>) -> tensor<4x4x32x32xi32> {
+  %c0_i32 = arith.constant 0 : i32
+  %c0 = arith.constant 0 : index
+  %0 = tensor.empty() : tensor<4x1x32x32xi32>
+  %1 = tensor.empty() : tensor<4x1x32x32xi32>
+  %2 = tensor.empty() : tensor<4x4x32x32xi32>
+  %3 = tensor.empty() : tensor<4x1x4x8x4x8xi32>
+  %4 = tensor.empty() : tensor<4x1x4x8x4x8xi32>
+  %5 = tensor.empty() : tensor<4x4x8x8x4x4xi32>
+  %6 = linalg.copy ins(%arg0 : tensor<4x1x32x32xi32>) outs(%0 : tensor<4x1x32x32xi32>) -> tensor<4x1x32x32xi32>
+  %pack = tensor.pack %6 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %3 : tensor<4x1x32x32xi32> -> tensor<4x1x4x8x4x8xi32>
+  %7 = linalg.copy ins(%arg1 : tensor<4x1x32x32xi32>) outs(%1 : tensor<4x1x32x32xi32>) -> tensor<4x1x32x32xi32>
+  %pack_0 = tensor.pack %7 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %4 : tensor<4x1x32x32xi32> -> tensor<4x1x4x8x4x8xi32>
+  %8 = linalg.generic {indexing_maps = [#map, #map1, #map2], iterator_types = ["parallel", "parallel", "reduction", "parallel", "parallel", "reduction", "parallel", "parallel", "reduction"]} ins(%pack, %pack_0 : tensor<4x1x4x8x4x8xi32>, tensor<4x1x4x8x4x8xi32>) outs(%5 : tensor<4x4x8x8x4x4xi32>) {
+  ^bb0(%in: i32, %in_1: i32, %out: i32):
+    %9 = arith.muli %in, %in_1 : i32
+    %10 = arith.addi %out, %9 : i32
+    linalg.yield %10 : i32
+  } -> tensor<4x4x8x8x4x4xi32>
+  %unpack = tensor.unpack %8 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 4] into %2 : tensor<4x4x8x8x4x4xi32> -> tensor<4x4x32x32xi32>
+  return %unpack : tensor<4x4x32x32xi32>
+}
+
+// -----
+
 #map = affine_map<(d3, d4, d5, d6, d7, d8) -> (d3, d5, d6, d8)>
 #map1 = affine_map<(d3, d4, d5, d6, d7, d8) -> (d5, d4, d7, d8)>
 #map2 = affine_map<(d3, d4, d5, d6, d7, d8) -> (d3, d4, d6, d7)>
@@ -99,7 +139,7 @@ func.func @pack_error(%arg0 : tensor<1024x2048xi32>, %arg1 : tensor<2048x512xi32
     %8 = tensor.empty() : tensor<16x8x64x64xi32>
     %9 = linalg.fill ins(%c0_i32 : i32) outs(%8 : tensor<16x8x64x64xi32>) -> tensor<16x8x64x64xi32>
     // expected-error @+2 {{could not fetch operands to bufferize}}
-    // expected-error @+1 {{'linalg.generic' op operand #0 only has pack ops to depth 1, but request is for a depth 2 pack op}}
+    // expected-error @+1 {{'linalg.generic' op operand #0 only has pack/copy ops to depth 1, but request is for a depth 2 pack/copy op}}
     %10 = linalg.generic {indexing_maps = [#map, #map1, #map2], iterator_types = ["parallel", "parallel", "reduction", "parallel", "parallel", "reduction"]} ins(%pack, %pack_0 : tensor<16x32x64x64xi32>, tensor<32x8x64x64xi32>) outs(%9 : tensor<16x8x64x64xi32>) {
     ^bb0(%in: i32, %in_4: i32, %out: i32):
       %14 = arith.muli %in, %in_4 : i32
