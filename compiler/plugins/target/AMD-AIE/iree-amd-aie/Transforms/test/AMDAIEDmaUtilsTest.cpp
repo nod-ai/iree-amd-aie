@@ -32,6 +32,23 @@ class AccessPatternCombinationTest : public ::testing::Test {
     });
   }
 
+  bool checkAreAccessPatternsCombinable(
+      const SmallVector<int64_t> &offsetsA, const SmallVector<int64_t> &sizesA,
+      const SmallVector<int64_t> &stridesA,
+      const SmallVector<int64_t> &offsetsB, const SmallVector<int64_t> &sizesB,
+      const SmallVector<int64_t> &stridesB,
+      function_ref<bool(size_t)> exceedsNbDims) {
+    SmallVector<OpFoldResult> offsetsValuesA = toOpFoldResult(offsetsA);
+    SmallVector<OpFoldResult> sizesValuesA = toOpFoldResult(sizesA);
+    SmallVector<OpFoldResult> stridesValuesA = toOpFoldResult(stridesA);
+    SmallVector<OpFoldResult> offsetsValuesB = toOpFoldResult(offsetsB);
+    SmallVector<OpFoldResult> sizesValuesB = toOpFoldResult(sizesB);
+    SmallVector<OpFoldResult> stridesValuesB = toOpFoldResult(stridesB);
+    return areAccessPatternsCombinable(
+        offsetsValuesA, sizesValuesA, stridesValuesA, offsetsValuesB,
+        sizesValuesB, stridesValuesB, exceedsNbDims);
+  }
+
   bool checkAreAccessPatternsCombinable(const SmallVector<int64_t> &offsetsA,
                                         const SmallVector<int64_t> &sizesA,
                                         const SmallVector<int64_t> &stridesA,
@@ -39,27 +56,19 @@ class AccessPatternCombinationTest : public ::testing::Test {
                                         const SmallVector<int64_t> &sizesB,
                                         const SmallVector<int64_t> &stridesB,
                                         size_t maxNbDims) {
-    SmallVector<OpFoldResult> offsetsValuesA = toOpFoldResult(offsetsA);
-    SmallVector<OpFoldResult> sizesValuesA = toOpFoldResult(sizesA);
-    SmallVector<OpFoldResult> stridesValuesA = toOpFoldResult(stridesA);
-    SmallVector<OpFoldResult> offsetsValuesB = toOpFoldResult(offsetsB);
-    SmallVector<OpFoldResult> sizesValuesB = toOpFoldResult(sizesB);
-    SmallVector<OpFoldResult> stridesValuesB = toOpFoldResult(stridesB);
-    return areAccessPatternsCombinable(offsetsValuesA, sizesValuesA,
-                                       stridesValuesA, offsetsValuesB,
-                                       sizesValuesB, stridesValuesB, maxNbDims);
+    return checkAreAccessPatternsCombinable(
+        offsetsA, sizesA, stridesA, offsetsB, sizesB, stridesB,
+        [&](size_t dim) { return dim > maxNbDims; });
   }
 
-  void checkCombineAccessPatterns(const SmallVector<int64_t> offsetsA,
-                                  const SmallVector<int64_t> sizesA,
-                                  const SmallVector<int64_t> stridesA,
-                                  const SmallVector<int64_t> offsetsB,
-                                  const SmallVector<int64_t> sizesB,
-                                  const SmallVector<int64_t> stridesB,
-                                  const SmallVector<int64_t> expectedOffsets,
-                                  const SmallVector<int64_t> expectedSizes,
-                                  const SmallVector<int64_t> expectedStrides,
-                                  size_t maxNbDims, bool shouldSucceed = true) {
+  void checkCombineAccessPatterns(
+      const SmallVector<int64_t> offsetsA, const SmallVector<int64_t> sizesA,
+      const SmallVector<int64_t> stridesA, const SmallVector<int64_t> offsetsB,
+      const SmallVector<int64_t> sizesB, const SmallVector<int64_t> stridesB,
+      const SmallVector<int64_t> expectedOffsets,
+      const SmallVector<int64_t> expectedSizes,
+      const SmallVector<int64_t> expectedStrides,
+      function_ref<bool(size_t)> exceedsNbDims, bool shouldSucceed = true) {
     SmallVector<OpFoldResult> offsetsValuesA = toOpFoldResult(offsetsA);
     SmallVector<OpFoldResult> sizesValuesA = toOpFoldResult(sizesA);
     SmallVector<OpFoldResult> stridesValuesA = toOpFoldResult(stridesA);
@@ -79,7 +88,7 @@ class AccessPatternCombinationTest : public ::testing::Test {
       EXPECT_TRUE(succeeded(combineAccessPatterns(
           rewriter, offsetsValuesA, sizesValuesA, stridesValuesA,
           offsetsValuesB, sizesValuesB, stridesValuesB, newOffsets, newSizes,
-          newStrides, maxNbDims)));
+          newStrides, exceedsNbDims)));
       EXPECT_EQ(newOffsets, expectedOffsetsValues);
       EXPECT_EQ(newSizes, expectedSizesValues);
       EXPECT_EQ(newStrides, expectedStridesValues);
@@ -87,8 +96,24 @@ class AccessPatternCombinationTest : public ::testing::Test {
       EXPECT_TRUE(failed(combineAccessPatterns(
           rewriter, offsetsValuesA, sizesValuesA, stridesValuesA,
           offsetsValuesB, sizesValuesB, stridesValuesB, newOffsets, newSizes,
-          newStrides, maxNbDims)));
+          newStrides, exceedsNbDims)));
     }
+  }
+
+  void checkCombineAccessPatterns(const SmallVector<int64_t> offsetsA,
+                                  const SmallVector<int64_t> sizesA,
+                                  const SmallVector<int64_t> stridesA,
+                                  const SmallVector<int64_t> offsetsB,
+                                  const SmallVector<int64_t> sizesB,
+                                  const SmallVector<int64_t> stridesB,
+                                  const SmallVector<int64_t> expectedOffsets,
+                                  const SmallVector<int64_t> expectedSizes,
+                                  const SmallVector<int64_t> expectedStrides,
+                                  size_t maxNbDims, bool shouldSucceed = true) {
+    checkCombineAccessPatterns(
+        offsetsA, sizesA, stridesA, offsetsB, sizesB, stridesB, expectedOffsets,
+        expectedSizes, expectedStrides,
+        [&](size_t dim) { return dim > maxNbDims; }, shouldSucceed);
   }
 
   MLIRContext context;
@@ -198,6 +223,24 @@ TEST_F(AccessPatternCombinationTest, NonCombinableAccessPatterns) {
       {32, 0}, {64, 64}, {128, 1}, {32, 0}, {32, 64}, {128, 1}, 4));
   EXPECT_FALSE(checkAreAccessPatternsCombinable(
       {32, 0}, {32, 64}, {128, 1}, {96, 0}, {64, 64}, {128, 1}, 4));
+}
+
+TEST_F(AccessPatternCombinationTest, AnyNbDims) {
+  auto exceedsNbDims = [](size_t dims) { return false; };
+  EXPECT_TRUE(checkAreAccessPatternsCombinable({0}, {16}, {1}, {32}, {16}, {1},
+                                               exceedsNbDims));
+  EXPECT_TRUE(checkAreAccessPatternsCombinable(
+      {0, 0, 0}, {16, 16, 32}, {32, 64, 1}, {0, 0, 32}, {16, 16, 32},
+      {32, 64, 1}, exceedsNbDims));
+}
+
+TEST_F(AccessPatternCombinationTest, NoDims) {
+  auto exceedsNbDims = [](size_t dims) { return true; };
+  EXPECT_FALSE(checkAreAccessPatternsCombinable({0}, {16}, {1}, {32}, {16}, {1},
+                                                exceedsNbDims));
+  EXPECT_FALSE(checkAreAccessPatternsCombinable(
+      {0, 0, 0}, {16, 16, 32}, {32, 64, 1}, {0, 0, 32}, {16, 16, 32},
+      {32, 64, 1}, exceedsNbDims));
 }
 
 TEST_F(AccessPatternCombinationTest, CombineAccessPatterns) {
@@ -315,6 +358,23 @@ TEST_F(AccessPatternCombinationTest, FailCombineAccessPatterns) {
   // size(A) == size(B) Incompatible offset
   checkCombineAccessPatterns({32, 0}, {32, 64}, {128, 1}, {96, 0}, {64, 64},
                              {128, 1}, {32, 0}, {96, 64}, {128, 1}, 4, false);
+}
+
+TEST_F(AccessPatternCombinationTest, CombineAccessPatternsAnyNbDims) {
+  auto exceedsNbDims = [](size_t dims) { return false; };
+  checkCombineAccessPatterns({}, {}, {}, {}, {}, {}, {}, {}, {}, exceedsNbDims);
+  checkCombineAccessPatterns({0, 0}, {16, 32}, {16, 1}, {0, 32}, {16, 32},
+                             {16, 1}, {0, 0, 0}, {2, 16, 32}, {32, 16, 1},
+                             exceedsNbDims);
+}
+
+TEST_F(AccessPatternCombinationTest, CombineAccessPatternsNoDims) {
+  auto exceedsNbDims = [](size_t dims) { return true; };
+  checkCombineAccessPatterns({0}, {16}, {1}, {32}, {16}, {1}, {}, {}, {},
+                             exceedsNbDims, false);
+  checkCombineAccessPatterns({0, 0}, {16, 32}, {16, 1}, {0, 32}, {16, 32},
+                             {16, 1}, {0, 0, 0}, {2, 16, 32}, {32, 16, 1},
+                             exceedsNbDims, false);
 }
 
 class FoldTest : public ::testing::Test {
