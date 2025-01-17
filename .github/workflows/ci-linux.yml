@@ -84,6 +84,7 @@ jobs:
       - name: Build packages
         run: |
           sudo apt-get install snapd -y
+          sudo systemctl start snapd
           sudo snap install cmake --classic
           cmake --version
           sudo apt install ninja-build clang lld -y 
