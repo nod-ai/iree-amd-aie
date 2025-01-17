@@ -83,9 +83,7 @@ jobs:
 
       - name: Build packages
         run: |
-          sudo apt-get install snapd -y
-          sudo systemctl start snapd
-          sudo snap install cmake --classic
+          bash build_tools/ci/install_cmake.sh
           cmake --version
           sudo apt install ninja-build clang lld -y 
           export cache_dir="${{ env.CACHE_DIR }}"
