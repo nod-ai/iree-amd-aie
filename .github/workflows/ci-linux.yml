@@ -80,7 +80,7 @@ jobs:
 
       - name: Build packages
         run: |
-          sudo apt install cmake ninja-build clang lld -y 
+          sudo apt install cmake ninja-build clang lld python3.11-dev -y 
           export cache_dir="${{ env.CACHE_DIR }}"
           export CCACHE_COMPILERCHECK="string:$(clang --version)"
           bash build_tools/build_llvm.sh
