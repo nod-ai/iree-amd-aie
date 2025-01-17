@@ -387,6 +387,11 @@ struct AMDAIEDeviceModel {
                              uint8_t srcChan, StrmSwPortType dstBundle,
                              uint8_t dstChan) const;
 
+  /// The returned string is used by `chess` to identify the device.
+  std::optional<std::string> getNPUVersionString() const;
+  /// The returned string is used by `peano` to identify the device.
+  std::optional<std::string> getTargetArchString() const;
+
   uint32_t getColumnShift() const;
   uint32_t getRowShift() const;
 

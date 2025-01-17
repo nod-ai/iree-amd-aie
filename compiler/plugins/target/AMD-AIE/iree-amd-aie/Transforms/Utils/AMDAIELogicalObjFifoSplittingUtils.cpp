@@ -804,9 +804,10 @@ LogicalResult splitDoublyStridedOp(IRRewriter &rewriter,
                             ? maybeSplitFactor.value()
                             : std::gcd(sourceSize, targetSize);
   if (sourceSize % splitFactor != 0 || targetSize % splitFactor != 0) {
-    return op.emitOpError() << "the target or source size is not divisible by "
-                               "the provided splitting factor: "
-                            << splitFactor;
+    int64_t newSplitFactor = std::gcd(sourceSize, targetSize);
+    LLVM_DEBUG(llvm::dbgs() << "split factor has been changed from "
+                            << splitFactor << " to " << newSplitFactor);
+    splitFactor = newSplitFactor;
   }
 
   int64_t newSourceSize = sourceSize / splitFactor;
