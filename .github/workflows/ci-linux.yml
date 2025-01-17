@@ -55,7 +55,7 @@ jobs:
           sudo apt install software-properties-common -y
           sudo add-apt-repository ppa:deadsnakes/ppa -y
           sudo apt install python3.11 -y
-          sudo apt-get install python3.11-dev python3.11-venv build-essential python3-pip -y
+          sudo apt-get install python3.11-dev python3.11-venv build-essential -y
 
       - name: ccache
         uses: hendrikmuhs/ccache-action@53911442209d5c18de8a31615e0923161e435875 # v1.2.16
@@ -65,8 +65,8 @@ jobs:
 
       - name: Python deps
         run: |
-          pip3.11 install -r third_party/iree/runtime/bindings/python/iree/runtime/build_requirements.txt
-          pip3.11 install pyyaml pybind11[global]==2.13.6 nanobind==2.4.0
+          python3.11 -m pip install install -r third_party/iree/runtime/bindings/python/iree/runtime/build_requirements.txt
+          python3.11 -m pip install install pyyaml pybind11[global]==2.13.6 nanobind==2.4.0
 
       - name: Enable cache
         uses: actions/cache/restore@v3
@@ -164,7 +164,7 @@ jobs:
         run: |
           python -m venv .venv
           source .venv/bin/activate
-          pip3.11 install -r tests/requirements.txt
+          python3.11 -m pip install -r tests/requirements.txt
 
       - name: Query device info
         run: |
@@ -266,7 +266,7 @@ jobs:
         run: |
           python -m venv .venv
           source .venv/bin/activate
-          pip3.11 install -r tests/requirements.txt
+          python3.11 -m pip install -r tests/requirements.txt
 
       - name: Query device info
         run: |
