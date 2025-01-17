@@ -1,7 +1,7 @@
 // RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-bufferize-to-allocation{memory-space=2 bufferize-operand=linalg-input-output}))' --split-input-file %s | FileCheck %s --check-prefix=LINALG-INPUT-OUTPUT
 // RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-bufferize-to-allocation{memory-space=2 bufferize-operand=linalg-input}))' --split-input-file %s | FileCheck %s --check-prefix=LINALG-INPUT
 // RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-bufferize-to-allocation{memory-space=2 bufferize-operand=linalg-output}))' --split-input-file %s | FileCheck %s --check-prefix=LINALG-OUTPUT
-// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-bufferize-to-allocation{memory-space=1 bufferize-operand=pack-input pack-depth=2}))' --split-input-file %s | FileCheck %s --check-prefix=PACK-INPUT
+// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-bufferize-to-allocation{memory-space=1 bufferize-operand=pack-or-copy-input input-depth=2}))' --split-input-file %s | FileCheck %s --check-prefix=PACK-INPUT
 // RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-bufferize-to-allocation{memory-space=2 bufferize-elementwise=true bufferize-operand=linalg-input}))' --split-input-file %s | FileCheck %s --check-prefix=ELEMENTWISE-INPUT
 // RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-bufferize-to-allocation{memory-space=2 bufferize-elementwise=true bufferize-operand=linalg-input-output}))' --split-input-file %s | FileCheck %s --check-prefix=ELEMENTWISE-INPUT-OUTPUT
 
