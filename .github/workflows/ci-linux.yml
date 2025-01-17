@@ -67,6 +67,9 @@ jobs:
         run: |
           pip3 install -r third_party/iree/runtime/bindings/python/iree/runtime/build_requirements.txt
           pip3 install pyyaml pybind11==2.13.6 nanobind==2.4.0
+      
+      - name: Add ~/.local/bin to PATH
+        run: echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Enable cache
         uses: actions/cache/restore@v3

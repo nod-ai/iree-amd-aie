@@ -2,8 +2,8 @@
 sudo apt-get update
 sudo apt-get install -y bc wget
 
-version=3.23
-build=2
+version=3.28
+build=1
 limit=3.20
 
 result=$(echo "$version >= $limit" | bc -l)
