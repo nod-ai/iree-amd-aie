@@ -49,6 +49,11 @@ jobs:
               -c submodule."third_party/XRT".update=none \
               submodule update --init --recursive --depth 1 --single-branch -j 10
 
+      - name: "Setting up Python"
+        uses: actions/setup-python@75f3110429a8c05be0e1bf360334e4cced2b63fa # v2.3.3
+        with:
+          python-version: 3.11
+
       - name: Python deps
         run: |
           pip install -r third_party/iree/runtime/bindings/python/iree/runtime/build_requirements.txt
