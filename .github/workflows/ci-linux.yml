@@ -56,6 +56,8 @@ jobs:
           sudo add-apt-repository ppa:deadsnakes/ppa -y
           sudo apt install python3.11 -y
           sudo apt-get install python3.11-dev python3.11-venv build-essential -y
+          curl -sS https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+          python3.11 get-pip.py
 
       - name: ccache
         uses: hendrikmuhs/ccache-action@53911442209d5c18de8a31615e0923161e435875 # v1.2.16
