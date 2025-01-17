@@ -237,9 +237,8 @@ jobs:
           done
 
       # Only publish the performance results on main branch pushes.
-      # github.event_name == 'push' && github.ref_name == 'main'
       - name: Publish performance results
-        if: github.ref_name == '1035/merge'
+        if: github.event_name == 'push' && github.ref_name == 'main'
         run: |
           cp build_tools/ci/cpu_comparison/performance_publish.py .
           git fetch origin gh-pages
