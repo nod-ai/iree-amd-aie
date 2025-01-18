@@ -1,7 +1,7 @@
-// RUN: iree-opt --split-input-file --pass-pipeline='builtin.module(func.func(iree-amdaie-fuse-pack-into-loop))' %s | FileCheck %s --check-prefix=DEPTH-1
-// RUN: iree-opt --split-input-file --pass-pipeline='builtin.module(func.func(iree-amdaie-fuse-pack-into-loop{use-scf-for=false}))' %s | FileCheck %s --check-prefix=FORALL-DEPTH-1
-// RUN: iree-opt --split-input-file --pass-pipeline='builtin.module(func.func(iree-amdaie-fuse-pack-into-loop{fuse-pack-depth=2}))' %s | FileCheck %s --check-prefix=DEPTH-2
-// RUN: iree-opt --split-input-file --pass-pipeline='builtin.module(func.func(iree-amdaie-fuse-pack-into-loop{fuse-pack-depth=2 use-scf-for=false}))' %s | FileCheck %s --check-prefix=FORALL-DEPTH-2
+// RUN: iree-opt --split-input-file --pass-pipeline='builtin.module(func.func(iree-amdaie-fuse-producer-into-loop))' %s | FileCheck %s --check-prefix=DEPTH-1
+// RUN: iree-opt --split-input-file --pass-pipeline='builtin.module(func.func(iree-amdaie-fuse-producer-into-loop{use-scf-for=false}))' %s | FileCheck %s --check-prefix=FORALL-DEPTH-1
+// RUN: iree-opt --split-input-file --pass-pipeline='builtin.module(func.func(iree-amdaie-fuse-producer-into-loop{fuse-depth=2}))' %s | FileCheck %s --check-prefix=DEPTH-2
+// RUN: iree-opt --split-input-file --pass-pipeline='builtin.module(func.func(iree-amdaie-fuse-producer-into-loop{fuse-depth=2 use-scf-for=false}))' %s | FileCheck %s --check-prefix=FORALL-DEPTH-2
 
 // -----
 
