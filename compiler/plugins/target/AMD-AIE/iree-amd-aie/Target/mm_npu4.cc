@@ -182,11 +182,13 @@ extern "C" {
     zero_vectorized<ctype_out, M, N, r>(c_out, offsetC);                      \
   }
 
+matmul_combos(matmul_vectorized_c_func, 16, 8, 32)
 matmul_combos(matmul_vectorized_c_func, 16, 16, 32)
 matmul_combos(matmul_vectorized_c_func, 32, 32, 32)
 matmul_combos(matmul_vectorized_c_func, 32, 32, 64)
 matmul_combos(matmul_vectorized_c_func, 64, 64, 64)
 
+zero_fill_combos(zero_vectorized_c_func, 16, 8)
 zero_fill_combos(zero_vectorized_c_func, 16, 16)
 zero_fill_combos(zero_vectorized_c_func, 32, 32)
 zero_fill_combos(zero_vectorized_c_func, 64, 64)
