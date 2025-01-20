@@ -454,6 +454,28 @@ uint32_t AMDAIEDeviceModel::getNumDestSwitchboxConnections(
                                         static_cast<uint8_t>(row), bundle);
 }
 
+std::optional<std::string> AMDAIEDeviceModel::getNPUVersionString() const {
+  switch (configPtr.AieGen) {
+    case XAIE_DEV_GEN_AIE2IPU:
+      return "npu1";
+    case XAIE_DEV_GEN_AIE2P_STRIX_B0:
+      return "npu4";
+    default:
+      return std::nullopt;
+  }
+}
+
+std::optional<std::string> AMDAIEDeviceModel::getTargetArchString() const {
+  switch (configPtr.AieGen) {
+    case XAIE_DEV_GEN_AIE2IPU:
+      return "AIE2";
+    case XAIE_DEV_GEN_AIE2P_STRIX_B0:
+      return "AIE2P";
+    default:
+      return std::nullopt;
+  }
+}
+
 uint32_t AMDAIEDeviceModel::getColumnShift() const {
   return configPtr.ColShift;
 }

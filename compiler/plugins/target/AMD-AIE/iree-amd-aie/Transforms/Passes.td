@@ -99,12 +99,12 @@ def AMDAIEBufferizeToAllocation :
                    "Create new allocations for lhs, rhs of a linalg op."),
         clEnumValN(mlir::iree_compiler::AMDAIE::BufferizeOperand::LinalgOutput, "linalg-output",
                    "Create new allocations for output of a linalg op."),
-        clEnumValN(mlir::iree_compiler::AMDAIE::BufferizeOperand::PackInput, "pack-input",
-                   "Create new allocations for operands from the pack op inputs of a linalg op.")
+        clEnumValN(mlir::iree_compiler::AMDAIE::BufferizeOperand::PackOrCopyInput, "pack-or-copy-input",
+                   "Create new allocations for operands from the pack or copy op inputs of a linalg op.")
     )}]>,
-    Option<"packDepth", "pack-depth", "int64_t", /*default=*/"1",
-      "Set the depth of the pack operands to look for. Default is `1` to operate"
-      " on the first level of pack operations.">,
+    Option<"inputDepth", "input-depth", "int64_t", /*default=*/"1",
+      "Set the depth of the pack/copy operands to look for. Default is `1` to operate"
+      " on the first level of pack/copy operations.">,
   ];
 }
 

@@ -35,7 +35,7 @@ enum class BufferizeOperand {
   LinalgInputOutput,
   LinalgInput,
   LinalgOutput,
-  PackInput
+  PackOrCopyInput
 };
 
 /// Enum for hardware mapping attributes.
