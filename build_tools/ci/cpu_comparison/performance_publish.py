@@ -5,18 +5,8 @@
 import json
 import sys
 
-if __name__ == "__main__":
-    if len(sys.argv) != 4:
-        print(
-            "Usage: python3 performance_publish.py <path_to_results_json> <path_to_results_history> <path_to_results_html>\n"
-            "This script reads the performance results from the specified JSON file, appends them to the history file, and generates an HTML visualizarion.\n"
-        )
-        sys.exit(1)
 
-    results_json_path = sys.argv[1]
-    results_history_path = sys.argv[2]
-    results_html_path = sys.argv[3]
-
+def append_history(results_json_path: str, results_history_path: str):
     # Get the results for the current run.
     with open(results_json_path, "r") as f:
         results = json.load(f)
@@ -24,7 +14,6 @@ if __name__ == "__main__":
     # Append the results to the history.
     results_history = []
     max_history = 100
-    time_unit = "us"
     with open(results_history_path, "r+") as f:
         results_history = json.load(f)
         results_history.append(results)
@@ -32,11 +21,18 @@ if __name__ == "__main__":
         if len(results_history) > max_history:
             results_history = results_history[-max_history:]
         f.seek(0)
+        # Write the updated history back to the file.
         json.dump(results_history, f, indent=2)
-    assert len(results_history) > 0 and len(results_history) <= max_history
+
+
+def generate_html(results_history_path: str, results_html_path: str):
+    results_history = []
+    with open(results_history_path, "r") as f:
+        results_history = json.load(f)
 
     # Reformat the data for the graph.
     graph_data = {}
+    time_unit = "us"
     for entry in results_history:
         commit_hash = entry["commit_hash"]
         # Truncate commit hash to first 7 characters
@@ -117,5 +113,21 @@ if __name__ == "__main__":
     """
 
     # Save the HTML file
-    with open("results_history.html", "w") as f:
+    with open(results_html_path, "w") as f:
         f.write(html_content)
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 4:
+        print(
+            "Usage: python3 performance_publish.py <path_to_results_json> <path_to_results_history> <path_to_results_html>\n"
+            "This script reads the performance results from the specified JSON file, appends them to the history file, and generates an HTML visualization.\n"
+        )
+        sys.exit(1)
+
+    results_json_path = sys.argv[1]
+    results_history_path = sys.argv[2]
+    results_html_path = sys.argv[3]
+
+    append_history(results_json_path, results_history_path)
+    generate_html(results_history_path, results_html_path)
