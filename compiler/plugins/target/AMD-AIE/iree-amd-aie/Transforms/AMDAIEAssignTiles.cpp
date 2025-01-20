@@ -8,6 +8,7 @@
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
+#include "mlir/IR/Iterators.h"
 #include "mlir/IR/Verifier.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -312,8 +313,9 @@ class FillTiles
 /// Assign tile locations to objectFifos. Start by searching for a set of
 /// candidate tile locations and then assign tiles based on a simple usage-based
 /// model that prioritizes tiles that have the least usage.
-LogicalResult assignNonLocalTiles(RewriterBase &rewriter, Operation *op,
-                                  const AMDAIEDeviceModel &deviceModel) {
+LogicalResult assignNonLocalTiles(
+    RewriterBase &rewriter, Operation *op, const AMDAIEDeviceModel &deviceModel,
+    DenseMap<Operation *, int64_t> l3BufferCount) {
   MLIRContext *context = rewriter.getContext();
   if (failed(clearNonLocalTiles(rewriter, op)))
     return op->emitOpError() << "failed to clear non-local tile assignments";
@@ -350,9 +352,7 @@ LogicalResult assignNonLocalTiles(RewriterBase &rewriter, Operation *op,
   };
 
   // After filling tile candidates, find and assign a specific one.
-  DenseMap<Value, SmallVector<AMDAIE::TileOp>> memrefToTileMap;
-  Block *prevBlock = nullptr;
-  bool pickFromBefore = false;
+  DenseMap<MemRefType, int64_t> logicalObjFifoToTileId;
   WalkResult res =
       op->walk([&](AMDAIE::LogicalObjFifoOpInterface logicalObjectFifo) {
         uint8_t memSpace = logicalObjectFifo.getMemorySpaceAsUInt();
@@ -367,34 +367,22 @@ LogicalResult assignNonLocalTiles(RewriterBase &rewriter, Operation *op,
             llvm::map_to_vector(logicalObjectFifo.getTiles(), [](Value tile) {
               return dyn_cast_if_present<TileOp>(tile.getDefiningOp());
             });
-        bool hasMultipleTileCandidates = tiles.size() > 1;
+
         auto fromMemrefOp = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
             logicalObjectFifo.getOperation());
-        Value memref = nullptr;
         if (fromMemrefOp) {
-          memref = fromMemrefOp.getMemref();
-          if (hasMultipleTileCandidates && memSpace == 0) {
-            if (prevBlock && logicalObjectFifo->getBlock() != prevBlock) {
-              pickFromBefore = true;
-            }
-            prevBlock = logicalObjectFifo->getBlock();
+          Operation *defOp = fromMemrefOp.getMemref().getDefiningOp();
+          if (defOp && l3BufferCount.contains(defOp)) {
+            SmallVector<AMDAIE::TileOp> effectiveTiles;
+            for (unsigned i = 0, n = l3BufferCount[defOp], m = tiles.size();
+                 i < n && i < m; i++)
+              effectiveTiles.push_back(tiles[i]);
+            tiles = effectiveTiles;
           }
         }
+        AMDAIE::TileOp assignedTileOp =
+            *std::min_element(tiles.begin(), tiles.end(), tileLocAndUsageCmp);
 
-        AMDAIE::TileOp assignedTileOp = nullptr;
-        if (pickFromBefore && memrefToTileMap.contains(memref)) {
-          SmallVector<AMDAIE::TileOp> tiles = memrefToTileMap[memref];
-          assignedTileOp = tiles[0];
-          memrefToTileMap[memref].erase(memrefToTileMap[memref].begin());
-          memrefToTileMap[memref].push_back(assignedTileOp);
-        } else {
-          assignedTileOp =
-              *std::min_element(tiles.begin(), tiles.end(), tileLocAndUsageCmp);
-          if (hasMultipleTileCandidates && memSpace == 0) {
-            if (!memrefToTileMap.contains(memref)) memrefToTileMap[memref] = {};
-            memrefToTileMap[memref].push_back(assignedTileOp);
-          }
-        }
         // Increase usage of the chosen tile as a new logical objectFifo will be
         // assigned to it. This allows distributing the logical objectFifos
         // evenly across the available tile resources.
@@ -460,8 +448,67 @@ void AMDAIEAssignTilesPass::runOnOperation() {
   LLVM_DEBUG(llvm::dbgs() << "After duplicateGlobalObjFifos: \n"
                           << *parentOp << "\n");
 
+  // Analyse the count of each L3 logicalObjectFifos appearing in L3<->L2
+  // CopyOp. We would be maintaining this count in a map `l3BufferCount` and
+  // using this later to pick one tile to assign to the L3 logicalObjectFifo.
+  // TODO(avarma): Have an analysis pass instead and annotate the L3 buffers
+  // with their count. OR better to have an analysis pass that annotates
+  // LHS/RHS/OUT buffers. That might come handy for other passes.
+  bool visitedCopyOp = false;
+  DenseMap<Operation *, int64_t> l3BufferCount;
+  auto res = parentOp->walk([&](Operation *op) -> WalkResult {
+    if (auto copyOp = dyn_cast<CopyOpInterface>(op)) {
+      visitedCopyOp = true;
+      auto source = dyn_cast_if_present<AMDAIE::LogicalObjFifoOpInterface>(
+          copyOp.getSource().getDefiningOp());
+      if (!source) {
+        visitedCopyOp = false;
+        return WalkResult::interrupt();
+      }
+      uint8_t memSpace = source.getMemorySpaceAsUInt();
+      auto fromMemrefOp = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+          source.getOperation());
+      if (memSpace == 0 && fromMemrefOp) {
+        Operation *defOp = fromMemrefOp.getMemref().getDefiningOp();
+        if (!l3BufferCount.contains(defOp)) l3BufferCount[defOp] = 0;
+        l3BufferCount[defOp] += 1;
+      }
+      return WalkResult::advance();
+    } else if (isa<AMDAIE::CoreOp>(op)) {
+      return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
+  });
+
+  // We don't need the following. Have added this just for sake of completeness
+  // in the entire L3 buffer count analysis.
+  res = parentOp->walk<WalkOrder::PostOrder, ReverseIterator>(
+      [&](Operation *op) -> WalkResult {
+        if (auto copyOp = dyn_cast<CopyOpInterface>(op)) {
+          visitedCopyOp = true;
+          auto target = dyn_cast_if_present<AMDAIE::LogicalObjFifoOpInterface>(
+              copyOp.getTarget().getDefiningOp());
+          if (!target) {
+            visitedCopyOp = false;
+            return WalkResult::interrupt();
+          }
+          uint8_t memSpace = target.getMemorySpaceAsUInt();
+          auto fromMemrefOp = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+              target.getOperation());
+          if (memSpace == 0 && fromMemrefOp) {
+            Operation *defOp = fromMemrefOp.getMemref().getDefiningOp();
+            if (!l3BufferCount.contains(defOp)) l3BufferCount[defOp] = 0;
+            l3BufferCount[defOp] += 1;
+          }
+          return WalkResult::advance();
+        } else if (isa<AMDAIE::CoreOp>(op)) {
+          return WalkResult::interrupt();
+        }
+        return WalkResult::advance();
+      });
   // Assign tile locations to logical objectFifos on non-local (not L1) memory.
-  if (failed(assignNonLocalTiles(rewriter, parentOp, deviceModel))) {
+  if (failed(assignNonLocalTiles(rewriter, parentOp, deviceModel,
+                                 l3BufferCount))) {
     parentOp->emitOpError() << "non-local tile assignment failed";
     return signalPassFailure();
   }

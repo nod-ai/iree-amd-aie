@@ -21,7 +21,8 @@ LogicalResult assignLocalTiles(RewriterBase &rewriter, Operation *op);
 /// Assign tile locations to the logical objectfifos with non-local memory space
 /// (L2, L3 etc, not L1).
 LogicalResult assignNonLocalTiles(RewriterBase &rewriter, Operation *op,
-                                  const AMDAIEDeviceModel &deviceModel);
+                                  const AMDAIEDeviceModel &deviceModel,
+                                  DenseMap<Operation *, int64_t> l3BufferCount);
 
 /// Unroll the loops within the control code regions.
 LogicalResult controlCodeLoopUnroll(RewriterBase &rewriter,
