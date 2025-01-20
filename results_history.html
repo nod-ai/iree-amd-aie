@@ -1,0 +1,589 @@
+
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Performance History</title>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; padding: 20px; }
+            .chart-container { width: 80%; margin: 30px auto; }
+            canvas { width: 100%; height: auto; }
+        </style>
+    </head>
+    <body>
+        <h1>Performance History</h1>
+        <p>Overview of test results for the most recent commits:</p>
+    
+        <div class="chart-container">
+            <h2>Performance for matmul_benchmark_512_512_4096_bf16_f32_O2</h2>
+            <canvas id="chart-matmul_benchmark_512_512_4096_bf16_f32_O2"></canvas>
+        </div>
+        <script>
+            const ctx_matmul_benchmark_512_512_4096_bf16_f32_O2 = document.getElementById('chart-matmul_benchmark_512_512_4096_bf16_f32_O2')
+            const chart_matmul_benchmark_512_512_4096_bf16_f32_O2 = new Chart(ctx_matmul_benchmark_512_512_4096_bf16_f32_O2, {
+                type: 'line',
+                data: {
+                    labels: ['4e21f8d'],  // Truncated commit hashes as X-axis labels
+                    datasets: [{
+                        label: 'Duration (us)',
+                        data: ['2645'],   // Test durations as Y-axis
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Commit Hash'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Duration (us)'
+                            }
+                        }
+                    }
+                }
+            });
+        </script>
+        
+        <div class="chart-container">
+            <h2>Performance for matmul_benchmark_512_512_4096_bf16_f32_O2_outline</h2>
+            <canvas id="chart-matmul_benchmark_512_512_4096_bf16_f32_O2_outline"></canvas>
+        </div>
+        <script>
+            const ctx_matmul_benchmark_512_512_4096_bf16_f32_O2_outline = document.getElementById('chart-matmul_benchmark_512_512_4096_bf16_f32_O2_outline')
+            const chart_matmul_benchmark_512_512_4096_bf16_f32_O2_outline = new Chart(ctx_matmul_benchmark_512_512_4096_bf16_f32_O2_outline, {
+                type: 'line',
+                data: {
+                    labels: ['4e21f8d'],  // Truncated commit hashes as X-axis labels
+                    datasets: [{
+                        label: 'Duration (us)',
+                        data: ['6666'],   // Test durations as Y-axis
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Commit Hash'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Duration (us)'
+                            }
+                        }
+                    }
+                }
+            });
+        </script>
+        
+        <div class="chart-container">
+            <h2>Performance for matmul_benchmark_512_512_4096_bf16_f32_O3</h2>
+            <canvas id="chart-matmul_benchmark_512_512_4096_bf16_f32_O3"></canvas>
+        </div>
+        <script>
+            const ctx_matmul_benchmark_512_512_4096_bf16_f32_O3 = document.getElementById('chart-matmul_benchmark_512_512_4096_bf16_f32_O3')
+            const chart_matmul_benchmark_512_512_4096_bf16_f32_O3 = new Chart(ctx_matmul_benchmark_512_512_4096_bf16_f32_O3, {
+                type: 'line',
+                data: {
+                    labels: ['4e21f8d'],  // Truncated commit hashes as X-axis labels
+                    datasets: [{
+                        label: 'Duration (us)',
+                        data: ['2659'],   // Test durations as Y-axis
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Commit Hash'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Duration (us)'
+                            }
+                        }
+                    }
+                }
+            });
+        </script>
+        
+        <div class="chart-container">
+            <h2>Performance for matmul_benchmark_512_512_4096_bf16_f32_O3_outline</h2>
+            <canvas id="chart-matmul_benchmark_512_512_4096_bf16_f32_O3_outline"></canvas>
+        </div>
+        <script>
+            const ctx_matmul_benchmark_512_512_4096_bf16_f32_O3_outline = document.getElementById('chart-matmul_benchmark_512_512_4096_bf16_f32_O3_outline')
+            const chart_matmul_benchmark_512_512_4096_bf16_f32_O3_outline = new Chart(ctx_matmul_benchmark_512_512_4096_bf16_f32_O3_outline, {
+                type: 'line',
+                data: {
+                    labels: ['4e21f8d'],  // Truncated commit hashes as X-axis labels
+                    datasets: [{
+                        label: 'Duration (us)',
+                        data: ['1778'],   // Test durations as Y-axis
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Commit Hash'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Duration (us)'
+                            }
+                        }
+                    }
+                }
+            });
+        </script>
+        
+        <div class="chart-container">
+            <h2>Performance for matmul_benchmark_512_512_4096_bf16_f32_O3_outline_ukernel</h2>
+            <canvas id="chart-matmul_benchmark_512_512_4096_bf16_f32_O3_outline_ukernel"></canvas>
+        </div>
+        <script>
+            const ctx_matmul_benchmark_512_512_4096_bf16_f32_O3_outline_ukernel = document.getElementById('chart-matmul_benchmark_512_512_4096_bf16_f32_O3_outline_ukernel')
+            const chart_matmul_benchmark_512_512_4096_bf16_f32_O3_outline_ukernel = new Chart(ctx_matmul_benchmark_512_512_4096_bf16_f32_O3_outline_ukernel, {
+                type: 'line',
+                data: {
+                    labels: ['4e21f8d'],  // Truncated commit hashes as X-axis labels
+                    datasets: [{
+                        label: 'Duration (us)',
+                        data: ['1789'],   // Test durations as Y-axis
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Commit Hash'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Duration (us)'
+                            }
+                        }
+                    }
+                }
+            });
+        </script>
+        
+        <div class="chart-container">
+            <h2>Performance for matmul_benchmark_512_4096_512_bf16_f32_O3_outline</h2>
+            <canvas id="chart-matmul_benchmark_512_4096_512_bf16_f32_O3_outline"></canvas>
+        </div>
+        <script>
+            const ctx_matmul_benchmark_512_4096_512_bf16_f32_O3_outline = document.getElementById('chart-matmul_benchmark_512_4096_512_bf16_f32_O3_outline')
+            const chart_matmul_benchmark_512_4096_512_bf16_f32_O3_outline = new Chart(ctx_matmul_benchmark_512_4096_512_bf16_f32_O3_outline, {
+                type: 'line',
+                data: {
+                    labels: ['4e21f8d'],  // Truncated commit hashes as X-axis labels
+                    datasets: [{
+                        label: 'Duration (us)',
+                        data: ['2525'],   // Test durations as Y-axis
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Commit Hash'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Duration (us)'
+                            }
+                        }
+                    }
+                }
+            });
+        </script>
+        
+        <div class="chart-container">
+            <h2>Performance for matmul_benchmark_512_4096_512_bf16_f32_O3_outline_ukernel</h2>
+            <canvas id="chart-matmul_benchmark_512_4096_512_bf16_f32_O3_outline_ukernel"></canvas>
+        </div>
+        <script>
+            const ctx_matmul_benchmark_512_4096_512_bf16_f32_O3_outline_ukernel = document.getElementById('chart-matmul_benchmark_512_4096_512_bf16_f32_O3_outline_ukernel')
+            const chart_matmul_benchmark_512_4096_512_bf16_f32_O3_outline_ukernel = new Chart(ctx_matmul_benchmark_512_4096_512_bf16_f32_O3_outline_ukernel, {
+                type: 'line',
+                data: {
+                    labels: ['4e21f8d'],  // Truncated commit hashes as X-axis labels
+                    datasets: [{
+                        label: 'Duration (us)',
+                        data: ['2539'],   // Test durations as Y-axis
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Commit Hash'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Duration (us)'
+                            }
+                        }
+                    }
+                }
+            });
+        </script>
+        
+        <div class="chart-container">
+            <h2>Performance for matmul_transpose_b_benchmark_512_4096_512_bf16_f32_O3_outline</h2>
+            <canvas id="chart-matmul_transpose_b_benchmark_512_4096_512_bf16_f32_O3_outline"></canvas>
+        </div>
+        <script>
+            const ctx_matmul_transpose_b_benchmark_512_4096_512_bf16_f32_O3_outline = document.getElementById('chart-matmul_transpose_b_benchmark_512_4096_512_bf16_f32_O3_outline')
+            const chart_matmul_transpose_b_benchmark_512_4096_512_bf16_f32_O3_outline = new Chart(ctx_matmul_transpose_b_benchmark_512_4096_512_bf16_f32_O3_outline, {
+                type: 'line',
+                data: {
+                    labels: ['4e21f8d'],  // Truncated commit hashes as X-axis labels
+                    datasets: [{
+                        label: 'Duration (us)',
+                        data: ['1968'],   // Test durations as Y-axis
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Commit Hash'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Duration (us)'
+                            }
+                        }
+                    }
+                }
+            });
+        </script>
+        
+        <div class="chart-container">
+            <h2>Performance for matmul_benchmark_4096_512_512_bf16_f32_O3_outline</h2>
+            <canvas id="chart-matmul_benchmark_4096_512_512_bf16_f32_O3_outline"></canvas>
+        </div>
+        <script>
+            const ctx_matmul_benchmark_4096_512_512_bf16_f32_O3_outline = document.getElementById('chart-matmul_benchmark_4096_512_512_bf16_f32_O3_outline')
+            const chart_matmul_benchmark_4096_512_512_bf16_f32_O3_outline = new Chart(ctx_matmul_benchmark_4096_512_512_bf16_f32_O3_outline, {
+                type: 'line',
+                data: {
+                    labels: ['4e21f8d'],  // Truncated commit hashes as X-axis labels
+                    datasets: [{
+                        label: 'Duration (us)',
+                        data: ['1899'],   // Test durations as Y-axis
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Commit Hash'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Duration (us)'
+                            }
+                        }
+                    }
+                }
+            });
+        </script>
+        
+        <div class="chart-container">
+            <h2>Performance for matmul_benchmark_4096_512_512_bf16_f32_O3_outline_ukernel</h2>
+            <canvas id="chart-matmul_benchmark_4096_512_512_bf16_f32_O3_outline_ukernel"></canvas>
+        </div>
+        <script>
+            const ctx_matmul_benchmark_4096_512_512_bf16_f32_O3_outline_ukernel = document.getElementById('chart-matmul_benchmark_4096_512_512_bf16_f32_O3_outline_ukernel')
+            const chart_matmul_benchmark_4096_512_512_bf16_f32_O3_outline_ukernel = new Chart(ctx_matmul_benchmark_4096_512_512_bf16_f32_O3_outline_ukernel, {
+                type: 'line',
+                data: {
+                    labels: ['4e21f8d'],  // Truncated commit hashes as X-axis labels
+                    datasets: [{
+                        label: 'Duration (us)',
+                        data: ['1900'],   // Test durations as Y-axis
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Commit Hash'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Duration (us)'
+                            }
+                        }
+                    }
+                }
+            });
+        </script>
+        
+        <div class="chart-container">
+            <h2>Performance for matmul_transpose_a_benchmark_4096_512_512_bf16_f32_O3_outline</h2>
+            <canvas id="chart-matmul_transpose_a_benchmark_4096_512_512_bf16_f32_O3_outline"></canvas>
+        </div>
+        <script>
+            const ctx_matmul_transpose_a_benchmark_4096_512_512_bf16_f32_O3_outline = document.getElementById('chart-matmul_transpose_a_benchmark_4096_512_512_bf16_f32_O3_outline')
+            const chart_matmul_transpose_a_benchmark_4096_512_512_bf16_f32_O3_outline = new Chart(ctx_matmul_transpose_a_benchmark_4096_512_512_bf16_f32_O3_outline, {
+                type: 'line',
+                data: {
+                    labels: ['4e21f8d'],  // Truncated commit hashes as X-axis labels
+                    datasets: [{
+                        label: 'Duration (us)',
+                        data: ['2404'],   // Test durations as Y-axis
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Commit Hash'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Duration (us)'
+                            }
+                        }
+                    }
+                }
+            });
+        </script>
+        
+        <div class="chart-container">
+            <h2>Performance for matmul_benchmark_4096_512_512_bf16_f32_O3_outline_empty</h2>
+            <canvas id="chart-matmul_benchmark_4096_512_512_bf16_f32_O3_outline_empty"></canvas>
+        </div>
+        <script>
+            const ctx_matmul_benchmark_4096_512_512_bf16_f32_O3_outline_empty = document.getElementById('chart-matmul_benchmark_4096_512_512_bf16_f32_O3_outline_empty')
+            const chart_matmul_benchmark_4096_512_512_bf16_f32_O3_outline_empty = new Chart(ctx_matmul_benchmark_4096_512_512_bf16_f32_O3_outline_empty, {
+                type: 'line',
+                data: {
+                    labels: ['4e21f8d'],  // Truncated commit hashes as X-axis labels
+                    datasets: [{
+                        label: 'Duration (us)',
+                        data: ['1895'],   // Test durations as Y-axis
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Commit Hash'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Duration (us)'
+                            }
+                        }
+                    }
+                }
+            });
+        </script>
+        
+        <div class="chart-container">
+            <h2>Performance for matmul_benchmark_512_4096_512_bf16_f32_O3_outline_4_level_tiling</h2>
+            <canvas id="chart-matmul_benchmark_512_4096_512_bf16_f32_O3_outline_4_level_tiling"></canvas>
+        </div>
+        <script>
+            const ctx_matmul_benchmark_512_4096_512_bf16_f32_O3_outline_4_level_tiling = document.getElementById('chart-matmul_benchmark_512_4096_512_bf16_f32_O3_outline_4_level_tiling')
+            const chart_matmul_benchmark_512_4096_512_bf16_f32_O3_outline_4_level_tiling = new Chart(ctx_matmul_benchmark_512_4096_512_bf16_f32_O3_outline_4_level_tiling, {
+                type: 'line',
+                data: {
+                    labels: ['4e21f8d'],  // Truncated commit hashes as X-axis labels
+                    datasets: [{
+                        label: 'Duration (us)',
+                        data: ['7034'],   // Test durations as Y-axis
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Commit Hash'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Duration (us)'
+                            }
+                        }
+                    }
+                }
+            });
+        </script>
+        
+        <div class="chart-container">
+            <h2>Performance for matmul_benchmark_512_4096_512_bf16_f32_O3_outline_4_level_tiling_ukernel</h2>
+            <canvas id="chart-matmul_benchmark_512_4096_512_bf16_f32_O3_outline_4_level_tiling_ukernel"></canvas>
+        </div>
+        <script>
+            const ctx_matmul_benchmark_512_4096_512_bf16_f32_O3_outline_4_level_tiling_ukernel = document.getElementById('chart-matmul_benchmark_512_4096_512_bf16_f32_O3_outline_4_level_tiling_ukernel')
+            const chart_matmul_benchmark_512_4096_512_bf16_f32_O3_outline_4_level_tiling_ukernel = new Chart(ctx_matmul_benchmark_512_4096_512_bf16_f32_O3_outline_4_level_tiling_ukernel, {
+                type: 'line',
+                data: {
+                    labels: ['4e21f8d'],  // Truncated commit hashes as X-axis labels
+                    datasets: [{
+                        label: 'Duration (us)',
+                        data: ['1120'],   // Test durations as Y-axis
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Commit Hash'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Duration (us)'
+                            }
+                        }
+                    }
+                }
+            });
+        </script>
+        
+        <div class="chart-container">
+            <h2>Performance for matmul_benchmark_512_4096_512_bf16_f32_O3_outline_empty_4_level_tiling</h2>
+            <canvas id="chart-matmul_benchmark_512_4096_512_bf16_f32_O3_outline_empty_4_level_tiling"></canvas>
+        </div>
+        <script>
+            const ctx_matmul_benchmark_512_4096_512_bf16_f32_O3_outline_empty_4_level_tiling = document.getElementById('chart-matmul_benchmark_512_4096_512_bf16_f32_O3_outline_empty_4_level_tiling')
+            const chart_matmul_benchmark_512_4096_512_bf16_f32_O3_outline_empty_4_level_tiling = new Chart(ctx_matmul_benchmark_512_4096_512_bf16_f32_O3_outline_empty_4_level_tiling, {
+                type: 'line',
+                data: {
+                    labels: ['4e21f8d'],  // Truncated commit hashes as X-axis labels
+                    datasets: [{
+                        label: 'Duration (us)',
+                        data: ['1109'],   // Test durations as Y-axis
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Commit Hash'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Duration (us)'
+                            }
+                        }
+                    }
+                }
+            });
+        </script>
+        
+    </body>
+    </html>
+    
