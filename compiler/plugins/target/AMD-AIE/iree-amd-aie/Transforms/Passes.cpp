@@ -212,8 +212,8 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   {
     AMDAIEBufferizeToAllocationOptions bufferizeOptions;
     bufferizeOptions.memorySpace = 1;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::PackInput;
-    bufferizeOptions.packDepth = 2;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::PackOrCopyInput;
+    bufferizeOptions.inputDepth = 2;
     funcPassManager.addPass(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }
@@ -408,8 +408,8 @@ void addPackPeel4LevelTilingBasedPassPipeline(
   {
     AMDAIEBufferizeToAllocationOptions bufferizeOptions;
     bufferizeOptions.memorySpace = 1;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::PackInput;
-    bufferizeOptions.packDepth = 2;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::PackOrCopyInput;
+    bufferizeOptions.inputDepth = 2;
     funcPassManager.addPass(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }
