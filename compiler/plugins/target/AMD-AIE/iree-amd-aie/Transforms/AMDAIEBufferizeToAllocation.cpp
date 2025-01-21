@@ -127,7 +127,7 @@ static FailureOr<SmallVector<Value>> getOperandsToBufferize(
 /// `memorySpace`.
 static AMDAIEMemSpaceAttr getMemorySpaceAttr(RewriterBase &rewriter,
                                              int64_t memorySpace) {
-  AMDAIEMemSpace memSpace;
+  AMDAIEMemSpace memSpace = AMDAIEMemSpace::None;
   switch (memorySpace) {
     case 0:
       memSpace = AMDAIEMemSpace::Global;
@@ -140,6 +140,7 @@ static AMDAIEMemSpaceAttr getMemorySpaceAttr(RewriterBase &rewriter,
       break;
     default:
       assert(false && "incorrect memory space");
+      break;
   }
   return AMDAIEMemSpaceAttr::get(rewriter.getContext(), memSpace);
 }
