@@ -11,6 +11,8 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 
+#define DEBUG_TYPE "iree-amdaie-dma-utils"
+
 namespace mlir::iree_compiler::AMDAIE {
 
 static bool isEqualConstantIntOrValueArrayFromIndices(
@@ -42,7 +44,7 @@ bool areAccessPatternsCombinable(const SmallVector<OpFoldResult> &offsetsA,
                                  const SmallVector<OpFoldResult> &offsetsB,
                                  const SmallVector<OpFoldResult> &sizesB,
                                  const SmallVector<OpFoldResult> &stridesB,
-                                 size_t maxNbDims) {
+                                 function_ref<bool(size_t)> exceedsNbDims) {
   assert(offsetsA.size() == sizesA.size() &&
          "expected same number of source offsets and sizes");
   assert(offsetsA.size() == stridesA.size() &&
@@ -59,8 +61,11 @@ bool areAccessPatternsCombinable(const SmallVector<OpFoldResult> &offsetsA,
   // In case both access patterns have the same number of dimension, a new
   // dimension will need to be added, so fail if there aren't enough
   // dimensions.
-  if (offsetsA.size() == offsetsB.size() && offsetsA.size() + 1 > maxNbDims)
+  if (offsetsA.size() == offsetsB.size() &&
+      exceedsNbDims(offsetsA.size() + 1)) {
+    LLVM_DEBUG(llvm::dbgs() << "Exceeded maximum number of dimensions\n");
     return false;
+  }
 
   // Equality of the last N elements of the access patterns of A and B with N =
   // min(sizeA, sizeB) results in some simple cases in which the access
@@ -196,7 +201,7 @@ LogicalResult combineAccessPatterns(RewriterBase &rewriter,
                                     SmallVector<OpFoldResult> &newOffsets,
                                     SmallVector<OpFoldResult> &newSizes,
                                     SmallVector<OpFoldResult> &newStrides,
-                                    size_t maxNbDims) {
+                                    function_ref<bool(size_t)> exceedsNbDims) {
   assert(offsetsA.size() == sizesA.size() &&
          "expected same number of source offsets and sizes");
   assert(offsetsA.size() == stridesA.size() &&
@@ -206,7 +211,7 @@ LogicalResult combineAccessPatterns(RewriterBase &rewriter,
   assert(offsetsB.size() == stridesB.size() &&
          "expected same number of source offsets and strides");
   if (!areAccessPatternsCombinable(offsetsA, sizesA, stridesA, offsetsB, sizesB,
-                                   stridesB, maxNbDims)) {
+                                   stridesB, exceedsNbDims)) {
     return failure();
   }
   if (offsetsA.empty() && offsetsB.empty()) return success();

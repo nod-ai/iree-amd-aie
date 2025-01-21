@@ -625,6 +625,58 @@ LogicalObjectFifoFromBuffersOp::replaceWithNewTiles(
 // AMDAIE_LogicalObjectFifoFromMemrefOp
 //===----------------------------------------------------------------------===//
 
+void LogicalObjectFifoFromMemrefOp::getAsmResultNames(
+    function_ref<void(Value, StringRef)> setNameFn) {
+  // 'lof' for 'logical object fifo'
+  constexpr const char *const name = "lof";
+
+  auto tiles = getTiles();
+
+  if (tiles.empty()) {
+    setNameFn(getResult(), name);
+    return;
+  }
+
+  // Denotes one or more tiles with multiple possible row/column values.
+  constexpr int64_t multiple{-2};
+  constexpr int64_t unset{-1};
+  int64_t col{unset};
+  int64_t row{unset};
+
+  for (Value index : tiles) {
+    TileOp tile = dyn_cast<TileOp>(index.getDefiningOp());
+    if (!tile) {
+      col = multiple;
+      row = multiple;
+    } else {
+      std::optional<int64_t> maybeCol = getConstantIntValue(tile.getCol());
+      if (!maybeCol) col = multiple;
+      if (col >= 0 && maybeCol.value() != col) col = multiple;
+      if (col == unset) col = maybeCol.value();
+
+      std::optional<int64_t> maybeRow = getConstantIntValue(tile.getRow());
+      if (!maybeRow) row = multiple;
+      if (row >= 0 && maybeRow.value() != row) row = multiple;
+      if (row == unset) row = maybeRow.value();
+    }
+  }
+
+  std::ostringstream namestream;
+  namestream << name << '_';
+
+  if (col >= 0) {
+    namestream << col;
+  } else {
+    namestream << 'c';
+  }
+  if (row >= 0) {
+    namestream << '_' << row;
+  } else {
+    namestream << '_' << 'r';
+  }
+  setNameFn(getResult(), namestream.str());
+}
+
 /// Build with an array of static tile locations.
 void LogicalObjectFifoFromMemrefOp::build(
     OpBuilder &b, mlir::OperationState &result, Value memref,
@@ -1367,8 +1419,22 @@ SmallVector<AMDAIE::NpuDmaCpyNdOp> NpuDmaWaitOp::getDmaOps() {
 // AMDAIE_NpuControlPacketOp
 //===----------------------------------------------------------------------===//
 
+std::optional<ArrayRef<int32_t>>
+NpuControlPacketOp::getDataFromArrayOrResource() {
+  std::optional<mlir::Attribute> dataAttr = getData();
+  if (dataAttr.has_value()) {
+    if (auto denseArrayAttr = dyn_cast<DenseI32ArrayAttr>(dataAttr.value())) {
+      return denseArrayAttr.asArrayRef();
+    } else if (auto resourceAttr =
+                   dyn_cast<DenseI32ResourceElementsAttr>(dataAttr.value())) {
+      return resourceAttr.tryGetAsArrayRef();
+    }
+  }
+  return std::nullopt;
+}
+
 LogicalResult NpuControlPacketOp::verify() {
-  std::optional<ArrayRef<int32_t>> data = getData();
+  std::optional<ArrayRef<int32_t>> data = getDataFromArrayOrResource();
   if (data.has_value() && data.value().size() != getLength()) {
     return emitOpError()
            << "data length does not match the specified `length` attribute";
@@ -1380,16 +1446,26 @@ LogicalResult NpuControlPacketOp::verify() {
 // AMDAIE_TileOp
 //===----------------------------------------------------------------------===//
 
+// Example: if the column is an integer value (3) and the row is not, the SSA
+// value might be `%tile_3_r`, where the `_r` denotes that the row is not known.
 void TileOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
   std::optional<int64_t> iCol = getConstantIntValue(getCol());
   std::optional<int64_t> iRow = getConstantIntValue(getRow());
-  std::string name{"tile"};
-  if (iCol.has_value() && iRow.has_value()) {
-    std::string sCol = std::to_string(iCol.value());
-    std::string sRow = std::to_string(iRow.value());
-    name += "_" + sCol + "_" + sRow;
+  std::ostringstream name;
+  name << "tile";
+
+  auto add = [&](std::optional<int64_t> maybeValue, char unknown) {
+    if (maybeValue.has_value()) {
+      name << '_' << maybeValue.value();
+    } else {
+      name << '_' << unknown;
+    }
+  };
+  if (iCol.has_value() || iRow.has_value()) {
+    add(iCol, 'c');
+    add(iRow, 'r');
   }
-  setNameFn(getResult(), name);
+  setNameFn(getResult(), name.str());
 }
 
 bool TileOp::hasStaticLocation() {

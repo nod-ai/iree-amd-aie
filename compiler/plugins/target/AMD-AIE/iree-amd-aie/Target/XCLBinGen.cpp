@@ -570,14 +570,22 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
   auto tileOps = deviceOp.getOps<AIE::TileOp>();
   std::string errorMessage;
 
-  std::string ukernelFileContent = _MM_NPU1_CC;
-  std::string ukernelFileName = "mm_npu1.cc";
-  std::string ukernelObjectName = "mm_npu1.o";
-  if (npuVersion == "npu4") {
+  std::string ukernelFileContent;
+  std::string ukernelFileName;
+  std::string ukernelObjectName;
+  if (npuVersion == "npu1") {
+    ukernelFileContent = _MM_NPU1_CC;
+    ukernelFileName = "mm_npu1.cc";
+    ukernelObjectName = "mm_npu1.o";
+  } else if (npuVersion == "npu4") {
     ukernelFileContent = _MM_NPU4_CC;
     ukernelFileName = "mm_npu4.cc";
     ukernelObjectName = "mm_npu4.o";
+  } else {
+    llvm::errs() << "unsupported NPU version: " << npuVersion;
+    return failure();
   }
+
   for (AIE::TileOp tileOp : tileOps) {
     int col = tileOp.getCol();
     int row = tileOp.getRow();

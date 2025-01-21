@@ -708,7 +708,17 @@ class BatchMatmul(BaseMatmul):
     A test of the form batch_matmul(A,B) where A:BxMxK, B:BxKxN
     """
 
-    def __init__(self, B, M, N, K, input_type, acc_type, run_on_target=["npu1_4col"]):
+    def __init__(
+        self,
+        B,
+        M,
+        N,
+        K,
+        input_type,
+        acc_type,
+        run_on_target=["npu1_4col"],
+        tile_pipeline="pack-peel",
+    ):
         super().__init__(
             run_on_target=run_on_target,
             aie_compilation_flags=None,
@@ -717,12 +727,14 @@ class BatchMatmul(BaseMatmul):
             K=K,
             input_type=input_type,
             acc_type=acc_type,
-            tile_pipeline="pack-peel",
+            tile_pipeline=tile_pipeline,
             n_repeats=1,
         )
         self.labels.append("BatchMatmul")
 
         self.name = f"batch_matmul_{B}_{M}_{N}_{K}_{input_type}_{acc_type}"
+        if tile_pipeline == "pack-peel-4-level-tiling":
+            self.name += "_4_level_tiling"
         self.B = B
 
     def _execute(self, config):
@@ -756,6 +768,7 @@ class MatmulTruncf(BaseMatmul):
         rhs,
         expected_out,
         run_on_target=["npu1_4col"],
+        tile_pipeline="pack-peel",
     ):
         super().__init__(
             run_on_target=run_on_target,
@@ -765,7 +778,7 @@ class MatmulTruncf(BaseMatmul):
             K=K,
             input_type=input_type,
             acc_type=acc_type,
-            tile_pipeline="pack-peel",
+            tile_pipeline=tile_pipeline,
             n_repeats=1,
         )
         self.labels.append("MatmulTruncf")
@@ -776,6 +789,8 @@ class MatmulTruncf(BaseMatmul):
         assert expected_out.shape == (M, M)
 
         self.name = f"matmul_truncf_{M}_{K}_{input_type}_{acc_type}"
+        if tile_pipeline == "pack-peel-4-level-tiling":
+            self.name += "_4_level_tiling"
         self.lhs = lhs
         self.rhs = rhs
         self.expected_out = expected_out
@@ -1594,36 +1609,55 @@ class Tests:
         self.tests = []
 
         # Matmul with truncf test(s):
-        self.register(
-            MatmulTruncf(
-                16,
-                16,
-                "bf16",
-                "f32",
-                101 * np.ones([16, 16]),
-                3 * np.eye(16),
-                302 * np.ones([16, 16]),
+        for tile_pipeline in ["pack-peel", "pack-peel-4-level-tiling"]:
+            self.register(
+                MatmulTruncf(
+                    16,
+                    16,
+                    "bf16",
+                    "f32",
+                    101 * np.ones([16, 16]),
+                    3 * np.eye(16),
+                    302 * np.ones([16, 16]),
+                    tile_pipeline=tile_pipeline,
+                )
             )
-        )
-
-        self.register(
-            MatmulTruncf(
-                128,
-                256,
-                "bf16",
-                "f32",
-                2 * np.ones([128, 256]),
-                3 * np.ones([256, 128]),
-                1536 * np.ones([128, 128]),
+            self.register(
+                MatmulTruncf(
+                    128,
+                    256,
+                    "bf16",
+                    "f32",
+                    2 * np.ones([128, 256]),
+                    3 * np.ones([256, 128]),
+                    1536 * np.ones([128, 128]),
+                    tile_pipeline=tile_pipeline,
+                )
             )
-        )
 
         # BatchMatmul test(s):
-        for input_type, acc_type in zip(["i32", "bf16"], ["i32", "f32"]):
-            # Batch size = 1:
-            self.register(BatchMatmul(1, 128, 128, 256, input_type, acc_type))
-            # Batch size = 2:
-            self.register(BatchMatmul(2, 64, 64, 64, input_type, acc_type))
+        # TODO(jornt): BatchMatmul tests with the pack-peel-4-level-tiling pipeline result in intermittent
+        # numerics issues. Re-enable.
+        for tile_pipeline in ["pack-peel"]:
+            for input_type, acc_type in zip(["i32", "bf16"], ["i32", "f32"]):
+                # Batch size = 1:
+                self.register(
+                    BatchMatmul(
+                        1,
+                        128,
+                        128,
+                        256,
+                        input_type,
+                        acc_type,
+                        tile_pipeline=tile_pipeline,
+                    )
+                )
+                # Batch size = 2:
+                self.register(
+                    BatchMatmul(
+                        2, 64, 64, 64, input_type, acc_type, tile_pipeline=tile_pipeline
+                    )
+                )
 
         # MatmulThinBias test(s):
         self.register(MatmulThinBias(1024, 1024, 512, "bf16", "f32", use_ukernel=True))

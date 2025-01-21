@@ -43,7 +43,7 @@ jobs:
         shell: powershell
     steps:
       - name: Set unified TZ
-        uses: szenius/set-timezone@v2.0
+        uses: szenius/set-timezone@1f9716b0f7120e344f0c62bb7b1ee98819aefd42 # v2.0
         with:
           # this is an arbitrary choice
           timezoneLinux: "Asia/Singapore"
@@ -66,7 +66,7 @@ jobs:
               submodule update --init --recursive --depth 1 --single-branch -j 10
 
       - name: Setup Cpp
-        uses: aminya/setup-cpp@v1
+        uses: aminya/setup-cpp@1fd813945e55021261b381c59275db442da4082f # v0.45.0
         with:
           compiler: llvm
           vcvarsall: true
@@ -74,7 +74,7 @@ jobs:
           ninja: true
           ccache: true
 
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
         with:
           python-version: '3.11'
 
@@ -84,7 +84,7 @@ jobs:
           pip install pyyaml pybind11==2.13.6 nanobind==2.4.0
 
       - name: Enable cache
-        uses: actions/cache/restore@v3
+        uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         with:
           path: ${{ env.CACHE_DIR }}
           key: ${{ env.CACHE_KEY }}
@@ -114,7 +114,7 @@ jobs:
           tar cf iree-dist-windows.tar iree-install
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         if: ${{ !cancelled() }}
         with:
           name: windows_x86_64_llvm_packages
@@ -122,7 +122,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         if: ${{ !cancelled() }}
         with:
           name: windows_x86_64_iree_packages
@@ -130,7 +130,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Save cache
-        uses: actions/cache/save@v3
+        uses: actions/cache/save@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         if: ${{ !cancelled() && (inputs.force_ccache || github.event_name == 'push' && github.ref_name == 'main') }}
         with:
           path: ${{ env.CACHE_DIR }}
@@ -138,7 +138,7 @@ jobs:
 
       - name: Start tmate session
         if: ${{ (failure() && inputs.debug_with_tmate) || inputs.force_debug_with_tmate }}
-        uses: mxschmitt/action-tmate@v3.18
+        uses: mxschmitt/action-tmate@e5c7151931ca95bad1c6f4190c730ecf8c7dde48 # v3.19
         with:
           limit-access-to-actor: true
 
@@ -150,12 +150,12 @@ jobs:
       XILINX_XRT: "C:\\Xilinx\\XRT"
     steps:
       - name: "Checking out repository" # for test scripts
-        uses: actions/checkout@8f4b7f84864484a7bf31766abe9204da3cbe65b3 # v3.5.0
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           submodules: false # not required for testbench
 
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
           name: windows_x86_64_iree_packages
 

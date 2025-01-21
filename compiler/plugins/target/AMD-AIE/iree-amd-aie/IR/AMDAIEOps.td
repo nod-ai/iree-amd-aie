@@ -1070,9 +1070,14 @@ def AMDAIE_NpuControlPacketOp: AMDAIE_Op<"npu.control_packet"> {
         UI32Attr:$length,
         UI32Attr:$opcode,
         UI32Attr:$stream_id,
-        OptionalAttr<DenseI32ArrayAttr>:$data
+        OptionalAttr<AMDAIE_AnyCtrlPktDataType>:$data
   );
   let assemblyFormat = [{ attr-dict }];
+
+  let extraClassDeclaration = [{
+    std::optional<llvm::ArrayRef<int32_t>> getDataFromArrayOrResource();
+  }];
+
   let hasVerifier = 1;
 }
 
@@ -1308,8 +1313,9 @@ def AMDAIE_LogicalObjectFifoFromBuffersOp
 }
 
 def AMDAIE_LogicalObjectFifoFromMemrefOp
-    : AMDAIE_Op<"logicalobjectfifo.from_memref",
-    [DeclareOpInterfaceMethods<LogicalObjFifoOpInterface, ["replaceWithNewTiles"]>,
+    : AMDAIE_Op<"logicalobjectfifo.from_memref", [
+     DeclareOpInterfaceMethods<LogicalObjFifoOpInterface, ["replaceWithNewTiles"]>,
+     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
      Pure]> {
   let summary = "Create a logical objectFifo from a memref";
   let description = [{

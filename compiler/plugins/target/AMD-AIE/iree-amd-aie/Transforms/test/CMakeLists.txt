@@ -19,7 +19,7 @@ iree_lit_test_suite(
     "assign_tiles.mlir"
     "bridge_to_air.mlir"
     "bufferize_to_allocation.mlir"
-    "bufferize_to_allocation_pack.mlir"
+    "bufferize_to_allocation_pack_or_copy.mlir"
     "canonicalize_doubly_strided_op.mlir"
     "canonicalize_doubly_strided_op_hardware_aware.mlir"
     "canonicalize_npu_dma_cpy_nd.mlir"
