@@ -347,6 +347,7 @@ LogicalResult assignNonLocalTiles(RewriterBase &rewriter, Operation *op,
     if (rowA < rowB) return true;
     if (rowA > rowB) return false;
     assert(false && "same tiles should never be compared");
+    return false;
   };
 
   // After filling tile candidates, find and assign a specific one.

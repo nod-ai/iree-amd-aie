@@ -93,6 +93,7 @@ FailureOr<SmallVector<Attribute>> getGPUMappingAttributes(
       return gpu::GPUThreadMappingAttr::get(context, id);
     else {
       assert(false && "Unhandled group type, must be thread or block.");
+      return Attribute{nullptr};
     }
   };
 
