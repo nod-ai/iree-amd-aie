@@ -34,8 +34,8 @@ void registerDialects(DialectRegistry &registry) {
   registry.insert<iree_compiler::IREE::HAL::HALDialect>();
 }
 
-// The following code parses an MLIR file containing an xilinx.aie.device op,
-// generates the elf files using aie2xclbin, and writes the elf files to the
+// The following code parses an MLIR file containing a `xilinx.aie.device` op,
+// generates the elf files using `aie2xclbin`, and writes the elf files to the
 // working directory.
 //
 // Usage:

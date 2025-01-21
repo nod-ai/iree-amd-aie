@@ -1138,9 +1138,13 @@ LogicalResult generateUnifiedObject(
   return success();
 }
 
+/// Assume the ELF files have already been generated and are stored in the
+/// `tempDirPath`. This function converts `xilinx::aie::device` to
+/// `amdaie.npu.control_packets` by calling the
+/// `AMDAIEConvertDeviceToControlPacketsPass`.
 LogicalResult generateControlPackets(MLIRContext *context,
                                      AIE::DeviceOp deviceOp,
-                                     const std::string &tempDirPath,
+                                     const Path &tempDirPath,
                                      bool printIRBeforeAll,
                                      bool printIRAfterAll,
                                      bool printIRModuleScope, bool timing) {
@@ -1151,7 +1155,7 @@ LogicalResult generateControlPackets(MLIRContext *context,
                            printIRModuleScope, timing);
   mlir::iree_compiler::AMDAIE::AMDAIEConvertDeviceToControlPacketsOptions
       options;
-  options.pathToElfs = tempDirPath;
+  options.pathToElfs = tempDirPath.string();
   pm.addPass(mlir::iree_compiler::AMDAIE::
                  createAMDAIEConvertDeviceToControlPacketsPass(options));
   return pm.run(deviceOp->getParentOp());

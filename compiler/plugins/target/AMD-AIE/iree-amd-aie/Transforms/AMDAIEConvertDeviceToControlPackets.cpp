@@ -30,8 +30,9 @@ LogicalResult convertDeviceToControlPacket(IRRewriter &rewriter,
   TRY_XAIE_API_LOGICAL_RESULT(XAie_StartTransaction, &deviceModel.devInst,
                               XAIE_TRANSACTION_DISABLE_AUTO_FLUSH);
   if (failed(addAllAieElfs(deviceModel, deviceOp, Path{pathToElfs},
-                           /*aieSim=*/false)))
+                           /*aieSim=*/false))) {
     return failure();
+  }
   if (failed(addInitConfig(deviceModel, deviceOp))) return failure();
   if (failed(addAllCoreEnable(deviceModel, deviceOp))) return failure();
 
