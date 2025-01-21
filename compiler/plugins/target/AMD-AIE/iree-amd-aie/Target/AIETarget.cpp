@@ -9,7 +9,6 @@
 #include <fstream>
 #include <utility>
 
-#include "AMDAIEControlPacket.h"
 #include "XCLBinGen.h"
 #include "aie/AIEDialect.h"
 #include "aie/AIEXDialect.h"
@@ -478,8 +477,10 @@ LogicalResult AIETargetBackend::serializeExecutable(
     }
 
     if (failed(aie2xclbin(
-            /*ctx=*/variantOp->getContext(), deviceOps[i],
+            /*ctx=*/variantOp->getContext(),
+            /*deviceOp=*/deviceOps[i],
             /*outputNPU=*/npuInstPath.str().str(),
+            /*emitCtrlPkt=*/options.emitCtrlPkt,
             /*artifactPath=*/artifactPath.str().str(),
             /*printIRBeforeAll=*/options.aie2xclbinPrintIrBeforeAll,
             /*printIRAfterAll=*/options.aie2xclbinPrintIrAfterAll,
@@ -503,17 +504,6 @@ LogicalResult AIETargetBackend::serializeExecutable(
             /*ukernel=*/options.enableAMDAIEUkernels,
             /*additionalPeanoOptFlags=*/options.additionalPeanoOptFlags))) {
       return failure();
-    }
-
-    if (options.convertAieToCtrlPkt) {
-      SmallString<128> ctrlPktMlirPath(entryPointWorkDir);
-      llvm::sys::path::append(ctrlPktMlirPath,
-                              entryPointNamesFb[ordinal] + ".ctrlpkt.mlir");
-      if (failed(convertAieToControlPacket(
-              moduleOp, deviceOps[i], static_cast<std::string>(ctrlPktMlirPath),
-              static_cast<std::string>(entryPointWorkDir)))) {
-        return failure();
-      }
     }
 
     std::ifstream instrFile(static_cast<std::string>(npuInstPath));

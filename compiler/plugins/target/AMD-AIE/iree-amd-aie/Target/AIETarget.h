@@ -69,7 +69,7 @@ struct AMDAIEOptions {
   enum class DeviceHAL { XRT, XRT_LITE };
   DeviceHAL deviceHal{DeviceHAL::XRT_LITE};
 
-  bool convertAieToCtrlPkt{false};
+  bool emitCtrlPkt{false};
 
   void bindOptions(OptionsBinder &binder) {
     static llvm::cl::OptionCategory category("AMD AIE Options");
@@ -277,8 +277,7 @@ struct AMDAIEOptions {
                                     "xrt-lite device HAL")));
 
     binder.opt<bool>(
-        "iree-amdaie-convert-to-control-packet", convertAieToCtrlPkt,
-        llvm::cl::cat(category),
+        "iree-amdaie-emit-control-packet", emitCtrlPkt, llvm::cl::cat(category),
         llvm::cl::desc(
             "Convert `aie.device` to a sequence of control packets."));
   }

@@ -28,9 +28,9 @@ iree_cc_binary(
 
 iree_cc_binary(
   NAME
-    AMDAIEControlPacketTest
+    aie_elf_files_gen_test
   SRCS
-    AMDAIEControlPacketTest.cpp
+    aie_elf_files_gen_test.cpp
   DEPS
     iree::target::amd-aie::aie::AIEDialectIR
     iree::target::amd-aie::Target::Target
@@ -57,8 +57,8 @@ iree_lit_test_suite(
   TOOLS
     ${IREE_LLD_TARGET}
     ::aie_cdo_gen_test
+    ::aie_elf_files_gen_test
     ::aie2xclbin_test
-    ::AMDAIEControlPacketTest
     FileCheck
     iree-compile
   LABELS

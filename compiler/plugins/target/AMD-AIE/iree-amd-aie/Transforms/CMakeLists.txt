@@ -61,6 +61,7 @@ iree_cc_library(
     "AMDAIEControlCodeLoopUnroll.cpp"
     "AMDAIEControlCodeToTransaction.cpp"
     "AMDAIEConvertCoreForallToFor.cpp"
+    "AMDAIEConvertDeviceToControlPackets.cpp"
     "AMDAIECreateAIEWorkgroup.cpp"
     "AMDAIECreateReferenceToAllocation.cpp"
     "AMDAIEDistributeCoresAndObjectFifos.cpp"

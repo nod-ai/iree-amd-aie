@@ -15,6 +15,7 @@
 #include "AMDAIETargets.h"
 #include "aie/Passes.h"
 #include "air/Conversion/AIRToAIEPass.h"
+#include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-dialects/Dialect/LinalgTransform/Passes.h"
 #include "iree/compiler/Utils/ToolUtils.h"
 #include "llvm/ADT/StringRef.h"
@@ -1128,6 +1129,26 @@ LogicalResult generateUnifiedObject(
   moduleOpCopy->erase();
   return success();
 }
+
+LogicalResult generateControlPackets(MLIRContext *context,
+                                     AIE::DeviceOp deviceOp,
+                                     const std::string &tempDirPath,
+                                     bool printIRBeforeAll,
+                                     bool printIRAfterAll,
+                                     bool printIRModuleScope, bool timing) {
+  assert(deviceOp->getParentOp() && isa<ModuleOp>(deviceOp->getParentOp()) &&
+         "DeviceOp must be in a module parent");
+  PassManager pm(context, ModuleOp::getOperationName());
+  applyConfigToPassManager(pm, printIRBeforeAll, printIRAfterAll,
+                           printIRModuleScope, timing);
+  mlir::iree_compiler::AMDAIE::AMDAIEConvertDeviceToControlPacketsOptions
+      options;
+  options.pathToElfs = tempDirPath;
+  pm.addPass(mlir::iree_compiler::AMDAIE::
+                 createAMDAIEConvertDeviceToControlPacketsPass(options));
+  return pm.run(deviceOp->getParentOp());
+}
+
 }  // namespace
 
 namespace mlir::iree_compiler::AMDAIE {
@@ -1173,7 +1194,7 @@ LogicalResult emitNpuInstructions(AIE::DeviceOp deviceOp,
 
 LogicalResult aie2xclbin(
     MLIRContext *ctx, AIE::DeviceOp deviceOp,
-    const std::optional<std::string> &outputNPU,
+    const std::optional<std::string> &outputNPU, bool emitCtrlPkt,
     const std::string &artifactPath, bool printIRBeforeAll,
     bool printIRAfterAll, bool printIRModuleScope, bool timing,
     const std::string &tempDir, bool useChess, bool verbose,
@@ -1211,6 +1232,13 @@ LogicalResult aie2xclbin(
                                   useChess, vitisDirPath, targetArch, verbose,
                                   peanoDir, npuVersion, ukernel))) {
     llvm::errs() << "Failed to generate core ELF file(s)\n";
+    return failure();
+  }
+
+  if (emitCtrlPkt && failed(generateControlPackets(
+                         ctx, deviceOp, tempDirPath, printIRBeforeAll,
+                         printIRAfterAll, printIRModuleScope, timing))) {
+    llvm::errs() << "Failed to generate control packets MLIR file\n";
     return failure();
   }
 

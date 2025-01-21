@@ -9,7 +9,6 @@
 
 #include "aie/AIEDialect.h"
 #include "aie/AIEXDialect.h"
-#include "iree-amd-aie/Target/AMDAIEControlPacket.h"
 #include "iree-amd-aie/Target/XCLBinGen.h"
 #include "iree/compiler/Dialect/HAL/IR/HALDialect.h"
 #include "llvm/Support/FileSystem.h"
@@ -35,16 +34,20 @@ void registerDialects(DialectRegistry &registry) {
   registry.insert<iree_compiler::IREE::HAL::HALDialect>();
 }
 
+// The following code parses an MLIR file containing an xilinx.aie.device op,
+// generates the elf files using aie2xclbin, and writes the elf files to the
+// working directory.
+//
+// Usage:
+//   aie_elf_files_gen_test <input_file> <working_directory>
+//
+// It is used as a helper for testing the `AMDAIEConvertDeviceToControlPackets`
+// pass.
 int main(int argc, char **argv) {
   llvm::StringRef sourceMlirPath(argv[1]);
   llvm::SmallString<128> workDir(argv[2]);
-
-  llvm::SmallString<128> ctrlPktMlirPath(workDir);
-  llvm::sys::path::append(ctrlPktMlirPath, "control_packet.mlir");
-
   llvm::SmallString<128> artifactPath(workDir);
   llvm::sys::path::append(artifactPath, "artifact.pdi");
-
   if (auto ecode = llvm::sys::fs::create_directories(workDir)) {
     std::cerr << "Error: failed to create working directory: "
               << ecode.message() << "\n";
@@ -80,12 +83,12 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  // Generate the elf files, which are required for generating control
-  // packets.
+  // Use `aie2xclbin` to generate the elf files.
   if (failed(aie2xclbin(
           /*ctx=*/&context,
           /*deviceOp=*/deviceOp,
           /*outputNPU=*/std::nullopt,
+          /*emitCtrlPkt=*/false,
           /*artifactPath=*/artifactPath.str().str(),
           /*printIRBeforeAll=*/false,
           /*printIRAfterAll=*/false,
@@ -107,14 +110,6 @@ int main(int argc, char **argv) {
           /*ukernel=*/std::nullopt,
           /*additionalPeanoOptFlags=*/""))) {
     std::cerr << "Error: failed to generate xclbin\n";
-    return 1;
-  }
-
-  // Convert the AIE device to control packet operations.
-  if (failed(convertAieToControlPacket(moduleOp, deviceOp,
-                                       ctrlPktMlirPath.str().str(),
-                                       workDir.str().str()))) {
-    std::cerr << "Error: failed to convert AIE to control packet\n";
     return 1;
   }
 }
