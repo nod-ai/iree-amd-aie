@@ -1416,6 +1416,33 @@ SmallVector<AMDAIE::NpuDmaCpyNdOp> NpuDmaWaitOp::getDmaOps() {
 }
 
 //===----------------------------------------------------------------------===//
+// AMDAIE_NpuControlPacketOp
+//===----------------------------------------------------------------------===//
+
+std::optional<ArrayRef<int32_t>>
+NpuControlPacketOp::getDataFromArrayOrResource() {
+  std::optional<mlir::Attribute> dataAttr = getData();
+  if (dataAttr.has_value()) {
+    if (auto denseArrayAttr = dyn_cast<DenseI32ArrayAttr>(dataAttr.value())) {
+      return denseArrayAttr.asArrayRef();
+    } else if (auto resourceAttr =
+                   dyn_cast<DenseI32ResourceElementsAttr>(dataAttr.value())) {
+      return resourceAttr.tryGetAsArrayRef();
+    }
+  }
+  return std::nullopt;
+}
+
+LogicalResult NpuControlPacketOp::verify() {
+  std::optional<ArrayRef<int32_t>> data = getDataFromArrayOrResource();
+  if (data.has_value() && data.value().size() != getLength()) {
+    return emitOpError()
+           << "data length does not match the specified `length` attribute";
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // AMDAIE_TileOp
 //===----------------------------------------------------------------------===//
 
