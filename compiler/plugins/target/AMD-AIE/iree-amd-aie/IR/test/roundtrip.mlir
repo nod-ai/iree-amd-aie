@@ -463,6 +463,21 @@ func.func @npu_tct_sync() {
 
 // -----
 
+// CHECK-LABEL: func.func @npu_control_packet
+// CHECK:       amdaie.npu.control_packet {address = 1234 : ui32, data = array<i32: 1>, length = 1 : ui32, opcode = 0 : ui32, stream_id = 1 : ui32}
+// CHECK:       amdaie.npu.control_packet {address = 5678 : ui32, data = array<i32: 22, 42, 62, 72>, length = 4 : ui32, opcode = 0 : ui32, stream_id = 7 : ui32}
+// CHECK:       amdaie.npu.control_packet {address = 43981 : ui32, length = 3 : ui32, opcode = 1 : ui32, stream_id = 4 : ui32}
+// CHECK:       amdaie.npu.control_packet {address = 0 : ui32, data = dense_resource<ctrlpkt_data> : tensor<16xi32>, length = 16 : ui32, opcode = 0 : ui32, stream_id = 5 : ui32}
+func.func @npu_control_packet() {
+  amdaie.npu.control_packet {address = 1234 : ui32, data = array<i32: 1>, length = 1 : ui32, opcode = 0 : ui32, stream_id = 1 : ui32}
+  amdaie.npu.control_packet {address = 5678 : ui32, data = array<i32: 22, 42, 62, 72>, length = 4 : ui32, opcode = 0 : ui32, stream_id = 7 : ui32}
+  amdaie.npu.control_packet {address = 0xABCD : ui32, length = 3 : ui32, opcode = 1 : ui32, stream_id = 4 : ui32}
+  amdaie.npu.control_packet {address = 0 : ui32, data = dense_resource<ctrlpkt_data> : tensor<16xi32>, length = 16 : ui32, opcode = 0 : ui32, stream_id = 5 : ui32}
+  return
+}
+
+// -----
+
 // CHECK-LABEL: func.func @workgroup
 // CHECK: amdaie.workgroup
 // CHECK: amdaie.core

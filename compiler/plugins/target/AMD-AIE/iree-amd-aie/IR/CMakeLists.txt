@@ -75,8 +75,8 @@ iree_tablegen_library(
   TD_FILE
     "AMDAIEAttrs.td"
   OUTS
-    --gen-attrdef-decls AMDAIEAttrs.h.inc
-    --gen-attrdef-defs AMDAIEAttrs.cpp.inc
+    --gen-attrdef-decls --attrdefs-dialect=amdaie AMDAIEAttrs.h.inc
+    --gen-attrdef-defs --attrdefs-dialect=amdaie AMDAIEAttrs.cpp.inc
     --gen-enum-decls AMDAIEEnums.h.inc
     --gen-enum-defs AMDAIEEnums.cpp.inc
 )

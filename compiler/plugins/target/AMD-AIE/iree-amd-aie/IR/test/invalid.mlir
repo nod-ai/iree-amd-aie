@@ -487,6 +487,30 @@ func.func @npu_dma_cpy_nd_negative_source_stride(%arg0: !amdaie.logicalobjectfif
 
 // -----
 
+func.func @npu_control_packet_mismatched_length_dense_array() {
+  // expected-error @+1 {{data length does not match the specified `length` attribute}}
+  amdaie.npu.control_packet {address = 0 : ui32, data = array<i32: 1, 2, 3, 4>, length = 1 : ui32, opcode = 0 : ui32, stream_id = 0 : ui32}
+  return
+}
+
+// -----
+
+func.func @npu_control_packet_mismatched_length_dense_resource() {
+  // expected-error @+1 {{data length does not match the specified `length` attribute}}
+  amdaie.npu.control_packet {address = 1 : ui32, data = dense_resource<ctrlpkt_data> : tensor<16xi32>, length = 2 : ui32, opcode = 0 : ui32, stream_id = 1 : ui32}
+  return
+}
+{-#
+  dialect_resources: {
+    builtin: {
+      ctrlpkt_data: "0x040000000123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"
+    }
+  }
+#-}
+
+
+// -----
+
 func.func @workgroup_no_terminator() {
   // expected-note @+2 {{in custom textual format, the absence of terminator implies 'amdaie.controlcode'}}
   // expected-error @+1 {{'amdaie.workgroup' op expects regions to end with 'amdaie.controlcode', found 'amdaie.end}}

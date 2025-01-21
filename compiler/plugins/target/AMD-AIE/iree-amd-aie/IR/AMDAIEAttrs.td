@@ -10,6 +10,9 @@
 include "iree-amd-aie/IR/AMDAIEDialect.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/EnumAttr.td"
+include "mlir/IR/BuiltinAttributes.td"
+
+def AMDAIE_AnyCtrlPktDataType : AnyAttrOf<[DenseI32ArrayAttr, Builtin_DenseResourceElementsAttr]>;
 
 def AMDAIE_ConnectionType: I32EnumAttr<"ConnectionType",
   "The connection type to be used for a connection op.",
