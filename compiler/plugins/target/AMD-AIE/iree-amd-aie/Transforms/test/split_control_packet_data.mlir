@@ -1,5 +1,19 @@
 // RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-split-control-packet-data)" --split-input-file --verify-diagnostics %s | FileCheck %s
 
+// expected-error @+1 {{op has no AMDAIEDevice in the target attribute configuration}}
+module {
+  func.func @no_amdaie_device() {
+    amdaie.workgroup {
+      amdaie.controlcode {
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
 // Control packets with data smaller than or equal to the maximum allowed size are left unchanged.
 // CHECK-LABEL: @no_split
 // CHECK: amdaie.npu.control_packet {address = 0 : ui32, data = array<i32: 0, 1, 2>, length = 3 : ui32, opcode = 0 : ui32, stream_id = 0 : ui32}

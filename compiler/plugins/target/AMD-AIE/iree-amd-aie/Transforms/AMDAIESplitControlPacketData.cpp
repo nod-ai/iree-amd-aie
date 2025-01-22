@@ -9,6 +9,7 @@
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/Passes.h"
+#include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -23,18 +24,15 @@ namespace {
 struct SplitControlPacketData
     : public OpRewritePattern<AMDAIE::NpuControlPacketOp> {
   using OpRewritePattern::OpRewritePattern;
+  uint32_t maxLength;
+
+  SplitControlPacketData(MLIRContext *context, uint32_t maxLength)
+      : OpRewritePattern(context), maxLength(maxLength) {}
 
   LogicalResult matchAndRewrite(AMDAIE::NpuControlPacketOp op,
                                 PatternRewriter &rewriter) const override {
-    // The maximum length (beats) of a control packet is determined by the
-    // number of bits allocated to the `beat` field in the control packet
-    // header.
-    unsigned maxLength =
-        2 << (static_cast<uint8_t>(AMDAIECtrlPktHeader::OPERATION_SHIFT) -
-              static_cast<uint8_t>(AMDAIECtrlPktHeader::BEAT_SHIFT));
-
+    // If below the threshold, no need to split.
     uint32_t length = op.getLength();
-    // Below the threshold, no need to split.
     if (length <= maxLength) return failure();
 
     rewriter.setInsertionPoint(op);
@@ -76,14 +74,32 @@ class AMDAIESplitControlPacketDataPass
     registry.insert<AMDAIEDialect>();
   }
 
-  void runOnOperation() override {
-    MLIRContext *context = &getContext();
-    RewritePatternSet patterns(context);
-    patterns.insert<SplitControlPacketData>(context);
-    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns))))
-      signalPassFailure();
-  }
+  void runOnOperation() override;
 };
+
+void AMDAIESplitControlPacketDataPass::runOnOperation() {
+  // Get the maximum length of a control packet.
+  Operation *parentOp = getOperation();
+  auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(parentOp);
+  std::optional<AMDAIEDevice> maybeDevice = getConfigAMDAIEDevice(targetAttr);
+  if (!maybeDevice) {
+    parentOp->emitOpError()
+        << "has no AMDAIEDevice in the target attribute configuration. This "
+           "device-specific information is required to split control packet "
+           "operations.";
+    return signalPassFailure();
+  }
+  AMDAIE::AMDAIEDeviceModel deviceModel =
+      AMDAIE::getDeviceModel(maybeDevice.value());
+  uint32_t maxLength = deviceModel.getCtrlPktMaxLength();
+
+  MLIRContext *context = &getContext();
+  RewritePatternSet patterns(context);
+  SplitControlPacketData pattern(context, maxLength);
+  patterns.insert<SplitControlPacketData>(std::move(pattern));
+  if (failed(applyPatternsGreedily(getOperation(), std::move(patterns))))
+    signalPassFailure();
+}
 
 }  // namespace
 
