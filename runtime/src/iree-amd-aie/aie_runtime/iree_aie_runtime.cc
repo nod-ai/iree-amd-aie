@@ -316,6 +316,11 @@ uint32_t AMDAIEDeviceModel::getCoreTileLocalMemorySize() const {
   return devInst.DevProp.DevMod[XAIEGBL_TILE_TYPE_AIETILE].CoreMod->DataMemSize;
 }
 
+uint32_t AMDAIEDeviceModel::getCtrlPktMaxLength() const {
+  return 2 << (ctrlPktHeaderFormat.operationShift -
+               ctrlPktHeaderFormat.beatShift);
+}
+
 uint32_t AMDAIEDeviceModel::getMemInternalBaseAddress() const {
   return getMemEastBaseAddress();
 }
