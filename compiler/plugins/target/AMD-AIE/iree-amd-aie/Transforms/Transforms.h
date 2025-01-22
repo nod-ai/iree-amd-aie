@@ -22,7 +22,7 @@ LogicalResult assignLocalTiles(RewriterBase &rewriter, Operation *op);
 /// (L2, L3 etc, not L1).
 LogicalResult assignNonLocalTiles(RewriterBase &rewriter, Operation *op,
                                   const AMDAIEDeviceModel &deviceModel,
-                                  DenseMap<Operation *, int64_t> l3BufferCount);
+                                  DenseMap<Operation *, size_t> l3BufferCount);
 
 /// Unroll the loops within the control code regions.
 LogicalResult controlCodeLoopUnroll(RewriterBase &rewriter,

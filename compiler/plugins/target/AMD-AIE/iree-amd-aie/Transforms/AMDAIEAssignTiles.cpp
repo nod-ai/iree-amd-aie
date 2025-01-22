@@ -313,9 +313,9 @@ class FillTiles
 /// Assign tile locations to objectFifos. Start by searching for a set of
 /// candidate tile locations and then assign tiles based on a simple usage-based
 /// model that prioritizes tiles that have the least usage.
-LogicalResult assignNonLocalTiles(
-    RewriterBase &rewriter, Operation *op, const AMDAIEDeviceModel &deviceModel,
-    DenseMap<Operation *, int64_t> l3BufferCount) {
+LogicalResult assignNonLocalTiles(RewriterBase &rewriter, Operation *op,
+                                  const AMDAIEDeviceModel &deviceModel,
+                                  DenseMap<Operation *, size_t> l3BufferCount) {
   MLIRContext *context = rewriter.getContext();
   if (failed(clearNonLocalTiles(rewriter, op)))
     return op->emitOpError() << "failed to clear non-local tile assignments";
@@ -353,53 +353,53 @@ LogicalResult assignNonLocalTiles(
 
   // After filling tile candidates, find and assign a specific one.
   DenseMap<MemRefType, int64_t> logicalObjFifoToTileId;
-  WalkResult res =
-      op->walk([&](AMDAIE::LogicalObjFifoOpInterface logicalObjectFifo) {
-        uint8_t memSpace = logicalObjectFifo.getMemorySpaceAsUInt();
-        if (memSpace != 0 && memSpace != 1) return WalkResult::advance();
-        if (logicalObjectFifo.getTiles().size() == 0) {
-          logicalObjectFifo.emitOpError()
-              << "should have at least one tile candidate";
-          return WalkResult::interrupt();
-        }
+  WalkResult res = op->walk([&](AMDAIE::LogicalObjFifoOpInterface
+                                    logicalObjectFifo) {
+    uint8_t memSpace = logicalObjectFifo.getMemorySpaceAsUInt();
+    if (memSpace != 0 && memSpace != 1) return WalkResult::advance();
+    if (logicalObjectFifo.getTiles().size() == 0) {
+      logicalObjectFifo.emitOpError()
+          << "should have at least one tile candidate";
+      return WalkResult::interrupt();
+    }
 
-        SmallVector<AMDAIE::TileOp> tiles =
-            llvm::map_to_vector(logicalObjectFifo.getTiles(), [](Value tile) {
-              return dyn_cast_if_present<TileOp>(tile.getDefiningOp());
-            });
+    SmallVector<AMDAIE::TileOp> tiles =
+        llvm::map_to_vector(logicalObjectFifo.getTiles(), [](Value tile) {
+          return dyn_cast_if_present<TileOp>(tile.getDefiningOp());
+        });
 
-        auto fromMemrefOp = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-            logicalObjectFifo.getOperation());
-        if (fromMemrefOp) {
-          Operation *defOp = fromMemrefOp.getMemref().getDefiningOp();
-          if (defOp && l3BufferCount.contains(defOp)) {
-            SmallVector<AMDAIE::TileOp> effectiveTiles;
-            for (unsigned i = 0, n = l3BufferCount[defOp], m = tiles.size();
-                 i < n && i < m; i++)
-              effectiveTiles.push_back(tiles[i]);
-            tiles = effectiveTiles;
-          }
-        }
-        AMDAIE::TileOp assignedTileOp =
-            *std::min_element(tiles.begin(), tiles.end(), tileLocAndUsageCmp);
+    // Here we are limiting the number of tile options to buffer count to
+    // avoid repeated accesses of the same buffer being assigned to
+    // different tiles. Because if the repeated access of the same buffer
+    // are assigned to different tiles, that unnecessarily ends up consuming
+    // more DMA channels on those new tiles than needed, and as a result we
+    // will end up exhausting the DMA channels. Currently the following fix
+    // works for L3 buffers.
+    auto fromMemrefOp = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+        logicalObjectFifo.getOperation());
+    if (fromMemrefOp) {
+      Operation *defOp = fromMemrefOp.getMemref().getDefiningOp();
+      if (defOp && l3BufferCount.contains(defOp))
+        tiles.truncate(std::min((size_t)l3BufferCount[defOp], tiles.size()));
+    }
+    AMDAIE::TileOp assignedTileOp =
+        *std::min_element(tiles.begin(), tiles.end(), tileLocAndUsageCmp);
 
-        // Increase usage of the chosen tile as a new logical objectFifo will be
-        // assigned to it. This allows distributing the logical objectFifos
-        // evenly across the available tile resources.
-        int64_t col = getConstantIndexOrAssert(assignedTileOp.getCol());
-        int64_t row = getConstantIndexOrAssert(assignedTileOp.getRow());
-        tileLocToUsage[TileLoc(col, row)] += 1;
+    // Increase usage of the chosen tile as a new logical objectFifo will be
+    // assigned to it. This allows distributing the logical objectFifos
+    // evenly across the available tile resources.
+    int64_t col = getConstantIndexOrAssert(assignedTileOp.getCol());
+    int64_t row = getConstantIndexOrAssert(assignedTileOp.getRow());
+    tileLocToUsage[TileLoc(col, row)] += 1;
 
-        rewriter.setInsertionPoint(logicalObjectFifo);
-        SmallVector<Value> tileResults = {
-            cast<Value>(assignedTileOp.getResult())};
-        if (failed(
-                logicalObjectFifo.replaceWithNewTiles(rewriter, tileResults))) {
-          logicalObjectFifo.emitOpError() << "could not replace its tiles.";
-          return WalkResult::interrupt();
-        }
-        return WalkResult::advance();
-      });
+    rewriter.setInsertionPoint(logicalObjectFifo);
+    SmallVector<Value> tileResults = {cast<Value>(assignedTileOp.getResult())};
+    if (failed(logicalObjectFifo.replaceWithNewTiles(rewriter, tileResults))) {
+      logicalObjectFifo.emitOpError() << "could not replace its tiles.";
+      return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
+  });
   if (res.wasInterrupted()) return failure();
   return success();
 }
@@ -455,7 +455,7 @@ void AMDAIEAssignTilesPass::runOnOperation() {
   // with their count. OR better to have an analysis pass that annotates
   // LHS/RHS/OUT buffers. That might come handy for other passes.
   bool visitedCopyOp = false;
-  DenseMap<Operation *, int64_t> l3BufferCount;
+  DenseMap<Operation *, size_t> l3BufferCount;
   auto res = parentOp->walk([&](Operation *op) -> WalkResult {
     if (auto copyOp = dyn_cast<CopyOpInterface>(op)) {
       visitedCopyOp = true;
@@ -480,8 +480,6 @@ void AMDAIEAssignTilesPass::runOnOperation() {
     return WalkResult::advance();
   });
 
-  // We don't need the following. Have added this just for sake of completeness
-  // in the entire L3 buffer count analysis.
   res = parentOp->walk<WalkOrder::PostOrder, ReverseIterator>(
       [&](Operation *op) -> WalkResult {
         if (auto copyOp = dyn_cast<CopyOpInterface>(op)) {

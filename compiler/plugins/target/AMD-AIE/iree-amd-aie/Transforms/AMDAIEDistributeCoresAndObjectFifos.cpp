@@ -520,7 +520,7 @@ void AMDAIEDistributeCoresAndObjectFifosPass::runOnOperation() {
   LLVM_DEBUG(llvm::dbgs() << "Module after assignLocalTiles: \n"
                           << moduleOp << "\n");
 
-  DenseMap<Operation *, int64_t> l3BufferCount;
+  DenseMap<Operation *, size_t> l3BufferCount;
   // Assign tile locations to logical objectfifos on non-local (not L1) memory.
   if (failed(assignNonLocalTiles(rewriter, moduleOp, deviceModel,
                                  l3BufferCount))) {
