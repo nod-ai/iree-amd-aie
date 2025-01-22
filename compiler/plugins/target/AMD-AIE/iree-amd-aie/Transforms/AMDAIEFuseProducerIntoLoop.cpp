@@ -153,15 +153,9 @@ void AMDAIEFuseProducerIntoLoopPass::runOnOperation() {
 
       // Case where operand of a generic op is a pack/copy op which is in a
       // different block than the generic's block.
-      else if (auto parent = dyn_cast_if_present<tensor::PackOp>(
+      else if (isa_and_present<tensor::PackOp, linalg::CopyOp>(
                    operand.getDefiningOp())) {
-        Block *genericBlock = genericOp->getBlock();
-        if (parent->getBlock() != genericBlock && parent->hasOneUse()) {
-          Operation *firstOpInBlock = &genericBlock->front();
-          rewriter.moveOpBefore(parent, firstOpInBlock);
-        }
-      } else if (auto parent = dyn_cast_if_present<linalg::CopyOp>(
-                     operand.getDefiningOp())) {
+        Operation *parent = operand.getDefiningOp();
         Block *genericBlock = genericOp->getBlock();
         if (parent->getBlock() != genericBlock && parent->hasOneUse()) {
           Operation *firstOpInBlock = &genericBlock->front();
