@@ -1694,6 +1694,22 @@ class Tests:
                 use_chess=True,
             )
         )
+        self.register(
+            Matmul(
+                1024,
+                1024,
+                1024,
+                "i32",
+                "i32",
+                name_suffix="4rows_8cols_chess_npu4",
+                run_on_target=["npu4"],
+                aie_compilation_flags=[
+                    "--iree-amdaie-num-rows=4",
+                    "--iree-amdaie-num-cols=8",
+                ],
+                use_chess=True,
+            )
+        )
 
         for target in ["npu1_4col", "npu4"]:
             use_chess = target == "npu4"
@@ -1722,6 +1738,23 @@ class Tests:
                 "bf16",
                 "f32",
                 use_ukernel=True,
+                use_chess=True,
+                run_on_target=["npu4"],
+            )
+        )
+        self.register(
+            Matmul(
+                64,
+                64,
+                64,
+                "bf16",
+                "f32",
+                name_suffix="ukernel_npu4_4x8",
+                use_ukernel=True,
+                aie_compilation_flags=[
+                    "--iree-amdaie-num-rows=4",
+                    "--iree-amdaie-num-cols=8",
+                ],
                 use_chess=True,
                 run_on_target=["npu4"],
             )
