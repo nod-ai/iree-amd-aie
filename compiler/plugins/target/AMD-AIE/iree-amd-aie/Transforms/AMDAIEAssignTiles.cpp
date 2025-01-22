@@ -8,6 +8,7 @@
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
+#include "mlir/IR/Iterators.h"
 #include "mlir/IR/Verifier.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -312,8 +313,9 @@ class FillTiles
 /// Assign tile locations to objectFifos. Start by searching for a set of
 /// candidate tile locations and then assign tiles based on a simple usage-based
 /// model that prioritizes tiles that have the least usage.
-LogicalResult assignNonLocalTiles(RewriterBase &rewriter, Operation *op,
-                                  const AMDAIEDeviceModel &deviceModel) {
+LogicalResult assignNonLocalTiles(
+    RewriterBase &rewriter, Operation *op, const AMDAIEDeviceModel &deviceModel,
+    DenseMap<Operation *, DenseSet<Operation *>> uniqueL3L2Pair) {
   MLIRContext *context = rewriter.getContext();
   if (failed(clearNonLocalTiles(rewriter, op)))
     return op->emitOpError() << "failed to clear non-local tile assignments";
@@ -366,6 +368,22 @@ LogicalResult assignNonLocalTiles(RewriterBase &rewriter, Operation *op,
             llvm::map_to_vector(logicalObjectFifo.getTiles(), [](Value tile) {
               return dyn_cast_if_present<TileOp>(tile.getDefiningOp());
             });
+
+        // Here we are limiting the number of tile options to buffer count to
+        // avoid repeated accesses of the same buffer being assigned to
+        // different tiles. Because if the repeated access of the same buffer
+        // are assigned to different tiles, that unnecessarily ends up consuming
+        // more DMA channels on those new tiles than needed, and as a result we
+        // will end up exhausting the DMA channels. Currently the following fix
+        // works for L3 buffers.
+        auto fromMemrefOp = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+            logicalObjectFifo.getOperation());
+        if (fromMemrefOp) {
+          Operation *defOp = fromMemrefOp.getMemref().getDefiningOp();
+          if (defOp && uniqueL3L2Pair.contains(defOp))
+            tiles.truncate(
+                std::min((size_t)uniqueL3L2Pair[defOp].size(), tiles.size()));
+        }
         AMDAIE::TileOp assignedTileOp =
             *std::min_element(tiles.begin(), tiles.end(), tileLocAndUsageCmp);
 
@@ -434,8 +452,47 @@ void AMDAIEAssignTilesPass::runOnOperation() {
   LLVM_DEBUG(llvm::dbgs() << "After duplicateGlobalObjFifos: \n"
                           << *parentOp << "\n");
 
+  // Analyse the count of each L3 logicalObjectFifos appearing in L3<->L2
+  // CopyOp. We would be maintaining this count in a map `l3BufferCount` and
+  // using this later to pick one tile to assign to the L3 logicalObjectFifo.
+  // The analysis below is maintaining all unique pairs of (L3 source, L2
+  // target) and (L3 target, L2 source).
+  DenseMap<Operation *, DenseSet<Operation *>> uniqueL3L2Pair;
+  parentOp->walk([&](Operation *op) -> WalkResult {
+    if (auto copyOp = dyn_cast<CopyOpInterface>(op)) {
+      auto source = dyn_cast_if_present<AMDAIE::LogicalObjFifoOpInterface>(
+          copyOp.getSource().getDefiningOp());
+      auto target = dyn_cast_if_present<AMDAIE::LogicalObjFifoOpInterface>(
+          copyOp.getTarget().getDefiningOp());
+      if (!source || !target) {
+        return WalkResult::interrupt();
+      }
+      auto sourceFromMemrefOp = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+          source.getOperation());
+      auto targetFromMemrefOp = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+          target.getOperation());
+      if (!sourceFromMemrefOp || !targetFromMemrefOp) {
+        return WalkResult::interrupt();
+      }
+      Operation *l3DefOp = nullptr;
+      Operation *l2DefOp = nullptr;
+      if (source.getMemorySpaceAsUInt() == 0) {
+        l3DefOp = sourceFromMemrefOp.getMemref().getDefiningOp();
+        l2DefOp = targetFromMemrefOp.getMemref().getDefiningOp();
+      } else if (target.getMemorySpaceAsUInt() == 0) {
+        l3DefOp = targetFromMemrefOp.getMemref().getDefiningOp();
+        l2DefOp = sourceFromMemrefOp.getMemref().getDefiningOp();
+      } else {
+        return WalkResult::advance();
+      }
+      uniqueL3L2Pair[l3DefOp].insert(l2DefOp);
+      return WalkResult::advance();
+    }
+    return WalkResult::advance();
+  });
   // Assign tile locations to logical objectFifos on non-local (not L1) memory.
-  if (failed(assignNonLocalTiles(rewriter, parentOp, deviceModel))) {
+  if (failed(assignNonLocalTiles(rewriter, parentOp, deviceModel,
+                                 uniqueL3L2Pair))) {
     parentOp->emitOpError() << "non-local tile assignment failed";
     return signalPassFailure();
   }
