@@ -1158,6 +1158,8 @@ LogicalResult generateControlPackets(MLIRContext *context,
   options.pathToElfs = tempDirPath.string();
   pm.addPass(mlir::iree_compiler::AMDAIE::
                  createAMDAIEConvertDeviceToControlPacketsPass(options));
+  pm.addPass(
+      mlir::iree_compiler::AMDAIE::createAMDAIESplitControlPacketDataPass());
   return pm.run(deviceOp->getParentOp());
 }
 

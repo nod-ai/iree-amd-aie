@@ -206,6 +206,24 @@ inline ::XAie_TxnOpcode txnToTxn(XAie_TxnOpcode t) {
 // mlir-air legacy
 enum class AIEArch : uint8_t { AIE1 = 1, AIE2 = 2, AIE2p = 3 };
 
+/// Enum representing the format of the control packet header, which includes
+/// the following fields:
+/// - [19:0] Address,
+/// - [21:20] Beat, the number of 32-bit words data in the packet,
+/// - [23:22] Operation,
+/// - [28:24] Stream ID, for return packet,
+/// - [30:29] Reserved,
+/// - [31] Odd parity bit.
+enum class AMDAIECtrlPktHeader : uint8_t {
+  ADRESS_SHIFT = 0,
+  BEAT_SHIFT = 20,
+  OPERATION_SHIFT = 22,
+  STREAM_ID_SHIFT = 24,
+  RESERVED_SHIFT = 29,
+  PARITY_SHIFT = 31,
+  MAX = 32
+};
+
 /*
  * This struct is meant to be a thin wrapper around aie-rt, which provides
  * the canonical representation/metadata for AIE devices; attributes like number

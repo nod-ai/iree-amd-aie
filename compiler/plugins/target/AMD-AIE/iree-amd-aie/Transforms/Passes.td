@@ -730,6 +730,12 @@ def AMDAIESinkIntoCore :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIESinkIntoCorePass()";
 }
 
+def AMDAIESplitControlPacketData :
+  Pass<"iree-amdaie-split-control-packet-data", "ModuleOp"> {
+  let summary = "Split control packet data into smaller chunks.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIESplitControlPacketDataPass()";
+}
+
 def AMDAIESplitLogicalObjFifos :
   Pass<"iree-amdaie-split-logical-objectfifos", "ModuleOp"> {
   let summary = "Pass to split L2 buffers to distribute on multiple shimTiles and memTiles.";
