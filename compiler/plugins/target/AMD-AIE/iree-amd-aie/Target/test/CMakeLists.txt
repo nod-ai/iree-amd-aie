@@ -26,6 +26,17 @@ iree_cc_binary(
   TESTONLY
 )
 
+iree_cc_binary(
+  NAME
+    aie_elf_files_gen_test
+  SRCS
+    aie_elf_files_gen_test.cpp
+  DEPS
+    iree::target::amd-aie::aie::AIEDialectIR
+    iree::target::amd-aie::Target::Target
+  TESTONLY
+)
+
 iree_cc_test(
   NAME
     AMDAIEXCLBinGenTest
@@ -46,6 +57,7 @@ iree_lit_test_suite(
   TOOLS
     ${IREE_LLD_TARGET}
     ::aie_cdo_gen_test
+    ::aie_elf_files_gen_test
     ::aie2xclbin_test
     FileCheck
     iree-compile

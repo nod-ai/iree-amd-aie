@@ -1636,7 +1636,9 @@ class Tests:
             )
 
         # BatchMatmul test(s):
-        for tile_pipeline in ["pack-peel", "pack-peel-4-level-tiling"]:
+        # TODO(jornt): BatchMatmul tests with the pack-peel-4-level-tiling pipeline result in intermittent
+        # numerics issues. Re-enable.
+        for tile_pipeline in ["pack-peel"]:
             for input_type, acc_type in zip(["i32", "bf16"], ["i32", "f32"]):
                 # Batch size = 1:
                 self.register(

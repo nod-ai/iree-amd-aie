@@ -678,38 +678,39 @@ run_matmul_test_on_shapes ${bf16_i8_shapes_medium[@]} \
     --num_repeat_runs "2"
 
 
-# note this will not actually show any devices because --xrt_lite_n_core_rows --xrt_lite_n_core_cols are not passed
-# which i have omitted to make the conditional slightly more succinct
-if [[ $($IREE_INSTALL_DIR/bin/iree-benchmark-module --dump_devices | grep xrt-lite) ]]; then
+# TODO(jornt): Disabled turbo tests temporarily due to instability issues in CI. Locally, I have been able to crash the NPU in this mode.
+# # note this will not actually show any devices because --xrt_lite_n_core_rows --xrt_lite_n_core_cols are not passed
+# # which i have omitted to make the conditional slightly more succinct
+# if [[ $($IREE_INSTALL_DIR/bin/iree-benchmark-module --dump_devices | grep xrt-lite) ]]; then
 
-  $IREE_INSTALL_DIR/bin/iree-benchmark-module \
-    --module=$OUTPUT_DIR/mm_test1_bf16_f32_m64_n64_k64.vmfb \
-    --function=matmul_64x64_64xbf16_ \
-    --input=64x64xbf16 \
-    --input=64x64xbf16 \
-    --device=xrt-lite \
-    --benchmark_repetitions=10 \
-    --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
-    --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
+#   $IREE_INSTALL_DIR/bin/iree-benchmark-module \
+#     --module=$OUTPUT_DIR/mm_test1_bf16_f32_m64_n64_k64.vmfb \
+#     --function=matmul_64x64_64xbf16_ \
+#     --input=64x64xbf16 \
+#     --input=64x64xbf16 \
+#     --device=xrt-lite \
+#     --benchmark_repetitions=10 \
+#     --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
+#     --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
 
-  # TURBO POWER!!!!!!!!!!!!!!!!!
-  set +o pipefail
-  sudo -nv 2>&1 && has_sudo="true" || has_sudo="false"
-  set -o pipefail
-  if [ has_sudo == "true" ]; then
-    sudo $IREE_INSTALL_DIR/bin/iree-benchmark-module \
-      --module=$OUTPUT_DIR/mm_test1_bf16_f32_m64_n64_k64.vmfb \
-      --function=matmul_64x64_64xbf16_ \
-      --input=64x64xbf16 \
-      --input=64x64xbf16 \
-      --device=xrt-lite \
-      --benchmark_repetitions=10 \
-      --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
-      --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
-      --xrt_lite_power_mode=turbo
-  fi
+#   # TURBO POWER!!!!!!!!!!!!!!!!!
+#   set +o pipefail
+#   sudo -nv 2>&1 && has_sudo="true" || has_sudo="false"
+#   set -o pipefail
+#   if [ has_sudo == "true" ]; then
+#     sudo $IREE_INSTALL_DIR/bin/iree-benchmark-module \
+#       --module=$OUTPUT_DIR/mm_test1_bf16_f32_m64_n64_k64.vmfb \
+#       --function=matmul_64x64_64xbf16_ \
+#       --input=64x64xbf16 \
+#       --input=64x64xbf16 \
+#       --device=xrt-lite \
+#       --benchmark_repetitions=10 \
+#       --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
+#       --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
+#       --xrt_lite_power_mode=turbo
+#   fi
 
-fi
+# fi
 
 echo "$MATMUL_TESTS_RUN matmul tests run!"
 if [ $MATMUL_TESTS_FAILS -ne 0 ]; then

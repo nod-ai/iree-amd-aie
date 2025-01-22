@@ -30,6 +30,7 @@ iree_lit_test_suite(
     "controlcode_lowering.mlir"
     "controlcode_to_transaction.mlir"
     "convert_core_forall_to_for.mlir"
+    "convert_device_to_control_packets.mlir"
     "create_aie_workgroup.mlir"
     "create_reference_to_allocation.mlir"
     "disable_linalg_function_outlining.mlir"

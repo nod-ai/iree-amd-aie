@@ -240,9 +240,16 @@ LogicalResult addElfToTile(const AMDAIEDeviceModel &deviceModel,
     llvm::errs() << "elf doesn't exist: " << elfPath.string() << "\n";
     return failure();
   }
+  // Ensure the core is disabled before loading the elf.
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_CoreDisable, devInst, tileLoc);
+  // Reset All Channels of DMA to make sure they are at idle state.
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelResetAll, devInst, tileLoc,
+                              XAie_DmaChReset::DMA_CHANNEL_RESET);
   TRY_XAIE_API_LOGICAL_RESULT(XAie_LoadElf, devInst, tileLoc,
-                              elfPath.string().c_str(),
-                              /*loadSym*/ aieSim);
+                              elfPath.string().c_str(), /*loadSym*/ aieSim);
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelResetAll, devInst, tileLoc,
+                              XAie_DmaChReset::DMA_CHANNEL_UNRESET);
+
   return success();
 }
 

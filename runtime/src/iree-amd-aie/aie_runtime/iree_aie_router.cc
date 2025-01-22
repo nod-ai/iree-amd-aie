@@ -432,7 +432,7 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
 
   int iterationCount = -1;
   int illegalEdges = 0;
-  int totalPathLength = 0;
+  [[maybe_unused]] int totalPathLength = 0;
   do {
     // if reach maxIterations, throw an error since no routing can be found
     if (++iterationCount >= maxIterations) {

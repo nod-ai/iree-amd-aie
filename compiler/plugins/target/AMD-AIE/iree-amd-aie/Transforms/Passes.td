@@ -190,6 +190,14 @@ def AMDAIEConvertCoreForallToFor :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEConvertCoreForallToForPass()";
 }
 
+def AMDAIEConvertDeviceToControlPackets: Pass<"iree-amdaie-convert-device-to-control-packets"> {
+  let summary = "Convert `aie.device` to `amd.npu.control_packet` operations";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEConvertDeviceToControlPacketsPass()";
+  let options = [
+    Option<"pathToElfs", "path-to-elfs", "std::string", /*default=*/"", "Path to ELF files.">,
+  ];
+}
+
 def AMDAIECreateAIEWorkgroup :
   Pass<"iree-amdaie-create-aie-workgroup", "func::FuncOp"> {
   let summary = "Creates a single AIE workgroup.";

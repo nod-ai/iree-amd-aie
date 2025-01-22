@@ -13,7 +13,8 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 mlir::LogicalResult aie2xclbin(
-    mlir::MLIRContext *ctx, xilinx::AIE::DeviceOp, const std::string &outputNPU,
+    mlir::MLIRContext *ctx, xilinx::AIE::DeviceOp,
+    const std::optional<std::string> &outputNPU, bool emitCtrlPkt,
     const std::string &artifactPath, bool printIRBeforeAll,
     bool printIRAfterAll, bool printIRModuleScope, bool timing,
     const std::string &tempDir, bool useChess, bool verbose,
