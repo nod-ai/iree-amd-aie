@@ -313,9 +313,9 @@ class FillTiles
 /// Assign tile locations to objectFifos. Start by searching for a set of
 /// candidate tile locations and then assign tiles based on a simple usage-based
 /// model that prioritizes tiles that have the least usage.
-LogicalResult assignNonLocalTiles(RewriterBase &rewriter, Operation *op,
-                                  const AMDAIEDeviceModel &deviceModel,
-                                  DenseMap<Operation *, size_t> l3BufferCount) {
+LogicalResult assignNonLocalTiles(
+    RewriterBase &rewriter, Operation *op, const AMDAIEDeviceModel &deviceModel,
+    DenseMap<Operation *, DenseSet<Operation *>> uniqueL3L2Pair) {
   MLIRContext *context = rewriter.getContext();
   if (failed(clearNonLocalTiles(rewriter, op)))
     return op->emitOpError() << "failed to clear non-local tile assignments";
@@ -353,53 +353,56 @@ LogicalResult assignNonLocalTiles(RewriterBase &rewriter, Operation *op,
 
   // After filling tile candidates, find and assign a specific one.
   DenseMap<MemRefType, int64_t> logicalObjFifoToTileId;
-  WalkResult res = op->walk([&](AMDAIE::LogicalObjFifoOpInterface
-                                    logicalObjectFifo) {
-    uint8_t memSpace = logicalObjectFifo.getMemorySpaceAsUInt();
-    if (memSpace != 0 && memSpace != 1) return WalkResult::advance();
-    if (logicalObjectFifo.getTiles().size() == 0) {
-      logicalObjectFifo.emitOpError()
-          << "should have at least one tile candidate";
-      return WalkResult::interrupt();
-    }
+  WalkResult res =
+      op->walk([&](AMDAIE::LogicalObjFifoOpInterface logicalObjectFifo) {
+        uint8_t memSpace = logicalObjectFifo.getMemorySpaceAsUInt();
+        if (memSpace != 0 && memSpace != 1) return WalkResult::advance();
+        if (logicalObjectFifo.getTiles().size() == 0) {
+          logicalObjectFifo.emitOpError()
+              << "should have at least one tile candidate";
+          return WalkResult::interrupt();
+        }
 
-    SmallVector<AMDAIE::TileOp> tiles =
-        llvm::map_to_vector(logicalObjectFifo.getTiles(), [](Value tile) {
-          return dyn_cast_if_present<TileOp>(tile.getDefiningOp());
-        });
+        SmallVector<AMDAIE::TileOp> tiles =
+            llvm::map_to_vector(logicalObjectFifo.getTiles(), [](Value tile) {
+              return dyn_cast_if_present<TileOp>(tile.getDefiningOp());
+            });
 
-    // Here we are limiting the number of tile options to buffer count to
-    // avoid repeated accesses of the same buffer being assigned to
-    // different tiles. Because if the repeated access of the same buffer
-    // are assigned to different tiles, that unnecessarily ends up consuming
-    // more DMA channels on those new tiles than needed, and as a result we
-    // will end up exhausting the DMA channels. Currently the following fix
-    // works for L3 buffers.
-    auto fromMemrefOp = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-        logicalObjectFifo.getOperation());
-    if (fromMemrefOp) {
-      Operation *defOp = fromMemrefOp.getMemref().getDefiningOp();
-      if (defOp && l3BufferCount.contains(defOp))
-        tiles.truncate(std::min((size_t)l3BufferCount[defOp], tiles.size()));
-    }
-    AMDAIE::TileOp assignedTileOp =
-        *std::min_element(tiles.begin(), tiles.end(), tileLocAndUsageCmp);
+        // Here we are limiting the number of tile options to buffer count to
+        // avoid repeated accesses of the same buffer being assigned to
+        // different tiles. Because if the repeated access of the same buffer
+        // are assigned to different tiles, that unnecessarily ends up consuming
+        // more DMA channels on those new tiles than needed, and as a result we
+        // will end up exhausting the DMA channels. Currently the following fix
+        // works for L3 buffers.
+        auto fromMemrefOp = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+            logicalObjectFifo.getOperation());
+        if (fromMemrefOp) {
+          Operation *defOp = fromMemrefOp.getMemref().getDefiningOp();
+          if (defOp && uniqueL3L2Pair.contains(defOp))
+            tiles.truncate(
+                std::min((size_t)uniqueL3L2Pair[defOp].size(), tiles.size()));
+        }
+        AMDAIE::TileOp assignedTileOp =
+            *std::min_element(tiles.begin(), tiles.end(), tileLocAndUsageCmp);
 
-    // Increase usage of the chosen tile as a new logical objectFifo will be
-    // assigned to it. This allows distributing the logical objectFifos
-    // evenly across the available tile resources.
-    int64_t col = getConstantIndexOrAssert(assignedTileOp.getCol());
-    int64_t row = getConstantIndexOrAssert(assignedTileOp.getRow());
-    tileLocToUsage[TileLoc(col, row)] += 1;
+        // Increase usage of the chosen tile as a new logical objectFifo will be
+        // assigned to it. This allows distributing the logical objectFifos
+        // evenly across the available tile resources.
+        int64_t col = getConstantIndexOrAssert(assignedTileOp.getCol());
+        int64_t row = getConstantIndexOrAssert(assignedTileOp.getRow());
+        tileLocToUsage[TileLoc(col, row)] += 1;
 
-    rewriter.setInsertionPoint(logicalObjectFifo);
-    SmallVector<Value> tileResults = {cast<Value>(assignedTileOp.getResult())};
-    if (failed(logicalObjectFifo.replaceWithNewTiles(rewriter, tileResults))) {
-      logicalObjectFifo.emitOpError() << "could not replace its tiles.";
-      return WalkResult::interrupt();
-    }
-    return WalkResult::advance();
-  });
+        rewriter.setInsertionPoint(logicalObjectFifo);
+        SmallVector<Value> tileResults = {
+            cast<Value>(assignedTileOp.getResult())};
+        if (failed(
+                logicalObjectFifo.replaceWithNewTiles(rewriter, tileResults))) {
+          logicalObjectFifo.emitOpError() << "could not replace its tiles.";
+          return WalkResult::interrupt();
+        }
+        return WalkResult::advance();
+      });
   if (res.wasInterrupted()) return failure();
   return success();
 }
@@ -451,62 +454,44 @@ void AMDAIEAssignTilesPass::runOnOperation() {
   // Analyse the count of each L3 logicalObjectFifos appearing in L3<->L2
   // CopyOp. We would be maintaining this count in a map `l3BufferCount` and
   // using this later to pick one tile to assign to the L3 logicalObjectFifo.
-  // TODO(avarma): Have an analysis pass instead and annotate the L3 buffers
-  // with their count. OR better to have an analysis pass that annotates
-  // LHS/RHS/OUT buffers. That might come handy for other passes.
-  bool visitedCopyOp = false;
-  DenseMap<Operation *, size_t> l3BufferCount;
-  auto res = parentOp->walk([&](Operation *op) -> WalkResult {
+  // The analysis below is maintaining all unique pairs of (L3 source, L2
+  // target) and (L3 target, L2 source).
+  DenseMap<Operation *, DenseSet<Operation *>> uniqueL3L2Pair;
+  parentOp->walk([&](Operation *op) -> WalkResult {
     if (auto copyOp = dyn_cast<CopyOpInterface>(op)) {
-      visitedCopyOp = true;
       auto source = dyn_cast_if_present<AMDAIE::LogicalObjFifoOpInterface>(
           copyOp.getSource().getDefiningOp());
-      if (!source) {
-        visitedCopyOp = false;
+      auto target = dyn_cast_if_present<AMDAIE::LogicalObjFifoOpInterface>(
+          copyOp.getTarget().getDefiningOp());
+      if (!source || !target) {
         return WalkResult::interrupt();
       }
-      uint8_t memSpace = source.getMemorySpaceAsUInt();
-      auto fromMemrefOp = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+      auto sourceFromMemrefOp = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
           source.getOperation());
-      if (memSpace == 0 && fromMemrefOp) {
-        Operation *defOp = fromMemrefOp.getMemref().getDefiningOp();
-        if (!l3BufferCount.contains(defOp)) l3BufferCount[defOp] = 0;
-        l3BufferCount[defOp] += 1;
+      auto targetFromMemrefOp = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+          target.getOperation());
+      if (!sourceFromMemrefOp || !targetFromMemrefOp) {
+        return WalkResult::interrupt();
       }
+      Operation *l3DefOp = nullptr;
+      Operation *l2DefOp = nullptr;
+      if (source.getMemorySpaceAsUInt() == 0) {
+        l3DefOp = sourceFromMemrefOp.getMemref().getDefiningOp();
+        l2DefOp = targetFromMemrefOp.getMemref().getDefiningOp();
+      } else if (target.getMemorySpaceAsUInt() == 0) {
+        l3DefOp = targetFromMemrefOp.getMemref().getDefiningOp();
+        l2DefOp = sourceFromMemrefOp.getMemref().getDefiningOp();
+      } else {
+        return WalkResult::advance();
+      }
+      uniqueL3L2Pair[l3DefOp].insert(l2DefOp);
       return WalkResult::advance();
-    } else if (isa<AMDAIE::CoreOp>(op)) {
-      return WalkResult::interrupt();
     }
     return WalkResult::advance();
   });
-
-  res = parentOp->walk<WalkOrder::PostOrder, ReverseIterator>(
-      [&](Operation *op) -> WalkResult {
-        if (auto copyOp = dyn_cast<CopyOpInterface>(op)) {
-          visitedCopyOp = true;
-          auto target = dyn_cast_if_present<AMDAIE::LogicalObjFifoOpInterface>(
-              copyOp.getTarget().getDefiningOp());
-          if (!target) {
-            visitedCopyOp = false;
-            return WalkResult::interrupt();
-          }
-          uint8_t memSpace = target.getMemorySpaceAsUInt();
-          auto fromMemrefOp = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-              target.getOperation());
-          if (memSpace == 0 && fromMemrefOp) {
-            Operation *defOp = fromMemrefOp.getMemref().getDefiningOp();
-            if (!l3BufferCount.contains(defOp)) l3BufferCount[defOp] = 0;
-            l3BufferCount[defOp] += 1;
-          }
-          return WalkResult::advance();
-        } else if (isa<AMDAIE::CoreOp>(op)) {
-          return WalkResult::interrupt();
-        }
-        return WalkResult::advance();
-      });
   // Assign tile locations to logical objectFifos on non-local (not L1) memory.
   if (failed(assignNonLocalTiles(rewriter, parentOp, deviceModel,
-                                 l3BufferCount))) {
+                                 uniqueL3L2Pair))) {
     parentOp->emitOpError() << "non-local tile assignment failed";
     return signalPassFailure();
   }
