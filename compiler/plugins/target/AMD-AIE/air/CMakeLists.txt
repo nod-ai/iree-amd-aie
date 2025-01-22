@@ -232,7 +232,7 @@ replace_string_in_file(
   ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRRtToNpuPass.cpp
   "::Trace" "::TRACE")
 
-# TODO(jornt): temporary fix to enabled build with assertions
+# TODO(jornt): temporary fix to enable build with assertions disabled
 replace_string_in_file(
   ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/ConvertToAIRPass.cpp
   "for (auto e : fErased)" "for ([[maybe_unused]] auto e : fErased)")
