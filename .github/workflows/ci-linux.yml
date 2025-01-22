@@ -21,14 +21,16 @@ permissions:
 
 jobs:
   build_and_ctest:
-    name: Build and Test (linux, ASSERTIONS)
+    name: Build and Test (linux)
     runs-on: azure-cpubuilder-linux-scale
     strategy:
       fail-fast: true
+      matrix:
+        assertions: [ON, OFF]
     env:
       CACHE_DIR: ${{ github.workspace }}/.container-cache
       # either the PR number or `branch-N` where N always increments
-      CACHE_KEY: linux-build-test-cpp-asserts-manylinux-v2-${{ format('{0}-{1}', github.ref_name, github.run_number) }}
+      CACHE_KEY: linux-build-test-cpp-asserts=${{ matrix.assertions }}-manylinux-v2-${{ format('{0}-{1}', github.ref_name, github.run_number) }}
     steps:
       - name: Set unified TZ
         uses: szenius/set-timezone@1f9716b0f7120e344f0c62bb7b1ee98819aefd42 # v2.0
@@ -97,10 +99,10 @@ jobs:
           source .venv/bin/activate
           export cache_dir="${{ env.CACHE_DIR }}"
           export CCACHE_COMPILERCHECK="string:$(clang --version)"
-          bash build_tools/build_llvm.sh
+          bash build_tools/build_llvm.sh ${{ matrix.assertions }}
           rm -rf llvm-build
           export llvm_install_dir=$PWD/llvm-install
-          bash build_tools/build_test_cpp.sh
+          bash build_tools/build_test_cpp.sh ${{ matrix.assertions }}
 
       - name: Create artifacts
         if: ${{ !cancelled() }}
@@ -113,7 +115,7 @@ jobs:
         uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         if: ${{ !cancelled() }}
         with:
-          name: linux_x86_64_llvm_packages
+          name: linux_x86_64_llvm_packages_asserts=${{ matrix.assertions }}
           path: llvm-dist-*.tar
           if-no-files-found: warn
 
@@ -121,7 +123,7 @@ jobs:
         uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         if: ${{ !cancelled() }}
         with:
-          name: linux_x86_64_iree_packages
+          name: linux_x86_64_iree_packages_asserts=${{ matrix.assertions }}
           path: iree-dist-linux.tar
           if-no-files-found: warn
 
@@ -151,7 +153,7 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
-          name: linux_x86_64_iree_packages
+          name: linux_x86_64_iree_packages_asserts=ON
 
       - name: Extract artifact
         run: |
@@ -269,7 +271,7 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
-          name: linux_x86_64_iree_packages
+          name: linux_x86_64_iree_packages_asserts=ON
 
       - name: Extract artifact
         run: |

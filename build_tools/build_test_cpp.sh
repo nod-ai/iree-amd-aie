@@ -17,6 +17,7 @@ mkdir -p "$build_dir"
 build_dir="$(cd $build_dir && pwd)"
 cache_dir="${cache_dir:-}"
 llvm_install_dir="${llvm_install_dir:-}"
+assertions="$1"
 
 # Setup cache dir.
 if [ -z "${cache_dir}" ]; then
@@ -67,7 +68,7 @@ CMAKE_ARGS=(
   -DCMAKE_INSTALL_PREFIX="$install_dir"
   -DCMAKE_INSTALL_LIBDIR=lib
   -DIREE_ERROR_ON_MISSING_SUBMODULES=OFF
-  -DIREE_ENABLE_ASSERTIONS=ON
+  -DIREE_ENABLE_ASSERTIONS=$assertions
   -DIREE_BUILD_SAMPLES=OFF
   -DIREE_BUILD_PYTHON_BINDINGS=ON
   -DIREE_BUILD_BINDINGS_TFLITE=OFF

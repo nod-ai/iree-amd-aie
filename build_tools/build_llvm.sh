@@ -16,6 +16,7 @@ install_dir="$repo_root/llvm-install"
 mkdir -p "$build_dir"
 build_dir="$(cd $build_dir && pwd)"
 cache_dir="${cache_dir:-}"
+assertions="$1"
 
 # Setup cache dir.
 if [ -z "${cache_dir}" ]; then
@@ -59,7 +60,7 @@ CMAKE_ARGS=(
   -DLLVM_INCLUDE_TESTS=OFF
   -DLLVM_INCLUDE_BENCHMARKS=OFF
   -DLLVM_APPEND_VC_REV=OFF
-  -DLLVM_ENABLE_ASSERTIONS=ON
+  -DLLVM_ENABLE_ASSERTIONS=$assertions
   -DLLVM_ENABLE_IDE=ON
   -DLLVM_ENABLE_BINDINGS=OFF
   -DLLVM_ENABLE_LIBEDIT=OFF

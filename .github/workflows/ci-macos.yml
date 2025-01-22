@@ -91,10 +91,10 @@ jobs:
         run: |
           export cache_dir="${{ env.CACHE_DIR }}"
           export CCACHE_COMPILERCHECK="string:$(clang --version)"
-          bash build_tools/build_llvm.sh
+          bash build_tools/build_llvm.sh ON
           rm -rf llvm-build
           export llvm_install_dir=$PWD/llvm-install
-          bash build_tools/build_test_cpp.sh
+          bash build_tools/build_test_cpp.sh ON
 
       - name: Create artifacts
         if: ${{ !cancelled() }}
