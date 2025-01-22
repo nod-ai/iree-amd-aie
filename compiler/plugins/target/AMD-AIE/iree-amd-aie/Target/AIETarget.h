@@ -27,10 +27,10 @@ struct AMDAIEOptions {
   std::string vitisInstallDir;
 
   // Dump system commands used during compilation
-  bool showInvokedCommands{false};
+  bool showInvokedCommands = false;
 
   // Use the chess compiler. The default is to use peano.
-  bool useChess{false};
+  bool useChess = false;
 
   // Additional flags to run peano's opt with (if peano is the backend compiler
   // selected). These are mostly appended on the end of the default flags, but
@@ -38,38 +38,38 @@ struct AMDAIEOptions {
   std::string additionalPeanoOptFlags;
 
   // Print IR after all MLIR passes run in aie2xclbin (to stderr).
-  bool aie2xclbinPrintIrAfterAll{false};
+  bool aie2xclbinPrintIrAfterAll = false;
 
   // Print IR before all MLIR passes run in aie2xclbin (to stderr).
-  bool aie2xclbinPrintIrBeforeAll{false};
+  bool aie2xclbinPrintIrBeforeAll = false;
 
   // Print IR at module scope in MLIR passes in aie2xclbin.
-  bool aie2xclbinPrintIrModuleScope{false};
+  bool aie2xclbinPrintIrModuleScope = false;
 
   // Print MLIR timing summary for the MLIR passes in aie2xclbin.
-  bool aie2xclbinTiming{false};
+  bool aie2xclbinTiming = false;
 
   LowerToAIEPassPipeline useLowerToAIEPipeline{
       LowerToAIEPassPipeline::ObjectFifo};
   TilePassPipeline useTilePipeline{TilePassPipeline::PackPeelPipeline};
   std::string pathToUkernels{""};
-  bool enableVectorizationPasses{true};
-  bool enableCoalescingLoops{false};
-  bool enableCollapsingUnitDims{false};
-  bool enableFunctionOutlining{true};
-  bool replaceOutlinedFunctionsWithEmpty{false};
-  bool insertLoopAroundCoreBlock{false};
-  bool matmulElementwiseFusion{false};
+  bool enableVectorizationPasses = true;
+  bool enableCoalescingLoops = false;
+  bool enableCollapsingUnitDims = false;
+  bool enableFunctionOutlining = true;
+  bool replaceOutlinedFunctionsWithEmpty = false;
+  bool insertLoopAroundCoreBlock = false;
+  bool matmulElementwiseFusion = false;
   AMDAIEDevice AMDAIETargetDevice{AMDAIEDevice::npu1_4col};
   unsigned AMDAIENumRows{getDeviceModel(AMDAIETargetDevice).getNumCoreRows()};
   unsigned AMDAIENumCols{getDeviceModel(AMDAIETargetDevice).getNumCoreCols()};
-  std::string enableAMDAIEUkernels{"none"};
-  bool enablePacketFlow{false};
+  std::string enableAMDAIEUkernels = "none";
+  bool enablePacketFlow = false;
 
   enum class DeviceHAL { XRT, XRT_LITE };
   DeviceHAL deviceHal{DeviceHAL::XRT_LITE};
 
-  bool emitCtrlPkt{false};
+  bool emitCtrlPkt = false;
 
   void bindOptions(OptionsBinder &binder) {
     static llvm::cl::OptionCategory category("AMD AIE Options");
