@@ -141,6 +141,10 @@ std::unique_ptr<Pass> createAMDAIEControlCodeToTransactionPass(
 /// Pass to convert `scf.forall` to `scf.for` within `aie.core`.
 std::unique_ptr<Pass> createAMDAIEConvertCoreForallToForPass();
 
+/// Pass to convert `aie.device`to a sequence of `aie.npu.control_packet` ops.
+std::unique_ptr<Pass> createAMDAIEConvertDeviceToControlPacketsPass(
+    AMDAIEConvertDeviceToControlPacketsOptions options = {});
+
 /// Pass to insert an infinite loop around each `amdaie.core`'s block.
 std::unique_ptr<Pass> createAMDAIEInsertInfiniteLoopAroundCoreBlockPass();
 

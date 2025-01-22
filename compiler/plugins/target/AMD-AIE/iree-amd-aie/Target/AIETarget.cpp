@@ -477,8 +477,10 @@ LogicalResult AIETargetBackend::serializeExecutable(
     }
 
     if (failed(aie2xclbin(
-            /*ctx=*/variantOp->getContext(), deviceOps[i],
+            /*ctx=*/variantOp->getContext(),
+            /*deviceOp=*/deviceOps[i],
             /*outputNPU=*/npuInstPath.str().str(),
+            /*emitCtrlPkt=*/options.emitCtrlPkt,
             /*artifactPath=*/artifactPath.str().str(),
             /*printIRBeforeAll=*/options.aie2xclbinPrintIrBeforeAll,
             /*printIRAfterAll=*/options.aie2xclbinPrintIrAfterAll,

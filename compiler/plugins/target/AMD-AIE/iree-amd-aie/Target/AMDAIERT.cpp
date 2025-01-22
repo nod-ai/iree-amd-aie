@@ -197,6 +197,7 @@ LogicalResult configureLocksAndBd(Block &block, const TileLoc &tileLoc,
 
 LogicalResult addInitConfig(const AMDAIEDeviceModel &deviceModel,
                             DeviceOp &device) {
+  // Reset and unreset all cores.
   for (auto tileOp : device.getOps<TileOp>()) {
     TileLoc tileLoc = {tileOp.getCol(), tileOp.getRow()};
     if (deviceModel.isShimTile(tileOp.getCol(), tileOp.getRow())) {
@@ -223,6 +224,7 @@ LogicalResult addInitConfig(const AMDAIEDeviceModel &deviceModel,
   });
   if (r.wasInterrupted()) return failure();
 
+  // Set up the memory operations.
   auto memOps = llvm::to_vector_of<Operation *>(device.getOps<MemOp>());
   llvm::append_range(memOps, device.getOps<MemTileDMAOp>());
   for (Operation *memOp : memOps) {
