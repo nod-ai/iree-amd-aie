@@ -64,8 +64,10 @@ LogicalResult convertDeviceToControlPacket(IRRewriter &rewriter,
   // specified address.
   DenseMap<uint64_t, uint32_t> emulationBuffer;
 
-  // Set `opcode` and `stream_id` to 0 for writing to the NPU.
-  uint32_t opcode = 0;
+  // Set the opcode to `write`, indicating data is written only
+  // to the `CTRL` port with no return data expected. The `stream_id` is set to
+  // 0, as it is irrelevant in this case.
+  CtrlPktOpcode opcode = CtrlPktOpcode::write;
   uint32_t stream_id = 0;
 
   // ID for DenseI32ResourceElementsAttr.
@@ -83,11 +85,8 @@ LogicalResult convertDeviceToControlPacket(IRRewriter &rewriter,
         uint32_t value = w_header->Value;
         ArrayRef<int32_t> data(reinterpret_cast<int32_t &>(value));
         rewriter.create<AMDAIE::NpuControlPacketOp>(
-            rewriter.getUnknownLoc(),
-            /*address=*/rewriter.getUI32IntegerAttr(addr),
-            /*length=*/rewriter.getUI32IntegerAttr(1),
-            /*opcode=*/rewriter.getUI32IntegerAttr(opcode),
-            /*stream_id=*/rewriter.getUI32IntegerAttr(stream_id),
+            rewriter.getUnknownLoc(), addr,
+            /*length=*/1, opcode, stream_id,
             /*data=*/rewriter.getDenseI32ArrayAttr(data));
         emulationBuffer[addr] = value;
         txn_ptr += w_header->Size;
@@ -108,12 +107,8 @@ LogicalResult convertDeviceToControlPacket(IRRewriter &rewriter,
             "ctrl_pkt_data_" + std::to_string(resource_id++),
             HeapAsmResourceBlob::allocateAndCopyInferAlign(data));
         rewriter.create<AMDAIE::NpuControlPacketOp>(
-            rewriter.getUnknownLoc(),
-            /*address=*/rewriter.getUI32IntegerAttr(addr),
-            /*length=*/rewriter.getUI32IntegerAttr(length),
-            /*opcode=*/rewriter.getUI32IntegerAttr(opcode),
-            /*stream_id=*/rewriter.getUI32IntegerAttr(stream_id),
-            /*data=*/dataResourceAttr);
+            rewriter.getUnknownLoc(), addr, length, opcode, stream_id,
+            dataResourceAttr);
         // Update the emulation buffer for the whole block of data.
         for (size_t i = 0; i < length; i += 1) {
           emulationBuffer[addr] = reinterpret_cast<uint32_t *>(payload)[i];
@@ -133,12 +128,9 @@ LogicalResult convertDeviceToControlPacket(IRRewriter &rewriter,
           value = (emulationBuffer[addr] & ~mask) | (value & mask);
         ArrayRef<int32_t> data(reinterpret_cast<int32_t &>(value));
         rewriter.create<AMDAIE::NpuControlPacketOp>(
-            rewriter.getUnknownLoc(),
-            /*address=*/rewriter.getUI32IntegerAttr(addr),
-            /*length=*/rewriter.getUI32IntegerAttr(1),
-            /*opcode=*/rewriter.getUI32IntegerAttr(opcode),
-            /*stream_id=*/rewriter.getUI32IntegerAttr(stream_id),
-            /*data=*/rewriter.getDenseI32ArrayAttr(data));
+            rewriter.getUnknownLoc(), addr,
+            /*length=*/1, opcode, stream_id,
+            rewriter.getDenseI32ArrayAttr(data));
         emulationBuffer[addr] = value;
         txn_ptr += mw_header->Size;
         break;

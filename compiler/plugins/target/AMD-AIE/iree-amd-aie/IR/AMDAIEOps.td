@@ -1054,25 +1054,33 @@ def AMDAIE_NpuControlPacketOp: AMDAIE_Op<"npu.control_packet"> {
     including a header with `address`, `length`, `opcode`, and `stream_id`.
     An optional `data` attribute provides a payload for writing.
 
-    `opcode = 0`: Write configuration data to the AIE. `stream_id` has no effect in this case.
-    `opcode = 1`: Request data from the AIE. `stream_id` specifies the header of the returning data.
-    When `opcode = 1`, `stream_id` should match the `packet_id` if CTRL MM2S is routed in packet mode.
+    Details on `opcode`:
+    `write`: Write configuration data to the AIE. The `stream_id` field has no effect.
+    `read`: Request data from the AIE.
+    `write_read`: Write configuration data to the AIE and then request data from the AIE.
+
+    For both `read` and `write_read` operations, the `stream_id` must match
+    the `packet_id` used for routing CTRL MM2S to SHIM S2MM.
 
     Example:
 
     ```mlir
-    amdaie.npu.control_packet {address = 0 : ui32, data = array<i32: 2>
-      length = 1 : ui32, opcode = 0 : ui32, stream_id = 0 : ui32}
+    amdaie.npu.control_packet write {address = 0 : ui32, data = array<i32: 2>
+      length = 1 : ui32, stream_id = 0 : ui32}
     ```
   }];
   let arguments = (
     ins UI32Attr:$address,
         UI32Attr:$length,
-        UI32Attr:$opcode,
+        CtrlPktOpcodeAttr:$opcode,
         UI32Attr:$stream_id,
         OptionalAttr<AMDAIE_AnyCtrlPktDataType>:$data
   );
-  let assemblyFormat = [{ attr-dict }];
+
+  let assemblyFormat = [{
+    $opcode
+    attr-dict
+  }];
 
   let extraClassDeclaration = [{
     std::optional<llvm::ArrayRef<int32_t>> getDataFromArrayOrResource();
