@@ -308,6 +308,9 @@ std::unique_ptr<Pass> createAMDAIERemoveMemorySpacePass();
 /// Create a pass to sink all dependencies into `amdaie.core` operations.
 std::unique_ptr<Pass> createAMDAIESinkIntoCorePass();
 
+/// Create a pass to split control packet data into smaller chunks.
+std::unique_ptr<Pass> createAMDAIESplitControlPacketDataPass();
+
 /// Create a pass to split logicalobjectfifos for shimTile/memTile distribution.
 std::unique_ptr<Pass> createAMDAIESplitLogicalObjFifosPass();
 

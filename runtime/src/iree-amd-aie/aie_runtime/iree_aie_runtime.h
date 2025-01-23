@@ -298,9 +298,27 @@ struct AMDAIEDeviceModel {
     AMDAIEDeviceConfig() = default;
   };
 
+  /// Struct representing the format of the control packet header, which
+  /// includes the following fields:
+  /// - [19:0] Address,
+  /// - [21:20] Beat, the number of 32-bit words data in the packet,
+  /// - [23:22] Operation,
+  /// - [28:24] Stream ID, for return packet,
+  /// - [30:29] Reserved,
+  /// - [31] Odd parity bit.
+  struct AMDAIECtrlPktHeaderFormat {
+    uint8_t addressShift{0};
+    uint8_t beatShift{20};
+    uint8_t operationShift{22};
+    uint8_t streamIdShift{24};
+    uint8_t reservedShift{29};
+    uint8_t parityShift{31};
+  };
+
   XAie_Config configPtr;
   XAie_DevInst devInst;
   AMDAIEDeviceConfig deviceConfig;
+  AMDAIECtrlPktHeaderFormat ctrlPktHeaderFormat;
 
   explicit AMDAIEDeviceModel(uint8_t aieGen, uint64_t baseAddr,
                              uint8_t colShift, uint8_t rowShift,
@@ -364,6 +382,10 @@ struct AMDAIEDeviceModel {
   /// Return true if core can access the memory in mem
   bool hasLegalMemAffinity(uint8_t coreCol, uint8_t coreRow, uint8_t memCol,
                            uint8_t memRow) const;
+
+  // The maximum length (beats) of a control packet is determined by the number
+  // of bits allocated to the `beat` field in the control packet header.
+  uint32_t getCtrlPktMaxLength() const;
 
   uint32_t getMemInternalBaseAddress() const;
   uint32_t getMemSouthBaseAddress() const;
