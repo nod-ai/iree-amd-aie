@@ -75,7 +75,7 @@ iree_cc_library(
     "AMDAIEFoldDmaWaits.cpp"
     "AMDAIEFuseConsumerIntoLoop.cpp"
     "AMDAIEFuseFillIntoForall.cpp"
-    "AMDAIEFusePackIntoLoop.cpp"
+    "AMDAIEFuseProducerIntoLoop.cpp"
     "AMDAIEGenerateControlOverlay.cpp"
     "AMDAIEHoistForAffineApply.cpp"
     "AMDAIEHoistLogicalObjFifo.cpp"

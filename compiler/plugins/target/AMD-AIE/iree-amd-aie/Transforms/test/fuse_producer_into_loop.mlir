@@ -1,7 +1,7 @@
-// RUN: iree-opt --split-input-file --pass-pipeline='builtin.module(func.func(iree-amdaie-fuse-pack-into-loop))' %s | FileCheck %s --check-prefix=DEPTH-1
-// RUN: iree-opt --split-input-file --pass-pipeline='builtin.module(func.func(iree-amdaie-fuse-pack-into-loop{use-scf-for=false}))' %s | FileCheck %s --check-prefix=FORALL-DEPTH-1
-// RUN: iree-opt --split-input-file --pass-pipeline='builtin.module(func.func(iree-amdaie-fuse-pack-into-loop{fuse-pack-depth=2}))' %s | FileCheck %s --check-prefix=DEPTH-2
-// RUN: iree-opt --split-input-file --pass-pipeline='builtin.module(func.func(iree-amdaie-fuse-pack-into-loop{fuse-pack-depth=2 use-scf-for=false}))' %s | FileCheck %s --check-prefix=FORALL-DEPTH-2
+// RUN: iree-opt --split-input-file --pass-pipeline='builtin.module(func.func(iree-amdaie-fuse-producer-into-loop))' %s | FileCheck %s --check-prefix=DEPTH-1
+// RUN: iree-opt --split-input-file --pass-pipeline='builtin.module(func.func(iree-amdaie-fuse-producer-into-loop{use-scf-for=false}))' %s | FileCheck %s --check-prefix=FORALL-DEPTH-1
+// RUN: iree-opt --split-input-file --pass-pipeline='builtin.module(func.func(iree-amdaie-fuse-producer-into-loop{fuse-depth=2}))' %s | FileCheck %s --check-prefix=DEPTH-2
+// RUN: iree-opt --split-input-file --pass-pipeline='builtin.module(func.func(iree-amdaie-fuse-producer-into-loop{fuse-depth=2 use-scf-for=false}))' %s | FileCheck %s --check-prefix=FORALL-DEPTH-2
 
 // -----
 
@@ -46,6 +46,8 @@ func.func @fuse_pack_into_for(%arg0: tensor<1x1x32x512xi32>, %arg1: tensor<1x1x5
 // DEPTH-1:  }
 
 // -----
+
+// Test to fuse multilevel pack ops into for loop.
 
 #map = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d2, d5, d3, d6, d8)>
 #map1 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d2, d1, d4, d5, d8, d7)>
@@ -125,6 +127,8 @@ func.func @fuse_multilevel_pack_into_for(%arg0: tensor<2048x2048xi32>, %arg1: te
 
 // -----
 
+// Test to fuse multilevel pack ops into forall loop.
+
 #map = affine_map<(d0) -> (d0 * 32)>
 #map1 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d2, d5, d3, d6, d8)>
 #map2 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d2, d1, d4, d5, d8, d7)>
@@ -187,7 +191,6 @@ func.func @fuse_multilevel_pack_into_forall(%arg0: tensor<2048x2048xi32>, %arg1:
   return %1 : tensor<2048x2048xi32>
 }
 
-
 // FORALL-DEPTH-1:  @fuse_multilevel_pack_into_forall
 // FORALL-DEPTH-1:  scf.for
 // FORALL-DEPTH-1:  {
@@ -222,6 +225,149 @@ func.func @fuse_multilevel_pack_into_forall(%arg0: tensor<2048x2048xi32>, %arg1:
 // FORALL-DEPTH-2:      }
 // FORALL-DEPTH-2:  }
 
+// -----
+
+// Test to fuse multilevel copy ops into for loop.
+
+#map = affine_map<(d0, d1, d2) -> (d0, d2)>
+#map1 = affine_map<(d0, d1, d2) -> (d2, d1)>
+#map2 = affine_map<(d0, d1, d2) -> (d0, d1)>
+func.func @fuse_multilevel_copy_into_for(%arg0: tensor<8x16xi32>, %arg1: tensor<16x8xi32>) -> tensor<8x8xi32> {
+  %c4 = arith.constant 4 : index
+  %c16 = arith.constant 16 : index
+  %c0_i32 = arith.constant 0 : i32
+  %c0 = arith.constant 0 : index
+  %0 = tensor.empty() : tensor<8x8xi32>
+  %1 = bufferization.alloc_tensor() : tensor<8x16xi32>
+  %2 = linalg.copy ins(%arg0 : tensor<8x16xi32>) outs(%1 : tensor<8x16xi32>) -> tensor<8x16xi32>
+  %3 = bufferization.alloc_tensor() : tensor<16x8xi32>
+  %4 = linalg.copy ins(%arg1 : tensor<16x8xi32>) outs(%3 : tensor<16x8xi32>) -> tensor<16x8xi32>
+  %5 = bufferization.alloc_tensor() : tensor<8x8xi32>
+  %6 = bufferization.alloc_tensor() : tensor<8x16xi32>
+  %7 = linalg.copy ins(%2 : tensor<8x16xi32>) outs(%6 : tensor<8x16xi32>) -> tensor<8x16xi32>
+  %8 = bufferization.alloc_tensor() : tensor<16x8xi32>
+  %9 = linalg.copy ins(%4 : tensor<16x8xi32>) outs(%8 : tensor<16x8xi32>) -> tensor<16x8xi32>
+  %10 = bufferization.alloc_tensor() : tensor<8x8xi32>
+  %11 = linalg.fill ins(%c0_i32 : i32) outs(%10 : tensor<8x8xi32>) -> tensor<8x8xi32>
+  %12 = scf.for %arg2 = %c0 to %c16 step %c4 iter_args(%arg3 = %11) -> (tensor<8x8xi32>) {
+    %extracted_slice = tensor.extract_slice %7[0, %arg2] [8, 4] [1, 1] : tensor<8x16xi32> to tensor<8x4xi32>
+    %extracted_slice_0 = tensor.extract_slice %9[%arg2, 0] [4, 8] [1, 1] : tensor<16x8xi32> to tensor<4x8xi32>
+    %15 = linalg.generic {indexing_maps = [#map, #map1, #map2], iterator_types = ["parallel", "parallel", "reduction"]} ins(%extracted_slice, %extracted_slice_0 : tensor<8x4xi32>, tensor<4x8xi32>) outs(%11 : tensor<8x8xi32>) {
+      ^bb0(%in: i32, %in_1: i32, %out: i32):
+        %21 = arith.muli %in, %in_1 : i32
+        %22 = arith.addi %out, %21 : i32
+        linalg.yield %22 : i32
+      } -> tensor<8x8xi32>
+    scf.yield %15 : tensor<8x8xi32>
+  }
+  %13 = linalg.copy ins(%12 : tensor<8x8xi32>) outs(%5 : tensor<8x8xi32>) -> tensor<8x8xi32>
+  %14 = linalg.copy ins(%13 : tensor<8x8xi32>) outs(%0 : tensor<8x8xi32>) -> tensor<8x8xi32>
+  return %14 : tensor<8x8xi32>
+}
+
+// DEPTH-1:  @fuse_multilevel_copy_into_for
+// DEPTH-1:  scf.for
+// DEPTH-1:  {
+// DEPTH-1:        %[[COPY_1_SOURCE:.*]] = tensor.extract_slice %{{.*}} : tensor<8x16xi32> to tensor<8x4xi32>
+// DEPTH-1:        %[[COPY_1_DEST:.*]] = tensor.extract_slice %{{.*}} : tensor<8x16xi32> to tensor<8x4xi32>
+// DEPTH-1:        %[[COPY_1:.*]] = linalg.copy ins(%[[COPY_1_SOURCE]] : tensor<8x4xi32>) outs(%[[COPY_1_DEST]] : tensor<8x4xi32>) -> tensor<8x4xi32>
+// DEPTH-1:        %[[COPY_2_SOURCE:.*]] = tensor.extract_slice %{{.*}} : tensor<16x8xi32> to tensor<4x8xi32>
+// DEPTH-1:        %[[COPY_2_DEST:.*]] = tensor.extract_slice %{{.*}} : tensor<16x8xi32> to tensor<4x8xi32>
+// DEPTH-1:        %[[COPY_2:.*]] = linalg.copy ins(%[[COPY_2_SOURCE]] : tensor<4x8xi32>) outs(%[[COPY_2_DEST]] : tensor<4x8xi32>) -> tensor<4x8xi32>
+// DEPTH-1:        linalg.generic {{.*}} ins(%[[COPY_1]], %[[COPY_2]] :
+// DEPTH-1:  }
+
+// DEPTH-2:  @fuse_multilevel_copy_into_for
+// DEPTH-2:  scf.for
+// DEPTH-2:  {
+// DEPTH-2:        %[[COPY_1_SOURCE:.*]] = tensor.extract_slice %{{.*}} : tensor<8x16xi32> to tensor<8x4xi32>
+// DEPTH-2:        %[[COPY_1_DEST:.*]] = tensor.extract_slice %{{.*}} : tensor<8x16xi32> to tensor<8x4xi32>
+// DEPTH-2:        %[[COPY_1_DEPTH_2:.*]] = linalg.copy ins(%[[COPY_1_SOURCE]] : tensor<8x4xi32>) outs(%[[COPY_1_DEST]] : tensor<8x4xi32>) -> tensor<8x4xi32>
+// DEPTH-2:         tensor.extract_slice %{{.*}} : tensor<8x16xi32> to tensor<8x4xi32>
+// DEPTH-2:        %[[COPY_1_DEST_2:.*]] = tensor.extract_slice %{{.*}} : tensor<8x16xi32> to tensor<8x4xi32>
+// DEPTH-2:        %[[COPY_1_DEPTH_1:.*]] = linalg.copy ins(%[[COPY_1_DEPTH_2]] : tensor<8x4xi32>) outs(%[[COPY_1_DEST_2]] : tensor<8x4xi32>) -> tensor<8x4xi32>
+// DEPTH-2:        %[[COPY_2_SOURCE:.*]] = tensor.extract_slice %{{.*}} : tensor<16x8xi32> to tensor<4x8xi32>
+// DEPTH-2:        %[[COPY_2_DEST:.*]] = tensor.extract_slice %{{.*}} : tensor<16x8xi32> to tensor<4x8xi32>
+// DEPTH-2:        %[[COPY_2_DEPTH_2:.*]] = linalg.copy ins(%[[COPY_2_SOURCE]] : tensor<4x8xi32>) outs(%[[COPY_2_DEST]] : tensor<4x8xi32>) -> tensor<4x8xi32>
+// DEPTH-2:         tensor.extract_slice %{{.*}} : tensor<16x8xi32> to tensor<4x8xi32>
+// DEPTH-2:        %[[COPY_2_DEST_2:.*]] = tensor.extract_slice %{{.*}} : tensor<16x8xi32> to tensor<4x8xi32>
+// DEPTH-2:        %[[COPY_2_DEPTH_1:.*]] = linalg.copy ins(%[[COPY_2_DEPTH_2]] : tensor<4x8xi32>) outs(%[[COPY_2_DEST_2]] : tensor<4x8xi32>) -> tensor<4x8xi32>
+// DEPTH-2:        linalg.generic {{.*}} ins(%[[COPY_1_DEPTH_1]], %[[COPY_2_DEPTH_1]] :
+// DEPTH-2:  }
+
+// -----
+
+// Test to fuse multilevel copy ops into forall loop.
+
+#map = affine_map<(d0) -> (d0 * 8)>
+#map1 = affine_map<(d0, d1, d2) -> (d0, d2)>
+#map2 = affine_map<(d0, d1, d2) -> (d2, d1)>
+#map3 = affine_map<(d0, d1, d2) -> (d0, d1)>
+func.func @fuse_multilevel_copy_into_forall(%arg0: tensor<8x16xi32>, %arg1: tensor<16x8xi32>) -> tensor<8x8xi32> {
+  %c0_i32 = arith.constant 0 : i32
+  %c0 = arith.constant 0 : index
+  %0 = tensor.empty() : tensor<8x8xi32>
+  %1 = bufferization.alloc_tensor() : tensor<8x16xi32>
+  %2 = linalg.copy ins(%arg0 : tensor<8x16xi32>) outs(%1 : tensor<8x16xi32>) -> tensor<8x16xi32>
+  %3 = bufferization.alloc_tensor() : tensor<16x8xi32>
+  %4 = linalg.copy ins(%arg1 : tensor<16x8xi32>) outs(%3 : tensor<16x8xi32>) -> tensor<16x8xi32>
+  %5 = bufferization.alloc_tensor() : tensor<8x8xi32>
+  %6 = bufferization.alloc_tensor() : tensor<8x16xi32>
+  %7 = linalg.copy ins(%2 : tensor<8x16xi32>) outs(%6 : tensor<8x16xi32>) -> tensor<8x16xi32>
+  %8 = bufferization.alloc_tensor() : tensor<16x8xi32>
+  %9 = linalg.copy ins(%4 : tensor<16x8xi32>) outs(%8 : tensor<16x8xi32>) -> tensor<16x8xi32>
+  %10 = bufferization.alloc_tensor() : tensor<8x8xi32>
+  %11 = linalg.fill ins(%c0_i32 : i32) outs(%10 : tensor<8x8xi32>) -> tensor<8x8xi32>
+  %12 = scf.forall (%arg2, %arg3) in (1, 1) shared_outs(%arg4 = %11) -> (tensor<8x8xi32>) {
+    %15 = affine.apply #map(%arg2)
+    %16 = affine.apply #map(%arg3)
+    %extracted_slice = tensor.extract_slice %7[%15, 0] [8, 16] [1, 1] : tensor<8x16xi32> to tensor<8x16xi32>
+    %extracted_slice_0 = tensor.extract_slice %9[0, %16] [16, 8] [1, 1] : tensor<16x8xi32> to tensor<16x8xi32>
+    %extracted_slice_1 = tensor.extract_slice %arg4[%15, %16] [8, 8] [1, 1] : tensor<8x8xi32> to tensor<8x8xi32>
+    %17 = linalg.generic {indexing_maps = [#map1, #map2, #map3], iterator_types = ["parallel", "parallel", "reduction"]} ins(%extracted_slice, %extracted_slice_0 : tensor<8x16xi32>, tensor<16x8xi32>) outs(%extracted_slice_1 : tensor<8x8xi32>) {
+    ^bb0(%in: i32, %in_2: i32, %out: i32):
+      %18 = arith.muli %in, %in_2 : i32
+      %19 = arith.addi %out, %18 : i32
+      linalg.yield %19 : i32
+    } -> tensor<8x8xi32>
+    scf.forall.in_parallel {
+      tensor.parallel_insert_slice %17 into %arg4[%15, %16] [8, 8] [1, 1] : tensor<8x8xi32> into tensor<8x8xi32>
+    }
+  } {mapping = [#gpu.block<y>, #gpu.block<x>]}
+  %13 = linalg.copy ins(%12 : tensor<8x8xi32>) outs(%5 : tensor<8x8xi32>) -> tensor<8x8xi32>
+  %14 = linalg.copy ins(%13 : tensor<8x8xi32>) outs(%0 : tensor<8x8xi32>) -> tensor<8x8xi32>
+  return %14 : tensor<8x8xi32>
+}
+
+// FORALL-DEPTH-1:  @fuse_multilevel_copy_into_forall
+// FORALL-DEPTH-1:  scf.forall
+// FORALL-DEPTH-1:  {
+// FORALL-DEPTH-1:        %[[COPY_1_SOURCE:.*]] = tensor.extract_slice %{{.*}} : tensor<8x16xi32> to tensor<8x16xi32>
+// FORALL-DEPTH-1:        %[[COPY_1_DEST:.*]] = tensor.extract_slice %{{.*}} : tensor<8x16xi32> to tensor<8x16xi32>
+// FORALL-DEPTH-1:        %[[COPY_1:.*]] = linalg.copy ins(%[[COPY_1_SOURCE]] : tensor<8x16xi32>) outs(%[[COPY_1_DEST]] : tensor<8x16xi32>) -> tensor<8x16xi32>
+// FORALL-DEPTH-1:        %[[COPY_2_SOURCE:.*]] = tensor.extract_slice %{{.*}} : tensor<16x8xi32> to tensor<16x8xi32>
+// FORALL-DEPTH-1:        %[[COPY_2_DEST:.*]] = tensor.extract_slice %{{.*}} : tensor<16x8xi32> to tensor<16x8xi32>
+// FORALL-DEPTH-1:        %[[COPY_2:.*]] = linalg.copy ins(%[[COPY_2_SOURCE]] : tensor<16x8xi32>) outs(%[[COPY_2_DEST]] : tensor<16x8xi32>) -> tensor<16x8xi32>
+// FORALL-DEPTH-1:        linalg.generic {{.*}} ins(%[[COPY_1]], %[[COPY_2]] :
+// FORALL-DEPTH-1:  }
+
+// FORALL-DEPTH-2:  @fuse_multilevel_copy_into_forall
+// FORALL-DEPTH-2:  scf.forall
+// FORALL-DEPTH-2:  {
+// FORALL-DEPTH-2:        %[[COPY_1_SOURCE:.*]] = tensor.extract_slice %{{.*}} : tensor<8x16xi32> to tensor<8x16xi32>
+// FORALL-DEPTH-2:        %[[COPY_1_DEST:.*]] = tensor.extract_slice %{{.*}} : tensor<8x16xi32> to tensor<8x16xi32>
+// FORALL-DEPTH-2:        %[[COPY_1_DEPTH_2:.*]] = linalg.copy ins(%[[COPY_1_SOURCE]] : tensor<8x16xi32>) outs(%[[COPY_1_DEST]] : tensor<8x16xi32>) -> tensor<8x16xi32>
+// FORALL-DEPTH-2:         tensor.extract_slice %{{.*}} : tensor<8x16xi32> to tensor<8x16xi32>
+// FORALL-DEPTH-2:        %[[COPY_1_DEST_2:.*]] = tensor.extract_slice %{{.*}} : tensor<8x16xi32> to tensor<8x16xi32>
+// FORALL-DEPTH-2:        %[[COPY_1_DEPTH_1:.*]] = linalg.copy ins(%[[COPY_1_DEPTH_2]] : tensor<8x16xi32>) outs(%[[COPY_1_DEST_2]] : tensor<8x16xi32>) -> tensor<8x16xi32>
+// FORALL-DEPTH-2:        %[[COPY_2_SOURCE:.*]] = tensor.extract_slice %{{.*}} : tensor<16x8xi32> to tensor<16x8xi32>
+// FORALL-DEPTH-2:        %[[COPY_2_DEST:.*]] = tensor.extract_slice %{{.*}} : tensor<16x8xi32> to tensor<16x8xi32>
+// FORALL-DEPTH-2:        %[[COPY_2_DEPTH_2:.*]] = linalg.copy ins(%[[COPY_2_SOURCE]] : tensor<16x8xi32>) outs(%[[COPY_2_DEST]] : tensor<16x8xi32>) -> tensor<16x8xi32>
+// FORALL-DEPTH-2:         tensor.extract_slice %{{.*}} : tensor<16x8xi32> to tensor<16x8xi32>
+// FORALL-DEPTH-2:        %[[COPY_2_DEST_2:.*]] = tensor.extract_slice %{{.*}} : tensor<16x8xi32> to tensor<16x8xi32>
+// FORALL-DEPTH-2:        %[[COPY_2_DEPTH_1:.*]] = linalg.copy ins(%[[COPY_2_DEPTH_2]] : tensor<16x8xi32>) outs(%[[COPY_2_DEST_2]] : tensor<16x8xi32>) -> tensor<16x8xi32>
+// FORALL-DEPTH-2:        linalg.generic {{.*}} ins(%[[COPY_1_DEPTH_1]], %[[COPY_2_DEPTH_1]] :
+// FORALL-DEPTH-2:  }
 
 // -----
 

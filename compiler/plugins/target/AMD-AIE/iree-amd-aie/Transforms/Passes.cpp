@@ -199,10 +199,11 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
 
   // Fuse both levels of pack ops into for loop
   {
-    AMDAIEFusePackIntoLoopOptions fusePackOptions;
-    fusePackOptions.fusePackDepth = 2;
-    fusePackOptions.useSCFFor = true;
-    funcPassManager.addPass(createAMDAIEFusePackIntoLoopPass(fusePackOptions));
+    AMDAIEFuseProducerIntoLoopOptions fuseProducerOptions;
+    fuseProducerOptions.fuseDepth = 2;
+    fuseProducerOptions.useSCFFor = true;
+    funcPassManager.addPass(
+        createAMDAIEFuseProducerIntoLoopPass(fuseProducerOptions));
   }
   funcPassManager.addPass(createCanonicalizerPass());
   funcPassManager.addPass(createCSEPass());
@@ -233,10 +234,11 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
 
   // Fuse second level pack ops into forall loop
   {
-    AMDAIEFusePackIntoLoopOptions fusePackOptions;
-    fusePackOptions.fusePackDepth = 1;
-    fusePackOptions.useSCFFor = false;
-    funcPassManager.addPass(createAMDAIEFusePackIntoLoopPass(fusePackOptions));
+    AMDAIEFuseProducerIntoLoopOptions fuseProducerOptions;
+    fuseProducerOptions.fuseDepth = 1;
+    fuseProducerOptions.useSCFFor = false;
+    funcPassManager.addPass(
+        createAMDAIEFuseProducerIntoLoopPass(fuseProducerOptions));
   }
   funcPassManager.addPass(createCanonicalizerPass());
   funcPassManager.addPass(createCSEPass());
@@ -272,11 +274,12 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
 
   // Fuse pack ops into the last inner forall loop
   {
-    AMDAIEFusePackIntoLoopOptions fusePackOptions;
-    fusePackOptions.fusePackDepth = 1;
-    fusePackOptions.useSCFFor = false;
-    fusePackOptions.targetElementwise = true;
-    funcPassManager.addPass(createAMDAIEFusePackIntoLoopPass(fusePackOptions));
+    AMDAIEFuseProducerIntoLoopOptions fuseProducerOptions;
+    fuseProducerOptions.fuseDepth = 1;
+    fuseProducerOptions.useSCFFor = false;
+    fuseProducerOptions.targetElementwise = true;
+    funcPassManager.addPass(
+        createAMDAIEFuseProducerIntoLoopPass(fuseProducerOptions));
   }
 
   // Promote the elementwise input to local memory
@@ -373,10 +376,11 @@ void addPackPeel4LevelTilingBasedPassPipeline(
 
   // Fuse the second level of pack ops into forall loop
   {
-    AMDAIEFusePackIntoLoopOptions fusePackOptions;
-    fusePackOptions.fusePackDepth = 1;
-    fusePackOptions.useSCFFor = false;
-    funcPassManager.addPass(createAMDAIEFusePackIntoLoopPass(fusePackOptions));
+    AMDAIEFuseProducerIntoLoopOptions fuseProducerOptions;
+    fuseProducerOptions.fuseDepth = 1;
+    fuseProducerOptions.useSCFFor = false;
+    funcPassManager.addPass(
+        createAMDAIEFuseProducerIntoLoopPass(fuseProducerOptions));
   }
   funcPassManager.addPass(createCanonicalizerPass());
   funcPassManager.addPass(createCSEPass());
@@ -395,10 +399,11 @@ void addPackPeel4LevelTilingBasedPassPipeline(
 
   // Fuse the second level of pack ops into for loop
   {
-    AMDAIEFusePackIntoLoopOptions fusePackOptions;
-    fusePackOptions.fusePackDepth = 1;
-    fusePackOptions.useSCFFor = true;
-    funcPassManager.addPass(createAMDAIEFusePackIntoLoopPass(fusePackOptions));
+    AMDAIEFuseProducerIntoLoopOptions fuseProducerOptions;
+    fuseProducerOptions.fuseDepth = 1;
+    fuseProducerOptions.useSCFFor = true;
+    funcPassManager.addPass(
+        createAMDAIEFuseProducerIntoLoopPass(fuseProducerOptions));
   }
   funcPassManager.addPass(createCanonicalizerPass());
   funcPassManager.addPass(createCSEPass());
@@ -429,10 +434,11 @@ void addPackPeel4LevelTilingBasedPassPipeline(
 
   // Fuse second level pack ops into forall loop
   {
-    AMDAIEFusePackIntoLoopOptions fusePackOptions;
-    fusePackOptions.fusePackDepth = 1;
-    fusePackOptions.useSCFFor = false;
-    funcPassManager.addPass(createAMDAIEFusePackIntoLoopPass(fusePackOptions));
+    AMDAIEFuseProducerIntoLoopOptions fuseProducerOptions;
+    fuseProducerOptions.fuseDepth = 1;
+    fuseProducerOptions.useSCFFor = false;
+    funcPassManager.addPass(
+        createAMDAIEFuseProducerIntoLoopPass(fuseProducerOptions));
   }
   funcPassManager.addPass(createCanonicalizerPass());
   funcPassManager.addPass(createCSEPass());
@@ -468,11 +474,12 @@ void addPackPeel4LevelTilingBasedPassPipeline(
 
   // Fuse pack ops into the last inner forall loop
   {
-    AMDAIEFusePackIntoLoopOptions fusePackOptions;
-    fusePackOptions.fusePackDepth = 1;
-    fusePackOptions.useSCFFor = false;
-    fusePackOptions.targetElementwise = true;
-    funcPassManager.addPass(createAMDAIEFusePackIntoLoopPass(fusePackOptions));
+    AMDAIEFuseProducerIntoLoopOptions fuseProducerOptions;
+    fuseProducerOptions.fuseDepth = 1;
+    fuseProducerOptions.useSCFFor = false;
+    fuseProducerOptions.targetElementwise = true;
+    funcPassManager.addPass(
+        createAMDAIEFuseProducerIntoLoopPass(fuseProducerOptions));
   }
 
   // Promote the elementwise input to local memory
@@ -584,7 +591,7 @@ void addPadPackBasedPassPipeline(OpPassManager &funcPassManager,
   funcPassManager.addPass(createCSEPass());
 
   // Fuse pack ops into for loop
-  funcPassManager.addPass(createAMDAIEFusePackIntoLoopPass());
+  funcPassManager.addPass(createAMDAIEFuseProducerIntoLoopPass());
   funcPassManager.addPass(createAMDAIECleanupPass());
   funcPassManager.addPass(createCanonicalizerPass());
   funcPassManager.addPass(createCSEPass());

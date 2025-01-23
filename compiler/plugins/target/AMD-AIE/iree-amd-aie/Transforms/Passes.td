@@ -324,15 +324,20 @@ def AMDAIEFuseFillIntoForall :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFuseFillIntoForallPass()";
 }
 
-def AMDAIEFusePackIntoLoop :
-    InterfacePass<"iree-amdaie-fuse-pack-into-loop", "mlir::FunctionOpInterface"> {
-  let summary = "Fuse the pack operations into the innermost for/forall loop.";
-  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFusePackIntoLoopPass()";
+def AMDAIEFuseProducerIntoLoop :
+    InterfacePass<"iree-amdaie-fuse-producer-into-loop", "mlir::FunctionOpInterface"> {
+  let summary = "Fuse the producer operations into the innermost for/forall loop.";
+  let description = [{
+    Greedily fuse the producers of a linalg computation op based on the `fuseDepth`.
+    Currently, the two producer ops that are allowed in the defining op chain are
+    tensor.pack and linalg.copy ops.
+  }];
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFuseProducerIntoLoopPass()";
   let options = [
-    Option<"fusePackDepth", "fuse-pack-depth", "int64_t", /*default=*/"1",
-      "Set the depth until which we would keep fusing producer tensor.pack chain.">,
+    Option<"fuseDepth", "fuse-depth", "int64_t", /*default=*/"1",
+      "Set the depth until which we would keep fusing producers from the defining chain.">,
     Option<"useSCFFor", "use-scf-for", "bool", /*default=*/"true",
-      "Set the innermost scf loop type to fuse tensor.pack ops into">,
+      "Set the innermost scf loop type to fuse producer ops into">,
     Option<"targetElementwise", "target-elementwise", "bool", /*default=*/"false",
       "Set if the target compute op within the loop is an elementwise op">
   ];

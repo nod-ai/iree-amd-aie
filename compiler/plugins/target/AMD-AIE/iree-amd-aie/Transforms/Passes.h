@@ -230,9 +230,9 @@ std::unique_ptr<Pass> createAMDAIEInsertLoopsForVectorizationPass(
 /// Create a pass to remove redundant DMA wait operations.
 std::unique_ptr<Pass> createAMDAIEFoldDmaWaitsPass();
 
-/// Create a pass to fuse the pack operations into the for loops.
-std::unique_ptr<Pass> createAMDAIEFusePackIntoLoopPass(
-    AMDAIEFusePackIntoLoopOptions options = {});
+/// Create a pass to fuse the producer operations into the scf loops.
+std::unique_ptr<Pass> createAMDAIEFuseProducerIntoLoopPass(
+    AMDAIEFuseProducerIntoLoopOptions options = {});
 
 /// Create pass to insert `amdaie.core` operations inside the innermost
 /// `scf.forall` operations selected for parallel execution.

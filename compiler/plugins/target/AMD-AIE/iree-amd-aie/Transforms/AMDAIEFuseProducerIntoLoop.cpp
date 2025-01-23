@@ -13,31 +13,34 @@
 #include "mlir/IR/Iterators.h"
 #include "mlir/Pass/Pass.h"
 
-#define DEBUG_TYPE "iree-amdaie-fuse-pack-into-loop"
+#define DEBUG_TYPE "iree-amdaie-fuse-producer-into-loop"
 
 namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
 /// A utility function specific to this pass which, given a value `operand`,
-/// traverses the def-chain till it finds a tensor.extract_slice. The 2 cases
-/// where it successfully finds and returns an extract_slice (SLICE) are:
+/// traverses the def-chain till it finds a tensor.extract_slice. Currently,
+/// the two producer ops that are allowed in the def-chain are tensor.pack and
+/// linalg.copy ops. The 2 cases where it successfully finds and returns an
+/// extract_slice (SLICE) are:
 ///
 /// Case 1)
-/// pack -> SLICE -> pack -> pack -> pack -> operand
-///                  ^^^^^^^^^^^^^^^^^^^^
-///                  any number (>= 0) of trailing packs
+/// producer -> SLICE -> producer -> producer -> operand
+///                      ^^^^^^^^^^^^^^^^^^^^
+///                      any number (>= 0) of trailing pack or copy ops
 ///
 /// Case 2)
-/// pack -> block arg -> SLICE  -> pack -> pack -> pack -> operand
-///                                ^^^^^^^^^^^^^^^^^^^^
-///                                any number (>= 0) of trailing packs
+/// producer -> block arg -> SLICE -> producer -> producer -> operand
+///                                   ^^^^^^^^^^^^^^^^^^^^
+///                                   any number (>= 0) of trailing packs
 ///
 /// Case 2 only matches where `block arg` is for a loop operation.
 static FailureOr<tensor::ExtractSliceOp> getTensorExtractSliceDefiningOp(
     Value operand) {
-  // roll back through all the packs immediately preceding `operand`.
-  while (isa_and_present<tensor::PackOp>(operand.getDefiningOp())) {
+  // Roll back through all the pack or copy ops immediately preceding `operand`.
+  while (isa_and_present<tensor::PackOp, linalg::CopyOp>(
+      operand.getDefiningOp())) {
     operand = operand.getDefiningOp()->getOperand(0);
   }
 
@@ -46,7 +49,8 @@ static FailureOr<tensor::ExtractSliceOp> getTensorExtractSliceDefiningOp(
   if (!sliceOp) return failure();
 
   // Case 1 outlined above.
-  if (isa_and_present<tensor::PackOp>(sliceOp.getSource().getDefiningOp())) {
+  if (isa_and_present<tensor::PackOp, linalg::CopyOp>(
+          sliceOp.getSource().getDefiningOp())) {
     return sliceOp;
   }
 
@@ -56,19 +60,22 @@ static FailureOr<tensor::ExtractSliceOp> getTensorExtractSliceDefiningOp(
     LoopLikeOpInterface loop = dyn_cast<LoopLikeOpInterface>(parent);
     if (!loop) return failure();
     Operation *operandParent = loop.getTiedLoopInit(blkArg)->getOwner();
-    if (isa_and_present<tensor::PackOp>(operandParent)) return sliceOp;
+    if (isa_and_present<tensor::PackOp, linalg::CopyOp>(operandParent))
+      return sliceOp;
   }
 
   return failure();
 }
 
-class AMDAIEFusePackIntoLoopPass
-    : public impl::AMDAIEFusePackIntoLoopBase<AMDAIEFusePackIntoLoopPass> {
+class AMDAIEFuseProducerIntoLoopPass
+    : public impl::AMDAIEFuseProducerIntoLoopBase<
+          AMDAIEFuseProducerIntoLoopPass> {
  public:
-  AMDAIEFusePackIntoLoopPass() = default;
-  AMDAIEFusePackIntoLoopPass(const AMDAIEFusePackIntoLoopPass &pass) {}
-  AMDAIEFusePackIntoLoopPass(const AMDAIEFusePackIntoLoopOptions &options)
-      : AMDAIEFusePackIntoLoopBase(options) {}
+  AMDAIEFuseProducerIntoLoopPass() = default;
+  AMDAIEFuseProducerIntoLoopPass(const AMDAIEFuseProducerIntoLoopPass &pass) {}
+  AMDAIEFuseProducerIntoLoopPass(
+      const AMDAIEFuseProducerIntoLoopOptions &options)
+      : AMDAIEFuseProducerIntoLoopBase(options) {}
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<scf::SCFDialect>();
@@ -76,7 +83,7 @@ class AMDAIEFusePackIntoLoopPass
   void runOnOperation() override;
 };
 
-void AMDAIEFusePackIntoLoopPass::runOnOperation() {
+void AMDAIEFuseProducerIntoLoopPass::runOnOperation() {
   MLIRContext *context = &getContext();
   mlir::FunctionOpInterface funcOp = getOperation();
   IRRewriter rewriter(context);
@@ -102,9 +109,10 @@ void AMDAIEFusePackIntoLoopPass::runOnOperation() {
 
   LoopLikeOpInterface loops = cast<LoopLikeOpInterface>(scfLoopOp);
 
-  // Based on the `fusePackDepth`, we would greedily fuse the producer
-  // tensor.pack ops.
-  for (unsigned depth = 1; depth <= fusePackDepth; depth++) {
+  // Based on the `fuseDepth`, we would greedily fuse the producers of a linalg
+  // computation op. Currently, we are limiting the producers to tensor.pack or
+  // linalg.copy ops.
+  for (unsigned depth = 1; depth <= fuseDepth; depth++) {
     // Search the last compute op in the loop and its producer slices.
     linalg::GenericOp genericOp;
     scfLoopOp->walk<WalkOrder::PostOrder, ReverseIterator>(
@@ -143,10 +151,11 @@ void AMDAIEFusePackIntoLoopPass::runOnOperation() {
         }
       }
 
-      // Case where operand of generic is a pack op which is in a different
-      // block than the generic's block.
-      else if (auto parent = dyn_cast_if_present<tensor::PackOp>(
+      // Case where operand of a generic op is a pack/copy op which is in a
+      // different block than the generic's block.
+      else if (isa_and_present<tensor::PackOp, linalg::CopyOp>(
                    operand.getDefiningOp())) {
+        Operation *parent = operand.getDefiningOp();
         Block *genericBlock = genericOp->getBlock();
         if (parent->getBlock() != genericBlock && parent->hasOneUse()) {
           Operation *firstOpInBlock = &genericBlock->front();
@@ -159,8 +168,8 @@ void AMDAIEFusePackIntoLoopPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<Pass> createAMDAIEFusePackIntoLoopPass(
-    AMDAIEFusePackIntoLoopOptions options) {
-  return std::make_unique<AMDAIEFusePackIntoLoopPass>(options);
+std::unique_ptr<Pass> createAMDAIEFuseProducerIntoLoopPass(
+    AMDAIEFuseProducerIntoLoopOptions options) {
+  return std::make_unique<AMDAIEFuseProducerIntoLoopPass>(options);
 }
 }  // namespace mlir::iree_compiler::AMDAIE
