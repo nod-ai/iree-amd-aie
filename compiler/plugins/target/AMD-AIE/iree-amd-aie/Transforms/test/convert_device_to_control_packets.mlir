@@ -9,31 +9,31 @@
 // CHECK-NEXT:       amdaie.controlcode {
 
 // Generated from `XAie_CoreDisable`.
-// CHECK-NEXT:         amdaie.npu.control_packet {address = 2301952 : ui32, data = array<i32: 0>, length = 1 : ui32, opcode = 0 : ui32, stream_id = 0 : ui32}
+// CHECK-NEXT:         amdaie.npu.control_packet write {address = 2301952 : ui32, data = array<i32: 0>, length = 1 : ui32, stream_id = 0 : ui32}
 
 // Generated from `XAie_DmaChannelResetAll`.
-// CHECK-NEXT:         amdaie.npu.control_packet {address = 2219536 : ui32, data = array<i32: 2>, length = 1 : ui32, opcode = 0 : ui32, stream_id = 0 : ui32}
-// CHECK-NEXT:         amdaie.npu.control_packet {address = 2219544 : ui32, data = array<i32: 2>, length = 1 : ui32, opcode = 0 : ui32, stream_id = 0 : ui32}
-// CHECK-NEXT:         amdaie.npu.control_packet {address = 2219520 : ui32, data = array<i32: 2>, length = 1 : ui32, opcode = 0 : ui32, stream_id = 0 : ui32}
-// CHECK-NEXT:         amdaie.npu.control_packet {address = 2219528 : ui32, data = array<i32: 2>, length = 1 : ui32, opcode = 0 : ui32, stream_id = 0 : ui32}
+// CHECK-NEXT:         amdaie.npu.control_packet write {address = 2219536 : ui32, data = array<i32: 2>, length = 1 : ui32, stream_id = 0 : ui32}
+// CHECK-NEXT:         amdaie.npu.control_packet write {address = 2219544 : ui32, data = array<i32: 2>, length = 1 : ui32, stream_id = 0 : ui32}
+// CHECK-NEXT:         amdaie.npu.control_packet write {address = 2219520 : ui32, data = array<i32: 2>, length = 1 : ui32, stream_id = 0 : ui32}
+// CHECK-NEXT:         amdaie.npu.control_packet write {address = 2219528 : ui32, data = array<i32: 2>, length = 1 : ui32, stream_id = 0 : ui32}
 
 // Generated from `XAie_LoadElf`.
-// CHECK-NEXT:         amdaie.npu.control_packet {address = 2228224 : ui32, data = dense_resource<ctrl_pkt_data_0> : tensor<[[LEN:[0-9]+]]xi32>, length = [[LEN]] : ui32, opcode = 0 : ui32, stream_id = 0 : ui32}
+// CHECK-NEXT:         amdaie.npu.control_packet write {address = 2228224 : ui32, data = dense_resource<ctrl_pkt_data_0> : tensor<[[LEN:[0-9]+]]xi32>, length = [[LEN]] : ui32, stream_id = 0 : ui32}
 
 // Generated from `XAie_DmaChannelResetAll`.
-// CHECK-NEXT:         amdaie.npu.control_packet {address = 2219536 : ui32, data = array<i32: 0>, length = 1 : ui32, opcode = 0 : ui32, stream_id = 0 : ui32}
-// CHECK-NEXT:         amdaie.npu.control_packet {address = 2219544 : ui32, data = array<i32: 0>, length = 1 : ui32, opcode = 0 : ui32, stream_id = 0 : ui32}
-// CHECK-NEXT:         amdaie.npu.control_packet {address = 2219520 : ui32, data = array<i32: 0>, length = 1 : ui32, opcode = 0 : ui32, stream_id = 0 : ui32}
-// CHECK-NEXT:         amdaie.npu.control_packet {address = 2219528 : ui32, data = array<i32: 0>, length = 1 : ui32, opcode = 0 : ui32, stream_id = 0 : ui32}
+// CHECK-NEXT:         amdaie.npu.control_packet write {address = 2219536 : ui32, data = array<i32: 0>, length = 1 : ui32, stream_id = 0 : ui32}
+// CHECK-NEXT:         amdaie.npu.control_packet write {address = 2219544 : ui32, data = array<i32: 0>, length = 1 : ui32, stream_id = 0 : ui32}
+// CHECK-NEXT:         amdaie.npu.control_packet write {address = 2219520 : ui32, data = array<i32: 0>, length = 1 : ui32, stream_id = 0 : ui32}
+// CHECK-NEXT:         amdaie.npu.control_packet write {address = 2219528 : ui32, data = array<i32: 0>, length = 1 : ui32, stream_id = 0 : ui32}
 
 // Generated from `XAie_CoreReset`.
-// CHECK-NEXT:         amdaie.npu.control_packet {address = 2301952 : ui32, data = array<i32: 2>, length = 1 : ui32, opcode = 0 : ui32, stream_id = 0 : ui32}
+// CHECK-NEXT:         amdaie.npu.control_packet write {address = 2301952 : ui32, data = array<i32: 2>, length = 1 : ui32, stream_id = 0 : ui32}
 
 // Generated from `XAie_CoreUnreset`.
-// CHECK-NEXT:         amdaie.npu.control_packet {address = 2301952 : ui32, data = array<i32: 0>, length = 1 : ui32, opcode = 0 : ui32, stream_id = 0 : ui32}
+// CHECK-NEXT:         amdaie.npu.control_packet write {address = 2301952 : ui32, data = array<i32: 0>, length = 1 : ui32, stream_id = 0 : ui32}
 
 // Generated from `XAie_CoreEnable`.
-// CHECK-NEXT:         amdaie.npu.control_packet {address = 2301952 : ui32, data = array<i32: 1>, length = 1 : ui32, opcode = 0 : ui32, stream_id = 0 : ui32}
+// CHECK-NEXT:         amdaie.npu.control_packet write {address = 2301952 : ui32, data = array<i32: 1>, length = 1 : ui32, stream_id = 0 : ui32}
 // CHECK-NEXT:         amdaie.end
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {

@@ -16,13 +16,13 @@ module {
 
 // Control packets with data smaller than or equal to the maximum allowed size are left unchanged.
 // CHECK-LABEL: @no_split
-// CHECK: amdaie.npu.control_packet {address = 0 : ui32, data = array<i32: 0, 1, 2>, length = 3 : ui32, opcode = 0 : ui32, stream_id = 0 : ui32}
+// CHECK: amdaie.npu.control_packet write {address = 0 : ui32, data = array<i32: 0, 1, 2>, length = 3 : ui32, stream_id = 0 : ui32}
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @no_split() {
     amdaie.workgroup {
       amdaie.controlcode {
-        amdaie.npu.control_packet {address = 0 : ui32, data = array<i32: 0, 1, 2>, length = 3 : ui32, opcode = 0 : ui32, stream_id = 0 : ui32}
+        amdaie.npu.control_packet write {address = 0 : ui32, data = array<i32: 0, 1, 2>, length = 3 : ui32, stream_id = 0 : ui32}
         amdaie.end
       }
     }
@@ -34,15 +34,15 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // Data stored as a dense array with a length of 9 elements is split into 3 operations.
 // CHECK-LABEL: @split_dense_array
-// CHECK: amdaie.npu.control_packet {address = 0 : ui32, data = array<i32: 0, 1, 2, 3>, length = 4 : ui32, opcode = 0 : ui32, stream_id = 0 : ui32}
-// CHECK: amdaie.npu.control_packet {address = 16 : ui32, data = array<i32: 4, 5, 6, 7>, length = 4 : ui32, opcode = 0 : ui32, stream_id = 0 : ui32}
-// CHECK: amdaie.npu.control_packet {address = 32 : ui32, data = array<i32: 8>, length = 1 : ui32, opcode = 0 : ui32, stream_id = 0 : ui32}
+// CHECK: amdaie.npu.control_packet write {address = 0 : ui32, data = array<i32: 0, 1, 2, 3>, length = 4 : ui32, stream_id = 0 : ui32}
+// CHECK: amdaie.npu.control_packet write {address = 16 : ui32, data = array<i32: 4, 5, 6, 7>, length = 4 : ui32, stream_id = 0 : ui32}
+// CHECK: amdaie.npu.control_packet write {address = 32 : ui32, data = array<i32: 8>, length = 1 : ui32, stream_id = 0 : ui32}
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @split_dense_array() {
     amdaie.workgroup {
       amdaie.controlcode {
-        amdaie.npu.control_packet {address = 0 : ui32, data = array<i32: 0, 1, 2, 3, 4, 5, 6, 7, 8>, length = 9 : ui32, opcode = 0 : ui32, stream_id = 0 : ui32}
+        amdaie.npu.control_packet write {address = 0 : ui32, data = array<i32: 0, 1, 2, 3, 4, 5, 6, 7, 8>, length = 9 : ui32, stream_id = 0 : ui32}
         amdaie.end
       }
     }
@@ -61,7 +61,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
   func.func @split_dense_resource() {
     amdaie.workgroup {
       amdaie.controlcode {
-        amdaie.npu.control_packet {address = 2228224 : ui32, data = dense_resource<ctrl_pkt_data_0> : tensor<36xi32>, length = 36 : ui32, opcode = 0 : ui32, stream_id = 0 : ui32}
+        amdaie.npu.control_packet write {address = 2228224 : ui32, data = dense_resource<ctrl_pkt_data_0> : tensor<36xi32>, length = 36 : ui32, stream_id = 0 : ui32}
         amdaie.end
       }
     }
@@ -79,16 +79,16 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
-// For control packet reads (where `opcode=1` and `data` are not present), the split still occurs, with only the `address` and `length` attributes being updated.
+// For control packet reads (where the `data` field is not present), the split still occurs, with only the `address` and `length` attributes being updated.
 // CHECK-LABEL: @split_ctrl_pkt_read
-// CHECK: amdaie.npu.control_packet {address = 0 : ui32, length = 4 : ui32, opcode = 1 : ui32, stream_id = 0 : ui32}
-// CHECK: amdaie.npu.control_packet {address = 16 : ui32, length = 4 : ui32, opcode = 1 : ui32, stream_id = 0 : ui32}
+// CHECK: amdaie.npu.control_packet read {address = 0 : ui32, length = 4 : ui32, stream_id = 0 : ui32}
+// CHECK: amdaie.npu.control_packet read {address = 16 : ui32, length = 4 : ui32, stream_id = 0 : ui32}
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @split_ctrl_pkt_read() {
     amdaie.workgroup {
       amdaie.controlcode {
-        amdaie.npu.control_packet {address = 0 : ui32, length = 8 : ui32, opcode = 1 : ui32, stream_id = 0 : ui32}
+        amdaie.npu.control_packet read {address = 0 : ui32, length = 8 : ui32, stream_id = 0 : ui32}
         amdaie.end
       }
     }
