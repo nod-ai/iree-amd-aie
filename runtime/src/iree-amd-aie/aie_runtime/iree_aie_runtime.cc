@@ -777,7 +777,7 @@ getNpu1IntegerMatmulInstructionSizeMap() {
 /// table return failure.
 ///
 /// Example: consider the line of the table:
-///   `vector<8x8xi8>`  | `vector<8x8xi4>`  | `vector<8x8xi32>`
+///   `vector<8x8xi8>`  | `vector<8x8xi8>`  | `vector<8x8xi32>`
 ///
 /// This first line says that if 'lhs' is an i8 tensor, 'rhs' is an i8 tensor
 /// and 'accumulator' is an i32 tensor, then there is an AIE instruction for
