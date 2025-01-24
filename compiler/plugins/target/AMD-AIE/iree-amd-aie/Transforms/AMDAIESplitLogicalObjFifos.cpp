@@ -348,23 +348,87 @@ void AMDAIESplitLogicalObjFifosPass::runOnOperation() {
     return signalPassFailure();
   }
 
+  // Fetch and store all unique pairs of L2<->L1 Copy ops. This would helps us
+  // figure out the split factor for all LogicalObjectFifos.
+  DenseMap<Operation *, DenseSet<Operation *>> uniqueL2L1Pair;
+  moduleOp->walk([&](Operation *op) -> WalkResult {
+    if (auto copyOp = dyn_cast<CopyOpInterface>(op)) {
+      auto source = dyn_cast_if_present<AMDAIE::LogicalObjFifoOpInterface>(
+          copyOp.getSource().getDefiningOp());
+      auto target = dyn_cast_if_present<AMDAIE::LogicalObjFifoOpInterface>(
+          copyOp.getTarget().getDefiningOp());
+      if (!source || !target) {
+        return WalkResult::interrupt();
+      }
+      auto sourceFromMemrefOp =
+          dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+              copyOp.getSource().getDefiningOp());
+      auto targetFromMemrefOp =
+          dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+              copyOp.getTarget().getDefiningOp());
+      if (!sourceFromMemrefOp || !targetFromMemrefOp) {
+        return WalkResult::interrupt();
+      }
+      Operation *l2DefOp = nullptr;
+      Operation *l1DefOp = nullptr;
+      if (source.getMemorySpaceAsUInt() == 1 &&
+          target.getMemorySpaceAsUInt() == 2) {
+        l2DefOp = sourceFromMemrefOp.getMemref().getDefiningOp();
+        l1DefOp = targetFromMemrefOp;
+      } else if (target.getMemorySpaceAsUInt() == 1 &&
+                 source.getMemorySpaceAsUInt() == 2) {
+        l2DefOp = targetFromMemrefOp.getMemref().getDefiningOp();
+        l1DefOp = sourceFromMemrefOp;
+      } else {
+        return WalkResult::advance();
+      }
+      uniqueL2L1Pair[l2DefOp].insert(l1DefOp);
+      return WalkResult::advance();
+    }
+    return WalkResult::advance();
+  });
+
   /// Split the DMA and objectFifo ops based on the calcuated splitting
   /// dimensions.
+  DenseMap<Operation *, int64_t> splitFactorOfLOF;
   for (auto &&[dmaOp, dmaSplitInfo] : dmaSplitInfoMap) {
     auto stridedOp =
         cast<AMDAIE::DoublyStridedOpInterface>(dmaOp.getOperation());
-    if (failed(splitDoublyStridedOp(
-            rewriter, stridedOp, dmaSplitInfo.sourceSplitDim,
-            dmaSplitInfo.targetSplitDim, dmaSplitInfo.splitSize,
-            dmaSplitInfo.newSourceStride, dmaSplitInfo.newTargetStride))) {
+    auto dmaCpyNd = cast<AMDAIE::DmaCpyNdOp>(dmaOp.getOperation());
+    int64_t splitFactor = dmaSplitInfo.splitSize;
+    if (stridedOp.getSourceMemorySpaceAsUInt() == 0) {
+      splitFactor =
+          uniqueL2L1Pair
+              [dmaCpyNd.getTarget()
+                   .getDefiningOp<AMDAIE::LogicalObjectFifoFromMemrefOp>()
+                   .getMemref()
+                   .getDefiningOp()]
+                  .size();
+    } else if (stridedOp.getTargetMemorySpaceAsUInt() == 0) {
+      splitFactor =
+          uniqueL2L1Pair
+              [dmaCpyNd.getSource()
+                   .getDefiningOp<AMDAIE::LogicalObjectFifoFromMemrefOp>()
+                   .getMemref()
+                   .getDefiningOp()]
+                  .size();
+    }
+    splitFactor = std::gcd(dmaSplitInfo.splitSize, splitFactor);
+    FailureOr<int64_t> maybeSplitFactor = splitDoublyStridedOp(
+        rewriter, stridedOp, dmaSplitInfo.sourceSplitDim,
+        dmaSplitInfo.targetSplitDim, splitFactor, dmaSplitInfo.newSourceStride,
+        dmaSplitInfo.newTargetStride);
+    if (failed(maybeSplitFactor)) {
       LLVM_DEBUG(llvm::dbgs()
                  << "Failed to perform splitting of the DMA op: " << dmaOp);
       return signalPassFailure();
     }
+    splitFactorOfLOF[dmaCpyNd.getTarget().getDefiningOp()] = *maybeSplitFactor;
+    splitFactorOfLOF[dmaCpyNd.getSource().getDefiningOp()] = *maybeSplitFactor;
   }
   for (auto &&[objFifo, splitInfo] : objFifoSplitInfoMap) {
     if (failed(splitLogicalObjectFifo(rewriter, objFifo, splitInfo.splitDim,
-                                      splitInfo.splitSize,
+                                      splitFactorOfLOF[objFifo],
                                       splitInfo.splitStride))) {
       LLVM_DEBUG(llvm::dbgs()
                  << "Failed to perform splitting of objectFifo op");

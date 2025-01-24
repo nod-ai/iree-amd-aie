@@ -751,13 +751,15 @@ LogicalResult splitLogicalObjectFifo(IRRewriter &rewriter,
 }
 
 /// Split doubly strided operations on a source and target split dimension with
-/// the provided split factor.
-LogicalResult splitDoublyStridedOp(IRRewriter &rewriter,
-                                   AMDAIE::DoublyStridedOpInterface op,
-                                   size_t sourceSplitDim, size_t targetSplitDim,
-                                   std::optional<size_t> maybeSplitFactor,
-                                   int64_t sourceSplitStride,
-                                   int64_t targetSplitStride) {
+/// the provided split factor which might get updated. On success, return the
+/// split factor to the caller, else return failure.
+FailureOr<int64_t> splitDoublyStridedOp(IRRewriter &rewriter,
+                                        AMDAIE::DoublyStridedOpInterface op,
+                                        size_t sourceSplitDim,
+                                        size_t targetSplitDim,
+                                        std::optional<size_t> maybeSplitFactor,
+                                        int64_t sourceSplitStride,
+                                        int64_t targetSplitStride) {
   if (!op->use_empty())
     return op.emitOpError() << "can't be split because it has uses";
   SmallVector<OpFoldResult> sourceOffsets = op.getSourceMixedOffsets();
@@ -857,7 +859,7 @@ LogicalResult splitDoublyStridedOp(IRRewriter &rewriter,
     targetOffsets[targetSplitDim] = newTargetOffset.value();
   }
   rewriter.eraseOp(op);
-  return success();
+  return splitFactor;
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE
