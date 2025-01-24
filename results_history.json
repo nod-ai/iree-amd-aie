@@ -1213,5 +1213,86 @@
         "time_mean_unit": "us"
       }
     ]
+  },
+  {
+    "commit_hash": "b0cdcccef4206bff943cff06841fe263597e4c7a",
+    "cpu": "AMD Ryzen 7 8845HS w/ Radeon 780M Graphics",
+    "tests": [
+      {
+        "name": "matmul_benchmark_512_512_4096_bf16_f32_O2",
+        "time_mean": "2648",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_benchmark_512_512_4096_bf16_f32_O2_outline",
+        "time_mean": "6546",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_benchmark_512_512_4096_bf16_f32_O3",
+        "time_mean": "2649",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_benchmark_512_512_4096_bf16_f32_O3_outline",
+        "time_mean": "1781",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_benchmark_512_512_4096_bf16_f32_O3_outline_ukernel",
+        "time_mean": "1807",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_benchmark_512_4096_512_bf16_f32_O3_outline",
+        "time_mean": "2617",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_benchmark_512_4096_512_bf16_f32_O3_outline_ukernel",
+        "time_mean": "2490",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_transpose_b_benchmark_512_4096_512_bf16_f32_O3_outline",
+        "time_mean": "1944",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_benchmark_4096_512_512_bf16_f32_O3_outline",
+        "time_mean": "1908",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_benchmark_4096_512_512_bf16_f32_O3_outline_ukernel",
+        "time_mean": "1881",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_transpose_a_benchmark_4096_512_512_bf16_f32_O3_outline",
+        "time_mean": "2308",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_benchmark_4096_512_512_bf16_f32_O3_outline_empty",
+        "time_mean": "1881",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_benchmark_512_4096_512_bf16_f32_O3_outline_4_level_tiling",
+        "time_mean": "7021",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_benchmark_512_4096_512_bf16_f32_O3_outline_4_level_tiling_ukernel",
+        "time_mean": "1142",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_benchmark_512_4096_512_bf16_f32_O3_outline_empty_4_level_tiling",
+        "time_mean": "1103",
+        "time_mean_unit": "us"
+      }
+    ]
   }
 ]
