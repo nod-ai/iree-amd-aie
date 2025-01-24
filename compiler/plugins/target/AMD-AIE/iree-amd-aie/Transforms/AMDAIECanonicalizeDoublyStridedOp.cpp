@@ -154,22 +154,16 @@ struct FoldDmaOpUnitDims
     SmallVector<OpFoldResult> targetOffsets = op.getTargetMixedOffsets();
     SmallVector<OpFoldResult> targetSizes = op.getTargetMixedSizes();
     SmallVector<OpFoldResult> targetStrides = op.getTargetMixedStrides();
-    SmallVector<OpFoldResult> newSourceOffsets, newSourceSizes,
-        newSourceStrides, newTargetOffsets, newTargetSizes, newTargetStrides;
-    LogicalResult sourceRes =
-        foldUnitDims(op.getContext(), sourceOffsets, sourceSizes, sourceStrides,
-                     newSourceOffsets, newSourceSizes, newSourceStrides);
-    LogicalResult targetRes =
-        foldUnitDims(op.getContext(), targetOffsets, targetSizes, targetStrides,
-                     newTargetOffsets, newTargetSizes, newTargetStrides);
-    if (failed(sourceRes) && failed(targetRes)) {
-      return failure();
-    }
+    LogicalResult sourceRes = foldUnitDims(op.getContext(), sourceOffsets,
+                                           sourceSizes, sourceStrides);
+    LogicalResult targetRes = foldUnitDims(op.getContext(), targetOffsets,
+                                           targetSizes, targetStrides);
+    if (failed(sourceRes) && failed(targetRes)) return failure();
 
     rewriter.setInsertionPointAfter(op);
     auto newDoublyStridedOp = op.createDoublyStridedOp(
-        rewriter, newTargetOffsets, newTargetSizes, newTargetStrides,
-        newSourceOffsets, newSourceSizes, newSourceStrides);
+        rewriter, targetOffsets, targetSizes, targetStrides, sourceOffsets,
+        sourceSizes, sourceStrides);
     rewriter.replaceOp(op, newDoublyStridedOp.getOperation());
     return success();
   }

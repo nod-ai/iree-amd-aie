@@ -6,14 +6,26 @@
 
 #include "gtest/gtest.h"
 #include "iree-amd-aie/Transforms/Utils/AMDAIEDmaUtils.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/SmallVectorExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 
 namespace {
 
 using namespace mlir;
 using namespace mlir::iree_compiler::AMDAIE;
+
+SmallVector<int64_t> fromOpFoldResults(SmallVector<OpFoldResult> ofrs) {
+  SmallVector<int64_t> vals;
+  for (auto ofr : ofrs) {
+    auto asInt = getConstantIntValue(ofr);
+    if (asInt.has_value())
+      vals.push_back(asInt.value());
+    else
+      assert(false && "expected integer");
+  }
+  return vals;
+}
 
 //===----------------------------------------------------------------------===//
 // Test Fixture
@@ -26,94 +38,77 @@ class AccessPatternCombinationTest : public ::testing::Test {
     context.loadDialect<arith::ArithDialect>();
   }
 
-  SmallVector<OpFoldResult> toOpFoldResult(const SmallVector<int64_t> &values) {
+  SmallVector<OpFoldResult> toOpFoldResults(SmallVector<int64_t> values) {
     return llvm::map_to_vector(values, [&](int64_t v) -> OpFoldResult {
-      return rewriter.getI64IntegerAttr(v);
+      return getAsIndexOpFoldResult(&context, v);
     });
   }
 
-  bool checkAreAccessPatternsCombinable(
-      const SmallVector<int64_t> &offsetsA, const SmallVector<int64_t> &sizesA,
-      const SmallVector<int64_t> &stridesA,
-      const SmallVector<int64_t> &offsetsB, const SmallVector<int64_t> &sizesB,
-      const SmallVector<int64_t> &stridesB,
-      function_ref<bool(size_t)> exceedsNbDims) {
-    SmallVector<OpFoldResult> offsetsValuesA = toOpFoldResult(offsetsA);
-    SmallVector<OpFoldResult> sizesValuesA = toOpFoldResult(sizesA);
-    SmallVector<OpFoldResult> stridesValuesA = toOpFoldResult(stridesA);
-    SmallVector<OpFoldResult> offsetsValuesB = toOpFoldResult(offsetsB);
-    SmallVector<OpFoldResult> sizesValuesB = toOpFoldResult(sizesB);
-    SmallVector<OpFoldResult> stridesValuesB = toOpFoldResult(stridesB);
-    return areAccessPatternsCombinable(
-        offsetsValuesA, sizesValuesA, stridesValuesA, offsetsValuesB,
-        sizesValuesB, stridesValuesB, exceedsNbDims);
+  bool checkAccessPaternsCombinable(SmallVector<int64_t> offsetsA,
+                                    SmallVector<int64_t> sizesA,
+                                    SmallVector<int64_t> stridesA,
+                                    SmallVector<int64_t> offsetsB,
+                                    SmallVector<int64_t> sizesB,
+                                    SmallVector<int64_t> stridesB,
+                                    function_ref<bool(size_t)> exceedsNbDims) {
+    SmallVector<OpFoldResult> newOffsets, newSizes, newStrides;
+    return succeeded(combineAccessPatterns(
+        &context, toOpFoldResults(offsetsA), toOpFoldResults(sizesA),
+        toOpFoldResults(stridesA), toOpFoldResults(offsetsB),
+        toOpFoldResults(sizesB), toOpFoldResults(stridesB), newOffsets,
+        newSizes, newStrides, exceedsNbDims));
   }
 
-  bool checkAreAccessPatternsCombinable(const SmallVector<int64_t> &offsetsA,
-                                        const SmallVector<int64_t> &sizesA,
-                                        const SmallVector<int64_t> &stridesA,
-                                        const SmallVector<int64_t> &offsetsB,
-                                        const SmallVector<int64_t> &sizesB,
-                                        const SmallVector<int64_t> &stridesB,
-                                        size_t maxNbDims) {
-    return checkAreAccessPatternsCombinable(
-        offsetsA, sizesA, stridesA, offsetsB, sizesB, stridesB,
-        [&](size_t dim) { return dim > maxNbDims; });
+  bool checkAccessPaternsCombinable(SmallVector<int64_t> offsetsA,
+                                    SmallVector<int64_t> sizesA,
+                                    SmallVector<int64_t> stridesA,
+                                    SmallVector<int64_t> offsetsB,
+                                    SmallVector<int64_t> sizesB,
+                                    SmallVector<int64_t> stridesB,
+                                    size_t maxNbDims) {
+    auto rankTooLarge = [&](size_t r) { return r > maxNbDims; };
+    return checkAccessPaternsCombinable(offsetsA, sizesA, stridesA, offsetsB,
+                                        sizesB, stridesB, rankTooLarge);
   }
 
-  void checkCombineAccessPatterns(
-      const SmallVector<int64_t> offsetsA, const SmallVector<int64_t> sizesA,
-      const SmallVector<int64_t> stridesA, const SmallVector<int64_t> offsetsB,
-      const SmallVector<int64_t> sizesB, const SmallVector<int64_t> stridesB,
-      const SmallVector<int64_t> expectedOffsets,
-      const SmallVector<int64_t> expectedSizes,
-      const SmallVector<int64_t> expectedStrides,
-      function_ref<bool(size_t)> exceedsNbDims, bool shouldSucceed = true) {
-    SmallVector<OpFoldResult> offsetsValuesA = toOpFoldResult(offsetsA);
-    SmallVector<OpFoldResult> sizesValuesA = toOpFoldResult(sizesA);
-    SmallVector<OpFoldResult> stridesValuesA = toOpFoldResult(stridesA);
-    SmallVector<OpFoldResult> offsetsValuesB = toOpFoldResult(offsetsB);
-    SmallVector<OpFoldResult> sizesValuesB = toOpFoldResult(sizesB);
-    SmallVector<OpFoldResult> stridesValuesB = toOpFoldResult(stridesB);
-    SmallVector<OpFoldResult> expectedOffsetsValues =
-        toOpFoldResult(expectedOffsets);
-    SmallVector<OpFoldResult> expectedSizesValues =
-        toOpFoldResult(expectedSizes);
-    SmallVector<OpFoldResult> expectedStridesValues =
-        toOpFoldResult(expectedStrides);
+  bool checkCombine(SmallVector<int64_t> offsetsA, SmallVector<int64_t> sizesA,
+                    SmallVector<int64_t> stridesA,
+                    SmallVector<int64_t> offsetsB, SmallVector<int64_t> sizesB,
+                    SmallVector<int64_t> stridesB,
+                    SmallVector<int64_t> expectedOffsets,
+                    SmallVector<int64_t> expectedSizes,
+                    SmallVector<int64_t> expectedStrides, size_t maxNbDims,
+                    bool checkValues = true) {
     SmallVector<OpFoldResult> newOffsets;
     SmallVector<OpFoldResult> newSizes;
     SmallVector<OpFoldResult> newStrides;
-    if (shouldSucceed) {
-      EXPECT_TRUE(succeeded(combineAccessPatterns(
-          rewriter, offsetsValuesA, sizesValuesA, stridesValuesA,
-          offsetsValuesB, sizesValuesB, stridesValuesB, newOffsets, newSizes,
-          newStrides, exceedsNbDims)));
-      EXPECT_EQ(newOffsets, expectedOffsetsValues);
-      EXPECT_EQ(newSizes, expectedSizesValues);
-      EXPECT_EQ(newStrides, expectedStridesValues);
-    } else {
-      EXPECT_TRUE(failed(combineAccessPatterns(
-          rewriter, offsetsValuesA, sizesValuesA, stridesValuesA,
-          offsetsValuesB, sizesValuesB, stridesValuesB, newOffsets, newSizes,
-          newStrides, exceedsNbDims)));
+
+    auto success = combineAccessPatterns(
+        &context, toOpFoldResults(offsetsA), toOpFoldResults(sizesA),
+        toOpFoldResults(stridesA), toOpFoldResults(offsetsB),
+        toOpFoldResults(sizesB), toOpFoldResults(stridesB), newOffsets,
+        newSizes, newStrides, [&](size_t dim) { return dim > maxNbDims; });
+    if (checkValues) {
+      EXPECT_EQ(fromOpFoldResults(newOffsets), expectedOffsets);
+      EXPECT_EQ(fromOpFoldResults(newSizes), expectedSizes);
+      EXPECT_EQ(fromOpFoldResults(newStrides), expectedStrides);
     }
+    return succeeded(success);
   }
 
-  void checkCombineAccessPatterns(const SmallVector<int64_t> offsetsA,
-                                  const SmallVector<int64_t> sizesA,
-                                  const SmallVector<int64_t> stridesA,
-                                  const SmallVector<int64_t> offsetsB,
-                                  const SmallVector<int64_t> sizesB,
-                                  const SmallVector<int64_t> stridesB,
-                                  const SmallVector<int64_t> expectedOffsets,
-                                  const SmallVector<int64_t> expectedSizes,
-                                  const SmallVector<int64_t> expectedStrides,
-                                  size_t maxNbDims, bool shouldSucceed = true) {
-    checkCombineAccessPatterns(
-        offsetsA, sizesA, stridesA, offsetsB, sizesB, stridesB, expectedOffsets,
-        expectedSizes, expectedStrides,
-        [&](size_t dim) { return dim > maxNbDims; }, shouldSucceed);
+  int64_t getGlobalOffsetDifference(SmallVector<int64_t> offsetsX,
+                                    SmallVector<int64_t> stridesX,
+                                    SmallVector<int64_t> offsetsY,
+                                    SmallVector<int64_t> stridesY) {
+    std::optional<int64_t> goDiff =
+        mlir::iree_compiler::AMDAIE::detail::getGlobalOffsetDifference(
+            toOpFoldResults(offsetsX), toOpFoldResults(stridesX),
+            toOpFoldResults(offsetsY), toOpFoldResults(stridesY));
+
+    EXPECT_TRUE(goDiff.has_value());
+    if (goDiff.has_value()) return goDiff.value();
+
+    return -1;
   }
 
   MLIRContext context;
@@ -121,260 +116,321 @@ class AccessPatternCombinationTest : public ::testing::Test {
   Location loc;
 };
 
+// This test checks correctness in the case where all inputs (offsets and
+// strides) are constant. The cases where they are mlir Values are tested in the
+// lit testing.
+TEST_F(AccessPatternCombinationTest, GlobalOffsetTest) {
+  EXPECT_EQ(getGlobalOffsetDifference({}, {}, {}, {}), 0);
+  EXPECT_EQ(getGlobalOffsetDifference({1}, {1}, {2}, {3}), 1 * 1 - 2 * 3);
+  EXPECT_EQ(
+      getGlobalOffsetDifference({2, 3, 5}, {7, 11, 13}, {1, 2, 3}, {4, 5, 6}),
+      (2 * 7 + 3 * 11 + 5 * 13) - (1 * 4 + 2 * 5 + 3 * 6));
+}
+
 TEST_F(AccessPatternCombinationTest, CombinableAccessPatterns) {
-  EXPECT_TRUE(checkAreAccessPatternsCombinable({}, {}, {}, {}, {}, {}, 1));
   // size(A) == size(B)
-  EXPECT_TRUE(
-      checkAreAccessPatternsCombinable({0}, {16}, {1}, {32}, {16}, {1}, 2));
-  EXPECT_TRUE(checkAreAccessPatternsCombinable({0, 0}, {16, 32}, {64, 1},
-                                               {0, 32}, {16, 32}, {64, 1}, 4));
-  EXPECT_TRUE(checkAreAccessPatternsCombinable({1, 0}, {16, 32}, {64, 1},
-                                               {1, 32}, {16, 32}, {64, 1}, 4));
-  EXPECT_TRUE(checkAreAccessPatternsCombinable({0, 0, 0}, {16, 16, 32},
-                                               {32, 64, 1}, {0, 0, 32},
-                                               {16, 16, 32}, {32, 64, 1}, 4));
-  EXPECT_TRUE(checkAreAccessPatternsCombinable({0, 2, 0}, {16, 16, 32},
-                                               {32, 64, 1}, {0, 2, 32},
-                                               {16, 16, 32}, {32, 64, 1}, 4));
-  EXPECT_TRUE(checkAreAccessPatternsCombinable({32, 0}, {64, 64}, {128, 1},
-                                               {96, 0}, {32, 64}, {128, 1}, 4));
+  EXPECT_TRUE(checkAccessPaternsCombinable({}, {}, {}, {}, {}, {}, 1));
+  EXPECT_TRUE(checkAccessPaternsCombinable({0}, {16}, {1}, {32}, {16}, {1}, 2));
+  EXPECT_TRUE(checkAccessPaternsCombinable({0, 0}, {16, 32}, {64, 1}, {0, 32},
+                                           {16, 32}, {64, 1}, 4));
+  EXPECT_TRUE(checkAccessPaternsCombinable({1, 0}, {16, 32}, {64, 1}, {1, 32},
+                                           {16, 32}, {64, 1}, 4));
+  EXPECT_TRUE(checkAccessPaternsCombinable({0, 0, 0}, {16, 16, 32}, {32, 64, 1},
+                                           {0, 0, 32}, {16, 16, 32},
+                                           {32, 64, 1}, 4));
+  EXPECT_TRUE(checkAccessPaternsCombinable({0, 2, 0}, {16, 16, 32}, {32, 64, 1},
+                                           {0, 2, 32}, {16, 16, 32},
+                                           {32, 64, 1}, 4));
+  EXPECT_TRUE(checkAccessPaternsCombinable({32, 0}, {64, 64}, {128, 1}, {96, 0},
+                                           {32, 64}, {128, 1}, 4));
+
   // Same access patterns
-  EXPECT_TRUE(
-      checkAreAccessPatternsCombinable({0}, {32}, {1}, {0}, {32}, {1}, 2));
-  EXPECT_TRUE(checkAreAccessPatternsCombinable({0, 0}, {16, 32}, {64, 1},
-                                               {0, 0}, {16, 32}, {64, 1}, 4));
+  EXPECT_TRUE(checkAccessPaternsCombinable({0}, {32}, {1}, {0}, {32}, {1}, 2));
+  EXPECT_TRUE(checkAccessPaternsCombinable({0, 0}, {16, 32}, {64, 1}, {0, 0},
+                                           {16, 32}, {64, 1}, 4));
+
   // size(A) > size(B)
-  EXPECT_TRUE(checkAreAccessPatternsCombinable(
-      {0, 0, 0}, {2, 16, 32}, {32, 64, 1}, {0, 64}, {16, 32}, {64, 1}, 4));
-  EXPECT_TRUE(checkAreAccessPatternsCombinable(
-      {0, 0, 0}, {2, 16, 32}, {32, 64, 1}, {1, 0}, {16, 32}, {64, 1}, 4));
-  EXPECT_TRUE(checkAreAccessPatternsCombinable(
-      {0, 0, 32}, {2, 16, 32}, {32, 64, 1}, {0, 96}, {16, 32}, {64, 1}, 4));
-  EXPECT_TRUE(checkAreAccessPatternsCombinable(
-      {0, 2, 0}, {2, 16, 32}, {32, 16, 1}, {6, 0}, {16, 32}, {16, 1}, 4));
+  EXPECT_TRUE(checkAccessPaternsCombinable({0, 0, 0}, {2, 16, 32}, {32, 64, 1},
+                                           {0, 64}, {16, 32}, {64, 1}, 4));
+  EXPECT_TRUE(checkAccessPaternsCombinable({0, 0, 0}, {2, 16, 32}, {32, 64, 1},
+                                           {1, 0}, {16, 32}, {64, 1}, 4));
+  EXPECT_TRUE(checkAccessPaternsCombinable({0, 0, 32}, {2, 16, 32}, {32, 64, 1},
+                                           {0, 96}, {16, 32}, {64, 1}, 4));
+  EXPECT_TRUE(checkAccessPaternsCombinable({0, 2, 0}, {2, 16, 32}, {32, 16, 1},
+                                           {6, 0}, {16, 32}, {16, 1}, 4));
+
   // size(A) > size(B) Same access pattern
-  EXPECT_TRUE(checkAreAccessPatternsCombinable({0, 0}, {0, 32}, {0, 1}, {0},
-                                               {32}, {1}, 2));
-  EXPECT_TRUE(checkAreAccessPatternsCombinable({0, 0}, {7, 32}, {0, 1}, {0},
-                                               {32}, {1}, 2));
-  EXPECT_TRUE(checkAreAccessPatternsCombinable(
-      {1, 0, 0}, {8, 16, 32}, {0, 64, 1}, {0, 0}, {16, 32}, {64, 1}, 4));
+  EXPECT_TRUE(
+      checkAccessPaternsCombinable({0, 0}, {0, 32}, {0, 1}, {0}, {32}, {1}, 2));
+  EXPECT_TRUE(
+      checkAccessPaternsCombinable({0, 0}, {7, 32}, {0, 1}, {0}, {32}, {1}, 2));
+  EXPECT_TRUE(checkAccessPaternsCombinable({1, 0, 0}, {8, 16, 32}, {0, 64, 1},
+                                           {0, 0}, {16, 32}, {64, 1}, 4));
+
   // size(B) > size(A)
-  EXPECT_TRUE(checkAreAccessPatternsCombinable(
+  EXPECT_TRUE(checkAccessPaternsCombinable(
       {0, 0}, {16, 32}, {64, 1}, {0, 0, 32}, {2, 16, 32}, {32, 64, 1}, 4));
-  EXPECT_TRUE(checkAreAccessPatternsCombinable(
-      {0, 0}, {16, 32}, {16, 1}, {0, 2, 0}, {2, 16, 32}, {32, 16, 1}, 4));
-  EXPECT_TRUE(checkAreAccessPatternsCombinable(
+  EXPECT_TRUE(checkAccessPaternsCombinable({0, 0}, {16, 32}, {16, 1}, {0, 2, 0},
+                                           {2, 16, 32}, {32, 16, 1}, 4));
+  EXPECT_TRUE(checkAccessPaternsCombinable(
       {0, 32}, {16, 32}, {64, 1}, {0, 0, 64}, {2, 16, 32}, {32, 64, 1}, 4));
-  EXPECT_TRUE(checkAreAccessPatternsCombinable(
-      {2, 0}, {16, 32}, {16, 1}, {0, 4, 0}, {2, 16, 32}, {32, 16, 1}, 4));
+  EXPECT_TRUE(checkAccessPaternsCombinable({2, 0}, {16, 32}, {16, 1}, {0, 4, 0},
+                                           {2, 16, 32}, {32, 16, 1}, 4));
 }
 
 TEST_F(AccessPatternCombinationTest, NonCombinableAccessPatterns) {
   // |size(A) - size(B)| > 1
-  EXPECT_FALSE(checkAreAccessPatternsCombinable({}, {}, {}, {0, 0}, {16, 32},
-                                                {64, 1}, 3));
-  EXPECT_FALSE(checkAreAccessPatternsCombinable({0}, {32}, {1}, {0, 0, 32},
-                                                {2, 16, 32}, {128, 64, 1}, 3));
-  EXPECT_FALSE(checkAreAccessPatternsCombinable({0, 0}, {16, 32}, {64, 1}, {},
-                                                {}, {}, 3));
-  EXPECT_FALSE(checkAreAccessPatternsCombinable(
-      {0, 0, 32}, {2, 16, 32}, {128, 64, 1}, {0}, {32}, {1}, 3));
+  EXPECT_FALSE(
+      checkAccessPaternsCombinable({}, {}, {}, {0, 0}, {16, 32}, {64, 1}, 3));
+  EXPECT_FALSE(checkAccessPaternsCombinable({0}, {32}, {1}, {0, 0, 32},
+                                            {2, 16, 32}, {128, 64, 1}, 3));
+  EXPECT_FALSE(
+      checkAccessPaternsCombinable({0, 0}, {16, 32}, {64, 1}, {}, {}, {}, 3));
+  EXPECT_FALSE(checkAccessPaternsCombinable({0, 0, 32}, {2, 16, 32},
+                                            {128, 64, 1}, {0}, {32}, {1}, 3));
+
   // Too few dimensions
   EXPECT_FALSE(
-      checkAreAccessPatternsCombinable({0}, {16}, {1}, {32}, {16}, {1}, 1));
-  EXPECT_FALSE(
-      checkAreAccessPatternsCombinable({0}, {32}, {1}, {0}, {32}, {1}, 1));
-  EXPECT_FALSE(checkAreAccessPatternsCombinable({0, 0}, {16, 32}, {64, 1},
-                                                {0, 32}, {16, 32}, {64, 1}, 2));
-  EXPECT_FALSE(checkAreAccessPatternsCombinable({0, 0, 0}, {16, 16, 32},
-                                                {32, 64, 1}, {0, 0, 32},
-                                                {16, 16, 32}, {32, 64, 1}, 3));
+      checkAccessPaternsCombinable({0}, {16}, {1}, {32}, {16}, {1}, 1));
+  EXPECT_FALSE(checkAccessPaternsCombinable({0}, {32}, {1}, {0}, {32}, {1}, 1));
+  EXPECT_FALSE(checkAccessPaternsCombinable({0, 0}, {16, 32}, {64, 1}, {0, 32},
+                                            {16, 32}, {64, 1}, 2));
+  EXPECT_FALSE(checkAccessPaternsCombinable({0, 0, 0}, {16, 16, 32},
+                                            {32, 64, 1}, {0, 0, 32},
+                                            {16, 16, 32}, {32, 64, 1}, 3));
+
   // size(A) > size(B) Incompatible offset
-  EXPECT_FALSE(checkAreAccessPatternsCombinable(
-      {0, 0, 0}, {2, 16, 32}, {32, 64, 1}, {0, 32}, {16, 32}, {64, 1}, 4));
-  EXPECT_FALSE(checkAreAccessPatternsCombinable(
-      {0, 0, 0}, {2, 16, 32}, {32, 64, 1}, {0, 128}, {16, 32}, {64, 1}, 4));
-  EXPECT_FALSE(checkAreAccessPatternsCombinable(
-      {0, 0, 0}, {2, 16, 32}, {32, 64, 1}, {64, 0}, {16, 32}, {64, 1}, 4));
+  EXPECT_FALSE(checkAccessPaternsCombinable({0, 0, 0}, {2, 16, 32}, {32, 64, 1},
+                                            {0, 32}, {16, 32}, {64, 1}, 4));
+  EXPECT_FALSE(checkAccessPaternsCombinable({0, 0, 0}, {2, 16, 32}, {32, 64, 1},
+                                            {0, 128}, {16, 32}, {64, 1}, 4));
+  EXPECT_FALSE(checkAccessPaternsCombinable({0, 0, 0}, {2, 16, 32}, {32, 64, 1},
+                                            {64, 0}, {16, 32}, {64, 1}, 4));
+
   // size(A) > size(B) Same access pattern
-  EXPECT_FALSE(checkAreAccessPatternsCombinable({0, 0}, {32, 64}, {128, 1}, {0},
-                                                {64}, {1}, 4));
-  EXPECT_FALSE(checkAreAccessPatternsCombinable({1, 0}, {32, 64}, {128, 1}, {0},
-                                                {64}, {1}, 4));
-  EXPECT_FALSE(checkAreAccessPatternsCombinable(
+  EXPECT_FALSE(checkAccessPaternsCombinable({0, 0}, {32, 64}, {128, 1}, {0},
+                                            {64}, {1}, 4));
+  EXPECT_FALSE(checkAccessPaternsCombinable({1, 0}, {32, 64}, {128, 1}, {0},
+                                            {64}, {1}, 4));
+  EXPECT_FALSE(checkAccessPaternsCombinable(
       {0, 0, 0}, {32, 64, 128}, {32, 128, 1}, {0, 0}, {64, 128}, {128, 1}, 4));
-  EXPECT_FALSE(checkAreAccessPatternsCombinable(
+  EXPECT_FALSE(checkAccessPaternsCombinable(
       {2, 0, 0}, {32, 64, 128}, {32, 128, 1}, {0, 0}, {64, 128}, {128, 1}, 4));
+
   // size(B) > size(A) Incompatible offset
-  EXPECT_FALSE(checkAreAccessPatternsCombinable(
+  EXPECT_FALSE(checkAccessPaternsCombinable(
       {0, 0}, {16, 32}, {64, 1}, {0, 0, 16}, {2, 16, 32}, {32, 64, 1}, 4));
-  EXPECT_FALSE(checkAreAccessPatternsCombinable(
+  EXPECT_FALSE(checkAccessPaternsCombinable(
       {0, 0}, {16, 32}, {64, 1}, {0, 0, 96}, {2, 16, 32}, {32, 64, 1}, 4));
-  EXPECT_FALSE(checkAreAccessPatternsCombinable(
+  EXPECT_FALSE(checkAccessPaternsCombinable(
       {0, 0}, {16, 32}, {64, 1}, {0, 1, 0}, {2, 16, 32}, {32, 64, 1}, 4));
+
   // size(B) > size(A) Same access pattern
-  EXPECT_FALSE(checkAreAccessPatternsCombinable({0}, {32}, {1}, {0, 0}, {2, 32},
-                                                {8, 1}, 4));
-  EXPECT_FALSE(checkAreAccessPatternsCombinable({0}, {32}, {1}, {2, 0}, {2, 32},
-                                                {8, 1}, 4));
+  EXPECT_FALSE(
+      checkAccessPaternsCombinable({0}, {32}, {1}, {0, 0}, {2, 32}, {8, 1}, 4));
+  EXPECT_FALSE(
+      checkAccessPaternsCombinable({0}, {32}, {1}, {2, 0}, {2, 32}, {8, 1}, 4));
+
   // size(A) == size(B)
-  EXPECT_FALSE(checkAreAccessPatternsCombinable(
-      {32, 0}, {64, 64}, {128, 1}, {32, 0}, {32, 64}, {128, 1}, 4));
-  EXPECT_FALSE(checkAreAccessPatternsCombinable(
-      {32, 0}, {32, 64}, {128, 1}, {96, 0}, {64, 64}, {128, 1}, 4));
+  EXPECT_FALSE(checkAccessPaternsCombinable({32, 0}, {64, 64}, {128, 1},
+                                            {32, 0}, {32, 64}, {128, 1}, 4));
+  EXPECT_FALSE(checkAccessPaternsCombinable({32, 0}, {32, 64}, {128, 1},
+                                            {96, 0}, {64, 64}, {128, 1}, 4));
 }
 
 TEST_F(AccessPatternCombinationTest, AnyNbDims) {
   auto exceedsNbDims = [](size_t dims) { return false; };
-  EXPECT_TRUE(checkAreAccessPatternsCombinable({0}, {16}, {1}, {32}, {16}, {1},
-                                               exceedsNbDims));
-  EXPECT_TRUE(checkAreAccessPatternsCombinable(
-      {0, 0, 0}, {16, 16, 32}, {32, 64, 1}, {0, 0, 32}, {16, 16, 32},
-      {32, 64, 1}, exceedsNbDims));
+  EXPECT_TRUE(checkAccessPaternsCombinable({0}, {16}, {1}, {32}, {16}, {1},
+                                           exceedsNbDims));
+  EXPECT_TRUE(checkAccessPaternsCombinable({0, 0, 0}, {16, 16, 32}, {32, 64, 1},
+                                           {0, 0, 32}, {16, 16, 32},
+                                           {32, 64, 1}, exceedsNbDims));
 }
 
 TEST_F(AccessPatternCombinationTest, NoDims) {
   auto exceedsNbDims = [](size_t dims) { return true; };
-  EXPECT_FALSE(checkAreAccessPatternsCombinable({0}, {16}, {1}, {32}, {16}, {1},
-                                                exceedsNbDims));
-  EXPECT_FALSE(checkAreAccessPatternsCombinable(
+  EXPECT_FALSE(checkAccessPaternsCombinable({0}, {16}, {1}, {32}, {16}, {1},
+                                            exceedsNbDims));
+  EXPECT_FALSE(checkAccessPaternsCombinable(
       {0, 0, 0}, {16, 16, 32}, {32, 64, 1}, {0, 0, 32}, {16, 16, 32},
       {32, 64, 1}, exceedsNbDims));
 }
 
 TEST_F(AccessPatternCombinationTest, CombineAccessPatterns) {
-  checkCombineAccessPatterns({}, {}, {}, {}, {}, {}, {}, {}, {}, 1);
   // size(A) == size(B)
-  checkCombineAccessPatterns({0}, {16}, {1}, {32}, {16}, {1}, {0, 0}, {2, 16},
-                             {32, 1}, 2);
-  checkCombineAccessPatterns({0, 0}, {8, 16}, {8, 1}, {0, 32}, {8, 16}, {8, 1},
-                             {0, 0, 0}, {2, 8, 16}, {32, 8, 1}, 3);
-  checkCombineAccessPatterns({0, 32}, {8, 16}, {8, 1}, {0, 64}, {8, 16}, {8, 1},
-                             {0, 0, 32}, {2, 8, 16}, {32, 8, 1}, 3);
-  checkCombineAccessPatterns({1, 32}, {8, 16}, {8, 1}, {1, 64}, {8, 16}, {8, 1},
-                             {0, 1, 32}, {2, 8, 16}, {32, 8, 1}, 3);
-  checkCombineAccessPatterns({0, 0}, {8, 16}, {8, 1}, {32, 0}, {8, 16}, {8, 1},
-                             {0, 0, 0}, {2, 8, 16}, {256, 8, 1}, 3);
-  checkCombineAccessPatterns({8, 0}, {8, 16}, {8, 1}, {40, 0}, {8, 16}, {8, 1},
-                             {0, 8, 0}, {2, 8, 16}, {256, 8, 1}, 3);
-  checkCombineAccessPatterns({0, 0, 0}, {16, 8, 16}, {16, 8, 1}, {0, 0, 32},
-                             {16, 8, 16}, {16, 8, 1}, {0, 0, 0, 0},
-                             {2, 16, 8, 16}, {32, 16, 8, 1}, 4);
-  checkCombineAccessPatterns({0, 0, 32}, {16, 8, 16}, {16, 8, 1}, {0, 0, 64},
-                             {16, 8, 16}, {16, 8, 1}, {0, 0, 0, 32},
-                             {2, 16, 8, 16}, {32, 16, 8, 1}, 4);
-  checkCombineAccessPatterns({0, 0, 0}, {16, 8, 16}, {16, 8, 1}, {32, 0, 0},
-                             {16, 8, 16}, {16, 8, 1}, {0, 0, 0, 0},
-                             {2, 16, 8, 16}, {512, 16, 8, 1}, 4);
-  checkCombineAccessPatterns({8, 0, 0}, {16, 8, 16}, {16, 8, 1}, {40, 0, 0},
-                             {16, 8, 16}, {16, 8, 1}, {0, 8, 0, 0},
-                             {2, 16, 8, 16}, {512, 16, 8, 1}, 4);
-  checkCombineAccessPatterns({32, 0}, {64, 64}, {128, 1}, {96, 0}, {32, 64},
-                             {128, 1}, {32, 0}, {96, 64}, {128, 1}, 4);
+  EXPECT_TRUE(checkCombine({0, 0}, {8, 16}, {8, 1}, {0, 32}, {8, 16}, {8, 1},
+                           {0, 0, 0}, {2, 8, 16}, {32, 8, 1}, 3));
+  EXPECT_TRUE(checkCombine({}, {}, {}, {}, {}, {}, {}, {}, {}, 1));
+  EXPECT_TRUE(checkCombine({0}, {16}, {1}, {32}, {16}, {1}, {0, 0}, {2, 16},
+                           {32, 1}, 2));
+  EXPECT_TRUE(checkCombine({0, 32}, {8, 16}, {8, 1}, {0, 64}, {8, 16}, {8, 1},
+                           {0, 0, 32}, {2, 8, 16}, {32, 8, 1}, 3));
+  EXPECT_TRUE(checkCombine({1, 32}, {8, 16}, {8, 1}, {1, 64}, {8, 16}, {8, 1},
+                           {0, 1, 32}, {2, 8, 16}, {32, 8, 1}, 3));
+  EXPECT_TRUE(checkCombine({0, 0}, {8, 16}, {8, 1}, {32, 0}, {8, 16}, {8, 1},
+                           {0, 0, 0}, {2, 8, 16}, {256, 8, 1}, 3));
+  EXPECT_TRUE(checkCombine({8, 0}, {8, 16}, {8, 1}, {40, 0}, {8, 16}, {8, 1},
+                           {0, 8, 0}, {2, 8, 16}, {256, 8, 1}, 3));
+  EXPECT_TRUE(checkCombine({0, 0, 0}, {16, 8, 16}, {16, 8, 1}, {0, 0, 32},
+                           {16, 8, 16}, {16, 8, 1}, {0, 0, 0, 0},
+                           {2, 16, 8, 16}, {32, 16, 8, 1}, 4));
+  EXPECT_TRUE(checkCombine({0, 0, 32}, {16, 8, 16}, {16, 8, 1}, {0, 0, 64},
+                           {16, 8, 16}, {16, 8, 1}, {0, 0, 0, 32},
+                           {2, 16, 8, 16}, {32, 16, 8, 1}, 4));
+  EXPECT_TRUE(checkCombine({0, 0, 0}, {16, 8, 16}, {16, 8, 1}, {32, 0, 0},
+                           {16, 8, 16}, {16, 8, 1}, {0, 0, 0, 0},
+                           {2, 16, 8, 16}, {512, 16, 8, 1}, 4));
+  EXPECT_TRUE(checkCombine({8, 0, 0}, {16, 8, 16}, {16, 8, 1}, {40, 0, 0},
+                           {16, 8, 16}, {16, 8, 1}, {0, 8, 0, 0},
+                           {2, 16, 8, 16}, {512, 16, 8, 1}, 4));
+  EXPECT_TRUE(checkCombine({32, 0}, {64, 64}, {128, 1}, {96, 0}, {32, 64},
+                           {128, 1}, {32, 0}, {96, 64}, {128, 1}, 4));
+
   // size(A) == size(B) Same access pattern
-  checkCombineAccessPatterns({0}, {32}, {1}, {0}, {32}, {1}, {0, 0}, {2, 32},
-                             {0, 1}, 2);
-  checkCombineAccessPatterns({0, 0}, {16, 32}, {16, 1}, {0, 0}, {16, 32},
-                             {16, 1}, {0, 0, 0}, {2, 16, 32}, {0, 16, 1}, 3);
+  EXPECT_TRUE(
+      checkCombine({0}, {32}, {1}, {0}, {32}, {1}, {0, 0}, {2, 32}, {0, 1}, 2));
+  EXPECT_TRUE(checkCombine({0, 0}, {16, 32}, {16, 1}, {0, 0}, {16, 32}, {16, 1},
+                           {0, 0, 0}, {2, 16, 32}, {0, 16, 1}, 3));
+
   // size(A) > size(B)
-  checkCombineAccessPatterns({0, 0}, {2, 32}, {64, 1}, {128}, {32}, {1}, {0, 0},
-                             {3, 32}, {64, 1}, 3);
-  checkCombineAccessPatterns({0, 32}, {3, 32}, {64, 1}, {224}, {32}, {1},
-                             {0, 32}, {4, 32}, {64, 1}, 3);
-  checkCombineAccessPatterns({0, 0, 0}, {2, 16, 32}, {32, 64, 1}, {0, 64},
-                             {16, 32}, {64, 1}, {0, 0, 0}, {3, 16, 32},
-                             {32, 64, 1}, 4);
-  checkCombineAccessPatterns({0, 0, 0}, {2, 16, 32}, {32, 64, 1}, {1, 0},
-                             {16, 32}, {64, 1}, {0, 0, 0}, {3, 16, 32},
-                             {32, 64, 1}, 4);
-  checkCombineAccessPatterns({0, 1, 0}, {2, 16, 32}, {32, 64, 1}, {2, 0},
-                             {16, 32}, {64, 1}, {0, 1, 0}, {3, 16, 32},
-                             {32, 64, 1}, 4);
-  checkCombineAccessPatterns({0, 1, 32}, {2, 16, 32}, {32, 64, 1}, {2, 32},
-                             {16, 32}, {64, 1}, {0, 1, 32}, {3, 16, 32},
-                             {32, 64, 1}, 4);
+  EXPECT_TRUE(checkCombine({0, 0}, {2, 32}, {64, 1}, {128}, {32}, {1}, {0, 0},
+                           {3, 32}, {64, 1}, 3, true));
+  EXPECT_TRUE(checkCombine({0, 32}, {3, 32}, {64, 1}, {224}, {32}, {1}, {0, 32},
+                           {4, 32}, {64, 1}, 3, true));
+  EXPECT_TRUE(checkCombine({0, 0, 0}, {2, 16, 32}, {32, 64, 1}, {0, 64},
+                           {16, 32}, {64, 1}, {0, 0, 0}, {3, 16, 32},
+                           {32, 64, 1}, 4));
+  EXPECT_TRUE(checkCombine({0, 0, 0}, {2, 16, 32}, {32, 64, 1}, {1, 0},
+                           {16, 32}, {64, 1}, {0, 0, 0}, {3, 16, 32},
+                           {32, 64, 1}, 4));
+  EXPECT_TRUE(checkCombine({0, 1, 0}, {2, 16, 32}, {32, 64, 1}, {2, 0},
+                           {16, 32}, {64, 1}, {0, 1, 0}, {3, 16, 32},
+                           {32, 64, 1}, 4));
+  EXPECT_TRUE(checkCombine({0, 1, 32}, {2, 16, 32}, {32, 64, 1}, {2, 32},
+                           {16, 32}, {64, 1}, {0, 1, 32}, {3, 16, 32},
+                           {32, 64, 1}, 4));
+
   // size(A) > size(B) Same access pattern
-  checkCombineAccessPatterns({0, 0}, {7, 32}, {0, 1}, {0}, {32}, {1}, {0, 0},
-                             {8, 32}, {0, 1}, 3);
-  checkCombineAccessPatterns({1, 0}, {7, 32}, {0, 1}, {0}, {32}, {1}, {1, 0},
-                             {8, 32}, {0, 1}, 3);
-  checkCombineAccessPatterns({1, 0}, {0, 32}, {0, 1}, {0}, {32}, {1}, {1, 0},
-                             {1, 32}, {0, 1}, 3);
+  EXPECT_TRUE(checkCombine({0, 0}, {7, 32}, {0, 1}, {0}, {32}, {1}, {0, 0},
+                           {8, 32}, {0, 1}, 3, true));
+  EXPECT_TRUE(checkCombine({1, 0}, {7, 32}, {0, 1}, {0}, {32}, {1}, {1, 0},
+                           {8, 32}, {0, 1}, 3, true));
+  EXPECT_TRUE(
+      checkCombine({1, 0}, {0, 32}, {0, 1}, {0}, {32}, {1}, {0}, {32}, {1}, 3));
+
   // size(B) > size(A)
-  checkCombineAccessPatterns({0}, {32}, {1}, {0, 64}, {2, 32}, {64, 1}, {0, 0},
-                             {3, 32}, {64, 1}, 3);
-  checkCombineAccessPatterns({32}, {32}, {1}, {0, 96}, {2, 32}, {64, 1},
-                             {0, 32}, {3, 32}, {64, 1}, 3);
-  checkCombineAccessPatterns({0, 0}, {16, 32}, {16, 1}, {0, 0, 64}, {2, 16, 32},
-                             {64, 16, 1}, {0, 0, 0}, {3, 16, 32}, {64, 16, 1},
-                             4);
-  checkCombineAccessPatterns({0, 32}, {16, 32}, {16, 1}, {0, 0, 96},
-                             {2, 16, 32}, {64, 16, 1}, {0, 0, 32}, {3, 16, 32},
-                             {64, 16, 1}, 4);
-  checkCombineAccessPatterns({2, 0}, {16, 32}, {16, 1}, {0, 6, 0}, {2, 16, 32},
-                             {64, 16, 1}, {0, 2, 0}, {3, 16, 32}, {64, 16, 1},
-                             4);
-  checkCombineAccessPatterns({2, 32}, {16, 32}, {16, 1}, {0, 6, 32},
-                             {2, 16, 32}, {64, 16, 1}, {0, 2, 32}, {3, 16, 32},
-                             {64, 16, 1}, 4);
-  checkCombineAccessPatterns({0}, {32}, {1}, {1, 0}, {2, 32}, {64, 1}, {0, 0},
-                             {3, 32}, {64, 1}, 3);
+  EXPECT_TRUE(checkCombine({0}, {32}, {1}, {0, 64}, {2, 32}, {64, 1}, {0, 0},
+                           {3, 32}, {64, 1}, 3, true));
+  EXPECT_TRUE(checkCombine({32}, {32}, {1}, {0, 96}, {2, 32}, {64, 1}, {0, 32},
+                           {3, 32}, {64, 1}, 3, true));
+  EXPECT_TRUE(checkCombine({0, 0}, {16, 32}, {16, 1}, {0, 0, 64}, {2, 16, 32},
+                           {64, 16, 1}, {0, 0, 0}, {3, 16, 32}, {64, 16, 1},
+                           4));
+  EXPECT_TRUE(checkCombine({0, 32}, {16, 32}, {16, 1}, {0, 0, 96}, {2, 16, 32},
+                           {64, 16, 1}, {0, 0, 32}, {3, 16, 32}, {64, 16, 1},
+                           4));
+  EXPECT_TRUE(checkCombine({2, 0}, {16, 32}, {16, 1}, {0, 6, 0}, {2, 16, 32},
+                           {64, 16, 1}, {0, 2, 0}, {3, 16, 32}, {64, 16, 1},
+                           4));
+  EXPECT_TRUE(checkCombine({2, 32}, {16, 32}, {16, 1}, {0, 6, 32}, {2, 16, 32},
+                           {64, 16, 1}, {0, 2, 32}, {3, 16, 32}, {64, 16, 1},
+                           4));
+  EXPECT_TRUE(checkCombine({0}, {32}, {1}, {1, 0}, {2, 32}, {64, 1}, {0, 0},
+                           {3, 32}, {64, 1}, 3, true));
+
   // size(B) > size(A) Same access pattern
-  checkCombineAccessPatterns({0}, {32}, {1}, {1, 0}, {3, 32}, {16, 1}, {0, 0},
-                             {4, 32}, {16, 1}, 3);
-  checkCombineAccessPatterns({0, 0}, {16, 32}, {16, 1}, {1, 0, 0}, {3, 16, 32},
-                             {64, 16, 1}, {0, 0, 0}, {4, 16, 32}, {64, 16, 1},
-                             3);
+  EXPECT_TRUE(checkCombine({0}, {32}, {1}, {1, 0}, {3, 32}, {16, 1}, {0, 0},
+                           {4, 32}, {16, 1}, 3, true));
+  EXPECT_TRUE(checkCombine({0, 0}, {16, 32}, {16, 1}, {1, 0, 0}, {3, 16, 32},
+                           {64, 16, 1}, {0, 0, 0}, {4, 16, 32}, {64, 16, 1},
+                           3));
+  EXPECT_TRUE(checkCombine({}, {}, {}, {}, {}, {}, {}, {}, {}, 100));
+  EXPECT_TRUE(checkCombine({0, 0}, {16, 32}, {16, 1}, {0, 32}, {16, 32},
+                           {16, 1}, {0, 0, 0}, {2, 16, 32}, {32, 16, 1}, 100));
+}
+
+TEST_F(AccessPatternCombinationTest, StrideMatching) {
+  EXPECT_TRUE(checkCombine({0, 0}, {8, 16}, {64, 1},      //
+                           {8 * 64, 0}, {1, 16}, {1, 1},  //
+                           {0, 0}, {9, 16}, {64, 1}, 3));
+
+  // offset A : 4*64
+  // offset B : 12*64
+  // offset difference: 8*64
+  // for A, size[0]*stride[0] is 8*64 (= offset difference)
+  // ==> no new dimension required.
+  EXPECT_TRUE(checkCombine({4, 0}, {8, 16}, {64, 1},       //
+                           {12 * 64, 0}, {1, 16}, {1, 1},  //
+                           {4, 0}, {9, 16}, {64, 1}, 3));
+
+  // First access pattern is [10,...19]
+  // Second access pattern is [13,...,22].
+  //
+  // This is
+  // for d0 = 0:2
+  //   for d1 = 0:10
+  //    access (d0+0)*3 + (d1+10)*1
+  //
+  // from which we one set of possible new params:
+  // size: [2, 10] offset: [0, 10] stride:[3, 1]
+  EXPECT_TRUE(checkCombine({10}, {10}, {1},          //
+                           {2, 5}, {1, 10}, {4, 1},  //
+                           {0, 10}, {2, 10}, {3, 1}, 4, true));
+
+  // First access pattern is [10,...,19]
+  // Second access pattern is [8,...,17].
+  // so they cannot be merged, as the difference between the pointers to the
+  // first elements is negative.
+  EXPECT_FALSE(checkCombine({10}, {10}, {1},          //
+                            {2, 0}, {1, 10}, {4, 1},  //
+                            {}, {}, {}, 4, false));
+
+  // First access pattern is [10,...,19]
+  // Second access pattern is [20,...,29].
+  // so these could in theory be combined into a rank-1 access, but merging
+  // dimensions that are not size 1 is not the responsibility of this function.
+  EXPECT_TRUE(checkCombine({10}, {10}, {1},          //
+                           {4, 4}, {1, 10}, {4, 1},  //
+                           {0, 10}, {2, 10}, {10, 1}, 4, true));
 }
 
 TEST_F(AccessPatternCombinationTest, FailCombineAccessPatterns) {
   // |size(A) - size(B)| > 1
-  checkCombineAccessPatterns({}, {}, {}, {0, 0}, {16, 32}, {16, 1}, {}, {}, {},
-                             3, false);
-  checkCombineAccessPatterns({0, 0}, {16, 32}, {16, 1}, {}, {}, {}, {}, {}, {},
-                             3, false);
+  EXPECT_FALSE(checkCombine({}, {}, {}, {0, 0}, {16, 32}, {16, 1}, {}, {}, {},
+                            3, false));
+  EXPECT_FALSE(checkCombine({0, 0}, {16, 32}, {16, 1}, {}, {}, {}, {}, {}, {},
+                            3, false));
   // Too few dimensions
-  checkCombineAccessPatterns({0, 0}, {16, 32}, {16, 1}, {0, 32}, {16, 32},
-                             {16, 1}, {}, {}, {}, 2, false);
+  EXPECT_FALSE(checkCombine({0, 0}, {16, 32}, {16, 1}, {0, 32}, {16, 32},
+                            {16, 1}, {}, {}, {}, 2, false));
+
   // size(A) > size(B) Incompatible offset
-  checkCombineAccessPatterns({0, 0}, {2, 32}, {64, 1}, {96}, {32}, {1}, {0, 0},
-                             {3, 32}, {64, 1}, 3, false);
-  checkCombineAccessPatterns({0, 0}, {2, 32}, {64, 1}, {256}, {32}, {1}, {0, 0},
-                             {3, 32}, {64, 1}, 3, false);
+  EXPECT_FALSE(checkCombine({0, 0}, {2, 32}, {64, 1}, {96}, {32}, {1}, {0, 0},
+                            {3, 32}, {64, 1}, 3, false));
+  EXPECT_FALSE(checkCombine({0, 0}, {2, 32}, {64, 1}, {256}, {32}, {1}, {0, 0},
+                            {3, 32}, {64, 1}, 3, false));
   // size(B) > size(A) Same access pattern
-  checkCombineAccessPatterns({0, 0}, {16, 32}, {16, 1}, {0, 0, 0}, {3, 16, 32},
-                             {64, 16, 1}, {0, 0, 0}, {4, 16, 32}, {64, 16, 1},
-                             3, false);
-  checkCombineAccessPatterns({0, 0}, {16, 32}, {16, 1}, {2, 0, 0}, {3, 16, 32},
-                             {64, 16, 1}, {0, 0, 0}, {4, 16, 32}, {64, 16, 1},
-                             3, false);
+  EXPECT_FALSE(checkCombine({0, 0}, {16, 32}, {16, 1}, {0, 0, 0}, {3, 16, 32},
+                            {64, 16, 1}, {0, 0, 0}, {4, 16, 32}, {64, 16, 1}, 3,
+                            false));
+  EXPECT_FALSE(checkCombine({0, 0}, {16, 32}, {16, 1}, {2, 0, 0}, {3, 16, 32},
+                            {64, 16, 1}, {0, 0, 0}, {4, 16, 32}, {64, 16, 1}, 3,
+                            false));
+
   // size(B) > size(A) Incompatible offset
-  checkCombineAccessPatterns({0}, {32}, {1}, {0, 32}, {2, 32}, {64, 1}, {0, 0},
-                             {3, 32}, {64, 1}, 3, false);
-  checkCombineAccessPatterns({0}, {32}, {1}, {0, 96}, {2, 32}, {64, 1}, {0, 0},
-                             {3, 32}, {64, 1}, 3, false);
+  EXPECT_FALSE(checkCombine({0}, {32}, {1}, {0, 32}, {2, 32}, {64, 1}, {0, 0},
+                            {3, 32}, {64, 1}, 3, false));
+  EXPECT_FALSE(checkCombine({0}, {32}, {1}, {0, 96}, {2, 32}, {64, 1}, {0, 0},
+                            {3, 32}, {64, 1}, 3, false));
 
   // size(A) == size(B) Incompatible offset
-  checkCombineAccessPatterns({32, 0}, {32, 64}, {128, 1}, {96, 0}, {64, 64},
-                             {128, 1}, {32, 0}, {96, 64}, {128, 1}, 4, false);
-}
-
-TEST_F(AccessPatternCombinationTest, CombineAccessPatternsAnyNbDims) {
-  auto exceedsNbDims = [](size_t dims) { return false; };
-  checkCombineAccessPatterns({}, {}, {}, {}, {}, {}, {}, {}, {}, exceedsNbDims);
-  checkCombineAccessPatterns({0, 0}, {16, 32}, {16, 1}, {0, 32}, {16, 32},
-                             {16, 1}, {0, 0, 0}, {2, 16, 32}, {32, 16, 1},
-                             exceedsNbDims);
-}
-
-TEST_F(AccessPatternCombinationTest, CombineAccessPatternsNoDims) {
-  auto exceedsNbDims = [](size_t dims) { return true; };
-  checkCombineAccessPatterns({0}, {16}, {1}, {32}, {16}, {1}, {}, {}, {},
-                             exceedsNbDims, false);
-  checkCombineAccessPatterns({0, 0}, {16, 32}, {16, 1}, {0, 32}, {16, 32},
-                             {16, 1}, {0, 0, 0}, {2, 16, 32}, {32, 16, 1},
-                             exceedsNbDims, false);
+  EXPECT_FALSE(checkCombine({32, 0}, {32, 64}, {128, 1}, {96, 0}, {64, 64},
+                            {128, 1}, {32, 0}, {96, 64}, {128, 1}, 4, false));
+  EXPECT_FALSE(
+      checkCombine({0}, {16}, {1}, {32}, {16}, {1}, {}, {}, {}, 0, false));
+  EXPECT_FALSE(checkCombine({0, 0}, {16, 32}, {16, 1}, {0, 32}, {16, 32},
+                            {16, 1}, {0, 0, 0}, {2, 16, 32}, {32, 16, 1}, 0,
+                            false));
 }
 
 class FoldTest : public ::testing::Test {
@@ -383,29 +439,27 @@ class FoldTest : public ::testing::Test {
     context.loadDialect<arith::ArithDialect>();
   }
 
-  SmallVector<OpFoldResult> toOpFoldResult(ArrayRef<int64_t> values) {
+  SmallVector<OpFoldResult> toOpFoldResults(SmallVector<int64_t> values) {
     return llvm::map_to_vector(values, [&](int64_t v) -> OpFoldResult {
       return getAsIndexOpFoldResult(&context, v);
     });
   }
 
-  void checkFoldLinearDims(const SmallVector<int64_t> offsets,
-                           const SmallVector<int64_t> sizes,
-                           const SmallVector<int64_t> strides,
-                           ArrayRef<int64_t> maxSizes,
-                           const SmallVector<int64_t> expectedOffsets,
-                           const SmallVector<int64_t> expectedSizes,
-                           const SmallVector<int64_t> expectedStrides,
-                           bool shouldSucceed = true) {
-    SmallVector<OpFoldResult> offsetsValues = toOpFoldResult(offsets);
-    SmallVector<OpFoldResult> sizesValues = toOpFoldResult(sizes);
-    SmallVector<OpFoldResult> stridesValues = toOpFoldResult(strides);
+  void checkFoldLinearDims(
+      SmallVector<int64_t> offsets, SmallVector<int64_t> sizes,
+      SmallVector<int64_t> strides, SmallVector<int64_t> maxSizes,
+      SmallVector<int64_t> expectedOffsets, SmallVector<int64_t> expectedSizes,
+      SmallVector<int64_t> expectedStrides, bool shouldSucceed = true) {
+    SmallVector<OpFoldResult> offsetsValues = toOpFoldResults(offsets);
+    SmallVector<OpFoldResult> sizesValues = toOpFoldResults(sizes);
+    SmallVector<OpFoldResult> stridesValues = toOpFoldResults(strides);
+
     SmallVector<OpFoldResult> expectedOffsetsValues =
-        toOpFoldResult(expectedOffsets);
+        toOpFoldResults(expectedOffsets);
     SmallVector<OpFoldResult> expectedSizesValues =
-        toOpFoldResult(expectedSizes);
+        toOpFoldResults(expectedSizes);
     SmallVector<OpFoldResult> expectedStridesValues =
-        toOpFoldResult(expectedStrides);
+        toOpFoldResults(expectedStrides);
     SmallVector<OpFoldResult> newOffsets;
     SmallVector<OpFoldResult> newSizes;
     SmallVector<OpFoldResult> newStrides;
@@ -428,37 +482,30 @@ class FoldTest : public ::testing::Test {
     EXPECT_EQ(newStrides, expectedStridesValues);
   }
 
-  void checkFoldUnitDims(const SmallVector<int64_t> offsets,
-                         const SmallVector<int64_t> sizes,
-                         const SmallVector<int64_t> strides,
-                         const SmallVector<int64_t> expectedOffsets,
-                         const SmallVector<int64_t> expectedSizes,
-                         const SmallVector<int64_t> expectedStrides,
-                         bool shouldSucceed = true) {
-    SmallVector<OpFoldResult> offsetsValues = toOpFoldResult(offsets);
-    SmallVector<OpFoldResult> sizesValues = toOpFoldResult(sizes);
-    SmallVector<OpFoldResult> stridesValues = toOpFoldResult(strides);
-    SmallVector<OpFoldResult> expectedOffsetsValues =
-        toOpFoldResult(expectedOffsets);
-    SmallVector<OpFoldResult> expectedSizesValues =
-        toOpFoldResult(expectedSizes);
-    SmallVector<OpFoldResult> expectedStridesValues =
-        toOpFoldResult(expectedStrides);
-    SmallVector<OpFoldResult> newOffsets;
-    SmallVector<OpFoldResult> newSizes;
-    SmallVector<OpFoldResult> newStrides;
-    if (shouldSucceed) {
-      EXPECT_TRUE(succeeded(foldUnitDims(&context, offsetsValues, sizesValues,
-                                         stridesValues, newOffsets, newSizes,
-                                         newStrides)));
-      EXPECT_EQ(newOffsets, expectedOffsetsValues);
-      EXPECT_EQ(newSizes, expectedSizesValues);
-      EXPECT_EQ(newStrides, expectedStridesValues);
-    } else {
-      EXPECT_TRUE(failed(foldUnitDims(&context, offsetsValues, sizesValues,
-                                      stridesValues, newOffsets, newSizes,
-                                      newStrides)));
-    }
+  bool checkFoldUnitDims(SmallVector<int64_t> offsets,
+                         SmallVector<int64_t> sizes,
+                         SmallVector<int64_t> strides,
+                         SmallVector<int64_t> expectedOffsets,
+                         SmallVector<int64_t> expectedSizes,
+                         SmallVector<int64_t> expectedStrides) {
+    SmallVector<OpFoldResult> offsetsValues = toOpFoldResults(offsets);
+    SmallVector<OpFoldResult> sizesValues = toOpFoldResults(sizes);
+    SmallVector<OpFoldResult> stridesValues = toOpFoldResults(strides);
+
+    auto folded =
+        foldUnitDims(&context, offsetsValues, sizesValues, stridesValues);
+
+    EXPECT_EQ(fromOpFoldResults(offsetsValues), expectedOffsets);
+    EXPECT_EQ(fromOpFoldResults(sizesValues), expectedSizes);
+    EXPECT_EQ(fromOpFoldResults(stridesValues), expectedStrides);
+
+    return succeeded(folded);
+  }
+
+  bool checkNotFoldUnitDims(SmallVector<int64_t> offsets,
+                            SmallVector<int64_t> sizes,
+                            SmallVector<int64_t> strides) {
+    return checkFoldUnitDims(offsets, sizes, strides, offsets, sizes, strides);
   }
 
   void checkFoldRepetitionCount(
@@ -467,12 +514,12 @@ class FoldTest : public ::testing::Test {
       const SmallVector<int64_t> expectedStrides,
       std::optional<int64_t> maybeRepetitionCount = std::nullopt,
       bool shouldSucceed = true) {
-    SmallVector<OpFoldResult> sizesValues = toOpFoldResult(sizes);
-    SmallVector<OpFoldResult> stridesValues = toOpFoldResult(strides);
+    SmallVector<OpFoldResult> sizesValues = toOpFoldResults(sizes);
+    SmallVector<OpFoldResult> stridesValues = toOpFoldResults(strides);
     SmallVector<OpFoldResult> expectedSizesValues =
-        toOpFoldResult(expectedSizes);
+        toOpFoldResults(expectedSizes);
     SmallVector<OpFoldResult> expectedStridesValues =
-        toOpFoldResult(expectedStrides);
+        toOpFoldResults(expectedStrides);
     if (shouldSucceed) {
       EXPECT_TRUE(succeeded(foldRepetitionCount(
           &context, sizesValues, stridesValues, maybeRepetitionCount)));
@@ -526,39 +573,48 @@ TEST_F(FoldTest, FoldLinearDimsWithMax) {
 }
 
 TEST_F(FoldTest, NoUnitDimsFold) {
-  checkFoldUnitDims({}, {}, {}, {}, {}, {}, false);
-  checkFoldUnitDims({0}, {8}, {1}, {}, {}, {}, false);
-  checkFoldUnitDims({0, 0}, {16, 8}, {16, 1}, {}, {}, {}, false);
-  checkFoldUnitDims({2}, {1}, {1}, {}, {}, {}, false);
+  EXPECT_FALSE(checkNotFoldUnitDims({}, {}, {}));
+  EXPECT_FALSE(checkNotFoldUnitDims({0}, {8}, {1}));
+  EXPECT_FALSE(checkNotFoldUnitDims({0, 0}, {16, 8}, {16, 1}));
+  EXPECT_FALSE(checkNotFoldUnitDims({2}, {1}, {1}));
 }
 
 TEST_F(FoldTest, UnitDimsFullFold) {
-  checkFoldUnitDims({0}, {1}, {32}, {}, {}, {}, true);
-  checkFoldUnitDims({0, 0, 0}, {32, 1, 8}, {32, 1024, 1}, {0, 0}, {32, 8},
-                    {32, 1}, true);
-  checkFoldUnitDims({0, 0, 0, 0}, {1, 32, 1, 8}, {1024, 32, 1024, 1}, {0, 0},
-                    {32, 8}, {32, 1}, true);
+  EXPECT_TRUE(checkFoldUnitDims({0}, {1}, {32}, {}, {}, {}));
+  EXPECT_TRUE(checkFoldUnitDims({0, 0, 0}, {32, 1, 8}, {32, 1024, 1}, {0, 0},
+                                {32, 8}, {32, 1}));
+  EXPECT_TRUE(checkFoldUnitDims({0, 0, 0, 0}, {1, 32, 1, 8},
+                                {1024, 32, 1024, 1}, {0, 0}, {32, 8}, {32, 1}));
 }
 
 TEST_F(FoldTest, UnitDimsMerge) {
-  checkFoldUnitDims({1, 1}, {1, 1}, {32, 32}, {2}, {1}, {32}, true);
-  checkFoldUnitDims({1, 2}, {1, 1}, {32, 32}, {3}, {1}, {32}, true);
-  checkFoldUnitDims({2, 1}, {1, 1}, {32, 32}, {3}, {1}, {32}, true);
-  checkFoldUnitDims({1, 0, 1, 0}, {1, 32, 1, 8}, {1024, 32, 1024, 1}, {2, 0, 0},
-                    {1, 32, 8}, {1024, 32, 1}, true);
-  checkFoldUnitDims({1, 0, 2, 0}, {1, 32, 1, 8}, {1024, 32, 1024, 1}, {3, 0, 0},
-                    {1, 32, 8}, {1024, 32, 1}, true);
-  checkFoldUnitDims({2, 0, 1, 0}, {1, 32, 1, 8}, {1024, 32, 1024, 1}, {3, 0, 0},
-                    {1, 32, 8}, {1024, 32, 1}, true);
+  EXPECT_TRUE(checkFoldUnitDims({1, 1}, {1, 1}, {32, 32}, {1}, {1}, {64}));
+  EXPECT_TRUE(checkFoldUnitDims({1, 2}, {1, 1}, {32, 32}, {1}, {1}, {96}));
+  EXPECT_TRUE(checkFoldUnitDims({2, 1}, {1, 1}, {32, 32}, {1}, {1}, {96}));
+  EXPECT_TRUE(checkFoldUnitDims({1, 0, 1, 0}, {1, 32, 1, 8},
+                                {1024, 32, 1024, 1}, {64, 0}, {32, 8},
+                                {32, 1}));
+  EXPECT_TRUE(checkFoldUnitDims({1, 0, 2, 0}, {1, 32, 1, 8},
+                                {1024, 32, 1024, 1}, {96, 0}, {32, 8},
+                                {32, 1}));
+  EXPECT_TRUE(checkFoldUnitDims({2, 0, 1, 0}, {1, 32, 1, 8},
+                                {1024, 32, 1024, 1}, {96, 0}, {32, 8},
+                                {32, 1}));
+  EXPECT_TRUE(
+      checkFoldUnitDims({2, 2, 15}, {1, 1, 10}, {4, 6, 10}, {17}, {10}, {10}));
+  EXPECT_TRUE(checkFoldUnitDims({3, 1, 15}, {1, 1, 10}, {4, 6, 10}, {1, 15},
+                                {1, 10}, {18, 10}));
 }
 
 TEST_F(FoldTest, UnitDimsFoldAndMerge) {
-  checkFoldUnitDims({1, 0, 1}, {1, 1, 1}, {32, 1024, 32}, {2}, {1}, {32}, true);
-  checkFoldUnitDims({1, 0, 1}, {1, 1, 1}, {32, 32, 32}, {2}, {1}, {32}, true);
-  checkFoldUnitDims({1, 0, 2, 0}, {1, 1, 1, 1}, {32, 32, 32, 32}, {3}, {1},
-                    {32}, true);
-  checkFoldUnitDims({1, 0, 1, 0}, {1, 1, 1, 8}, {1024, 32, 1024, 1}, {2, 0},
-                    {1, 8}, {1024, 1}, true);
+  EXPECT_TRUE(
+      checkFoldUnitDims({1, 0, 1}, {1, 1, 1}, {32, 1024, 32}, {1}, {1}, {64}));
+  EXPECT_TRUE(
+      checkFoldUnitDims({1, 0, 1}, {1, 1, 1}, {32, 32, 32}, {1}, {1}, {64}));
+  EXPECT_TRUE(checkFoldUnitDims({1, 0, 2, 0}, {1, 1, 1, 1}, {32, 32, 32, 32},
+                                {1}, {1}, {96}));
+  EXPECT_TRUE(checkFoldUnitDims({1, 0, 1, 0}, {1, 1, 1, 8}, {1024, 32, 1024, 1},
+                                {2048}, {8}, {1}));
 }
 
 TEST_F(FoldTest, FoldRepetitionCount) {
