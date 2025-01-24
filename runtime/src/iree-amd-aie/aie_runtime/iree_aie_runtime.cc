@@ -472,6 +472,8 @@ std::optional<std::string> AMDAIEDeviceModel::getNPUVersionString() const {
 
 std::optional<std::string> AMDAIEDeviceModel::getTargetArchString() const {
   switch (configPtr.AieGen) {
+    case XAIE_DEV_GEN_AIE:
+      return "AIE";
     case XAIE_DEV_GEN_AIE2IPU:
       return "AIE2";
     case XAIE_DEV_GEN_AIE2P_STRIX_B0:
