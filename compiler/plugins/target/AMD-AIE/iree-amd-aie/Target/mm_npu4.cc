@@ -289,6 +289,7 @@ extern "C" {
   }
 
 matmul_combos(matmul_vectorized_c_func, 16, 8, 32)
+matmul_combos(matmul_vectorized_c_func, 16, 8, 64)
 matmul_combos(matmul_vectorized_c_func, 16, 16, 32)
 matmul_combos(matmul_vectorized_c_func, 32, 32, 32)
 matmul_combos(matmul_vectorized_c_func, 32, 32, 64)
