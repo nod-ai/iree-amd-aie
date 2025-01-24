@@ -152,9 +152,9 @@ namespace {
 LogicalResult foldMixed(SmallVectorImpl<OpFoldResult> &ofrs) {
   bool valuesChanged = false;
   for (OpFoldResult &ofr : ofrs) {
-    if (ofr.is<Attribute>()) continue;
+    if (isa<Attribute>(ofr)) continue;
     Attribute attr;
-    if (matchPattern(ofr.get<Value>(), m_Constant(&attr))) {
+    if (matchPattern(cast<Value>(ofr), m_Constant(&attr))) {
       ofr = attr;
       valuesChanged = true;
     }
