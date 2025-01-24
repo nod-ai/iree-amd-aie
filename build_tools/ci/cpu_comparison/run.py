@@ -1760,6 +1760,23 @@ class Tests:
                 run_on_target=["npu4"],
             )
         )
+        self.register(
+            Matmul(
+                512,
+                512,
+                512,
+                "i8",
+                "i32",
+                use_ukernel=True,
+                use_chess=False,
+                run_on_target=["npu4"],
+                aie_compilation_flags=[
+                    "--iree-amdaie-num-rows=4",
+                    "--iree-amdaie-num-cols=8",
+                ],
+                additional_labels=["I8UKernel"],
+            )
+        )
 
         # Matmul test on 2(rows)x2(cols) cores
         self.register(
