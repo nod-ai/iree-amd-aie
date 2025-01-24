@@ -700,9 +700,9 @@ static constexpr uint32_t getElementTypeKey(uint32_t a, uint32_t b,
   return a + (b << 8) + (c << 16);
 }
 
-/// Map from (LHS bitwidth, RHS bitwidth, Accumulator bitwidth) to the AIE
-/// instruction size (m, n, k) for the integer types with those bitwidths.
-/// This function is based on the following table pulled from the
+/// Map from (LHS bitwidth, RHS bitwidth, Accumulator bitwidth) to the NPU1
+/// (AIE2) instruction size (m, n, k) for the integer types with those
+/// bitwidths. This function is based on the following table pulled from the
 /// AIEVec_MatMulOp documentation in
 /// mlir-aie/include/aie/Dialect/AIEVec/IR/AIEVecOps.td
 ///
@@ -764,13 +764,43 @@ getNpu1IntegerMatmulInstructionSizeMap() {
   return matmulIntSizes;
 }
 
+/// Map from (LHS bitwidth, RHS bitwidth, Accumulator bitwidth) to the NPU4
+/// (AIE2P) instruction size (m, n, k) for the integer types with those
+/// bitwidths.
+///
+///   lhs                | rhs                | accumulator
+///  :------------------:|:------------------:|:-----------------:
+///   `vector<8x8xi8>`   | `vector<8x8xi8>`   | `vector<8x8xi32>`
+///
+/// An instruction size (m, n, k) is returned for each combination of element
+/// type in the table. Combinations of element type that are not covered by the
+/// table return failure.
+///
+/// Example: consider the line of the table:
+///   `vector<8x8xi8>`  | `vector<8x8xi4>`  | `vector<8x8xi32>`
+///
+/// This first line says that if 'lhs' is an i8 tensor, 'rhs' is an i8 tensor
+/// and 'accumulator' is an i32 tensor, then there is an AIE instruction for
+/// matmul with m = 8, n = 8, k = 8.
+static llvm::DenseMap<uint32_t, std::array<uint32_t, 3>> &
+getNpu4IntegerMatmulInstructionSizeMap() {
+  // Sanity check.
+  static_assert(getElementTypeKey(1, 2, 3) == 1 + 2 * 256 + 3 * 65536);
+
+  static llvm::DenseMap<uint32_t, std::array<uint32_t, 3>> matmulIntSizes{
+
+      // `vector<8x8xi8>`   | `vector<8x8xi8>`   | `vector<8x8xi32>`
+      {getElementTypeKey(8, 8, 32), {8, 8, 8}},
+
+  };
+  return matmulIntSizes;
+}
+
 /// Return the AIE instruction size (m, n, k) for the integer types with
 /// bitwidths nBitsLhs, nBitsRhs, and nBitsAcc. Based on the table above.
-static llvm::FailureOr<std::array<uint32_t, 3>>
-getNpu1IntegerMatmulInstructionSize(uint32_t nBitsLhs, uint32_t nBitsRhs,
-                                    uint32_t nBitsAcc) {
-  static llvm::DenseMap<uint32_t, std::array<uint32_t, 3>> &mapForIntTypes =
-      getNpu1IntegerMatmulInstructionSizeMap();
+static llvm::FailureOr<std::array<uint32_t, 3>> getIntegerMatmulInstructionSize(
+    uint32_t nBitsLhs, uint32_t nBitsRhs, uint32_t nBitsAcc,
+    const llvm::DenseMap<uint32_t, std::array<uint32_t, 3>> &mapForIntTypes) {
   auto it =
       mapForIntTypes.find(getElementTypeKey(nBitsLhs, nBitsRhs, nBitsAcc));
   if (it == mapForIntTypes.end()) {
@@ -814,11 +844,16 @@ AMDAIEDeviceModel::getAIEMatmulInstructionSize(Type elTypeLhs, Type elTypeRhs,
   assert(allInteger &&
          "expected all element types to either be all float types or all "
          "integer types");
-  if (device != AMDAIEDevice::npu1_4col) {
-    return failure();
+  if (device == AMDAIEDevice::npu1_4col || device == AMDAIEDevice::npu1_3col ||
+      device == AMDAIEDevice::npu1_2col || device == AMDAIEDevice::npu1_1col ||
+      device == AMDAIEDevice::npu1) {
+    return getIntegerMatmulInstructionSize(
+        nBitsLhs, nBitsRhs, nBitsAcc, getNpu1IntegerMatmulInstructionSizeMap());
+  } else if (device == AMDAIEDevice::npu4) {
+    return getIntegerMatmulInstructionSize(
+        nBitsLhs, nBitsRhs, nBitsAcc, getNpu4IntegerMatmulInstructionSizeMap());
   }
-
-  return getNpu1IntegerMatmulInstructionSize(nBitsLhs, nBitsRhs, nBitsAcc);
+  return failure();
 }
 
 /// ============================= BEGIN ==================================
