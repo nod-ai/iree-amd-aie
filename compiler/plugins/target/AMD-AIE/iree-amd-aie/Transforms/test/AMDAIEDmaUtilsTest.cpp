@@ -16,15 +16,9 @@ using namespace mlir;
 using namespace mlir::iree_compiler::AMDAIE;
 
 SmallVector<int64_t> fromOpFoldResults(SmallVector<OpFoldResult> ofrs) {
-  SmallVector<int64_t> vals;
-  for (auto ofr : ofrs) {
-    auto asInt = getConstantIntValue(ofr);
-    if (asInt.has_value())
-      vals.push_back(asInt.value());
-    else
-      assert(false && "expected integer");
-  }
-  return vals;
+  std::optional<SmallVector<int64_t>> vals = getConstantIntValues(ofrs);
+  assert(vals.has_value() && "expected constant values");
+  return vals.value();
 }
 
 //===----------------------------------------------------------------------===//
