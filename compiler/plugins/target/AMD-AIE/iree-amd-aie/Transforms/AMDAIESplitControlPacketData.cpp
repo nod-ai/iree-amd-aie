@@ -50,12 +50,8 @@ struct SplitControlPacketData
         dataAttr = rewriter.getDenseI32ArrayAttr(subData);
       }
       rewriter.create<AMDAIE::NpuControlPacketOp>(
-          rewriter.getUnknownLoc(),
-          /*address=*/rewriter.getUI32IntegerAttr(addr),
-          /*length=*/rewriter.getUI32IntegerAttr(subLength),
-          /*opcode=*/rewriter.getUI32IntegerAttr(op.getOpcode()),
-          /*stream_id=*/rewriter.getUI32IntegerAttr(op.getStreamId()),
-          /*data=*/dataAttr);
+          rewriter.getUnknownLoc(), addr, subLength, op.getOpcode(),
+          op.getStreamId(), dataAttr);
 
       // Update the address for the next control packet.
       addr += subLength * sizeof(int32_t);

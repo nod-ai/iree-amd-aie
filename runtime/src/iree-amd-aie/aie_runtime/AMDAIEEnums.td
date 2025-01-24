@@ -27,6 +27,17 @@ def AMDAIEDeviceAttr: I32EnumAttr<"AMDAIEDevice",
   let cppNamespace = "mlir::iree_compiler::AMDAIE";
 }
 
+def CtrlPktOpcodeAttr: I32EnumAttr<"CtrlPktOpcode",
+  "Enum with control packet opcodes.",
+  [
+    I32EnumAttrCase<"write", 0>,
+    I32EnumAttrCase<"read", 1>,
+    I32EnumAttrCase<"write_read", 2>
+  ]>
+{
+  let cppNamespace = "mlir::iree_compiler::AMDAIE";
+}
+
 def DMAChannelDir: I32EnumAttr<"DMAChannelDir",
   "DMA Channel direction. Either stream to memory (`S2MM`) or memory to stream "
   "(`MM2S`)",

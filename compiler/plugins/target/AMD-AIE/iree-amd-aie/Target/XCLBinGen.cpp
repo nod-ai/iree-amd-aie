@@ -1051,7 +1051,10 @@ LogicalResult generateUnifiedObject(
   applyConfigToPassManager(pm, printIRBeforeAll, printIRAfterAll,
                            printIRModuleScope, timing);
 
-  pm.addPass(mlir::iree_compiler::AMDAIE::createAMDAIECoreToStandardPass());
+  mlir::iree_compiler::AMDAIE::AMDAIECoreToStandardOptions options;
+  options.lowerToChess = useChess;
+  pm.addPass(
+      mlir::iree_compiler::AMDAIE::createAMDAIECoreToStandardPass(options));
   addLowerToLLVMPasses(pm);
 
   if (verbose) {

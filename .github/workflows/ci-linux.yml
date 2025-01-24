@@ -278,6 +278,8 @@ jobs:
           tar -xvf iree-dist-linux.tar
           echo "IREE_INSTALL_DIR=$PWD/iree-install" >> $GITHUB_ENV
           echo "PYTHONPATH=$PWD/iree-install/python_packages/iree_compiler:$PWD/iree-install/python_packages/iree_runtime" >> $GITHUB_ENV
+          bash build_tools/download_peano.sh
+          echo "PEANO_INSTALL_DIR=$PWD/llvm-aie" >> $GITHUB_ENV
 
       - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
         with:
@@ -305,6 +307,7 @@ jobs:
           python build_tools/ci/cpu_comparison/run.py \
             test_aie_vs_cpu \
             $PWD/iree-install \
+            --peano_dir=$PWD/llvm-aie \
             --vitis_dir=/opt/xilinx/Vitis/2024.2 \
             --target_device="npu4" \
             --reset_npu_between_runs \

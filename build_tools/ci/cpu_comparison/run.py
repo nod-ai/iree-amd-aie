@@ -1681,19 +1681,21 @@ class Tests:
             self.register(MatmulTransposeA(128, 256, 128, input_type, acc_type))
             self.register(MatmulTransposeA(1536, 1536, 2048, input_type, acc_type))
 
-        # Matmul test(s):
-        self.register(
-            Matmul(
-                32,
-                32,
-                32,
-                "i32",
-                "i32",
-                name_suffix="chess_npu4",
-                run_on_target=["npu4"],
-                use_chess=True,
+        # NPU4 matmul test(s):
+        for use_chess in [True, False]:
+            self.register(
+                Matmul(
+                    32,
+                    32,
+                    32,
+                    "i32",
+                    "i32",
+                    name_suffix="chess_" + str(use_chess),
+                    run_on_target=["npu4"],
+                    use_chess=False,
+                )
             )
-        )
+
         self.register(
             Matmul(
                 1024,
@@ -1701,18 +1703,17 @@ class Tests:
                 1024,
                 "i32",
                 "i32",
-                name_suffix="4rows_8cols_chess_npu4",
+                name_suffix="4rows_8cols_npu4",
                 run_on_target=["npu4"],
                 aie_compilation_flags=[
                     "--iree-amdaie-num-rows=4",
                     "--iree-amdaie-num-cols=8",
                 ],
-                use_chess=True,
+                use_chess=False,
             )
         )
 
         for target in ["npu1_4col", "npu4"]:
-            use_chess = target == "npu4"
             self.register(
                 Matmul(
                     32,
@@ -1722,7 +1723,7 @@ class Tests:
                     "i32",
                     name_suffix="infinite_loop_" + target,
                     run_on_target=[target],
-                    use_chess=use_chess,
+                    use_chess=False,
                     aie_compilation_flags=[
                         "--iree-amdaie-enable-infinite-loop-around-core-block=true"
                     ],
@@ -1757,6 +1758,23 @@ class Tests:
                 ],
                 use_chess=True,
                 run_on_target=["npu4"],
+            )
+        )
+        self.register(
+            Matmul(
+                512,
+                512,
+                512,
+                "i8",
+                "i32",
+                use_ukernel=True,
+                use_chess=False,
+                run_on_target=["npu4"],
+                aie_compilation_flags=[
+                    "--iree-amdaie-num-rows=4",
+                    "--iree-amdaie-num-cols=8",
+                ],
+                additional_labels=["I8UKernel"],
             )
         )
 
