@@ -1805,6 +1805,26 @@ class Tests:
                 additional_labels=["I8UKernel"],
             )
         )
+        self.register(
+            Matmul(
+                64,
+                64,
+                64,
+                "bf16",
+                "f32",
+                name_suffix="4rows_8cols_npu4_pack_peel_4_level_tiling_ukernel",
+                use_ukernel=True,
+                tile_pipeline="pack-peel-4-level-tiling",
+                run_on_target=["npu4"],
+                aie_compilation_flags=[
+                    "--iree-amdaie-num-rows=4",
+                    "--iree-amdaie-num-cols=8",
+                    "--iree-amd-aie-additional-peano-opt-flags=-O3",
+                    "--iree-amdaie-enable-function-outlining=True",
+                ],
+                use_chess=True,
+            )
+        )
 
         # Matmul test on 2(rows)x2(cols) cores
         self.register(
