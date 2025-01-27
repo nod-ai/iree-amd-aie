@@ -28,7 +28,6 @@
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/IRMapping.h"
-#include "mlir/IR/Iterators.h"
 #include "mlir/Pass/PassManager.h"
 
 #define DEBUG_TYPE "iree-amdaie-lower-to-aie"
@@ -344,14 +343,13 @@ LogicalResult AIEDeviceBuilder::foldDimsAndReturnAsStatic(
   }
   SmallVector<OpFoldResult> offsets(
       strides.size(), getAsIndexOpFoldResult(rewriter.getContext(), 0));
-  SmallVector<OpFoldResult> unitOffsets, unitSizes, unitStrides, newOffsets;
-  (void)foldUnitDims(rewriter.getContext(), offsets, sizes, strides,
-                     unitOffsets, unitSizes, unitStrides);
+  (void)foldUnitDims(rewriter.getContext(), offsets, sizes, strides);
+
   DmaDimConfig dmaDimConfig(deviceModel, memSpace);
-  SmallVector<int64_t> maxSizes = dmaDimConfig.getMaxSizes(unitOffsets.size());
+  SmallVector<int64_t> maxSizes = dmaDimConfig.getMaxSizes(offsets.size());
   SmallVector<OpFoldResult> linearOffsets, linearSizes, linearStrides;
   (void)foldLinearDims(
-      rewriter.getContext(), unitOffsets, unitSizes, unitStrides, linearOffsets,
+      rewriter.getContext(), offsets, sizes, strides, linearOffsets,
       linearSizes, linearStrides, [&](size_t idxFromEnd, int64_t size) {
         return idxFromEnd < maxSizes.size() &&
                size <= maxSizes[maxSizes.size() - idxFromEnd - 1];
