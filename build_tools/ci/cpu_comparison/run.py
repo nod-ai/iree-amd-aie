@@ -1717,6 +1717,25 @@ class Tests:
                 use_chess=False,
             )
         )
+        self.register(
+            Matmul(
+                512,
+                512,
+                256,
+                "i32",
+                "i32",
+                name_suffix="4rows_8cols_npu4_pack_peel_4_level_tiling",
+                tile_pipeline="pack-peel-4-level-tiling",
+                run_on_target=["npu4"],
+                aie_compilation_flags=[
+                    "--iree-amdaie-num-rows=4",
+                    "--iree-amdaie-num-cols=8",
+                    "--iree-amd-aie-additional-peano-opt-flags=-O3",
+                    "--iree-amdaie-enable-function-outlining=True",
+                ],
+                use_chess=True,
+            )
+        )
 
         for target in ["npu1_4col", "npu4"]:
             self.register(
