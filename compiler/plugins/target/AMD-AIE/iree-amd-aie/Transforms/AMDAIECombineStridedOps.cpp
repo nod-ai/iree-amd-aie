@@ -16,7 +16,6 @@
 #include "iree-amd-aie/Transforms/Transforms.h"
 #include "iree-amd-aie/Transforms/Utils/AMDAIEDmaUtils.h"
 #include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
-#include "llvm/ADT/STLExtras.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 #define DEBUG_TYPE "iree-amdaie-combine-strided-ops"
@@ -47,8 +46,10 @@ struct CombineStridedOps
 
     std::unique_ptr<DmaDimConfig> sourceDmaDimConfig;
     std::unique_ptr<DmaDimConfig> targetDmaDimConfig;
+
     SmallVector<Operation *> userOpsToBeErased;
     AMDAIE::DoublyStridedOpInterface nextStridedOp;
+
     if (auto npuDmaOp = dyn_cast<AMDAIE::NpuDmaCpyNdOp>(op.getOperation())) {
       LLVM_DEBUG(llvm::dbgs() << "npuDmaOp: " << npuDmaOp << "\n");
       // Fail if any non-wait user operations.
@@ -105,6 +106,10 @@ struct CombineStridedOps
       return failure();
     }
 
+    MLIRContext *ctx = rewriter.getContext();
+    auto dimCountCheck = std::bind(&DmaDimConfig::exceedsNbDims,
+                                   std::ref(sourceDmaDimConfig), _1);
+
     SmallVector<OpFoldResult> sourceOffsetsA = op.getSourceMixedOffsets();
     SmallVector<OpFoldResult> sourceSizesA = op.getSourceMixedSizes();
     SmallVector<OpFoldResult> sourceStridesA = op.getSourceMixedStrides();
@@ -114,11 +119,15 @@ struct CombineStridedOps
         nextStridedOp.getSourceMixedSizes();
     SmallVector<OpFoldResult> sourceStridesB =
         nextStridedOp.getSourceMixedStrides();
-    bool areSourcesCombinable = areAccessPatternsCombinable(
-        sourceOffsetsA, sourceSizesA, sourceStridesA, sourceOffsetsB,
-        sourceSizesB, sourceStridesB,
-        std::bind(&DmaDimConfig::exceedsNbDims, std::ref(sourceDmaDimConfig),
-                  _1));
+    SmallVector<OpFoldResult> newSourceOffsets;
+    SmallVector<OpFoldResult> newSourceSizes;
+    SmallVector<OpFoldResult> newSourceStrides;
+    if (failed(combineAccessPatterns(
+            ctx, sourceOffsetsA, sourceSizesA, sourceStridesA, sourceOffsetsB,
+            sourceSizesB, sourceStridesB, newSourceOffsets, newSourceSizes,
+            newSourceStrides, dimCountCheck))) {
+      return failure();
+    }
 
     SmallVector<OpFoldResult> targetOffsetsA = op.getTargetMixedOffsets();
     SmallVector<OpFoldResult> targetSizesA = op.getTargetMixedSizes();
@@ -129,53 +138,25 @@ struct CombineStridedOps
         nextStridedOp.getTargetMixedSizes();
     SmallVector<OpFoldResult> targetStridesB =
         nextStridedOp.getTargetMixedStrides();
-    bool areTargetsCombinable = areAccessPatternsCombinable(
-        targetOffsetsA, targetSizesA, targetStridesA, targetOffsetsB,
-        targetSizesB, targetStridesB,
-        std::bind(&DmaDimConfig::exceedsNbDims, std::ref(targetDmaDimConfig),
-                  _1));
-
-    LLVM_DEBUG(llvm::dbgs()
-               << "areSourcesCombinable: " << areSourcesCombinable << "\n");
-    LLVM_DEBUG(llvm::dbgs()
-               << "areTargetsCombinable: " << areTargetsCombinable << "\n");
-
-    if (areSourcesCombinable && areTargetsCombinable) {
-      SmallVector<OpFoldResult> newSourceOffsets;
-      SmallVector<OpFoldResult> newSourceSizes;
-      SmallVector<OpFoldResult> newSourceStrides;
-      if (failed(combineAccessPatterns(
-              rewriter, sourceOffsetsA, sourceSizesA, sourceStridesA,
-              sourceOffsetsB, sourceSizesB, sourceStridesB, newSourceOffsets,
-              newSourceSizes, newSourceStrides,
-              std::bind(&DmaDimConfig::exceedsNbDims,
-                        std::ref(sourceDmaDimConfig), _1)))) {
-        return failure();
-      }
-
-      SmallVector<OpFoldResult> newTargetOffsets;
-      SmallVector<OpFoldResult> newTargetSizes;
-      SmallVector<OpFoldResult> newTargetStrides;
-      if (failed(combineAccessPatterns(
-              rewriter, targetOffsetsA, targetSizesA, targetStridesA,
-              targetOffsetsB, targetSizesB, targetStridesB, newTargetOffsets,
-              newTargetSizes, newTargetStrides,
-              std::bind(&DmaDimConfig::exceedsNbDims,
-                        std::ref(targetDmaDimConfig), _1)))) {
-        return failure();
-      }
-
-      rewriter.setInsertionPoint(op);
-      auto newDoublyStridedOp = nextStridedOp.createDoublyStridedOp(
-          rewriter, newTargetOffsets, newTargetSizes, newTargetStrides,
-          newSourceOffsets, newSourceSizes, newSourceStrides);
-      rewriter.replaceOp(nextStridedOp, newDoublyStridedOp.getOperation());
-
-      for (Operation *userOp : userOpsToBeErased) rewriter.eraseOp(userOp);
-      rewriter.eraseOp(op);
-      return success();
+    SmallVector<OpFoldResult> newTargetOffsets;
+    SmallVector<OpFoldResult> newTargetSizes;
+    SmallVector<OpFoldResult> newTargetStrides;
+    if (failed(combineAccessPatterns(
+            ctx, targetOffsetsA, targetSizesA, targetStridesA, targetOffsetsB,
+            targetSizesB, targetStridesB, newTargetOffsets, newTargetSizes,
+            newTargetStrides, dimCountCheck))) {
+      return failure();
     }
-    return failure();
+
+    rewriter.setInsertionPoint(op);
+    auto newDoublyStridedOp = nextStridedOp.createDoublyStridedOp(
+        rewriter, newTargetOffsets, newTargetSizes, newTargetStrides,
+        newSourceOffsets, newSourceSizes, newSourceStrides);
+    rewriter.replaceOp(nextStridedOp, newDoublyStridedOp.getOperation());
+
+    for (Operation *userOp : userOpsToBeErased) rewriter.eraseOp(userOp);
+    rewriter.eraseOp(op);
+    return success();
   }
 
   template <typename T>
