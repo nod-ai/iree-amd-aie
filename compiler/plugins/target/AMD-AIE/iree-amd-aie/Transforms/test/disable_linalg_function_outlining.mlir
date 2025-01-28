@@ -2,23 +2,23 @@
 // pipeline. We check 3 paths:
 //
 // 1) Explicitly disabling linalg function outlining with
-//              --iree-amdaie-enable-function-outlining=0
+//              --iree-amdaie-enable-function-outlining=none
 //
-// 2) Explicitly enabling linalg function outlining with
-//              --iree-amdaie-enable-function-outlining=1
+// 2) Explicitly enabling linalg function outlining for all linalg ops with
+//              --iree-amdaie-enable-function-outlining=all
 //
-// 3) Not specifying the flag at all, which should use the default value (1).
+// 3) Not specifying the flag at all, which should use the default value (balanced).
 
 
 // 1) Explicitly disabled:
 // RUN: iree-compile --iree-hal-target-backends=amd-aie \
-// RUN:   --compile-to=executable-targets --iree-amdaie-enable-function-outlining=0 %s | FileCheck %s -check-prefix=CHECK-DISABLED
+// RUN:   --compile-to=executable-targets --iree-amdaie-enable-function-outlining=none %s | FileCheck %s -check-prefix=CHECK-DISABLED
 
 // 2) Explicitly enabled:
 // RUN: iree-compile --iree-hal-target-backends=amd-aie \
-// RUN:   --compile-to=executable-targets --iree-amdaie-enable-function-outlining=1 %s | FileCheck %s -check-prefix=CHECK-ENABLED
+// RUN:   --compile-to=executable-targets --iree-amdaie-enable-function-outlining=all %s | FileCheck %s -check-prefix=CHECK-ENABLED
 
-// 3) Default value:
+// 3) Default value (balanced):
 // RUN: iree-compile --iree-hal-target-backends=amd-aie \
 // RUN:   --compile-to=executable-targets %s | FileCheck %s -check-prefix=CHECK-DEFAULT
 
@@ -33,6 +33,6 @@ func.func @matmul(%lhs: tensor<64x64xbf16>,
   return %res : tensor<64x64xf32>
 }
 
-// CHECK-DISABLED-NOT: func.call
-// CHECK-ENABLED:      func.call
-// CHECK-DEFAULT:      func.call
+// CHECK-DISABLED-NOT:    func.call
+// CHECK-ENABLED-COUNT-2: func.call
+// CHECK-DEFAULT-COUNT-1: func.call

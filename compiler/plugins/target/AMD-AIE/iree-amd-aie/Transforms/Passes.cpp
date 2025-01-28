@@ -710,7 +710,7 @@ void buildAMDAIETransformPassPipeline(
     LowerToAIEPassPipeline useLowerToAIEPipeline, bool matmulElementwiseFusion,
     bool enableVectorizationPasses, const std::string &pathToUkernels,
     bool enablePacketFlow, bool enableCoalescingLoops,
-    bool enableCollapsingUnitDims, bool enableFunctionOutlining,
+    bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
     bool replaceOutlinedFunctionsWithEmpty, bool insertLoopAroundCoreBlock) {
   OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
   {
@@ -767,8 +767,9 @@ void addAMDAIEObjectFifoLoweringPasses(
     OpPassManager &passManager, bool enablePacketFlow,
     TilePassPipeline useTilePipeline, bool enableVectorizationPasses,
     bool enableCoalescingLoops, bool enableCollapsingUnitDims,
-    bool enableFunctionOutlining, bool replaceOutlinedFunctionsWithEmpty,
-    bool insertLoopAroundCoreBlock, uint32_t numCols) {
+    OutliningStrategy enableFunctionOutlining,
+    bool replaceOutlinedFunctionsWithEmpty, bool insertLoopAroundCoreBlock,
+    uint32_t numCols) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
 
@@ -794,18 +795,11 @@ void addAMDAIEObjectFifoLoweringPasses(
   passManager.addPass(createAMDAIENormalizeLoopBoundsPass());
   passManager.addPass(createAMDAIEInsertCoresPass());
 
-  if (enableFunctionOutlining) {
-    // Create function outlining options object, etc.
-    AMDAIELinalgFunctionOutliningOptions options;
-    if (replaceOutlinedFunctionsWithEmpty) {
-      options.emptyFunctions = true;
-    }
-    passManager.addPass(createAMDAIELinalgFunctionOutliningPass(options));
-  } else {
-    assert(!replaceOutlinedFunctionsWithEmpty &&
-           "`replaceOutlinedFunctionsWithEmpty` is only valid when "
-           "`enableFunctionOutlining` is true.");
-  }
+  // Create function outlining options object, etc.
+  AMDAIELinalgFunctionOutliningOptions options;
+  options.outliningStrategy = enableFunctionOutlining;
+  options.emptyFunctions = replaceOutlinedFunctionsWithEmpty;
+  passManager.addPass(createAMDAIELinalgFunctionOutliningPass(options));
 
   {
     // Vectorization passes

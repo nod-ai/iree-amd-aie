@@ -34,12 +34,12 @@ static FailureOr<func::FuncOp> outline(IRRewriter &rewriter, ModuleOp moduleOp,
     // clang-format off
     // https://github.com/llvm/llvm-project/blob/6b0785390d02193d81d8db7fb12279ffa4651afe/mlir/include/mlir/IR/BuiltinAttributeInterfaces.td#L475
     // clang-format on
-    auto type = dyn_cast<MemRefType>(operand.getType());
-    assert(type && "we've already checked that all operands are memrefs");
-    MemRefLayoutAttrInterface layout = type.getLayout();
-    assert(layout &&
-           "MemRefType layout attribute interface should always be present");
-    if (!layout.isIdentity()) return failure();
+    if (auto type = dyn_cast<MemRefType>(operand.getType())) {
+      MemRefLayoutAttrInterface layout = type.getLayout();
+      assert(layout &&
+             "MemRefType layout attribute interface should always be present");
+      if (!layout.isIdentity()) return failure();
+    }
   }
   auto funcType = FunctionType::get(
       rewriter.getContext(), computeOp->getOperandTypes(), /*outputTypes=*/{});
@@ -72,8 +72,9 @@ static FailureOr<func::FuncOp> outline(IRRewriter &rewriter, ModuleOp moduleOp,
   return func;
 }
 
-/// Utility to check if the linalg op is one we know should be outlined.
-static bool mustOutline(linalg::LinalgOp linalgOp) {
+/// Utility to check whether the linalg should be outlined if the balanced
+/// strategy is enabled.
+static bool mustOutlineBalanced(linalg::LinalgOp linalgOp) {
   if (isa<linalg::CopyOp, linalg::FillOp>(linalgOp)) return false;
   if (isElementwise(linalgOp)) return false;
   // TODO(newling) not all remaining ops should be outlined, not even all
@@ -158,16 +159,22 @@ void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
   MLIRContext *context = &getContext();
   IRRewriter rewriter(context);
 
+  if (outliningStrategy == OutliningStrategy::None) {
+    if (emptyFunctions) {
+      moduleOp.emitWarning()
+          << "The option to empty outlined functions is enabled while the "
+             "outlining strategy specifies to not outline any functions, so no "
+             "transformation will happen. This combination might not result in "
+             "the intended behaviour.";
+    }
+    return;
+  }
+
   SmallVector<Operation *> toBeErased;
   moduleOp.walk([&](linalg::LinalgOp computeOp) {
-    if (!mustOutline(computeOp)) return WalkResult::skip();
-
-    // Assert that we're in reference semantics, ie that all operands of
-    // computeOp have MemRefType:
-    if (!llvm::all_of(computeOp->getOperandTypes(),
-                      [](Type t) { return isa<MemRefType>(t); })) {
-      computeOp->emitError("expected all operands to be of MemRefType");
-      return WalkResult::interrupt();
+    if (outliningStrategy == OutliningStrategy::Balanced &&
+        !mustOutlineBalanced(computeOp)) {
+      return WalkResult::skip();
     }
 
     FailureOr<func::FuncOp> maybeFunc =

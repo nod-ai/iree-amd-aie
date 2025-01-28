@@ -1,4 +1,6 @@
 // RUN: iree-opt --split-input-file --iree-amdaie-linalg-function-outlining --verify-diagnostics --split-input-file %s | FileCheck %s
+// RUN: iree-opt --split-input-file --pass-pipeline="builtin.module(iree-amdaie-linalg-function-outlining{outlining-strategy=all})" --verify-diagnostics --split-input-file %s | FileCheck %s -check-prefix=CHECK-ALL
+// RUN: iree-opt --split-input-file --pass-pipeline="builtin.module(iree-amdaie-linalg-function-outlining{outlining-strategy=none})" --verify-diagnostics --split-input-file %s | FileCheck %s -check-prefix=CHECK-NONE
 
 // Test demonstrating multiple matmuls using different SSAs.
 
@@ -27,6 +29,15 @@
 // CHECK:            }
 // CHECK:            return
 // CHECK:        }
+
+// CHECK-ALL:         func.func private @[[MATMUL_FUNC:.*]]({{.*}}memref<4x8xbf16>, {{.*}}memref<8x4xbf16>, {{.*}}memref<4x4xf32>)
+// CHECK-ALL:         func.func @repeated_identical_matmul
+// CHECK-ALL-COUNT-2: func.call @[[MATMUL_FUNC]]
+// CHECK-ALL-NOT:     func.call @[[MATMUL_FUNC]]
+
+// CHECK-NONE:        @repeated_identical_matmul
+// CHECK-NONE-NOT:    func.call
+
 func.func @repeated_identical_matmul(%A: memref<4x8xbf16>, %B: memref<8x4xbf16>, %C: memref<4x4xf32>) {
   %c2 = arith.constant 2 : index
   %c1 = arith.constant 1 : index
@@ -90,6 +101,18 @@ func.func @repeated_identical_matmul(%A: memref<4x8xbf16>, %B: memref<8x4xbf16>,
 // CHECK-NEXT: func.call @[[MATMUL_K6]](%[[A1]], %[[B1]], %[[C]])
 // CHECK-NEXT: amdaie.end
 // CHECK:      return
+
+// CHECK-ALL-DAG:     func.func private @[[MATMUL_K6:.+]]({{.*}}memref<4x6xbf16>, {{.*}}memref<6x4xbf16>, {{.*}}memref<4x4xf32>)
+// CHECK-ALL-DAG:     func.func private @[[MATMUL_K4:.+]]({{.*}}memref<4x4xbf16>, {{.*}}memref<4x4xbf16>, {{.*}}memref<4x4xf32>)
+// CHECK-ALL:         func.func @distinct_matmul_shapes
+// CHECK-ALL-COUNT-3: func.call @[[MATMUL_K4]]
+// CHECK-ALL:         func.call @[[MATMUL_K6]]
+// CHECK-ALL-NOT:     func.call @[[MATMUL_K4]]
+// CHECK-ALL-NOT:     func.call @[[MATMUL_K6]]
+
+// CHECK-NONE:        @distinct_matmul_shapes
+// CHECK-NONE-NOT:    func.call
+
 func.func @distinct_matmul_shapes(%A0: memref<4x4xbf16>, %B0: memref<4x4xbf16>,
                             %A1: memref<4x6xbf16>, %B1: memref<6x4xbf16>,
                             %C: memref<4x4xf32>) {
@@ -112,16 +135,29 @@ func.func @distinct_matmul_shapes(%A0: memref<4x4xbf16>, %B0: memref<4x4xbf16>,
 // -----
 
 // CHECK-LABEL: @linalg_fill_copy
+// CHECK:       linalg.fill
+// CHECK-NOT:   func.call @fill_elementwise_0_outlined
+// CHECK:       linalg.copy
+// CHECK-NOT:   func.call @copy_elementwise_1_outlined
+
+// CHECK-ALL-DAG:   func.func private @[[FILL_FUNC:.*]]({{.*}}: f32, {{.*}}: memref<4xf32>)
+// CHECK-ALL-DAG:   linalg.fill
+// CHECK-ALL-DAG:   func.func private @[[COPY_FUNC:.*]]({{.*}}: memref<4xf32>, {{.*}}: memref<4xf32>)
+// CHECK-ALL-DAG:   linalg.copy
+// CHECK-ALL:       @linalg_fill_copy(%[[ARG0:.*]]: memref<4xf32>, %[[ARG1:.*]]: memref<4xf32>)
+// CHECK-ALL:       %[[C0:.*]] = arith.constant 0.000000e+00 : f32
+// CHECK-ALL:       func.call @[[FILL_FUNC]](%[[C0]], %[[ARG0]])
+// CHECK-ALL:       func.call @[[COPY_FUNC]](%[[ARG0]], %[[ARG1]])
+
+// CHECK-NONE:        @linalg_fill_copy
+// CHECK-NONE-NOT:    func.call
+
 func.func @linalg_fill_copy(%A: memref<4xf32>, %B: memref<4xf32>) {
   %c2 = arith.constant 2 : index
   %c1 = arith.constant 1 : index
   %cst = arith.constant 0.0 : f32
   %tile = amdaie.tile(%c1, %c2)
   %0 = amdaie.core(%tile, in : [], out : []) {
-    // CHECK:     linalg.fill
-    // CHECK-NOT: func.call @fill_elementwise_0_outlined
-    // CHECK:     linalg.copy
-    // CHECK-NOT: func.call @copy_elementwise_1_outlined
     linalg.fill ins(%cst : f32) outs(%A : memref<4xf32>)
     linalg.copy ins(%A : memref<4xf32>) outs(%B : memref<4xf32>)
     amdaie.end
@@ -146,6 +182,15 @@ func.func @linalg_fill_copy(%A: memref<4xf32>, %B: memref<4xf32>) {
 // CHECK:       func.call @generic_0_outlined
 // CHECK-SAME:    (memref<4xbf16>, memref<bf16>) -> ()
 // CHECK:       return
+
+// CHECK-ALL-DAG:     func.func private @[[GENERIC:.+]]({{.*}}memref<4xbf16>, {{.*}}memref<bf16>)
+// CHECK-ALL:         func.func @reduction
+// CHECK-ALL:         func.call @[[GENERIC]]
+// CHECK-ALL-NOT:     func.call @[[GENERIC]]
+
+// CHECK-NONE:        @reduction
+// CHECK-NONE-NOT:    func.call
+
 func.func @reduction(%A: memref<4xbf16>, %B: memref<bf16>) {
   %c2 = arith.constant 2 : index
   %tile = amdaie.tile(%c2, %c2)
@@ -170,6 +215,13 @@ func.func @reduction(%A: memref<4xbf16>, %B: memref<bf16>) {
 
 // CHECK-COUNT-1: func.func
 // CHECK-NOT:     func.func
+
+// CHECK-ALL-LABEL:   func.func @unoutlineable_layout_with_offset
+// CHECK-ALL-NOT:     func.func
+
+// CHECK-NONE:        @unoutlineable_layout_with_offset
+// CHECK-NONE-NOT:    func.call
+
 func.func @unoutlineable_layout_with_offset(%A: memref<4x8xbf16, strided<[8,1], offset:?>>, %B: memref<bf16>) {
   %c2 = arith.constant 2 : index
   %tile = amdaie.tile(%c2, %c2)
@@ -195,6 +247,13 @@ func.func @unoutlineable_layout_with_offset(%A: memref<4x8xbf16, strided<[8,1], 
 
 // CHECK-COUNT-1: func.func
 // CHECK-NOT:     func.func
+
+// CHECK-ALL-LABEL:   func.func @unoutlineable_strided_layout
+// CHECK-ALL-NOT:     func.func
+
+// CHECK-NONE:        @unoutlineable_strided_layout
+// CHECK-NONE-NOT:    func.call
+
 func.func @unoutlineable_strided_layout(%A: memref<4x8xbf16, strided<[9,1]>>, %B: memref<bf16>) {
   %c2 = arith.constant 2 : index
   %tile = amdaie.tile(%c2, %c2)
