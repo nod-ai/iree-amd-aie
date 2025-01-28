@@ -184,6 +184,16 @@ def AMDAIEControlCodeToTransaction :
   ];
 }
 
+def AMDAIEControlPacketToHalfDmaCpyNd :
+    Pass<"iree-amdaie-control-packet-to-half-dma-cpy-nd", ""> {
+  let summary = "Convert control packets to half DMA copy operations.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEControlPacketToHalfDmaCpyNdPass()";
+    let options = [
+    Option<"dumpSequence", "dump-sequence", "bool", /*default=*/"false",
+      "Dump the generated control packet sequence, including the header and data. (Used for tests)">
+  ];
+}
+
 def AMDAIEConvertCoreForallToFor :
     Pass<"iree-amdaie-convert-core-forall-to-for", ""> {
   let summary = "Converts `scf.forall` to `scf.for` within `aie.core`.";
@@ -191,7 +201,7 @@ def AMDAIEConvertCoreForallToFor :
 }
 
 def AMDAIEConvertDeviceToControlPackets: Pass<"iree-amdaie-convert-device-to-control-packets"> {
-  let summary = "Convert `aie.device` to `amd.npu.control_packet` operations";
+  let summary = "Convert `aie.device` to `amdaie.npu.control_packet` operations";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEConvertDeviceToControlPacketsPass()";
   let options = [
     Option<"pathToElfs", "path-to-elfs", "std::string", /*default=*/"", "Path to ELF files.">,

@@ -179,7 +179,8 @@ def AMDAIE_WorkgroupOp : AMDAIE_Op<"workgroup",
 
   let regions = (region SizedRegion<1>:$region);
   let arguments = (
-    ins OptionalAttr<Builtin_DenseResourceElementsAttr>:$npu_instructions
+    ins OptionalAttr<Builtin_DenseResourceElementsAttr>:$npu_instructions,
+        OptionalAttr<Builtin_DenseResourceElementsAttr>:$ctrlpkt_sequence
   );
 
   let assemblyFormat = [{ regions attr-dict }];

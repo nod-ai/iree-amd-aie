@@ -316,9 +316,48 @@ uint32_t AMDAIEDeviceModel::getCoreTileLocalMemorySize() const {
   return devInst.DevProp.DevMod[XAIEGBL_TILE_TYPE_AIETILE].CoreMod->DataMemSize;
 }
 
-uint32_t AMDAIEDeviceModel::getCtrlPktMaxLength() const {
-  return 2 << (ctrlPktHeaderFormat.operationShift -
-               ctrlPktHeaderFormat.beatShift);
+uint32_t AMDAIEDeviceModel::getCtrlPktHeader(uint32_t address, uint32_t beat,
+                                             uint32_t opcode,
+                                             uint32_t streamId) const {
+  assert(address <= getCtrlPktMaxAddress() && "address out of range");
+  assert(beat <= getCtrlPktMaxBeat() && "beat out of range");
+  assert(opcode <= getCtrlPktMaxOpcode() && "opcode out of range");
+  assert(streamId <= getCtrlPktMaxStreamId() && "streamId out of range");
+  // Construct the header by shifting and combining the individual fields.
+  uint32_t header = (streamId << ctrlPktHeaderFormat.streamIdShift) |
+                    (opcode << ctrlPktHeaderFormat.operationShift) |
+                    (beat << ctrlPktHeaderFormat.beatShift) |
+                    (address << ctrlPktHeaderFormat.addressShift);
+  // Mask to keep the lower 31 bits (bits 30:0).
+  uint32_t lower31Bits = header & 0x7FFFFFFF;
+  // Compute the odd parity bit (1 if the count of 1's is odd, 0 if even).
+  uint32_t parity = llvm::popcount(lower31Bits) % 2;
+  // Set the parity bit in the most significant bit (bit 31).
+  return (parity << 31) | lower31Bits;
+}
+
+uint32_t AMDAIEDeviceModel::getCtrlPktMaxAddress() const {
+  return (1 << (ctrlPktHeaderFormat.beatShift -
+                ctrlPktHeaderFormat.addressShift)) -
+         1;
+}
+
+uint32_t AMDAIEDeviceModel::getCtrlPktMaxBeat() const {
+  return (1 << (ctrlPktHeaderFormat.operationShift -
+                ctrlPktHeaderFormat.beatShift)) -
+         1;
+}
+
+uint32_t AMDAIEDeviceModel::getCtrlPktMaxOpcode() const {
+  return (1 << (ctrlPktHeaderFormat.streamIdShift -
+                ctrlPktHeaderFormat.operationShift)) -
+         1;
+}
+
+uint32_t AMDAIEDeviceModel::getCtrlPktMaxStreamId() const {
+  return (1 << (ctrlPktHeaderFormat.reservedShift -
+                ctrlPktHeaderFormat.streamIdShift)) -
+         1;
 }
 
 uint32_t AMDAIEDeviceModel::getMemInternalBaseAddress() const {

@@ -383,9 +383,18 @@ struct AMDAIEDeviceModel {
   bool hasLegalMemAffinity(uint8_t coreCol, uint8_t coreRow, uint8_t memCol,
                            uint8_t memRow) const;
 
-  // The maximum length (beats) of a control packet is determined by the number
-  // of bits allocated to the `beat` field in the control packet header.
-  uint32_t getCtrlPktMaxLength() const;
+  /// Construct a control packet header from the specified fields.
+  uint32_t getCtrlPktHeader(uint32_t address, uint32_t beat, uint32_t opcode,
+                            uint32_t streamId) const;
+
+  /// Get the maximum for the `address` field in the control packet header.
+  uint32_t getCtrlPktMaxAddress() const;
+  /// Get the maximum for the `beat` field in the control packet header.
+  uint32_t getCtrlPktMaxBeat() const;
+  /// Get the maximum for the `opcode` field in the control packet header.
+  uint32_t getCtrlPktMaxOpcode() const;
+  /// Get the maximum for the `streamId` field in the control packet header.
+  uint32_t getCtrlPktMaxStreamId() const;
 
   uint32_t getMemInternalBaseAddress() const;
   uint32_t getMemSouthBaseAddress() const;
