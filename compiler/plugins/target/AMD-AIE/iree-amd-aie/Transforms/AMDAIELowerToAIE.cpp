@@ -34,79 +34,105 @@
 
 using namespace xilinx;
 
+namespace {
+
+using namespace mlir;
+
+std::string arrString(ArrayRef<int64_t> vs) {
+  return std::string("[")
+      .append(llvm::join(
+          llvm::map_range(vs, [](int64_t v) { return std::to_string(v); }),
+          ","))
+      .append("]");
+}
+
+std::string intOpFoldResultsString(ArrayRef<OpFoldResult> ofrs) {
+  auto maybeValues = mlir::getConstantIntValues(ofrs);
+  if (maybeValues.has_value()) return "[not all constant]";
+  return arrString(maybeValues.value());
+}
+}  // namespace
+
 namespace mlir::iree_compiler::AMDAIE {
 
-/// Utility to update the current common repetition count based on the new size
-/// and stride access pattern. If this new access pattern has a smaller
-/// repetition count, the common repetition count will be decreased.
-static FailureOr<size_t> getUpdatedRepetitionCount(
-    ArrayRef<OpFoldResult> sizes, ArrayRef<OpFoldResult> strides,
-    size_t curRepetitionCount) {
-  if (!strides.empty() && !sizes.empty() && isConstantIntValue(strides[0], 0)) {
-    int i = 0;
-    size_t repetitionCount{1};
-    while (i < strides.size() && isConstantIntValue(strides[i], 0)) {
-      std::optional<int64_t> maybeRepetitionCount =
-          getConstantIntValue(sizes[i]);
-      if (!maybeRepetitionCount) return failure();
-      assert(maybeRepetitionCount.value() >= 0 &&
-             "sizes should always be larger or equal to zero");
-      repetitionCount *= maybeRepetitionCount.value();
-      i += 1;
-    }
-    if (curRepetitionCount == 1) return repetitionCount;
-    size_t newRepetitionCount = std::min(repetitionCount, curRepetitionCount);
-    if (repetitionCount % newRepetitionCount != 0) return failure();
-    if (curRepetitionCount % newRepetitionCount != 0) return failure();
-    return newRepetitionCount;
+/// Compute the 'global' repetition count: the product over all dimensions with
+/// zero stride of the size of the dimension.
+///
+/// The case where sizes and strides are empty is a special case, and '0' is
+/// returned.
+static int64_t getRepetitionCount(ArrayRef<OpFoldResult> sizes,
+                                  ArrayRef<OpFoldResult> strides) {
+  assert(sizes.size() == strides.size() &&
+         "expected stride and size vectors of same size");
+  if (strides.empty()) return 0;
+  size_t repetitionCount{1};
+  for (uint32_t i = 0; i < strides.size(); ++i) {
+    if (!isConstantIntValue(strides[i], 0)) continue;
+    std::optional<int64_t> maybeSize = getConstantIntValue(sizes[i]);
+    assert(maybeSize.has_value() &&
+           "expected constant size in this zero stride dimension");
+    assert(maybeSize.value() >= 0 && "expected a non-negative size");
+    repetitionCount *= maybeSize.value();
   }
-  return curRepetitionCount;
+  return repetitionCount;
 }
 
 /// Utility to retrieve the common repetition count from all producers and
 /// consumers of a logical objectFifo.
 static FailureOr<size_t> getRepetitionCount(LogicalObjFifoOpInterface op) {
-  size_t repetitionCount = 1;
+  SmallVector<int64_t> repetitionCounts;
+  auto appendRepetitionCount = [&](ArrayRef<OpFoldResult> sizes,
+                                   ArrayRef<OpFoldResult> strides) {
+    size_t repetitionCount = getRepetitionCount(sizes, strides);
+    if (repetitionCount != 0) repetitionCounts.push_back(repetitionCount);
+  };
+
   for (Operation *userOp : op->getUsers()) {
-    if (auto connectionOp = dyn_cast<AMDAIE::ConnectionOp>(userOp);
-        connectionOp.getTarget() &&
-        dyn_cast_if_present<LogicalObjFifoOpInterface>(
-            connectionOp.getTarget().getDefiningOp()) == op) {
-      // Handle producer connection operations.
+    if (auto connectionOp = dyn_cast<AMDAIE::ConnectionOp>(userOp)) {
       FailureOr<AMDAIE::NpuCircularDmaCpyNdOp> maybeNpuDmaUserOp =
           connectionOp.getNpuCircularDmaCpyNdUser();
-      if (failed(maybeNpuDmaUserOp)) {
-        return connectionOp.emitOpError()
-               << "does not have a circular DMA op user";
+
+      if (failed(maybeNpuDmaUserOp)) continue;
+
+      AMDAIE::NpuCircularDmaCpyNdOp npuDma = maybeNpuDmaUserOp.value();
+
+      if (connectionOp.getTarget() &&
+          dyn_cast_if_present<LogicalObjFifoOpInterface>(
+              connectionOp.getTarget().getDefiningOp()) == op) {
+        appendRepetitionCount(npuDma.getTargetMixedSizes(),
+                              npuDma.getTargetMixedStrides());
       }
-      FailureOr<size_t> maybeNewRepetitionCount = getUpdatedRepetitionCount(
-          maybeNpuDmaUserOp->getTargetMixedSizes(),
-          maybeNpuDmaUserOp->getTargetMixedStrides(), repetitionCount);
-      if (failed(maybeNewRepetitionCount)) {
-        return maybeNpuDmaUserOp->emitOpError() << "no repetition count found";
+
+      if (connectionOp.getSource() &&
+          dyn_cast_if_present<LogicalObjFifoOpInterface>(
+              connectionOp.getSource().getDefiningOp()) == op) {
+        appendRepetitionCount(npuDma.getSourceMixedSizes(),
+                              npuDma.getSourceMixedStrides());
       }
-      repetitionCount = maybeNewRepetitionCount.value();
-    } else if (auto connectionOp = dyn_cast<AMDAIE::ConnectionOp>(userOp);
-               connectionOp.getSource() &&
-               dyn_cast_if_present<LogicalObjFifoOpInterface>(
-                   connectionOp.getSource().getDefiningOp()) == op) {
-      // Handle consumer connection operations.
-      FailureOr<AMDAIE::NpuCircularDmaCpyNdOp> maybeNpuDmaUserOp =
-          connectionOp.getNpuCircularDmaCpyNdUser();
-      if (failed(maybeNpuDmaUserOp)) {
-        return connectionOp.emitOpError()
-               << "does not have a circular DMA op user";
-      }
-      FailureOr<size_t> maybeNewRepetitionCount = getUpdatedRepetitionCount(
-          maybeNpuDmaUserOp->getSourceMixedSizes(),
-          maybeNpuDmaUserOp->getSourceMixedStrides(), repetitionCount);
-      if (failed(maybeNewRepetitionCount)) {
-        return maybeNpuDmaUserOp->emitOpError() << "no repetition count found";
-      }
-      repetitionCount = maybeNewRepetitionCount.value();
     }
   }
-  return repetitionCount;
+
+  // merge the repetition counts:
+  if (repetitionCounts.empty()) return 1;
+  size_t combinedRepetitionCount = 1;
+
+  // Sort and unique-ify the repetition counts:
+  std::sort(repetitionCounts.begin(), repetitionCounts.end());
+  auto last = std::unique(repetitionCounts.begin(), repetitionCounts.end());
+  repetitionCounts.erase(last, repetitionCounts.end());
+  combinedRepetitionCount = repetitionCounts[0];
+
+  // if any of the repetition counts are not divisible by the combined
+  // repetition count, that's a problem:
+  if (!std::all_of(
+          repetitionCounts.begin(), repetitionCounts.end(),
+          [&](size_t c) { return c % combinedRepetitionCount == 0; })) {
+    return op.emitOpError()
+           << " could not resolved a common repetition count based on the "
+              "individual repetition counts: "
+           << arrString(repetitionCounts);
+  }
+  return combinedRepetitionCount;
 }
 
 //===----------------------------------------------------------------------===//
@@ -339,7 +365,10 @@ LogicalResult AIEDeviceBuilder::foldDimsAndReturnAsStatic(
     function_ref<InFlightDiagnostic()> emitError) {
   if (failed(foldRepetitionCount(rewriter.getContext(), sizes, strides,
                                  repetitionCount))) {
-    return emitError() << "could not fold repetition counts";
+    return emitError() << "could not fold repetition counts from sizes: "
+                       << intOpFoldResultsString(sizes)
+                       << " strides: " << intOpFoldResultsString(strides)
+                       << " repetitionCount: " << repetitionCount << ".";
   }
   SmallVector<OpFoldResult> offsets(
       strides.size(), getAsIndexOpFoldResult(rewriter.getContext(), 0));

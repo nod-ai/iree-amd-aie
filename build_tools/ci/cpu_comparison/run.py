@@ -219,16 +219,10 @@ class BaseMatmul(BaseTest):
         self.n_kernel_runs = n_kernel_runs
 
         self.tile_pipeline = tile_pipeline
-        if tile_pipeline == "pack-peel":
-            self.labels.append("PackPeel")
-        elif tile_pipeline == "pad-pack":
-            self.labels.append("PadPack")
+        self.labels.append(self.tile_pipeline)
 
         self.lower_to_aie_pipeline = lower_to_aie_pipeline
-        if lower_to_aie_pipeline == "air":
-            self.labels.append("Air")
-        elif lower_to_aie_pipeline == "objectFifo":
-            self.labels.append("ObjectFifo")
+        self.labels.append(self.lower_to_aie_pipeline)
 
         self.use_ukernel = use_ukernel
         if use_ukernel:
@@ -1670,6 +1664,17 @@ class Tests:
         for input_type, acc_type in zip(["i8", "bf16"], ["i32", "f32"]):
             self.register(MatmulTransposeB(32, 32, 32, input_type, acc_type))
             self.register(MatmulTransposeB(128, 256, 128, input_type, acc_type))
+            self.register(
+                MatmulTransposeB(
+                    128,
+                    256,
+                    128,
+                    input_type,
+                    acc_type,
+                    tile_pipeline="pack-peel-4-level-tiling",
+                    name_suffix="4level",
+                )
+            )
             self.register(MatmulTransposeB(1536, 1536, 2048, input_type, acc_type))
 
         # MatmulTransposeA test(s):
