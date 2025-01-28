@@ -87,10 +87,7 @@ void AMDAIESplitControlPacketDataPass::runOnOperation() {
   }
   AMDAIE::AMDAIEDeviceModel deviceModel =
       AMDAIE::getDeviceModel(maybeDevice.value());
-  // Add 1 to the `beat` field value, as it represents `length - 1` in the
-  // control packet header. For example, if the maximum `beat` field value is
-  // 15, the corresponding maximum length is 16.
-  uint32_t maxLength = deviceModel.getCtrlPktMaxBeat() + 1;
+  uint32_t maxLength = deviceModel.getCtrlPktMaxLength();
 
   MLIRContext *context = &getContext();
   RewritePatternSet patterns(context);

@@ -316,17 +316,30 @@ uint32_t AMDAIEDeviceModel::getCoreTileLocalMemorySize() const {
   return devInst.DevProp.DevMod[XAIEGBL_TILE_TYPE_AIETILE].CoreMod->DataMemSize;
 }
 
-uint32_t AMDAIEDeviceModel::getCtrlPktHeader(uint32_t address, uint32_t beat,
-                                             uint32_t opcode,
-                                             uint32_t streamId) const {
-  assert(address <= getCtrlPktMaxAddress() && "address out of range");
-  assert(beat <= getCtrlPktMaxBeat() && "beat out of range");
-  assert(opcode <= getCtrlPktMaxOpcode() && "opcode out of range");
-  assert(streamId <= getCtrlPktMaxStreamId() && "streamId out of range");
+FailureOr<uint32_t> AMDAIEDeviceModel::getCtrlPktHeader(
+    uint32_t address, uint32_t length, uint32_t opcode,
+    uint32_t streamId) const {
+  if (address > getCtrlPktMaxAddress()) {
+    llvm::errs() << "address out of range\n";
+    return failure();
+  }
+  if (length > getCtrlPktMaxLength()) {
+    llvm::errs() << "length out of range\n";
+    return failure();
+  }
+  if (opcode > getCtrlPktMaxOpcode()) {
+    llvm::errs() << "opcode out of range\n";
+    return failure();
+  }
+  if (streamId > getCtrlPktMaxStreamId()) {
+    llvm::errs() << "streamId out of range\n";
+    return failure();
+  }
   // Construct the header by shifting and combining the individual fields.
+  // Note that length `i` is encoded in the header as `i - 1`.
   uint32_t header = (streamId << ctrlPktHeaderFormat.streamIdShift) |
                     (opcode << ctrlPktHeaderFormat.operationShift) |
-                    (beat << ctrlPktHeaderFormat.beatShift) |
+                    ((length - 1) << ctrlPktHeaderFormat.beatShift) |
                     (address << ctrlPktHeaderFormat.addressShift);
   // Mask to keep the lower 31 bits (bits 30:0).
   uint32_t lower31Bits = header & 0x7FFFFFFF;
@@ -342,10 +355,9 @@ uint32_t AMDAIEDeviceModel::getCtrlPktMaxAddress() const {
          1;
 }
 
-uint32_t AMDAIEDeviceModel::getCtrlPktMaxBeat() const {
+uint32_t AMDAIEDeviceModel::getCtrlPktMaxLength() const {
   return (1 << (ctrlPktHeaderFormat.operationShift -
-                ctrlPktHeaderFormat.beatShift)) -
-         1;
+                ctrlPktHeaderFormat.beatShift));
 }
 
 uint32_t AMDAIEDeviceModel::getCtrlPktMaxOpcode() const {
@@ -527,6 +539,21 @@ uint32_t AMDAIEDeviceModel::getColumnShift() const {
 }
 
 uint32_t AMDAIEDeviceModel::getRowShift() const { return configPtr.RowShift; }
+
+uint32_t AMDAIEDeviceModel::getColumnFromAddress(uint32_t address) const {
+  uint32_t columnMask = (1 << (getColumnShift() - getRowShift())) - 1;
+  return (address >> getColumnShift()) & columnMask;
+}
+
+uint32_t AMDAIEDeviceModel::getRowFromAddress(uint32_t address) const {
+  uint32_t rowMask = (1 << (getColumnShift() - getRowShift())) - 1;
+  return (address >> getRowShift()) & rowMask;
+}
+
+uint32_t AMDAIEDeviceModel::getOffsetFromAddress(uint32_t address) const {
+  uint32_t offsetMask = (1 << getRowShift()) - 1;
+  return address & offsetMask;
+}
 
 uint8_t AMDAIEDeviceModel::getPacketIdMaxIdx() const {
   return deviceConfig.packetIdMaxIdx;

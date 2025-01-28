@@ -26,8 +26,8 @@ struct ControlPacketDmaBuilder {
   std::vector<uint32_t> ctrlPktSequence;
 
   llvm::MutableArrayRef<uint32_t> reserveAndGetTail(size_t tailSize) {
-    auto oldSize = ctrlPktSequence.size();
-    auto newSize = oldSize + tailSize;
+    size_t oldSize = ctrlPktSequence.size();
+    size_t newSize = oldSize + tailSize;
     ctrlPktSequence.resize(newSize, 0);
     return llvm::MutableArrayRef<uint32_t>(ctrlPktSequence.data() + oldSize,
                                            tailSize);
@@ -71,13 +71,10 @@ struct ControlPacketDmaBuilder {
     res = workgroupOp->walk([&](AMDAIE::NpuControlPacketOp ctrlPktOp) {
       ctrlPktOps.push_back(ctrlPktOp);
       // Get `ConnectionOp` for the `CTRL` port.
-      uint32_t colShift = deviceModel.getColumnShift();
-      uint32_t rowShift = deviceModel.getRowShift();
-      llvm::errs() << "colShift: " << colShift << "rowShift: " << rowShift
-                   << "\n";
-      uint32_t address = ctrlPktOp.getAddress() & 0xFFFFF;
-      int32_t col = (ctrlPktOp.getAddress() >> colShift) & 0x1F;
-      int32_t row = (ctrlPktOp.getAddress() >> rowShift) & 0x1F;
+      uint32_t address = ctrlPktOp.getAddress();
+      uint32_t addrOffset = deviceModel.getOffsetFromAddress(address);
+      int32_t col = deviceModel.getColumnFromAddress(address);
+      int32_t row = deviceModel.getRowFromAddress(address);
       if (!tileLocToCtrlConnect.count({col, row})) {
         ctrlPktOp.emitOpError()
             << "tries to write to tile (col=" << col << ", row=" << row
@@ -102,14 +99,19 @@ struct ControlPacketDmaBuilder {
       SmallVector<int64_t> sizes{1, 1, 1, headerAndDataLength};
       SmallVector<int64_t> strides{0, 0, 0, 1};
 
-      // Store the control packet header and data.
+      // Store the control packet header.
       llvm::MutableArrayRef<uint32_t> words =
           reserveAndGetTail(headerAndDataLength);
-      // Subtract 1 from `dataLength` because the length `i` is encoded in the
-      // header as `i - 1`.
-      words[0] = deviceModel.getCtrlPktHeader(
-          address, dataLength - 1, static_cast<uint32_t>(ctrlPktOp.getOpcode()),
+      FailureOr<uint32_t> header = deviceModel.getCtrlPktHeader(
+          addrOffset, dataLength, static_cast<uint32_t>(ctrlPktOp.getOpcode()),
           ctrlPktOp.getStreamId());
+      if (failed(header)) {
+        ctrlPktOp.emitOpError() << "failed to get control packet header.";
+        return WalkResult::interrupt();
+      }
+
+      words[0] = *header;
+      // Store the control packet data.
       std::optional<ArrayRef<int32_t>> maybeData =
           ctrlPktOp.getDataFromArrayOrResource();
       if (maybeData.has_value()) {
