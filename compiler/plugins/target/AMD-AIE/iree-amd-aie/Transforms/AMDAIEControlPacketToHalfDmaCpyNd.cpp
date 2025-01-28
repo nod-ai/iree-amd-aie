@@ -150,7 +150,7 @@ struct ControlPacketDmaBuilder {
       rewriter.eraseOp(ctrlPktOp);
 
     // Store the control packet sequence in the `WorkgroupOp`.
-    workgroupOp.setControlPacketSequenceAttr(DenseUI32ResourceElementsAttr::get(
+    workgroupOp.setCtrlpktSequenceAttr(DenseUI32ResourceElementsAttr::get(
         RankedTensorType::get(
             ctrlPktSequence.size(),
             IntegerType::get(rewriter.getContext(), 32, IntegerType::Unsigned)),
