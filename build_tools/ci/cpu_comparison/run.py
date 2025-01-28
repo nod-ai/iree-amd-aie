@@ -1730,10 +1730,7 @@ class Tests:
                 aie_compilation_flags=[
                     "--iree-amdaie-num-rows=4",
                     "--iree-amdaie-num-cols=8",
-                    "--iree-amd-aie-additional-peano-opt-flags=-O3",
-                    "--iree-amdaie-enable-function-outlining=True",
                 ],
-                use_chess=True,
             )
         )
 
@@ -1815,10 +1812,7 @@ class Tests:
                 aie_compilation_flags=[
                     "--iree-amdaie-num-rows=4",
                     "--iree-amdaie-num-cols=8",
-                    "--iree-amd-aie-additional-peano-opt-flags=-O3",
-                    "--iree-amdaie-enable-function-outlining=True",
                 ],
-                use_chess=True,
             )
         )
 

@@ -349,7 +349,23 @@ void AMDAIESplitLogicalObjFifosPass::runOnOperation() {
   }
 
   // Fetch and store all unique pairs of L2<->L1 Copy ops. This would helps us
-  // figure out the split factor for all LogicalObjectFifos.
+  // figure out the split factor for all LogicalObjectFifos. Basically we get to
+  // decide how many splits to perform for a particular L2 ObjectFifo based on
+  // the total unique L2<->L1 Copy ops.
+  // Eg:
+  //      %lhs = LOF_on_L2
+  //      %a = LOF_on_L1_0
+  //      %b = LOF_on_L1_1
+  //      %c = LOF_on_L1_2
+  //      DMA(%a, %lhs)
+  //      DMA(%b, %lhs)
+  //      DMA(%c, %lhs)
+  //      DMA(%b, %lhs)
+  //      DMA(%c, %lhs)
+  //
+  //    In the above snippet although we have 5 DMA ops for L2<->L1, only 3 of
+  //    them are unique. Hence we'd split %lhs into 3 unique splits, instead
+  //    of 5.
   DenseMap<Operation *, DenseSet<Operation *>> uniqueL2L1Pair;
   moduleOp->walk([&](Operation *op) -> WalkResult {
     if (auto copyOp = dyn_cast<CopyOpInterface>(op)) {
@@ -371,16 +387,19 @@ void AMDAIESplitLogicalObjFifosPass::runOnOperation() {
       }
       Operation *l2DefOp = nullptr;
       Operation *l1DefOp = nullptr;
-      if (source.getMemorySpaceAsUInt() == 1 &&
-          target.getMemorySpaceAsUInt() == 2) {
+      // L2 -> L1.
+      if (target.getMemorySpaceAsUInt() == 2) {
         l2DefOp = sourceFromMemrefOp.getMemref().getDefiningOp();
         l1DefOp = targetFromMemrefOp;
-      } else if (target.getMemorySpaceAsUInt() == 1 &&
-                 source.getMemorySpaceAsUInt() == 2) {
+      } else if (source.getMemorySpaceAsUInt() == 2) {
+        // L1 -> L2.
         l2DefOp = targetFromMemrefOp.getMemref().getDefiningOp();
         l1DefOp = sourceFromMemrefOp;
       } else {
         return WalkResult::advance();
+      }
+      if (!l2DefOp || !l1DefOp) {
+        return WalkResult::interrupt();
       }
       uniqueL2L1Pair[l2DefOp].insert(l1DefOp);
       return WalkResult::advance();
@@ -392,30 +411,31 @@ void AMDAIESplitLogicalObjFifosPass::runOnOperation() {
   /// dimensions.
   DenseMap<Operation *, int64_t> splitFactorOfLOF;
   for (auto &&[dmaOp, dmaSplitInfo] : dmaSplitInfoMap) {
-    auto stridedOp =
-        cast<AMDAIE::DoublyStridedOpInterface>(dmaOp.getOperation());
     auto dmaCpyNd = cast<AMDAIE::DmaCpyNdOp>(dmaOp.getOperation());
     int64_t splitFactor = dmaSplitInfo.splitSize;
-    if (stridedOp.getSourceMemorySpaceAsUInt() == 0) {
-      splitFactor =
-          uniqueL2L1Pair
-              [dmaCpyNd.getTarget()
-                   .getDefiningOp<AMDAIE::LogicalObjectFifoFromMemrefOp>()
-                   .getMemref()
-                   .getDefiningOp()]
-                  .size();
-    } else if (stridedOp.getTargetMemorySpaceAsUInt() == 0) {
-      splitFactor =
-          uniqueL2L1Pair
-              [dmaCpyNd.getSource()
-                   .getDefiningOp<AMDAIE::LogicalObjectFifoFromMemrefOp>()
-                   .getMemref()
-                   .getDefiningOp()]
-                  .size();
+    auto sourceDefOp =
+        dmaCpyNd.getSource()
+            .getDefiningOp<AMDAIE::LogicalObjectFifoFromMemrefOp>();
+    auto targetDefOp =
+        dmaCpyNd.getTarget()
+            .getDefiningOp<AMDAIE::LogicalObjectFifoFromMemrefOp>();
+    if (!sourceDefOp || !targetDefOp) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Expected defining op of source/target for : " << dmaOp);
+      return signalPassFailure();
     }
+    if (dmaCpyNd.getSourceMemorySpaceAsUInt() == 0) {
+      if (Operation *l2DefOp = targetDefOp.getMemref().getDefiningOp())
+        splitFactor = uniqueL2L1Pair[l2DefOp].size();
+    } else if (dmaCpyNd.getTargetMemorySpaceAsUInt() == 0) {
+      if (Operation *l2DefOp = sourceDefOp.getMemref().getDefiningOp())
+        splitFactor = uniqueL2L1Pair[l2DefOp].size();
+    }
+    // In cases where the number of available columns < the inferred split
+    // factor, we'll cap the final split factor by the lower bound.
     splitFactor = std::gcd(dmaSplitInfo.splitSize, splitFactor);
     FailureOr<int64_t> maybeSplitFactor = splitDoublyStridedOp(
-        rewriter, stridedOp, dmaSplitInfo.sourceSplitDim,
+        rewriter, dmaCpyNd, dmaSplitInfo.sourceSplitDim,
         dmaSplitInfo.targetSplitDim, splitFactor, dmaSplitInfo.newSourceStride,
         dmaSplitInfo.newTargetStride);
     if (failed(maybeSplitFactor)) {
@@ -423,8 +443,11 @@ void AMDAIESplitLogicalObjFifosPass::runOnOperation() {
                  << "Failed to perform splitting of the DMA op: " << dmaOp);
       return signalPassFailure();
     }
-    splitFactorOfLOF[dmaCpyNd.getTarget().getDefiningOp()] = *maybeSplitFactor;
-    splitFactorOfLOF[dmaCpyNd.getSource().getDefiningOp()] = *maybeSplitFactor;
+    // The above function might change the split factor based on divisibility
+    // with source/target. Therefore here we maintain the final split factor
+    // which we'll use later to split the LogicalObjectFifo.
+    splitFactorOfLOF[targetDefOp] = *maybeSplitFactor;
+    splitFactorOfLOF[sourceDefOp] = *maybeSplitFactor;
   }
   for (auto &&[objFifo, splitInfo] : objFifoSplitInfoMap) {
     if (failed(splitLogicalObjectFifo(rewriter, objFifo, splitInfo.splitDim,
