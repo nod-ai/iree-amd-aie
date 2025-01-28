@@ -34,25 +34,6 @@
 
 using namespace xilinx;
 
-namespace {
-
-using namespace mlir;
-
-std::string arrString(ArrayRef<int64_t> vs) {
-  return std::string("[")
-      .append(llvm::join(
-          llvm::map_range(vs, [](int64_t v) { return std::to_string(v); }),
-          ","))
-      .append("]");
-}
-
-std::string intOpFoldResultsString(ArrayRef<OpFoldResult> ofrs) {
-  auto maybeValues = mlir::getConstantIntValues(ofrs);
-  if (maybeValues.has_value()) return "[not all constant]";
-  return arrString(maybeValues.value());
-}
-}  // namespace
-
 namespace mlir::iree_compiler::AMDAIE {
 
 /// Compute the 'global' repetition count: the product over all dimensions with
@@ -114,13 +95,8 @@ static FailureOr<size_t> getRepetitionCount(LogicalObjFifoOpInterface op) {
 
   // merge the repetition counts:
   if (repetitionCounts.empty()) return 1;
-  size_t combinedRepetitionCount = 1;
-
-  // Sort and unique-ify the repetition counts:
-  std::sort(repetitionCounts.begin(), repetitionCounts.end());
-  auto last = std::unique(repetitionCounts.begin(), repetitionCounts.end());
-  repetitionCounts.erase(last, repetitionCounts.end());
-  combinedRepetitionCount = repetitionCounts[0];
+  int64_t combinedRepetitionCount =
+      *std::min_element(repetitionCounts.begin(), repetitionCounts.end());
 
   // if any of the repetition counts are not divisible by the combined
   // repetition count, that's a problem:
@@ -130,7 +106,7 @@ static FailureOr<size_t> getRepetitionCount(LogicalObjFifoOpInterface op) {
     return op.emitOpError()
            << " could not resolved a common repetition count based on the "
               "individual repetition counts: "
-           << arrString(repetitionCounts);
+           << getArrayString<int64_t>(repetitionCounts);
   }
   return combinedRepetitionCount;
 }
@@ -366,8 +342,8 @@ LogicalResult AIEDeviceBuilder::foldDimsAndReturnAsStatic(
   if (failed(foldRepetitionCount(rewriter.getContext(), sizes, strides,
                                  repetitionCount))) {
     return emitError() << "could not fold repetition counts from sizes: "
-                       << intOpFoldResultsString(sizes)
-                       << " strides: " << intOpFoldResultsString(strides)
+                       << getConstantIntValuesString(sizes)
+                       << " strides: " << getConstantIntValuesString(strides)
                        << " repetitionCount: " << repetitionCount << ".";
   }
   SmallVector<OpFoldResult> offsets(

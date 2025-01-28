@@ -1,5 +1,6 @@
 #include "gtest/gtest.h"
 #include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 
 namespace {
 
@@ -40,6 +41,24 @@ TEST(FindLargestFactorTest, Test0) {
   int firstPrimeAbove1e5 = 10'037;
   EXPECT_EQ(
       detail::findLargestFactor(firstPrimeAbove1e5, firstPrimeAbove1e5 - 1), 1);
+}
+
+TEST(OpFoldResultPrinting, Test0) {
+  mlir::MLIRContext context;
+  llvm::SmallVector<mlir::OpFoldResult> opFoldResults = {};
+  EXPECT_EQ(getConstantIntValuesString(opFoldResults), "[]");
+
+  mlir::OpFoldResult three = getAsIndexOpFoldResult(&context, 3);
+  opFoldResults.push_back(three);
+  EXPECT_EQ(getConstantIntValuesString(opFoldResults), "[3]");
+
+  mlir::OpFoldResult four = getAsIndexOpFoldResult(&context, 4);
+  opFoldResults.push_back(four);
+  EXPECT_EQ(getConstantIntValuesString(opFoldResults), "[3,4]");
+
+  opFoldResults.push_back(mlir::Value{});
+  EXPECT_EQ(getConstantIntValuesString(opFoldResults),
+            "[not all constant integers]");
 }
 
 }  // namespace
