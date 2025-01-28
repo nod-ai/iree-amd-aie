@@ -1140,10 +1140,12 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // -----
 
 
-// Before this PR: error: unexpected error: 'amdaie.npu.circular_dma_cpy_nd' op could not fold repetition counts
 // This IR is derived from a matmul_transpose_b example
+// Checking that 
+// `error: unexpected error: 'amdaie.npu.circular_dma_cpy_nd' op could not fold repetition counts` 
+// is not observed. 
 
-// CHECK-LABEL: func @repetition_counts_can_fold()
+// CHECK-LABEL: @repetition_counts_can_fold
 
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 #translation = #iree_codegen.translation_info<pipeline = Custom>
