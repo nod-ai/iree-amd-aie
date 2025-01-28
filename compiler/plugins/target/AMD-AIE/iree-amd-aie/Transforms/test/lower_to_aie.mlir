@@ -1141,9 +1141,9 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 
 // This IR is derived from a matmul_transpose_b example
-// Checking that 
-// `error: unexpected error: 'amdaie.npu.circular_dma_cpy_nd' op could not fold repetition counts` 
-// is not observed. 
+// Checking that
+// `error: unexpected error: 'amdaie.npu.circular_dma_cpy_nd' op could not fold repetition counts`
+// is not observed.
 
 // CHECK-LABEL: @repetition_counts_can_fold
 
