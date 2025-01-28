@@ -884,12 +884,10 @@ void addAMDAIEObjectFifoLoweringPasses(
 
   passManager.addPass(createAMDAIEObjFifoBufferizationPass());
   passManager.addPass(createAMDAIETemporaryAllocBufferizationPass());
-  passManager.addPass(createAMDAIEConnectionToFlowPass());
 
   passManager.addPass(createAMDAIEGenerateControlOverlayPass());
-  passManager.addPass(createCSEPass());
-  passManager.addPass(createCanonicalizerPass());
 
+  passManager.addPass(createAMDAIEConnectionToFlowPass());
   passManager.addPass(createAMDAIEAssignPacketIdsPass());
 
   passManager.addPass(createAMDAIENpuDmaToHalfDmaCpyNdPass());

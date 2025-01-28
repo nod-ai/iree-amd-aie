@@ -20,11 +20,6 @@ func.func @logicalobjectfifo_tensor(!amdaie.logicalobjectfifo<tensor<8x16xi32>>)
 
 // -----
 
-// expected-error @+1 {{should encapsulate static memref}}
-func.func @logicalobjectfifo_dynamic(!amdaie.logicalobjectfifo<memref<?x8x16xi32>>)
-
-// -----
-
 func.func @circular_dma_cpy_nd_invalid_src_offsets() {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index

@@ -32,11 +32,6 @@ void AMDAIEDialect::initializeAMDAIETypes() {
 LogicalResult LogicalObjectFifoType::verify(
     llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
     mlir::MemRefType elementType, unsigned depth) {
-  if (llvm::any_of(elementType.getShape(), [](auto dimSize) {
-        return ShapedType::isDynamic(dimSize);
-      })) {
-    return emitError() << "should encapsulate static memref";
-  }
   if (depth < 1 || depth > 4) return emitError() << "depth should be in [1, 4]";
   return success();
 }
