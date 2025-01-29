@@ -430,6 +430,14 @@ struct AMDAIEDeviceModel {
   uint32_t getColumnShift() const;
   uint32_t getRowShift() const;
 
+  // Return the magic location in the ELF files containing the size of the
+  // program in bytes. The location is returned as a byte offset and number of
+  // bytes being used to store the number. NOTE: this could potentially change
+  // at any moment in the future.
+  std::pair<uint32_t, uint32_t> getElfPmSizeLocationAndNumBytes() const {
+    return {72, 4};
+  }
+
   /// Extract the column from a register address.
   uint32_t getColumnFromAddress(uint32_t address) const;
   /// Extract the row from a register address.

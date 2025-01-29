@@ -83,6 +83,13 @@ int main(int argc, char **argv) {
     return 1;
   }
 
+#ifndef NDEBUG
+  // Enable the `iree-amdaie-ert` debug flag to print program size for
+  // verification purposes.
+  llvm::DebugFlag = true;
+  llvm::setCurrentDebugType("iree-amdaie-ert");
+#endif
+
   // Use `aie2xclbin` to generate the elf files.
   if (failed(aie2xclbin(
           /*ctx=*/&context,
