@@ -6,7 +6,11 @@
 
 #include "AMDAIERT.h"
 
+#include <fstream>
+
 #include "iree-amd-aie/aie_runtime/iree_aie_configure.h"
+
+#define DEBUG_TYPE "iree-amdaie-ert"
 
 using namespace mlir;
 
@@ -37,10 +41,46 @@ using Path = std::filesystem::path;
 
 namespace mlir::iree_compiler::AMDAIE {
 
+FailureOr<uint64_t> getProgramSize(
+    const Path &elfPath, const AMDAIEDeviceModel &deviceModel,
+    function_ref<InFlightDiagnostic()> emitError) {
+  // Open file and seek the end.
+  std::ifstream file(elfPath.string().c_str(),
+                     std::ios::ate | std::ios::binary);
+  size_t length = file.tellg();
+  uint32_t pmSizeLocationInBytes, pmSizeNumBytes;
+  std::tie(pmSizeLocationInBytes, pmSizeNumBytes) =
+      deviceModel.getElfPmSizeLocationAndNumBytes();
+  if (pmSizeNumBytes > sizeof(uint64_t)) {
+    return emitError()
+           << "the number of bytes used for encoding the PM size is "
+              "larger than the size of `uint64_t`";
+  }
+  if (length <= pmSizeLocationInBytes + pmSizeNumBytes) {
+    return emitError() << "the size of the elf file (" << elfPath.string()
+                       << ") is smaller than expected, so likely not created "
+                          "correctly.";
+  }
+  SmallVector<char> sizeBuffer(pmSizeNumBytes, 0);
+  file.seekg(pmSizeLocationInBytes, std::ios::beg);
+  // Read data from the file.
+  if (file.read(sizeBuffer.data(), pmSizeNumBytes)) {
+    // Convert little endian byte array to uint.
+    uint64_t pmSize =
+        std::accumulate(sizeBuffer.begin(), sizeBuffer.end(), 0,
+                        [&](uint64_t acc, const char &elem) {
+                          int index = &elem - sizeBuffer.data();
+                          return acc | ((uint8_t)elem << (8 * index));
+                        });
+    return pmSize;
+  }
+  return emitError() << "error reading data from file: " << elfPath.string();
+}
+
 LogicalResult addAllAieElfs(const AMDAIEDeviceModel &deviceModel,
-                            DeviceOp &device, const Path &workDirPath,
+                            DeviceOp deviceOp, const Path &workDirPath,
                             bool aieSim) {
-  for (auto tileOp : device.getOps<TileOp>()) {
+  for (auto tileOp : deviceOp.getOps<TileOp>()) {
     TileLoc tileLoc{tileOp.getCol(), tileOp.getRow()};
     if (deviceModel.isShimNOCorPLTile(tileLoc.col, tileLoc.row)) continue;
     if (CoreOp coreOp = getCoreOp(tileOp)) {
@@ -52,8 +92,16 @@ LogicalResult addAllAieElfs(const AMDAIEDeviceModel &deviceModel,
         fileName = "core_" + std::to_string(tileLoc.col) + "_" +
                    std::to_string(tileLoc.row) + ".elf";
       }
-      if (failed(addElfToTile(deviceModel, tileLoc, workDirPath / fileName,
-                              aieSim))) {
+      // Check the ELF, add it to the tile and possibly print the program size
+      // for debugging purposes.
+      Path elfPath = workDirPath / fileName;
+      FailureOr<uint64_t> maybePmSize = getProgramSize(
+          elfPath, deviceModel, [&]() { return deviceOp.emitOpError(); });
+      if (failed(maybePmSize)) return failure();
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Program memory size of ELF (" << elfPath.string()
+                 << ") is: " << maybePmSize.value() << "\n");
+      if (failed(addElfToTile(deviceModel, tileLoc, elfPath, aieSim))) {
         return failure();
       }
     }
