@@ -753,13 +753,12 @@ LogicalResult splitLogicalObjectFifo(IRRewriter &rewriter,
 /// Split doubly strided operations on a source and target split dimension with
 /// the provided split factor which might get updated. On success, return the
 /// split factor to the caller, else return failure.
-FailureOr<int64_t> splitDoublyStridedOp(IRRewriter &rewriter,
-                                        AMDAIE::DoublyStridedOpInterface op,
-                                        size_t sourceSplitDim,
-                                        size_t targetSplitDim,
-                                        std::optional<size_t> maybeSplitFactor,
-                                        int64_t sourceSplitStride,
-                                        int64_t targetSplitStride) {
+LogicalResult splitDoublyStridedOp(IRRewriter &rewriter,
+                                   AMDAIE::DoublyStridedOpInterface op,
+                                   size_t sourceSplitDim, size_t targetSplitDim,
+                                   std::optional<size_t> maybeSplitFactor,
+                                   int64_t sourceSplitStride,
+                                   int64_t targetSplitStride) {
   if (!op->use_empty())
     return op.emitOpError() << "can't be split because it has uses";
   SmallVector<OpFoldResult> sourceOffsets = op.getSourceMixedOffsets();
@@ -802,15 +801,9 @@ FailureOr<int64_t> splitDoublyStridedOp(IRRewriter &rewriter,
   }
   int64_t sourceSize = maybeSourceSize.value();
   int64_t targetSize = maybeTargetSize.value();
-  int64_t splitFactor = maybeSplitFactor.has_value()
-                            ? maybeSplitFactor.value()
-                            : std::gcd(sourceSize, targetSize);
-  if (sourceSize % splitFactor != 0 || targetSize % splitFactor != 0) {
-    int64_t newSplitFactor = std::gcd(sourceSize, targetSize);
-    LLVM_DEBUG(llvm::dbgs() << "split factor has been changed from "
-                            << splitFactor << " to " << newSplitFactor);
-    splitFactor = newSplitFactor;
-  }
+  assert(maybeSplitFactor.has_value() &&
+         "expected split factor to be sent by the caller");
+  int64_t splitFactor = maybeSplitFactor.value();
 
   int64_t newSourceSize = sourceSize / splitFactor;
   int64_t newTargetSize = targetSize / splitFactor;
@@ -859,7 +852,7 @@ FailureOr<int64_t> splitDoublyStridedOp(IRRewriter &rewriter,
     targetOffsets[targetSplitDim] = newTargetOffset.value();
   }
   rewriter.eraseOp(op);
-  return splitFactor;
+  return success();
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE
