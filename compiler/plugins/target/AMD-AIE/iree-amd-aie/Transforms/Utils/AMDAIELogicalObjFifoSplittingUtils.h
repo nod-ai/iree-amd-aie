@@ -41,8 +41,8 @@ LogicalResult splitLogicalObjectFifo(
 /// the provided split factor.
 LogicalResult splitDoublyStridedOp(
     IRRewriter &rewriter, AMDAIE::DoublyStridedOpInterface op,
-    size_t sourceSplitDim = 0, size_t targetSplitDim = 0,
-    int64_t splitFactor, int64_t sourceSplitStride = 1, int64_t targetSplitStride = 1);
+    size_t sourceSplitDim = 0, size_t targetSplitDim = 0, int64_t splitFactor,
+    int64_t sourceSplitStride = 1, int64_t targetSplitStride = 1);
 
 }  // namespace mlir::iree_compiler::AMDAIE
 
