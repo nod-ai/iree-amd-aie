@@ -17,7 +17,7 @@ namespace mlir::iree_compiler::AMDAIE {
 namespace {
 
 /// Initializes the channel generators for the shim tiles, excluding any
-/// channels that are already in use by existing circuit flows.
+/// channels that are already in use by existing circuit-mode connections.
 LogicalResult initializeChannelsGenerators(
     AMDAIE::WorkgroupOp workgroupOp, const AMDAIEDeviceModel &deviceModel,
     const DenseSet<TileOp> &shimTileOps,
@@ -29,11 +29,15 @@ LogicalResult initializeChannelsGenerators(
     shimTileToGeneratorMap[shimTileOp.getResult()] =
         ChannelGenerator(numShimDmaChannels, numShimDmaChannels);
   });
-  // Exclude those channels that are already used by a circuit flow.
-  workgroupOp->walk([&](AMDAIE::FlowOp flowOp) {
-    if (flowOp.getIsPacketFlow()) return WalkResult::advance();
+  // Exclude those channels that are already used by a circuit-mode connection.
+  workgroupOp->walk([&](AMDAIE::ConnectionOp connectionOp) {
+    std::optional<AMDAIE::ConnectionType> connectionType =
+        connectionOp.getConnectionType();
+    bool isPacketFlow = connectionType && connectionType.value() ==
+                                              AMDAIE::ConnectionType::Packet;
+    if (isPacketFlow) return WalkResult::advance();
     SmallVector<AMDAIE::ChannelOp> sourceChannels;
-    for (Value source : flowOp.getSources()) {
+    for (Value source : connectionOp.getSourceChannels()) {
       if (auto channelOp =
               dyn_cast<AMDAIE::ChannelOp>(source.getDefiningOp())) {
         sourceChannels.push_back(channelOp);
@@ -97,8 +101,8 @@ LogicalResult generateControlOverlay(AMDAIE::WorkgroupOp workgroupOp,
     }
   }
 
-  // Create a packet flow from the shim DMA to the tile CTRL, for sending
-  // control packets.
+  // Create a packet-mode connection from the shim DMA to the tile CTRL, for
+  // sending control packets.
   if (routeShimToTileCtrl) {
     DenseMap<Value, ChannelGenerator> shimTileToGeneratorMap;
     DenseSet<TileOp> shimTileOps;
@@ -111,7 +115,7 @@ LogicalResult generateControlOverlay(AMDAIE::WorkgroupOp workgroupOp,
       uint32_t col = getConstantIndexOrAssert(tileOp.getCol());
       TileOp shimTileOp = columnToShimTile[col];
       // Get the available channel, but do not assign it. Allow it to be
-      // shared across multiple packet flows as needed.
+      // shared across multiple packet-mode connections as needed.
       std::optional<uint8_t> maybeChannel =
           shimTileToGeneratorMap[shimTileOp.getResult()]
               .getProducerDMAChannel();
@@ -119,35 +123,69 @@ LogicalResult generateControlOverlay(AMDAIE::WorkgroupOp workgroupOp,
         shimTileOp.emitOpError() << "no producer DMA channel available";
         return WalkResult::interrupt();
       }
-      auto shimDmaChannelOp = rewriter.create<AMDAIE::ChannelOp>(
+      auto sourceChannelOp = rewriter.create<AMDAIE::ChannelOp>(
           rewriter.getUnknownLoc(), shimTileOp, maybeChannel.value(),
           StrmSwPortType::DMA, AMDAIE::DMAChannelDir::MM2S);
-      auto tileCtrlChannelOp = rewriter.create<AMDAIE::ChannelOp>(
+      auto targetChannelOp = rewriter.create<AMDAIE::ChannelOp>(
           rewriter.getUnknownLoc(), tileOp, 0, StrmSwPortType::CTRL,
           AMDAIE::DMAChannelDir::S2MM);
-      rewriter.create<AMDAIE::FlowOp>(
-          rewriter.getUnknownLoc(), ValueRange{shimDmaChannelOp},
-          ValueRange{tileCtrlChannelOp},
-          /*isPacketFlow*/ true, /*packetId*/ nullptr);
+
+      // Get the objectfifo placeholder for both the source and target.
+      MemRefType elementType =
+          MemRefType::get(ShapedType::kDynamic, rewriter.getI32Type());
+      auto sourcePlaceholder =
+          rewriter.create<AMDAIE::LogicalObjectFifoPlaceholderOp>(
+              rewriter.getUnknownLoc(), LogicalObjectFifoType::get(elementType),
+              ValueRange(shimTileOp));
+      auto targetPlaceholder =
+          rewriter.create<AMDAIE::LogicalObjectFifoPlaceholderOp>(
+              rewriter.getUnknownLoc(), LogicalObjectFifoType::get(elementType),
+              ValueRange(tileOp));
+
+      rewriter.create<AMDAIE::ConnectionOp>(
+          rewriter.getUnknownLoc(), targetPlaceholder,
+          ValueRange{targetChannelOp}, sourcePlaceholder,
+          ValueRange{sourceChannelOp},
+          ConnectionTypeAttr::get(rewriter.getContext(),
+                                  ConnectionType::Packet),
+          /*flow=*/nullptr);
       return WalkResult::advance();
     });
     if (res.wasInterrupted()) return failure();
   }
 
-  // Create a circuit flow from the shim CTRL to the shim SOUTH 0, for sending
-  // Task Completion Tokens (TCTs).
+  // Create a circuit-mode connection from the shim CTRL to the shim SOUTH 0,
+  // for sending Task Completion Tokens (TCTs).
   if (routeShimCtrlToTct) {
     for (auto [_, shimTileOp] : columnToShimTile) {
-      auto shimCtrlChannelOp = rewriter.create<AMDAIE::ChannelOp>(
+      auto sourceChannelOp = rewriter.create<AMDAIE::ChannelOp>(
           rewriter.getUnknownLoc(), shimTileOp, 0, StrmSwPortType::CTRL,
           AMDAIE::DMAChannelDir::MM2S);
-      auto shimSouthChannelOp = rewriter.create<AMDAIE::ChannelOp>(
+      auto targetChannelOp = rewriter.create<AMDAIE::ChannelOp>(
           rewriter.getUnknownLoc(), shimTileOp, 0, StrmSwPortType::SOUTH,
           AMDAIE::DMAChannelDir::S2MM);
-      rewriter.create<AMDAIE::FlowOp>(
-          rewriter.getUnknownLoc(), ValueRange{shimCtrlChannelOp},
-          ValueRange{shimSouthChannelOp},
-          /*isPacketFlow*/ false, /*packetId*/ nullptr);
+
+      // Get the objectfifo placeholder for both the source and target.
+      // Set the shape to dynamic because the size of the control packet
+      // sequence is unknown and may vary based on the reconfiguration content.
+      MemRefType elementType =
+          MemRefType::get(ShapedType::kDynamic, rewriter.getI32Type());
+      auto sourcePlaceholder =
+          rewriter.create<AMDAIE::LogicalObjectFifoPlaceholderOp>(
+              rewriter.getUnknownLoc(), LogicalObjectFifoType::get(elementType),
+              ValueRange(shimTileOp));
+      auto targetPlaceholder =
+          rewriter.create<AMDAIE::LogicalObjectFifoPlaceholderOp>(
+              rewriter.getUnknownLoc(), LogicalObjectFifoType::get(elementType),
+              ValueRange(shimTileOp));
+
+      rewriter.create<AMDAIE::ConnectionOp>(
+          rewriter.getUnknownLoc(), targetPlaceholder,
+          ValueRange{targetChannelOp}, sourcePlaceholder,
+          ValueRange{sourceChannelOp},
+          ConnectionTypeAttr::get(rewriter.getContext(),
+                                  ConnectionType::Circuit),
+          /*flow=*/nullptr);
     }
   }
 
