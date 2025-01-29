@@ -139,7 +139,7 @@ FailureOr<int64_t> getSplitStride(ArrayRef<AMDAIE::DmaCpyNdOp> dmaOps,
 ///    them are unique. Hence we'd split %lhs into 3 unique splits, instead
 ///    of 5.
 template <CopyOpOperateOn OperateOn>
-static FailureOr<int64_t> fetchTotalUniqueLogicalObjFifos(
+static FailureOr<int64_t> fetchTotalUniqueLogicalObjFifoUsers(
     SmallVector<CopyOpInterface> copyLikeOps) {
   DenseSet<Operation *> uniqueLof;
   for (CopyOpInterface copyOp : copyLikeOps) {
@@ -260,14 +260,14 @@ LogicalResult collectSplittingDims(
       // Calculate the new source stride to be used for splitting the DMA.
       int64_t newSourceStride =
           splitStride != 1 ? splitDimSize / splitStride : 1;
-      FailureOr<int64_t> maybeUniqueL2L1 =
-          fetchTotalUniqueLogicalObjFifos<CopyOpOperateOn::Target>(
+      FailureOr<int64_t> maybeNumUniqueConsumers =
+          fetchTotalUniqueLogicalObjFifoUsers<CopyOpOperateOn::Target>(
               objFifo.getCopyLikeConsumers());
-      if (failed(maybeUniqueL2L1)) {
+      if (failed(maybeNumUniqueConsumers)) {
         objFifo.emitOpError()
             << "could not retrieve total unique L2<->L1 pairs";
       }
-      int64_t splitFactor = std::gcd(*maybeUniqueL2L1, numCols);
+      int64_t splitFactor = std::gcd(*maybeNumUniqueConsumers, numCols);
       int64_t sourceSize = (*sourceSizes)[sourceSplitDim];
       int64_t targetSize = (*targetSizes)[targetSplitDim];
       if (sourceSize % splitFactor != 0 || targetSize % splitFactor != 0) {
@@ -330,14 +330,14 @@ LogicalResult collectSplittingDims(
       // Calculate the new target stride to be used for splitting the DMA.
       int64_t newTargetStride =
           splitStride != 1 ? splitDimSize / splitStride : 1;
-      FailureOr<int64_t> maybeUniqueL2L1 =
-          fetchTotalUniqueLogicalObjFifos<CopyOpOperateOn::Source>(
+      FailureOr<int64_t> maybeNumUniqueProducers =
+          fetchTotalUniqueLogicalObjFifoUsers<CopyOpOperateOn::Source>(
               objFifo.getCopyLikeProducers());
-      if (failed(maybeUniqueL2L1)) {
+      if (failed(maybeNumUniqueProducers)) {
         objFifo.emitOpError()
             << "could not retrieve total unique L2<->L1 pairs";
       }
-      int64_t splitFactor = std::gcd(*maybeUniqueL2L1, numCols);
+      int64_t splitFactor = std::gcd(*maybeNumUniqueProducers, numCols);
       int64_t sourceSize = (*sourceSizes)[sourceSplitDim];
       int64_t targetSize = (*targetSizes)[targetSplitDim];
       if (sourceSize % splitFactor != 0 || targetSize % splitFactor != 0) {
