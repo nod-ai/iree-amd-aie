@@ -137,20 +137,23 @@ FailureOr<int64_t> getSplitStride(ArrayRef<AMDAIE::DmaCpyNdOp> dmaOps,
 ///      DMA(%c, %lhs)
 ///
 ///    In the above snippet although we have 5 DMA ops for L2<->L1, only 3 of
-///    them are unique. Hence we'd split %lhs into 3 unique splits, instead of 5.
-static FailureOr<int64_t> fetchTotalUniqueL2L1(SmallVector<CopyOpInterface> copyLikeOps, bool fetchTarget) {
-  DenseSet<Operation*> uniqueLof;
+///    them are unique. Hence we'd split %lhs into 3 unique splits, instead
+///    of 5.
+static FailureOr<int64_t> fetchTotalUniqueL2L1(
+    SmallVector<CopyOpInterface> copyLikeOps, bool fetchTarget) {
+  DenseSet<Operation *> uniqueLof;
   for (CopyOpInterface copyOp : copyLikeOps) {
     AMDAIE::LogicalObjectFifoFromMemrefOp lof = nullptr;
     if (fetchTarget) {
       lof = dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-            copyOp.getTarget().getDefiningOp());
+          copyOp.getTarget().getDefiningOp());
     } else {
       lof = dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-            copyOp.getSource().getDefiningOp());
+          copyOp.getSource().getDefiningOp());
     }
     if (!lof) {
-      return copyOp.emitOpError()<< "could not retrieve source/target objectFifo";
+      return copyOp.emitOpError()
+             << "could not retrieve source/target objectFifo";
     }
     uniqueLof.insert(lof);
   }
@@ -181,7 +184,8 @@ LogicalResult collectSplittingDims(
     ModuleOp &moduleOp, const SmallVector<DmaObjFifoPairT> &dmaObjFifoPairs,
     DenseMap<AMDAIE::DmaCpyNdOp, DmaSplitInfo> &dmaSplitInfoMap,
     DenseMap<AMDAIE::LogicalObjectFifoFromMemrefOp, ObjFifoSplitInfo>
-        &objFifoSplitInfoMap, int64_t numCols) {
+        &objFifoSplitInfoMap,
+    int64_t numCols) {
   for (auto [dmaOp, objFifo] : dmaObjFifoPairs) {
     LLVM_DEBUG(llvm::dbgs() << "dmaOp: " << dmaOp << "\n");
     LLVM_DEBUG(llvm::dbgs() << "objFifo: " << objFifo << "\n");
@@ -256,7 +260,8 @@ LogicalResult collectSplittingDims(
       // Calculate the new source stride to be used for splitting the DMA.
       int64_t newSourceStride =
           splitStride != 1 ? splitDimSize / splitStride : 1;
-      FailureOr<int64_t> maybeUniqueL2L1 = fetchTotalUniqueL2L1(objFifo.getCopyLikeConsumers(), /*fetchTarget=*/true);
+      FailureOr<int64_t> maybeUniqueL2L1 = fetchTotalUniqueL2L1(
+          objFifo.getCopyLikeConsumers(), /*fetchTarget=*/true);
       if (failed(maybeUniqueL2L1)) {
         objFifo.emitOpError()
             << "could not retrieve total unique L2<->L1 pairs";
@@ -277,7 +282,8 @@ LogicalResult collectSplittingDims(
       LLVM_DEBUG(llvm::dbgs() << "splitFactor: " << splitFactor << "\n");
       dmaSplitInfoMap[dmaOp] = {sourceSplitDim, newSourceStride, targetSplitDim,
                                 1, splitFactor};
-      objFifoSplitInfoMap[objFifo] = {objFifoSplitDim, splitFactor, splitStride};
+      objFifoSplitInfoMap[objFifo] = {objFifoSplitDim, splitFactor,
+                                      splitStride};
     } else if (dmaOp.getSourceObjectFifo() == objFifo) {
       // Find outermost dimension in the access pattern that has stride ==
       // sizeAfterSplit and size != 1.
@@ -323,7 +329,8 @@ LogicalResult collectSplittingDims(
       // Calculate the new target stride to be used for splitting the DMA.
       int64_t newTargetStride =
           splitStride != 1 ? splitDimSize / splitStride : 1;
-      FailureOr<int64_t> maybeUniqueL2L1 = fetchTotalUniqueL2L1(objFifo.getCopyLikeProducers(), /*fetchTarget=*/false);
+      FailureOr<int64_t> maybeUniqueL2L1 = fetchTotalUniqueL2L1(
+          objFifo.getCopyLikeProducers(), /*fetchTarget=*/false);
       if (failed(maybeUniqueL2L1)) {
         objFifo.emitOpError()
             << "could not retrieve total unique L2<->L1 pairs";
@@ -344,7 +351,8 @@ LogicalResult collectSplittingDims(
       LLVM_DEBUG(llvm::dbgs() << "splitFactor: " << splitFactor << "\n");
       dmaSplitInfoMap[dmaOp] = {sourceSplitDim, 1, targetSplitDim,
                                 newTargetStride, splitFactor};
-      objFifoSplitInfoMap[objFifo] = {objFifoSplitDim, splitFactor, splitStride};
+      objFifoSplitInfoMap[objFifo] = {objFifoSplitDim, splitFactor,
+                                      splitStride};
     }
   }
   return success();
