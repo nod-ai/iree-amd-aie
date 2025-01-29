@@ -383,9 +383,22 @@ struct AMDAIEDeviceModel {
   bool hasLegalMemAffinity(uint8_t coreCol, uint8_t coreRow, uint8_t memCol,
                            uint8_t memRow) const;
 
-  // The maximum length (beats) of a control packet is determined by the number
-  // of bits allocated to the `beat` field in the control packet header.
+  /// Construct a control packet header from the specified fields.
+  FailureOr<uint32_t> getCtrlPktHeader(uint32_t address, uint32_t beat,
+                                       uint32_t opcode,
+                                       uint32_t streamId) const;
+
+  /// Get the maximum for the `address` field in the control packet header.
+  uint32_t getCtrlPktMaxAddress() const;
+  /// Gets the maximum data length (in beats) of a control packet.
+  /// The data length `i` is encoded as `i - 1` in the control packet header.
+  /// For example, if 3 bits are allocated for the `length` field, the maximum
+  /// length is `2^3 = 8` beats, not 7.
   uint32_t getCtrlPktMaxLength() const;
+  /// Get the maximum for the `opcode` field in the control packet header.
+  uint32_t getCtrlPktMaxOpcode() const;
+  /// Get the maximum for the `streamId` field in the control packet header.
+  uint32_t getCtrlPktMaxStreamId() const;
 
   uint32_t getMemInternalBaseAddress() const;
   uint32_t getMemSouthBaseAddress() const;
@@ -416,6 +429,13 @@ struct AMDAIEDeviceModel {
 
   uint32_t getColumnShift() const;
   uint32_t getRowShift() const;
+
+  /// Extract the column from a register address.
+  uint32_t getColumnFromAddress(uint32_t address) const;
+  /// Extract the row from a register address.
+  uint32_t getRowFromAddress(uint32_t address) const;
+  /// Extract the offset from a register address.
+  uint32_t getOffsetFromAddress(uint32_t address) const;
 
   uint8_t getPacketIdMaxIdx() const;
 

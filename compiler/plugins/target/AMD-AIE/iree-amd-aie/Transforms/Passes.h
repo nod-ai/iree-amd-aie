@@ -138,10 +138,16 @@ std::unique_ptr<Pass> createAMDAIEControlCodeLoweringPass();
 std::unique_ptr<Pass> createAMDAIEControlCodeToTransactionPass(
     AMDAIEControlCodeToTransactionOptions options = {});
 
+/// Pass to convert `amdaie.npu.control_packet` to
+/// `amdaie.npu.half_dma_cpy_nd` operations.
+std::unique_ptr<Pass> createAMDAIEControlPacketToHalfDmaCpyNdPass(
+    AMDAIEControlPacketToHalfDmaCpyNdOptions options = {});
+
 /// Pass to convert `scf.forall` to `scf.for` within `aie.core`.
 std::unique_ptr<Pass> createAMDAIEConvertCoreForallToForPass();
 
-/// Pass to convert `aie.device`to a sequence of `aie.npu.control_packet` ops.
+/// Pass to convert `aie.device`to a sequence of `amdaie.npu.control_packet`
+/// ops.
 std::unique_ptr<Pass> createAMDAIEConvertDeviceToControlPacketsPass(
     AMDAIEConvertDeviceToControlPacketsOptions options = {});
 

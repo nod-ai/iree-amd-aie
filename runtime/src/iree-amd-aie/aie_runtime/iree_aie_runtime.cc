@@ -316,9 +316,60 @@ uint32_t AMDAIEDeviceModel::getCoreTileLocalMemorySize() const {
   return devInst.DevProp.DevMod[XAIEGBL_TILE_TYPE_AIETILE].CoreMod->DataMemSize;
 }
 
+FailureOr<uint32_t> AMDAIEDeviceModel::getCtrlPktHeader(
+    uint32_t address, uint32_t length, uint32_t opcode,
+    uint32_t streamId) const {
+  if (address > getCtrlPktMaxAddress()) {
+    llvm::errs() << "address out of range\n";
+    return failure();
+  }
+  if (length > getCtrlPktMaxLength()) {
+    llvm::errs() << "length out of range\n";
+    return failure();
+  }
+  if (opcode > getCtrlPktMaxOpcode()) {
+    llvm::errs() << "opcode out of range\n";
+    return failure();
+  }
+  if (streamId > getCtrlPktMaxStreamId()) {
+    llvm::errs() << "streamId out of range\n";
+    return failure();
+  }
+  // Construct the header by shifting and combining the individual fields.
+  // Note that length `i` is encoded in the header as `i - 1`.
+  uint32_t header = (streamId << ctrlPktHeaderFormat.streamIdShift) |
+                    (opcode << ctrlPktHeaderFormat.operationShift) |
+                    ((length - 1) << ctrlPktHeaderFormat.beatShift) |
+                    (address << ctrlPktHeaderFormat.addressShift);
+  // Mask to keep the lower 31 bits (bits 30:0).
+  uint32_t lower31Bits = header & 0x7FFFFFFF;
+  // Compute the odd parity bit (1 if the count of 1's is odd, 0 if even).
+  uint32_t parity = llvm::popcount(lower31Bits) % 2;
+  // Set the parity bit in the most significant bit (bit 31).
+  return (parity << 31) | lower31Bits;
+}
+
+uint32_t AMDAIEDeviceModel::getCtrlPktMaxAddress() const {
+  return (1 << (ctrlPktHeaderFormat.beatShift -
+                ctrlPktHeaderFormat.addressShift)) -
+         1;
+}
+
 uint32_t AMDAIEDeviceModel::getCtrlPktMaxLength() const {
-  return 2 << (ctrlPktHeaderFormat.operationShift -
-               ctrlPktHeaderFormat.beatShift);
+  return (1 << (ctrlPktHeaderFormat.operationShift -
+                ctrlPktHeaderFormat.beatShift));
+}
+
+uint32_t AMDAIEDeviceModel::getCtrlPktMaxOpcode() const {
+  return (1 << (ctrlPktHeaderFormat.streamIdShift -
+                ctrlPktHeaderFormat.operationShift)) -
+         1;
+}
+
+uint32_t AMDAIEDeviceModel::getCtrlPktMaxStreamId() const {
+  return (1 << (ctrlPktHeaderFormat.reservedShift -
+                ctrlPktHeaderFormat.streamIdShift)) -
+         1;
 }
 
 uint32_t AMDAIEDeviceModel::getMemInternalBaseAddress() const {
@@ -488,6 +539,21 @@ uint32_t AMDAIEDeviceModel::getColumnShift() const {
 }
 
 uint32_t AMDAIEDeviceModel::getRowShift() const { return configPtr.RowShift; }
+
+uint32_t AMDAIEDeviceModel::getColumnFromAddress(uint32_t address) const {
+  uint32_t columnMask = (1 << (getColumnShift() - getRowShift())) - 1;
+  return (address >> getColumnShift()) & columnMask;
+}
+
+uint32_t AMDAIEDeviceModel::getRowFromAddress(uint32_t address) const {
+  uint32_t rowMask = (1 << (getColumnShift() - getRowShift())) - 1;
+  return (address >> getRowShift()) & rowMask;
+}
+
+uint32_t AMDAIEDeviceModel::getOffsetFromAddress(uint32_t address) const {
+  uint32_t offsetMask = (1 << getRowShift()) - 1;
+  return address & offsetMask;
+}
 
 uint8_t AMDAIEDeviceModel::getPacketIdMaxIdx() const {
   return deviceConfig.packetIdMaxIdx;
