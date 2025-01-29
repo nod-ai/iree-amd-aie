@@ -1813,6 +1813,7 @@ class Tests:
                     "--iree-amdaie-num-rows=4",
                     "--iree-amdaie-num-cols=8",
                 ],
+                use_chess=True,
             )
         )
 
