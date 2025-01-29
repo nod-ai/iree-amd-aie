@@ -121,7 +121,7 @@ FailureOr<int64_t> getSplitStride(ArrayRef<AMDAIE::DmaCpyNdOp> dmaOps,
   return splitStride;
 }
 
-/// Fetch and store all unique pairs of L2<->L1 Copy ops. This would helps us
+/// Fetch total no. of unique pairs of L2<->L1 Copy ops. This would helps us
 /// figure out the split factor for all LogicalObjectFifos. Basically we get to
 /// decide how many splits to perform for a particular L2 ObjectFifo based on
 /// the total unique L2<->L1 Copy ops.
@@ -137,61 +137,30 @@ FailureOr<int64_t> getSplitStride(ArrayRef<AMDAIE::DmaCpyNdOp> dmaOps,
 ///      DMA(%c, %lhs)
 ///
 ///    In the above snippet although we have 5 DMA ops for L2<->L1, only 3 of
-///    them are unique. Hence we'd split %lhs into 3 unique splits, instead
-///    of 5.
-static DenseMap<Operation *, int64_t> fetchUniqueL2L1(ModuleOp moduleOp) {
-  DenseMap<Operation *, DenseSet<Operation *>> uniqueL2L1Pair;
-  moduleOp->walk([&](Operation *op) -> WalkResult {
-    if (auto copyOp = dyn_cast<CopyOpInterface>(op)) {
-      auto source = dyn_cast_if_present<AMDAIE::LogicalObjFifoOpInterface>(
-          copyOp.getSource().getDefiningOp());
-      auto target = dyn_cast_if_present<AMDAIE::LogicalObjFifoOpInterface>(
-          copyOp.getTarget().getDefiningOp());
-      if (!source || !target) {
-        return WalkResult::interrupt();
-      }
-      auto sourceFromMemrefOp =
-          dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-              copyOp.getSource().getDefiningOp());
-      auto targetFromMemrefOp =
-          dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-              copyOp.getTarget().getDefiningOp());
-      if (!sourceFromMemrefOp || !targetFromMemrefOp) {
-        return WalkResult::interrupt();
-      }
-      Operation *l2LofOp = nullptr;
-      Operation *l1LofOp = nullptr;
-      // L2 -> L1.
-      if (source.getMemorySpaceAsUInt() == 1 &&
-          target.getMemorySpaceAsUInt() == 2) {
-        l2LofOp = sourceFromMemrefOp;
-        l1LofOp = targetFromMemrefOp;
-      } else if (source.getMemorySpaceAsUInt() == 2 &&
-                 target.getMemorySpaceAsUInt() == 1) {
-        // L1 -> L2.
-        l2LofOp = targetFromMemrefOp;
-        l1LofOp = sourceFromMemrefOp;
-      } else {
-        return WalkResult::advance();
-      }
-      uniqueL2L1Pair[l2LofOp].insert(l1LofOp);
-      return WalkResult::advance();
+///    them are unique. Hence we'd split %lhs into 3 unique splits, instead of 5.
+static FailureOr<int64_t> fetchTotalUniqueL2L1(SmallVector<CopyOpInterface> copyLikeOps, bool fetchTarget) {
+  DenseSet<Operation*> uniqueLof;
+  for (CopyOpInterface copyOp : copyLikeOps) {
+    AMDAIE::LogicalObjectFifoFromMemrefOp lof = nullptr;
+    if (fetchTarget) {
+      lof = dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+            copyOp.getTarget().getDefiningOp());
+    } else {
+      lof = dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+            copyOp.getSource().getDefiningOp());
     }
-    return WalkResult::advance();
-  });
-
-  DenseMap<Operation *, int64_t> uniqueL2L1Count;
-  for (auto &&[l2Lof, l1Lofs] : uniqueL2L1Pair)
-    uniqueL2L1Count[l2Lof] = l1Lofs.size();
-
-  return uniqueL2L1Count;
+    if (!lof) {
+      return copyOp.emitOpError()<< "could not retrieve source/target objectFifo";
+    }
+    uniqueLof.insert(lof);
+  }
+  return uniqueLof.size();
 }
 
 /// Find the logical objectFifo and DMA source/target splitting dimensions for
 /// each DMA and objectFifo pair.
 ///
-/// At first we find count of total unique L2<->L1 pairs for all L2 objectFifos.
-/// Then each DMA and objectFifo pair is handled in the following way:
+/// Each pair is handled in the following way:
 /// First, compute the objectFifo splitting dimension based on the last non-unit
 /// shape dimension and the number of available columns. Afterwards, depending
 /// on which logical objectFifo is being split on, find the outermost dimension
@@ -205,13 +174,14 @@ static DenseMap<Operation *, int64_t> fetchUniqueL2L1(ModuleOp moduleOp) {
 /// that has product size larger than the other side's product size after
 /// splitting because that's the number of elements that should be
 /// produced/consumed on the respective sides before splitting.
+/// Towards the end fetch the count of unique L2<->L1 for the objectFifo which
+/// will be split. This would form the split factor which would be capped by the
+/// total no. of columns OR std::gcd of source/target size.
 LogicalResult collectSplittingDims(
     ModuleOp &moduleOp, const SmallVector<DmaObjFifoPairT> &dmaObjFifoPairs,
     DenseMap<AMDAIE::DmaCpyNdOp, DmaSplitInfo> &dmaSplitInfoMap,
     DenseMap<AMDAIE::LogicalObjectFifoFromMemrefOp, ObjFifoSplitInfo>
-        &objFifoSplitInfoMap,
-    int64_t numCols) {
-  DenseMap<Operation *, int64_t> uniqueL2L1Pair = fetchUniqueL2L1(moduleOp);
+        &objFifoSplitInfoMap, int64_t numCols) {
   for (auto [dmaOp, objFifo] : dmaObjFifoPairs) {
     LLVM_DEBUG(llvm::dbgs() << "dmaOp: " << dmaOp << "\n");
     LLVM_DEBUG(llvm::dbgs() << "objFifo: " << objFifo << "\n");
@@ -286,7 +256,12 @@ LogicalResult collectSplittingDims(
       // Calculate the new source stride to be used for splitting the DMA.
       int64_t newSourceStride =
           splitStride != 1 ? splitDimSize / splitStride : 1;
-      int64_t splitFactor = std::gcd(uniqueL2L1Pair[objFifo], numCols);
+      FailureOr<int64_t> maybeUniqueL2L1 = fetchTotalUniqueL2L1(objFifo.getCopyLikeConsumers(), /*fetchTarget=*/true);
+      if (failed(maybeUniqueL2L1)) {
+        objFifo.emitOpError()
+            << "could not retrieve total unique L2<->L1 pairs";
+      }
+      int64_t splitFactor = std::gcd(*maybeUniqueL2L1, numCols);
       int64_t sourceSize = (*sourceSizes)[sourceSplitDim];
       int64_t targetSize = (*targetSizes)[targetSplitDim];
       if (sourceSize % splitFactor != 0 || targetSize % splitFactor != 0) {
@@ -302,8 +277,7 @@ LogicalResult collectSplittingDims(
       LLVM_DEBUG(llvm::dbgs() << "splitFactor: " << splitFactor << "\n");
       dmaSplitInfoMap[dmaOp] = {sourceSplitDim, newSourceStride, targetSplitDim,
                                 1, splitFactor};
-      objFifoSplitInfoMap[objFifo] = {objFifoSplitDim, splitFactor,
-                                      splitStride};
+      objFifoSplitInfoMap[objFifo] = {objFifoSplitDim, splitFactor, splitStride};
     } else if (dmaOp.getSourceObjectFifo() == objFifo) {
       // Find outermost dimension in the access pattern that has stride ==
       // sizeAfterSplit and size != 1.
@@ -349,7 +323,12 @@ LogicalResult collectSplittingDims(
       // Calculate the new target stride to be used for splitting the DMA.
       int64_t newTargetStride =
           splitStride != 1 ? splitDimSize / splitStride : 1;
-      int64_t splitFactor = std::gcd(uniqueL2L1Pair[objFifo], numCols);
+      FailureOr<int64_t> maybeUniqueL2L1 = fetchTotalUniqueL2L1(objFifo.getCopyLikeProducers(), /*fetchTarget=*/false);
+      if (failed(maybeUniqueL2L1)) {
+        objFifo.emitOpError()
+            << "could not retrieve total unique L2<->L1 pairs";
+      }
+      int64_t splitFactor = std::gcd(*maybeUniqueL2L1, numCols);
       int64_t sourceSize = (*sourceSizes)[sourceSplitDim];
       int64_t targetSize = (*targetSizes)[targetSplitDim];
       if (sourceSize % splitFactor != 0 || targetSize % splitFactor != 0) {
@@ -365,8 +344,7 @@ LogicalResult collectSplittingDims(
       LLVM_DEBUG(llvm::dbgs() << "splitFactor: " << splitFactor << "\n");
       dmaSplitInfoMap[dmaOp] = {sourceSplitDim, 1, targetSplitDim,
                                 newTargetStride, splitFactor};
-      objFifoSplitInfoMap[objFifo] = {objFifoSplitDim, splitFactor,
-                                      splitStride};
+      objFifoSplitInfoMap[objFifo] = {objFifoSplitDim, splitFactor, splitStride};
     }
   }
   return success();
