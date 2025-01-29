@@ -751,12 +751,11 @@ LogicalResult splitLogicalObjectFifo(IRRewriter &rewriter,
 }
 
 /// Split doubly strided operations on a source and target split dimension with
-/// the provided split factor which might get updated. On success, return the
-/// split factor to the caller, else return failure.
+/// the provided split factor.
 LogicalResult splitDoublyStridedOp(IRRewriter &rewriter,
                                    AMDAIE::DoublyStridedOpInterface op,
                                    size_t sourceSplitDim, size_t targetSplitDim,
-                                   std::optional<size_t> maybeSplitFactor,
+                                   int64_t splitFactor,
                                    int64_t sourceSplitStride,
                                    int64_t targetSplitStride) {
   if (!op->use_empty())
@@ -801,9 +800,6 @@ LogicalResult splitDoublyStridedOp(IRRewriter &rewriter,
   }
   int64_t sourceSize = maybeSourceSize.value();
   int64_t targetSize = maybeTargetSize.value();
-  assert(maybeSplitFactor.has_value() &&
-         "expected split factor to be sent by the caller");
-  int64_t splitFactor = maybeSplitFactor.value();
 
   int64_t newSourceSize = sourceSize / splitFactor;
   int64_t newTargetSize = targetSize / splitFactor;
