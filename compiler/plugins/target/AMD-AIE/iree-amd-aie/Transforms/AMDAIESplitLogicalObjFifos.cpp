@@ -181,7 +181,7 @@ static FailureOr<int64_t> fetchTotalUniqueL2L1(
 /// will be split. This would form the split factor which would be capped by the
 /// total no. of columns OR std::gcd of source/target size.
 LogicalResult collectSplittingDims(
-    ModuleOp &moduleOp, const SmallVector<DmaObjFifoPairT> &dmaObjFifoPairs,
+    const SmallVector<DmaObjFifoPairT> &dmaObjFifoPairs,
     DenseMap<AMDAIE::DmaCpyNdOp, DmaSplitInfo> &dmaSplitInfoMap,
     DenseMap<AMDAIE::LogicalObjectFifoFromMemrefOp, ObjFifoSplitInfo>
         &objFifoSplitInfoMap,
@@ -411,7 +411,7 @@ void AMDAIESplitLogicalObjFifosPass::runOnOperation() {
   DenseMap<AMDAIE::DmaCpyNdOp, DmaSplitInfo> dmaSplitInfoMap;
   DenseMap<AMDAIE::LogicalObjectFifoFromMemrefOp, ObjFifoSplitInfo>
       objFifoSplitInfoMap;
-  if (failed(collectSplittingDims(moduleOp, dmaObjFifoPairs, dmaSplitInfoMap,
+  if (failed(collectSplittingDims(dmaObjFifoPairs, dmaSplitInfoMap,
                                   objFifoSplitInfoMap, numColumns))) {
     return signalPassFailure();
   }
