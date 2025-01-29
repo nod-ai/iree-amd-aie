@@ -121,11 +121,10 @@ FailureOr<int64_t> getSplitStride(ArrayRef<AMDAIE::DmaCpyNdOp> dmaOps,
   return splitStride;
 }
 
-/// Fetch total no. of unique pairs of L2<->L1 Copy ops. This would helps us
-/// figure out the split factor for all LogicalObjectFifos. Basically we get to
-/// decide how many splits to perform for a particular L2 ObjectFifo based on
-/// the total unique L2<->L1 Copy ops.
-/// Eg:
+/// Given a list of Copy Ops, fetch the total no. of unique consumer/producer
+/// LogicalObjectFifos. This would helps us figure out the split factor for
+/// LogicalObjectFifos.
+/// And example case which necessitated this feature :-
 ///      %lhs = LOF_on_L2
 ///      %a = LOF_on_L1_0
 ///      %b = LOF_on_L1_1
@@ -139,12 +138,13 @@ FailureOr<int64_t> getSplitStride(ArrayRef<AMDAIE::DmaCpyNdOp> dmaOps,
 ///    In the above snippet although we have 5 DMA ops for L2<->L1, only 3 of
 ///    them are unique. Hence we'd split %lhs into 3 unique splits, instead
 ///    of 5.
-static FailureOr<int64_t> fetchTotalUniqueL2L1(
-    SmallVector<CopyOpInterface> copyLikeOps, bool fetchTarget) {
+template <CopyOpOperateOn OperateOn>
+static FailureOr<int64_t> fetchTotalUniqueLogicalObjFifos(
+    SmallVector<CopyOpInterface> copyLikeOps) {
   DenseSet<Operation *> uniqueLof;
   for (CopyOpInterface copyOp : copyLikeOps) {
     AMDAIE::LogicalObjectFifoFromMemrefOp lof = nullptr;
-    if (fetchTarget) {
+    if constexpr (OperateOn == CopyOpOperateOn::Target) {
       lof = dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
           copyOp.getTarget().getDefiningOp());
     } else {
@@ -260,8 +260,9 @@ LogicalResult collectSplittingDims(
       // Calculate the new source stride to be used for splitting the DMA.
       int64_t newSourceStride =
           splitStride != 1 ? splitDimSize / splitStride : 1;
-      FailureOr<int64_t> maybeUniqueL2L1 = fetchTotalUniqueL2L1(
-          objFifo.getCopyLikeConsumers(), /*fetchTarget=*/true);
+      FailureOr<int64_t> maybeUniqueL2L1 =
+          fetchTotalUniqueLogicalObjFifos<CopyOpOperateOn::Target>(
+              objFifo.getCopyLikeConsumers());
       if (failed(maybeUniqueL2L1)) {
         objFifo.emitOpError()
             << "could not retrieve total unique L2<->L1 pairs";
@@ -329,8 +330,9 @@ LogicalResult collectSplittingDims(
       // Calculate the new target stride to be used for splitting the DMA.
       int64_t newTargetStride =
           splitStride != 1 ? splitDimSize / splitStride : 1;
-      FailureOr<int64_t> maybeUniqueL2L1 = fetchTotalUniqueL2L1(
-          objFifo.getCopyLikeProducers(), /*fetchTarget=*/false);
+      FailureOr<int64_t> maybeUniqueL2L1 =
+          fetchTotalUniqueLogicalObjFifos<CopyOpOperateOn::Source>(
+              objFifo.getCopyLikeProducers());
       if (failed(maybeUniqueL2L1)) {
         objFifo.emitOpError()
             << "could not retrieve total unique L2<->L1 pairs";
