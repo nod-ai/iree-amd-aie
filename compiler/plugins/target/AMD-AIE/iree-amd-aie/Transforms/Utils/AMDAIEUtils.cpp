@@ -13,6 +13,13 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
+std::string getConstantIntValuesString(ArrayRef<OpFoldResult> ofrs) {
+  auto maybeValues = mlir::getConstantIntValues(ofrs);
+  if (maybeValues.has_value())
+    return getArrayString<int64_t>(maybeValues.value());
+  return "[not all constant integers]";
+}
+
 template <typename T>
 std::optional<T> getConfigAttr(IREE::HAL::ExecutableTargetAttr targetAttr,
                                StringRef name) {

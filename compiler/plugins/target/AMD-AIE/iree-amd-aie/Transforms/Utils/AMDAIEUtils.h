@@ -91,6 +91,20 @@ int findLargestFactor(int num, int max, int multiple);
 
 }  // namespace detail
 
+/// Convert an array into a string, for example "[1,2,3]".
+template <typename T>
+std::string getArrayString(ArrayRef<T> vs) {
+  return std::string("[")
+      .append(llvm::join(
+          llvm::map_range(vs, [](T v) { return std::to_string(v); }), ","))
+      .append("]");
+}
+
+/// If all values in `opFoldResults` are constant, return a string
+/// representation of the constant values. Otherwise, return
+/// "[not constant integers]".
+std::string getConstantIntValuesString(ArrayRef<OpFoldResult> opFoldResults);
+
 }  // namespace mlir::iree_compiler::AMDAIE
 
 #endif
