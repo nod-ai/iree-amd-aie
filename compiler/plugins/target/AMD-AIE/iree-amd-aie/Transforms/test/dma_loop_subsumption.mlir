@@ -1121,6 +1121,67 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
   }
 }
 
+// -----
+
+// Check when the dma already has the maximum number of dimensions, but with the
+// unit dimensions that can be canonicalized later.
+
+// CHECK-LABEL: @for_with_unit_dims
+// CHECK:       %[[CONNECTION:.+]] = amdaie.connection
+// CHECK:       amdaie.controlcode
+// CHECK-NOT:   scf.for
+// CHECK:       amdaie.npu.dma_cpy_nd async_source %[[CONNECTION]]([] [] [], [0, 1, 1, 0, 0] [6, 1, 1, 32, 32] [1024, 8192, 1024, 32, 1])
+#map = affine_map<(d0) -> (d0 + 1)>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @for_with_unit_dims(%arg0: !amdaie.logicalobjectfifo<memref<1024xi32, 1 : i32>, 2>, %arg1: !amdaie.logicalobjectfifo<memref<4x8x32x32xi32>>) {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c6 = arith.constant 6 : index
+    amdaie.workgroup {
+      %0 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<1024xi32, 1 : i32>, 2>, !amdaie.logicalobjectfifo<memref<4x8x32x32xi32>>)
+      amdaie.controlcode {
+        scf.for %arg2 = %c0 to %c6 step %c1 {
+          %1 = affine.apply #map(%arg2)
+          amdaie.npu.dma_cpy_nd async_source %0([] [] [], [1, %1, 0, 0] [1, 1, 32, 32] [8192, 1024, 32, 1])
+        }
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+// CHECK-LABEL: @forall_with_unit_dims
+// CHECK:       %[[CONNECTION:.+]] = amdaie.connection
+// CHECK:       amdaie.controlcode
+// CHECK-NOT:   scf.forall
+// CHECK:       amdaie.npu.dma_cpy_nd async_source %[[CONNECTION]]([] [] [], [0, 0, 1, 1, 0, 0] [2, 6, 1, 1, 32, 32] [16384, 1024, 8192, 1024, 32, 1])
+#map = affine_map<(d0) -> (2 * d0 + 1)>
+#map1 = affine_map<(d0) -> (d0 + 1)>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @forall_with_unit_dims(%arg0: !amdaie.logicalobjectfifo<memref<1024xi32, 1 : i32>, 2>, %arg1: !amdaie.logicalobjectfifo<memref<4x8x32x32xi32>>) {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c6 = arith.constant 6 : index
+    amdaie.workgroup {
+      %0 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<1024xi32, 1 : i32>, 2>, !amdaie.logicalobjectfifo<memref<4x8x32x32xi32>>)
+      amdaie.controlcode {
+        scf.forall (%arg2, %arg3) in (2, 6) {
+          %1 = affine.apply #map(%arg2)
+          %2 = affine.apply #map1(%arg3)
+          amdaie.npu.dma_cpy_nd async_source %0([] [] [], [%1, %2, 0, 0] [1, 1, 32, 32] [8192, 1024, 32, 1])
+        }
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
 //===----------------------------------------------------------------------===//
 // Checks for dependencies on nested loops
 //===----------------------------------------------------------------------===//
