@@ -500,8 +500,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_pdi_fb} {
 
 // A concise test for LHS/RHS/OUT of a Matmul on 4x8 for pack-peel-4-level-tiling. Although
 // we have 8 columns, L2 LHS buffers needs to be split into only 4, L2 RHS into 8 and L2 OUT into 8,
-// i.e. the splitting will be dependent on unique producer/consumer for the respective ObjectFifos
-// being split.
+// depending on :-
+//     GCD(unique producer/consumer for the respective ObjectFifos being split, number of columns)
 // To keep the test case concise it demonstrates a similar splitting strategy when the actual
 // compute is taking place in 1 row and 2 columns.
 //
