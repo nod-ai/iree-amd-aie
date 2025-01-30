@@ -135,9 +135,10 @@ FailureOr<int64_t> getSplitStride(ArrayRef<AMDAIE::DmaCpyNdOp> dmaOps,
 ///      DMA(%b, %lhs)
 ///      DMA(%c, %lhs)
 ///
-///    In the above snippet although we have 5 DMA ops for L2<->L1, only 3 of
-///    them are unique. Hence we'd split %lhs into 3 unique splits, instead
-///    of 5.
+///    In the above snippet, assume we want to split %lhs, it has 5 DMA ops.
+///    But only 3 of them are unique : (%lhs -> %a), (%lhs -> %b) (%lhs -> %c).
+///    Therefore this function is going to return 3. Which the caller is going
+///    to use as split factor.
 template <CopyOpOperateOn OperateOn>
 static FailureOr<int64_t> fetchTotalUniqueLogicalObjFifoUsers(
     SmallVector<CopyOpInterface> copyLikeOps) {
@@ -177,9 +178,9 @@ static FailureOr<int64_t> fetchTotalUniqueLogicalObjFifoUsers(
 /// that has product size larger than the other side's product size after
 /// splitting because that's the number of elements that should be
 /// produced/consumed on the respective sides before splitting.
-/// Towards the end fetch the count of unique L2<->L1 for the objectFifo which
-/// will be split. This would form the split factor which would be capped by the
-/// total no. of columns OR std::gcd of source/target size.
+/// Towards the end fetch the count of unique producer (or consumers) for the
+/// objectFifo which will be split. This would form the split factor which would
+/// be capped by the total no. of columns OR std::gcd of source/target size.
 LogicalResult collectSplittingDims(
     const SmallVector<DmaObjFifoPairT> &dmaObjFifoPairs,
     DenseMap<AMDAIE::DmaCpyNdOp, DmaSplitInfo> &dmaSplitInfoMap,
