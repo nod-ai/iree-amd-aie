@@ -800,7 +800,9 @@ class MatmulTruncf(BaseMatmul):
         """
         Currently without function outlining, we run out of program memory.
         """
-        self.add_aie_compilation_flags(["--iree-amdaie-enable-function-outlining"])
+        self.add_aie_compilation_flags(
+            ["--iree-amdaie-enable-function-outlining=balanced"]
+        )
         aie_vs_baseline(
             config=config,
             aie_compilation_flags=self.aie_compilation_flags,
@@ -1822,7 +1824,7 @@ class Tests:
                 "K": 4096,
                 "use_ukernel": False,
                 "peano_opt_level": 2,
-                "outline": False,
+                "outline": "none",
                 "transpose_a": False,
                 "transpose_b": False,
                 "tile_pipeline": "pack-peel",
@@ -1833,7 +1835,7 @@ class Tests:
                 "K": 4096,
                 "use_ukernel": False,
                 "peano_opt_level": 2,
-                "outline": True,
+                "outline": "balanced",
                 "transpose_a": False,
                 "transpose_b": False,
                 "tile_pipeline": "pack-peel",
@@ -1844,7 +1846,7 @@ class Tests:
                 "K": 4096,
                 "use_ukernel": False,
                 "peano_opt_level": 3,
-                "outline": False,
+                "outline": "none",
                 "transpose_a": False,
                 "transpose_b": False,
                 "tile_pipeline": "pack-peel",
@@ -1855,7 +1857,7 @@ class Tests:
                 "K": 4096,
                 "use_ukernel": False,
                 "peano_opt_level": 3,
-                "outline": True,
+                "outline": "balanced",
                 "transpose_a": False,
                 "transpose_b": False,
                 "tile_pipeline": "pack-peel",
@@ -1866,7 +1868,7 @@ class Tests:
                 "K": 4096,
                 "use_ukernel": True,
                 "peano_opt_level": 3,
-                "outline": True,
+                "outline": "balanced",
                 "transpose_a": False,
                 "transpose_b": False,
                 "tile_pipeline": "pack-peel",
@@ -1877,7 +1879,7 @@ class Tests:
                 "K": 512,
                 "use_ukernel": False,
                 "peano_opt_level": 3,
-                "outline": True,
+                "outline": "balanced",
                 "transpose_a": False,
                 "transpose_b": False,
                 "tile_pipeline": "pack-peel",
@@ -1888,7 +1890,7 @@ class Tests:
                 "K": 512,
                 "use_ukernel": True,
                 "peano_opt_level": 3,
-                "outline": True,
+                "outline": "balanced",
                 "transpose_a": False,
                 "transpose_b": False,
                 "tile_pipeline": "pack-peel",
@@ -1899,7 +1901,7 @@ class Tests:
                 "K": 512,
                 "use_ukernel": False,
                 "peano_opt_level": 3,
-                "outline": True,
+                "outline": "balanced",
                 "transpose_a": False,
                 "transpose_b": True,
                 "tile_pipeline": "pack-peel",
@@ -1910,7 +1912,7 @@ class Tests:
                 "K": 512,
                 "use_ukernel": False,
                 "peano_opt_level": 3,
-                "outline": True,
+                "outline": "balanced",
                 "transpose_a": False,
                 "transpose_b": False,
                 "tile_pipeline": "pack-peel",
@@ -1921,7 +1923,7 @@ class Tests:
                 "K": 512,
                 "use_ukernel": True,
                 "peano_opt_level": 3,
-                "outline": True,
+                "outline": "balanced",
                 "transpose_a": False,
                 "transpose_b": False,
                 "tile_pipeline": "pack-peel",
@@ -1932,7 +1934,7 @@ class Tests:
                 "K": 512,
                 "use_ukernel": False,
                 "peano_opt_level": 3,
-                "outline": True,
+                "outline": "balanced",
                 "transpose_a": True,
                 "transpose_b": False,
                 "tile_pipeline": "pack-peel",
@@ -1946,7 +1948,7 @@ class Tests:
                 "K": 512,
                 "use_ukernel": False,
                 "peano_opt_level": 3,
-                "outline": True,
+                "outline": "balanced",
                 "outline_to_empty_function": True,
                 "transpose_a": False,
                 "transpose_b": False,
@@ -1959,7 +1961,7 @@ class Tests:
                 "K": 512,
                 "use_ukernel": False,
                 "peano_opt_level": 3,
-                "outline": True,
+                "outline": "balanced",
                 "transpose_a": False,
                 "transpose_b": False,
                 "tile_pipeline": "pack-peel-4-level-tiling",
@@ -1970,7 +1972,7 @@ class Tests:
                 "K": 512,
                 "use_ukernel": True,
                 "peano_opt_level": 3,
-                "outline": True,
+                "outline": "balanced",
                 "transpose_a": False,
                 "transpose_b": False,
                 "tile_pipeline": "pack-peel-4-level-tiling",
@@ -1984,7 +1986,7 @@ class Tests:
                 "K": 512,
                 "use_ukernel": False,
                 "peano_opt_level": 3,
-                "outline": True,
+                "outline": "balanced",
                 "outline_to_empty_function": True,
                 "transpose_a": False,
                 "transpose_b": False,
@@ -2005,9 +2007,7 @@ class Tests:
             transpose_b = test["transpose_b"]
             tile_pipeline = test["tile_pipeline"]
 
-            outlining_string = "--iree-amdaie-enable-function-outlining=" + str(
-                int(outline)
-            )
+            outlining_string = "--iree-amdaie-enable-function-outlining=" + outline
 
             peano_opt_level_string = f'"-O{peano_opt_level}"'
             aie_compilation_flags = [
@@ -2026,7 +2026,7 @@ class Tests:
                 )
 
             name_suffix = "O" + str(peano_opt_level)
-            if outline:
+            if outline != "none":
                 if outline_to_empty_function:
                     name_suffix += "_outline_empty"
                 else:

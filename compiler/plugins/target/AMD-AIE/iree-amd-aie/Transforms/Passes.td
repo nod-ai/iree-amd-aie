@@ -308,8 +308,21 @@ def AMDAIELinalgFunctionOutlining :
       "Replace all outlined functions with a function that does nothing, "
       "i.e. it just returns. Useful for measuring the performance of data "
       "movement to/from the device -- by doing zero compute, all time is spent "
-      "moving data to/from the AIE cores.">
-    ];
+      "moving data to/from the AIE cores.">,
+    Option<"outliningStrategy", "outlining-strategy",
+      "mlir::iree_compiler::AMDAIE::OutliningStrategy",
+      /*default=*/"mlir::iree_compiler::AMDAIE::OutliningStrategy::Balanced",
+      "The strategy to be used for outlining. The default is balanced to "
+      "achieve a good tradeoff in performance and program size.",
+      [{::llvm::cl::values(
+        clEnumValN(mlir::iree_compiler::AMDAIE::OutliningStrategy::None, "none",
+                   "No ops are outlined."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::OutliningStrategy::All, "all",
+                   "All ops are outlined."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::OutliningStrategy::Balanced, "balanced",
+                   "A strategy that tries to achieve a balanced tradeoff between performance and program size.")
+      )}]>,
+  ];
 }
 
 def AMDAIEFoldDmaWaits :

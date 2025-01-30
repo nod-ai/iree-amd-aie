@@ -41,6 +41,16 @@ enum class BufferizeOperand {
 /// Enum for hardware mapping attributes.
 enum class HardwareMapping { Core, Block, None };
 
+enum class OutliningStrategy {
+  // No outlining.
+  None,
+  // Try outlining all ops.
+  All,
+  // A balanced strategy trying to achieve good performance and low program
+  // memory size.
+  Balanced,
+};
+
 LogicalResult initAIELaunchConfig(FunctionOpInterface funcOp,
                                   TilePassPipeline useTilePipeline,
                                   LowerToAIEPassPipeline useLowerToAIEPipeline,

@@ -56,7 +56,7 @@ struct AMDAIEOptions {
   bool enableVectorizationPasses{true};
   bool enableCoalescingLoops{false};
   bool enableCollapsingUnitDims{false};
-  bool enableFunctionOutlining{true};
+  OutliningStrategy enableFunctionOutlining{OutliningStrategy::Balanced};
   bool replaceOutlinedFunctionsWithEmpty{false};
   bool insertLoopAroundCoreBlock{false};
   bool matmulElementwiseFusion{false};
@@ -197,11 +197,19 @@ struct AMDAIEOptions {
             "unit dims of a tensor/memref depending on this pass flag. It is "
             "intended for development purposes only."));
 
-    binder.opt<bool>(
+    binder.opt<OutliningStrategy>(
         "iree-amdaie-enable-function-outlining", enableFunctionOutlining,
         llvm::cl::cat(category),
         llvm::cl::desc("Flag to enable/disable linalg-function-outlining pass."
-                       "It is intended for development purposes only."));
+                       "It is intended for development purposes only."),
+        llvm::cl::values(clEnumValN(OutliningStrategy::None, "none",
+                                    "No linalg ops will be outlined."),
+                         clEnumValN(OutliningStrategy::All, "all",
+                                    "All linalg ops will be outlined."),
+                         clEnumValN(OutliningStrategy::Balanced, "balanced",
+                                    "Will outline some ops, to try to achieve "
+                                    "a good balance between "
+                                    "performance and program size.")));
 
     binder.opt<bool>(
         "iree-amdaie-replace-outlined-functions-with-empty",
