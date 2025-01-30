@@ -178,7 +178,7 @@ static FailureOr<int64_t> fetchTotalUniqueLogicalObjFifoUsers(
 /// that has product size larger than the other side's product size after
 /// splitting because that's the number of elements that should be
 /// produced/consumed on the respective sides before splitting.
-/// Towards the end fetch the count of unique producer (or consumers) for the
+/// Towards the end fetch the number of unique producers (or consumers) for the
 /// objectFifo which will be split. This would form the split factor which would
 /// be capped by the total no. of columns OR std::gcd of source/target size.
 LogicalResult collectSplittingDims(
