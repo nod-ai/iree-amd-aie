@@ -264,8 +264,8 @@ LogicalResult collectSplittingDims(
           fetchTotalUniqueLogicalObjFifoUsers<CopyOpOperateOn::Target>(
               objFifo.getCopyLikeConsumers());
       if (failed(maybeNumUniqueConsumers)) {
-        objFifo.emitOpError()
-            << "could not retrieve total unique L2<->L1 pairs";
+        objFifo.emitOpError() << "could not retrieve the total number of "
+                                 "unique consumer objFifos";
       }
       int64_t splitFactor = std::gcd(*maybeNumUniqueConsumers, numCols);
       int64_t sourceSize = (*sourceSizes)[sourceSplitDim];
@@ -334,8 +334,8 @@ LogicalResult collectSplittingDims(
           fetchTotalUniqueLogicalObjFifoUsers<CopyOpOperateOn::Source>(
               objFifo.getCopyLikeProducers());
       if (failed(maybeNumUniqueProducers)) {
-        objFifo.emitOpError()
-            << "could not retrieve total unique L2<->L1 pairs";
+        objFifo.emitOpError() << "could not retrieve the total number of "
+                                 "unique producer objFifos";
       }
       int64_t splitFactor = std::gcd(*maybeNumUniqueProducers, numCols);
       int64_t sourceSize = (*sourceSizes)[sourceSplitDim];
