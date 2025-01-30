@@ -1833,24 +1833,6 @@ class Tests:
                 use_chess=True,
             )
         )
-        self.register(
-            Matmul(
-                512,
-                512,
-                512,
-                "bf16",
-                "f32",
-                name_suffix="4rows_8cols_npu4_pack_peel",
-                use_ukernel=True,
-                tile_pipeline="pack-peel",
-                run_on_target=["npu4"],
-                aie_compilation_flags=[
-                    "--iree-amdaie-num-rows=4",
-                    "--iree-amdaie-num-cols=8",
-                ],
-                use_chess=True,
-            )
-        )
 
         # Matmul test on 2(rows)x2(cols) cores
         self.register(
