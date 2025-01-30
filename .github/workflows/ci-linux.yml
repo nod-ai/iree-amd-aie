@@ -249,7 +249,7 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add results_history.json results_history.html
-          git commit -m "Update performance results and deploy"
+          git commit -m "Update NPU1 performance results and deploy"
           git push
 
   test_linux_strix:
@@ -314,3 +314,37 @@ jobs:
             --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
             --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
             -v
+
+      # Run the 'Performance' tests. These do not check numerical correctness,
+      # just measure the time to run some workloads.
+      - name : Performance benchmarks
+        run: |
+          source .venv/bin/activate
+          python build_tools/ci/cpu_comparison/run.py \
+            test_aie_vs_cpu \
+            $PWD/iree-install \
+            --peano_dir=$PWD/llvm-aie \
+            --vitis_dir=/opt/Xilinx/Vitis/2024.2 \
+            --target_device="npu4" \
+            --reset_npu_between_runs -v \
+            --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
+            --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
+            --tests=Performance > performance_npu4.log
+
+          # Print a summary of the findings.
+          python build_tools/ci/cpu_comparison/performance_summarizer.py \
+            performance_npu4.log results_npu4.json
+
+      # Only publish the performance results on main branch pushes.
+      - name: Publish performance results
+        if: github.event_name == 'push' && github.ref_name == 'main'
+        run: |
+          cp build_tools/ci/cpu_comparison/performance_publish.py .
+          git fetch origin gh-pages
+          git checkout gh-pages
+          python performance_publish.py results_npu4.json results_history_npu4.json results_history_npu4.html
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add results_history_npu4.json results_history_npu4.html
+          git commit -m "Update NPU4 performance results and deploy"
+          git push
