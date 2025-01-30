@@ -225,11 +225,11 @@ jobs:
             --reset_npu_between_runs -v \
             --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
             --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
-            --tests=Performance > performance.log
+            --tests=Performance > performance_npu1.log
 
           # Print a summary of the findings.
           python build_tools/ci/cpu_comparison/performance_summarizer.py \
-            performance.log results.json
+            performance_npu1.log results_npu1.json
 
       - name: XRT-LITE tests
         run: |
@@ -245,10 +245,10 @@ jobs:
           cp build_tools/ci/cpu_comparison/performance_publish.py .
           git fetch origin gh-pages
           git checkout gh-pages
-          python performance_publish.py results.json results_history.json results_history.html
+          python performance_publish.py results_npu1.json results_history_npu1.json results_history_npu1.html
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git add results_history.json results_history.html
+          git add results_history_npu1.json results_history_npu1.html
           git commit -m "Update NPU1 performance results and deploy"
           git push
 
@@ -324,7 +324,7 @@ jobs:
             test_aie_vs_cpu \
             $PWD/iree-install \
             --peano_dir=$PWD/llvm-aie \
-            --vitis_dir=/opt/Xilinx/Vitis/2024.2 \
+            --vitis_dir=/opt/xilinx/Vitis/2024.2 \
             --target_device="npu4" \
             --reset_npu_between_runs -v \
             --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
