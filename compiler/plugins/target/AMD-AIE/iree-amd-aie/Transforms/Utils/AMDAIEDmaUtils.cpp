@@ -496,7 +496,7 @@ bool mergeOffset(MLIRContext *ctx, int64_t offsetToMerge,
     if (cOffset.has_value() && cStride.has_value()) {
       int64_t offset = cOffset.value();
       int64_t stride = cStride.value();
-      if (offsetToMerge % stride == 0) {
+      if (stride != 0 && offsetToMerge % stride == 0) {
         offset += offsetToMerge / stride;
         offsets[i] = getAsIndexOpFoldResult(ctx, offset);
         return true;
