@@ -584,20 +584,21 @@ bool DmaDimConfig::isValidAccessPattern(SmallVector<int64_t> sizes,
   assert(sizes.size() == strides.size() &&
          "`sizes` and `strides` should have the same size");
   // No need to check the unit dimensions.
-  for (int i = 0; i < sizes.size(); i++) {
-    if (sizes[i] == 1) {
-      sizes.erase(sizes.begin() + i);
-      strides.erase(strides.begin() + i);
-      i--;
+  SmallVector<int64_t> nonUnitSizes;
+  SmallVector<int64_t> nonUnitStrides;
+  for (size_t i = 0; i < sizes.size(); ++i) {
+    if (sizes[i] != 1) {
+      nonUnitSizes.push_back(sizes[i]);
+      nonUnitStrides.push_back(strides[i]);
     }
   }
-  SmallVector<int64_t> maxSizes = getMaxSizes(sizes.size());
-  assert(maxSizes.size() >= sizes.size() &&
+  SmallVector<int64_t> maxSizes = getMaxSizes(nonUnitSizes.size());
+  assert(maxSizes.size() >= nonUnitSizes.size() &&
          "Max number of dimensions exceeded");
-  size_t frontToDrop = maxSizes.size() - sizes.size();
-  if (anyOutOfRange(sizes, maxSizes, frontToDrop)) return false;
-  SmallVector<int64_t> maxStrides = getMaxStrides(sizes.size());
-  if (anyOutOfRange(strides, maxStrides, frontToDrop)) return false;
+  size_t frontToDrop = maxSizes.size() - nonUnitSizes.size();
+  if (anyOutOfRange(nonUnitSizes, maxSizes, frontToDrop)) return false;
+  SmallVector<int64_t> maxStrides = getMaxStrides(nonUnitSizes.size());
+  if (anyOutOfRange(nonUnitStrides, maxStrides, frontToDrop)) return false;
   return true;
 }
 

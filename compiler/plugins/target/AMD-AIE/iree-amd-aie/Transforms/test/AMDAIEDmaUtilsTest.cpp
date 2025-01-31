@@ -592,6 +592,8 @@ TEST_F(FoldTest, UnitDimsMerge) {
   EXPECT_TRUE(checkFoldUnitDims({2, 0, 1, 0}, {1, 32, 1, 8},
                                 {1024, 32, 1024, 1}, {96, 0}, {32, 8},
                                 {32, 1}));
+  EXPECT_TRUE(checkFoldUnitDims({0, 0, 1, 0}, {2, 32, 1, 8}, {0, 32, 1024, 1},
+                                {0, 32, 0}, {2, 32, 8}, {0, 32, 1}));
   EXPECT_TRUE(
       checkFoldUnitDims({2, 2, 15}, {1, 1, 10}, {4, 6, 10}, {17}, {10}, {10}));
   EXPECT_TRUE(checkFoldUnitDims({3, 1, 15}, {1, 1, 10}, {4, 6, 10}, {1, 15},
@@ -607,6 +609,8 @@ TEST_F(FoldTest, UnitDimsFoldAndMerge) {
                                 {1}, {1}, {96}));
   EXPECT_TRUE(checkFoldUnitDims({1, 0, 1, 0}, {1, 1, 1, 8}, {1024, 32, 1024, 1},
                                 {2048}, {8}, {1}));
+  EXPECT_TRUE(checkFoldUnitDims({0, 0, 1, 0}, {1, 32, 1, 8}, {0, 32, 1024, 1},
+                                {32, 0}, {32, 8}, {32, 1}));
 }
 
 TEST_F(FoldTest, FoldRepetitionCount) {
