@@ -496,7 +496,7 @@ bool mergeOffset(MLIRContext *ctx, int64_t offsetToMerge,
     if (cOffset.has_value() && cStride.has_value()) {
       int64_t offset = cOffset.value();
       int64_t stride = cStride.value();
-      if (offsetToMerge % stride == 0) {
+      if (stride != 0 && offsetToMerge % stride == 0) {
         offset += offsetToMerge / stride;
         offsets[i] = getAsIndexOpFoldResult(ctx, offset);
         return true;
@@ -583,13 +583,22 @@ bool DmaDimConfig::isValidAccessPattern(ArrayRef<int64_t> sizes,
                                         ArrayRef<int64_t> strides) const {
   assert(sizes.size() == strides.size() &&
          "`sizes` and `strides` should have the same size");
-  SmallVector<int64_t> maxSizes = getMaxSizes(sizes.size());
-  assert(maxSizes.size() >= sizes.size() &&
+  // No need to check the unit dimensions.
+  SmallVector<int64_t> nonUnitSizes;
+  SmallVector<int64_t> nonUnitStrides;
+  for (size_t i = 0; i < sizes.size(); ++i) {
+    if (sizes[i] != 1) {
+      nonUnitSizes.push_back(sizes[i]);
+      nonUnitStrides.push_back(strides[i]);
+    }
+  }
+  SmallVector<int64_t> maxSizes = getMaxSizes(nonUnitSizes.size());
+  assert(maxSizes.size() >= nonUnitSizes.size() &&
          "Max number of dimensions exceeded");
-  size_t frontToDrop = maxSizes.size() - sizes.size();
-  if (anyOutOfRange(sizes, maxSizes, frontToDrop)) return false;
-  SmallVector<int64_t> maxStrides = getMaxStrides(sizes.size());
-  if (anyOutOfRange(strides, maxStrides, frontToDrop)) return false;
+  size_t frontToDrop = maxSizes.size() - nonUnitSizes.size();
+  if (anyOutOfRange(nonUnitSizes, maxSizes, frontToDrop)) return false;
+  SmallVector<int64_t> maxStrides = getMaxStrides(nonUnitSizes.size());
+  if (anyOutOfRange(nonUnitStrides, maxStrides, frontToDrop)) return false;
   return true;
 }
 
