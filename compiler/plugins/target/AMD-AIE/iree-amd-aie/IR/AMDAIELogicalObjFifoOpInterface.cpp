@@ -18,8 +18,8 @@ SmallVector<mlir::CopyOpInterface> getCopyLikeConsumers(
   SmallVector<mlir::CopyOpInterface> copyLikOps;
   for (Operation *userOp : op->getUsers()) {
     if (auto copyOp = dyn_cast<CopyOpInterface>(userOp);
-        dyn_cast_if_present<LogicalObjFifoOpInterface>(
-            copyOp.getSource().getDefiningOp()) == op) {
+        copyOp && dyn_cast_if_present<LogicalObjFifoOpInterface>(
+                      copyOp.getSource().getDefiningOp()) == op) {
       copyLikOps.push_back(copyOp);
     }
   }
@@ -31,8 +31,8 @@ SmallVector<mlir::CopyOpInterface> getCopyLikeProducers(
   SmallVector<mlir::CopyOpInterface> copyLikOps;
   for (Operation *userOp : op->getUsers()) {
     if (auto copyOp = dyn_cast<CopyOpInterface>(userOp);
-        dyn_cast_if_present<LogicalObjFifoOpInterface>(
-            copyOp.getTarget().getDefiningOp()) == op) {
+        copyOp && dyn_cast_if_present<LogicalObjFifoOpInterface>(
+                      copyOp.getTarget().getDefiningOp()) == op) {
       copyLikOps.push_back(copyOp);
     }
   }

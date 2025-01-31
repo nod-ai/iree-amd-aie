@@ -755,7 +755,7 @@ LogicalResult splitLogicalObjectFifo(IRRewriter &rewriter,
 LogicalResult splitDoublyStridedOp(IRRewriter &rewriter,
                                    AMDAIE::DoublyStridedOpInterface op,
                                    size_t sourceSplitDim, size_t targetSplitDim,
-                                   std::optional<size_t> maybeSplitFactor,
+                                   int64_t splitFactor,
                                    int64_t sourceSplitStride,
                                    int64_t targetSplitStride) {
   if (!op->use_empty())
@@ -800,15 +800,6 @@ LogicalResult splitDoublyStridedOp(IRRewriter &rewriter,
   }
   int64_t sourceSize = maybeSourceSize.value();
   int64_t targetSize = maybeTargetSize.value();
-  int64_t splitFactor = maybeSplitFactor.has_value()
-                            ? maybeSplitFactor.value()
-                            : std::gcd(sourceSize, targetSize);
-  if (sourceSize % splitFactor != 0 || targetSize % splitFactor != 0) {
-    int64_t newSplitFactor = std::gcd(sourceSize, targetSize);
-    LLVM_DEBUG(llvm::dbgs() << "split factor has been changed from "
-                            << splitFactor << " to " << newSplitFactor);
-    splitFactor = newSplitFactor;
-  }
 
   int64_t newSourceSize = sourceSize / splitFactor;
   int64_t newTargetSize = targetSize / splitFactor;
