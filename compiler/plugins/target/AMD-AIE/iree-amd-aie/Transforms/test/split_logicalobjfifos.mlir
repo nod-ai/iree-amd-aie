@@ -498,10 +498,10 @@ module attributes {hal.executable.target = #executable_target_amdaie_pdi_fb} {
 
 // -----
 
-// Although we have 8 columns, L2 LHS buffers needs to be split into only 1, L2 RHS into 2 and
-// L2 OUT into 1.
-// This is because we decide the split factor for the L2 ObjectFifo depending on :-
-//     GCD(unique producer/consumer for the respective ObjectFifos being split, number of columns)
+// This test demonstrates the case when the factor is not simply decided by the number of
+// columns but the number of unique producers/consumers. In the example, although we are
+// using 8 AIE columns, L2 LHS and output buffers are not split because there's only one
+// producer/consumer, while L2 RHS buffer is split into 2 because there are 2 producers/consumers.
 //
 // CHECK-LABEL: @pack_peel_4_level_4x8_Strix
 // CHECK-DAG:     %[[C2:.*]] = arith.constant 2 : index
@@ -520,9 +520,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_pdi_fb} {
 // CHECK:             amdaie.dma_cpy_nd(%{{.*}}[0, 0] [256, 512] [4096, 1], %[[LOF_OUT_L2]][0, 0, 0, 0] [8, 32, 16, 32] [1024, 32, 8192, 1]) :
 // CHECK:          }
 #executable_target_amdaie_pdi_fb = #hal.executable.target<"amd-aie", "amdaie-pdi-fb", {num_cols = 8 : i32, num_rows = 4 : i32, target_device = "npu4", ukernels = "none"}>
-#translation = #iree_codegen.translation_info<pipeline = Custom>
 module attributes {hal.executable.target = #executable_target_amdaie_pdi_fb} {
-  func.func @pack_peel_4_level_4x8_Strix(%lhs: memref<512x512xi32>, %rhs: memref<512x4096xi32>, %out: memref<512x4096xi32>) attributes {translation_info = #translation} {
+  func.func @pack_peel_4_level_4x8_Strix(%lhs: memref<512x512xi32>, %rhs: memref<512x4096xi32>, %out: memref<512x4096xi32>) {
     %c2 = arith.constant 2 : index
     %c1 = arith.constant 1 : index
     %c0 = arith.constant 0 : index
