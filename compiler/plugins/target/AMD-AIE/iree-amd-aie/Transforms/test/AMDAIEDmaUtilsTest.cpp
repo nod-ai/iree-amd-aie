@@ -535,8 +535,6 @@ TEST_F(FoldTest, NoLinearDimsFold) {
   checkFoldLinearDims({0}, {8}, {1}, {}, {0}, {8}, {1}, false);
   checkFoldLinearDims({0, 0}, {16, 8}, {16, 1}, {}, {0, 0}, {16, 8}, {16, 1},
                       false);
-  checkFoldLinearDims({8, 0}, {16, 8}, {8, 1}, {}, {8, 0}, {16, 8}, {8, 1},
-                      false);
 }
 
 TEST_F(FoldTest, FoldLinearDims) {
@@ -546,8 +544,8 @@ TEST_F(FoldTest, FoldLinearDims) {
                       true);
   checkFoldLinearDims({0, 0, 0, 0}, {4, 8, 16, 8}, {1024, 128, 8, 1}, {}, {0},
                       {4096}, {1}, true);
-  checkFoldLinearDims({0, 0, 8, 0}, {4, 8, 16, 8}, {1024, 128, 8, 1}, {},
-                      {8, 0}, {512, 8}, {8, 1}, true);
+  checkFoldLinearDims({5, 3, 8, 1}, {4, 8, 16, 8}, {1024, 128, 8, 1}, {},
+                      {5569}, {4096}, {1}, true);
 }
 
 TEST_F(FoldTest, FoldLinearDimsWithMax) {
@@ -561,9 +559,9 @@ TEST_F(FoldTest, FoldLinearDimsWithMax) {
   checkFoldLinearDims({0, 0, 0, 0}, {4, 8, 16, 8}, {1024, 128, 8, 1},
                       {1024, 1024, 1024, 1024}, {0, 0}, {4, 1024}, {1024, 1},
                       true);
-  checkFoldLinearDims({0, 0, 8, 0}, {4, 8, 16, 8}, {1024, 128, 8, 1},
-                      {511, 511, 511, 511}, {0, 8, 0}, {4, 128, 8},
-                      {1024, 8, 1}, true);
+  checkFoldLinearDims({4, 0, 8, 0}, {4, 8, 16, 8}, {1024, 128, 8, 1},
+                      {511, 511, 511, 511}, {32, 64}, {32, 128}, {128, 1},
+                      true);
 }
 
 TEST_F(FoldTest, NoUnitDimsFold) {

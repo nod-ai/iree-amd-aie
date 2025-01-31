@@ -77,10 +77,21 @@ func.func @circular_dma_cpy_nd_unit_between_linear(%arg0: !amdaie.logicalobjectf
 // -----
 
 // CHECK-LABEL:       func.func @circular_dma_cpy_nd_non_zero_offset
-// CHECK:             amdaie.circular_dma_cpy_nd(%{{.+}}[25, 1] [8, 16] [16, 1], %{{.+}}[5, 1, 1] [4, 2, 8] [16, 8, 1])
-// FOLD-SINGLE-DIMS:  amdaie.circular_dma_cpy_nd(%{{.+}}[25, 1] [8, 16] [16, 1], %{{.+}}[5, 1, 1] [4, 2, 8] [16, 8, 1])
+// CHECK:             amdaie.circular_dma_cpy_nd(%{{.+}}[401] [128] [1], %{{.+}}[89] [64] [1])
+// FOLD-SINGLE-DIMS:  amdaie.circular_dma_cpy_nd(%{{.+}}[401] [128] [1], %{{.+}}[89] [64] [1])
 func.func @circular_dma_cpy_nd_non_zero_offset(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
   %0 = amdaie.circular_dma_cpy_nd(%arg0[2, 1, 1, 1] [1, 1, 8, 16] [128, 128, 16, 1], %arg1[1, 1, 1, 1] [1, 4, 2, 8] [64, 16, 8, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+  "iree.keep"(%0) : (index) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL:       func.func @circular_dma_cpy_nd_non_zero_dynamic_offset
+// CHECK:             amdaie.circular_dma_cpy_nd(%{{.+}}[%{{.+}}, %{{.+}}, %{{.+}}, %{{.+}}] [1, 1, 8, 16] [128, 128, 16, 1], %{{.+}}[%{{.+}}, %{{.+}}, %{{.+}}, %{{.+}}] [1, 4, 2, 8] [64, 16, 8, 1])
+// FOLD-SINGLE-DIMS:  amdaie.circular_dma_cpy_nd(%{{.+}}[%{{.+}}, %{{.+}}, %{{.+}}, %{{.+}}] [1, 1, 8, 16] [128, 128, 16, 1], %{{.+}}[%{{.+}}, %{{.+}}, %{{.+}}, %{{.+}}] [1, 4, 2, 8] [64, 16, 8, 1])
+func.func @circular_dma_cpy_nd_non_zero_dynamic_offset(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>, %arg2: index) {
+  %0 = amdaie.circular_dma_cpy_nd(%arg0[%arg2, %arg2, %arg2, %arg2] [1, 1, 8, 16] [128, 128, 16, 1], %arg1[%arg2, %arg2, %arg2, %arg2] [1, 4, 2, 8] [64, 16, 8, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
   "iree.keep"(%0) : (index) -> ()
   return
 }
@@ -174,10 +185,21 @@ func.func @dma_cpy_nd_unit_between_linear(%arg0: !amdaie.logicalobjectfifo<memre
 // -----
 
 // CHECK-LABEL:       func.func @dma_cpy_nd_non_zero_offset
-// CHECK:             amdaie.dma_cpy_nd(%{{.+}}[25, 1] [8, 16] [16, 1], %{{.+}}[5, 1, 1] [4, 2, 8] [16, 8, 1])
-// FOLD-SINGLE-DIMS:  amdaie.dma_cpy_nd(%{{.+}}[25, 1] [8, 16] [16, 1], %{{.+}}[5, 1, 1] [4, 2, 8] [16, 8, 1])
+// CHECK:             amdaie.dma_cpy_nd(%{{.+}}[401] [128] [1], %{{.+}}[89] [64] [1])
+// FOLD-SINGLE-DIMS:  amdaie.dma_cpy_nd(%{{.+}}[401] [128] [1], %{{.+}}[89] [64] [1])
 func.func @dma_cpy_nd_non_zero_offset(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
   %0 = amdaie.dma_cpy_nd(%arg0[1, 2, 1, 1] [1, 1, 8, 16] [128, 128, 16, 1], %arg1[1, 1, 1, 1] [1, 4, 2, 8] [64, 16, 8, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+  "iree.keep"(%0) : (index) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL:       func.func @dma_cpy_nd_non_zero_dynamic_offset
+// CHECK:             amdaie.dma_cpy_nd(%{{.+}}[%{{.+}}, %{{.+}}, %{{.+}}, %{{.+}}] [1, 1, 8, 16] [128, 128, 16, 1], %{{.+}}[%{{.+}}, %{{.+}}, %{{.+}}, %{{.+}}] [1, 4, 2, 8] [64, 16, 8, 1])
+// FOLD-SINGLE-DIMS:  amdaie.dma_cpy_nd(%{{.+}}[%{{.+}}, %{{.+}}, %{{.+}}, %{{.+}}] [1, 1, 8, 16] [128, 128, 16, 1], %{{.+}}[%{{.+}}, %{{.+}}, %{{.+}}, %{{.+}}] [1, 4, 2, 8] [64, 16, 8, 1])
+func.func @dma_cpy_nd_non_zero_dynamic_offset(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>, %arg2: index) {
+  %0 = amdaie.dma_cpy_nd(%arg0[%arg2, %arg2, %arg2, %arg2] [1, 1, 8, 16] [128, 128, 16, 1], %arg1[%arg2, %arg2, %arg2, %arg2] [1, 4, 2, 8] [64, 16, 8, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
   "iree.keep"(%0) : (index) -> ()
   return
 }
@@ -273,11 +295,22 @@ func.func @npu_dma_cpy_nd_unit_between_linear(%arg0: !amdaie.logicalobjectfifo<m
 // -----
 
 // CHECK-LABEL:       func.func @npu_dma_cpy_nd_non_zero_offset
-// CHECK:             amdaie.npu.dma_cpy_nd %{{.+}}([25, 1] [8, 16] [16, 1], [5, 1, 1] [4, 2, 8] [16, 8, 1])
-// FOLD-SINGLE-DIMS:  amdaie.npu.dma_cpy_nd %{{.+}}([25, 1] [8, 16] [16, 1], [5, 1, 1] [4, 2, 8] [16, 8, 1])
+// CHECK:             amdaie.npu.dma_cpy_nd %{{.+}}([401] [128] [1], [89] [64] [1])
+// FOLD-SINGLE-DIMS:  amdaie.npu.dma_cpy_nd %{{.+}}([401] [128] [1], [89] [64] [1])
 func.func @npu_dma_cpy_nd_non_zero_offset(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
   %0 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
   amdaie.npu.dma_cpy_nd %0([1, 2, 1, 1] [1, 1, 8, 16] [128, 128, 16, 1], [1, 1, 1, 1] [1, 4, 2, 8] [64, 16, 8, 1])
+  return
+}
+
+// -----
+
+// CHECK-LABEL:       func.func @npu_dma_cpy_nd_dynamic_non_zero_offset
+// CHECK:             amdaie.npu.dma_cpy_nd %{{.+}}([%{{.+}}, %{{.+}}, %{{.+}}, %{{.+}}] [1, 1, 8, 16] [128, 128, 16, 1], [%{{.+}}, %{{.+}}, %{{.+}}, %{{.+}}] [1, 4, 2, 8] [64, 16, 8, 1])
+// FOLD-SINGLE-DIMS:  amdaie.npu.dma_cpy_nd %{{.+}}([%{{.+}}, %{{.+}}, %{{.+}}, %{{.+}}] [1, 1, 8, 16] [128, 128, 16, 1], [%{{.+}}, %{{.+}}, %{{.+}}, %{{.+}}] [1, 4, 2, 8] [64, 16, 8, 1])
+func.func @npu_dma_cpy_nd_dynamic_non_zero_offset(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>, %arg2: index) {
+  %0 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+  amdaie.npu.dma_cpy_nd %0([%arg2, %arg2, %arg2, %arg2] [1, 1, 8, 16] [128, 128, 16, 1], [%arg2, %arg2, %arg2, %arg2] [1, 4, 2, 8] [64, 16, 8, 1])
   return
 }
 
