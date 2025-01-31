@@ -1755,7 +1755,6 @@ class Tests:
                 )
             )
 
-        # TODO: Failure is expected for the 128x128 case we don't yet understand why.
         self.register(
             Matmul(
                 64,
@@ -1807,6 +1806,24 @@ class Tests:
                 64,
                 64,
                 64,
+                "bf16",
+                "f32",
+                name_suffix="4rows_8cols_npu4_pack_peel_4_level_tiling_ukernel",
+                use_ukernel=True,
+                tile_pipeline="pack-peel-4-level-tiling",
+                run_on_target=["npu4"],
+                aie_compilation_flags=[
+                    "--iree-amdaie-num-rows=4",
+                    "--iree-amdaie-num-cols=8",
+                ],
+                use_chess=True,
+            )
+        )
+        self.register(
+            Matmul(
+                512,
+                512,
+                512,
                 "bf16",
                 "f32",
                 name_suffix="4rows_8cols_npu4_pack_peel_4_level_tiling_ukernel",
