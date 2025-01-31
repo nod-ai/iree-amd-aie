@@ -2104,5 +2104,86 @@
         "time_mean_unit": "us"
       }
     ]
+  },
+  {
+    "commit_hash": "2b89dc262ac9603f90aa55f9d4372a988305cdf6",
+    "cpu": "AMD Ryzen 7 8845HS w/ Radeon 780M Graphics",
+    "tests": [
+      {
+        "name": "matmul_benchmark_512_512_4096_bf16_f32_O2_npu1_4col",
+        "time_mean": "2646",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_benchmark_512_512_4096_bf16_f32_O2_npu1_4col_outline",
+        "time_mean": "6855",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_benchmark_512_512_4096_bf16_f32_O3_npu1_4col",
+        "time_mean": "2663",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_benchmark_512_512_4096_bf16_f32_O3_npu1_4col_outline",
+        "time_mean": "1788",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_benchmark_512_512_4096_bf16_f32_O3_npu1_4col_outline_ukernel",
+        "time_mean": "1782",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_benchmark_512_4096_512_bf16_f32_O3_npu1_4col_outline",
+        "time_mean": "2601",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_benchmark_512_4096_512_bf16_f32_O3_npu1_4col_outline_ukernel",
+        "time_mean": "2419",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_transpose_b_benchmark_512_4096_512_bf16_f32_O3_npu1_4col_outline",
+        "time_mean": "1970",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_benchmark_4096_512_512_bf16_f32_O3_npu1_4col_outline",
+        "time_mean": "1895",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_benchmark_4096_512_512_bf16_f32_O3_npu1_4col_outline_ukernel",
+        "time_mean": "1903",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_transpose_a_benchmark_4096_512_512_bf16_f32_O3_npu1_4col_outline",
+        "time_mean": "2335",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_benchmark_4096_512_512_bf16_f32_O3_npu1_4col_outline_empty",
+        "time_mean": "1879",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_benchmark_512_4096_512_bf16_f32_O3_npu1_4col_outline_4_level_tiling",
+        "time_mean": "6996",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_benchmark_512_4096_512_bf16_f32_O3_npu1_4col_outline_4_level_tiling_ukernel",
+        "time_mean": "1111",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_benchmark_512_4096_512_bf16_f32_O3_npu1_4col_outline_empty_4_level_tiling",
+        "time_mean": "1146",
+        "time_mean_unit": "us"
+      }
+    ]
   }
 ]
