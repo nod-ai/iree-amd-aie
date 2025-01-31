@@ -332,7 +332,7 @@ LogicalResult foldLinearDims(
   newStrides.push_back(strides[strides.size() - 1]);
   newSizes.push_back(sizes[sizes.size() - 1]);
 
-  for (int i = offsets.size() - 2; i >= 0; i--) {
+  for (int i = static_cast<int>(offsets.size()) - 2; i >= 0; i--) {
     // Conditions for folding a dim.
     // 1. Either, offsets[i] == 0 and then we can fold with any `newOffsets[-1]`
     // (even dynamic ones), OR offsets[i] multiplied by the respective stride,
