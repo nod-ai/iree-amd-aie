@@ -579,8 +579,8 @@ static bool anyOutOfRange(ArrayRef<int64_t> values, ArrayRef<int64_t> maxValues,
   return false;
 }
 
-bool DmaDimConfig::isValidAccessPattern(SmallVector<int64_t> sizes,
-                                        SmallVector<int64_t> strides) const {
+bool DmaDimConfig::isValidAccessPattern(ArrayRef<int64_t> sizes,
+                                        ArrayRef<int64_t> strides) const {
   assert(sizes.size() == strides.size() &&
          "`sizes` and `strides` should have the same size");
   // No need to check the unit dimensions.
