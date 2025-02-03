@@ -163,7 +163,7 @@ LogicalResult setDmaInputs(Operation *&operandOp,
   if (isa<memref::AllocOp>(operandOp) ||
       isa<IREE::HAL::InterfaceBindingSubspanOp>(operandOp)) {
     MemRefType memRefType = cast<MemRefType>(operandOp->getResult(0).getType());
-    auto [stridesI64, baseOffset] = getStridesAndOffset(memRefType);
+    auto [stridesI64, baseOffset] = memRefType.getStridesAndOffset();
     if (baseOffset != 0) {
       auto message = llvm::formatv(
           "with non-zero base offset {0} is not supported by the "
@@ -197,8 +197,8 @@ LogicalResult setDmaInputs(Operation *&operandOp,
       return subviewOp->emitOpError(message);
     }
     offsets = subviewOp.getMixedOffsets();
-    auto [stridesI64, baseOffset] =
-        getStridesAndOffset(subviewOp.getSource().getType());
+    MemRefType subviewType = subviewOp.getSource().getType();
+    auto [stridesI64, baseOffset] = subviewType.getStridesAndOffset();
     if (baseOffset != 0) {
       auto message = llvm::formatv(
           "has non-zero base offset {0} that is not supported by the "

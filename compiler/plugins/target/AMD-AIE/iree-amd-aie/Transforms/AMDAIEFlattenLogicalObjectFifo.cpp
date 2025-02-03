@@ -60,7 +60,7 @@ void AMDAIEFlattenLogicalObjectFifoPass::runOnOperation() {
             rewriter.getUnknownLoc(), newLogicalObjectFifo.getOutput(),
             accessOp.getAccessType());
 
-        auto [strides, baseOffset] = getStridesAndOffset(oldType);
+        auto [strides, baseOffset] = oldType.getStridesAndOffset();
         auto reinterpretOp = rewriter.create<memref::ReinterpretCastOp>(
             rewriter.getUnknownLoc(), oldType, newAccessOp.getOutput(),
             baseOffset, oldType.getShape(), strides);
