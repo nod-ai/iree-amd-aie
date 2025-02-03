@@ -229,6 +229,36 @@ class DataPathConfiguration {
   uint32_t dynamicTermNegation = 0;
 
  public:
+  static uint32_t getAMode(Type elementType) {
+    if (auto asInteger = dyn_cast<IntegerType>(elementType)) {
+      if (asInteger.getWidth() == 32) {
+        return 0;
+      } else if (asInteger.getWidth() == 64) {
+        return 1;
+      }
+      llvm_unreachable("Unsupported integer accumulate width");
+    } else if (isa<FloatType>(elementType)) {
+      return 2;
+    }
+    llvm_unreachable("Unsupported accumulator type");
+  }
+  static uint32_t getBMode(Type a, Type b) {
+    auto aWidth = a.getIntOrFloatBitWidth();
+    auto bWidth = b.getIntOrFloatBitWidth();
+    if (aWidth == 8 && bWidth == 4) {
+      return 0;
+    } else if (aWidth == 32 && bWidth == 16) {
+      return 0;
+    } else if (aWidth == 8 && bWidth == 8) {
+      return 1;
+    } else if (aWidth == 16 && bWidth == 8) {
+      return 2;
+    } else if (aWidth == 16 && bWidth == 16) {
+      return 3;
+    }
+    llvm_unreachable("Unsupported multiplication precision");
+  }
+
   // Currently we only toggle 5 of the the cofiguration flags, when we use more
   // of them we can add more flags to the constructor.
   DataPathConfiguration(bool xSigned, bool ySigned, uint32_t aMode,
@@ -661,52 +691,36 @@ class MatMulOpConversion
     DataPathConfiguration configuration;
     Value lhs = op.getLhs();
     Value rhs = op.getRhs();
-
     Value acc = op.getAcc();
+
+    auto lhsVecTy = cast<VectorType>(lhs.getType());
+    auto rhsVecTy = cast<VectorType>(rhs.getType());
     auto accVecTy = cast<VectorType>(acc.getType());
-    if (isa<Float32Type>(accVecTy.getElementType())) {
-      configuration = {/*xSigned=*/0, /*ySigned=*/0,
-                       /*aMode=*/2, /*bMode=*/3,
-                       /*cMode=*/0};
-    } else {
-      bool signX = 0, signY = 0;
-      auto lhsVecTy = cast<VectorType>(lhs.getType());
-      auto lhsScaTy = cast<IntegerType>(lhsVecTy.getElementType());
 
-      // NOTE: We're choosing 'signed' by default
-      if (!lhsScaTy.isUnsigned()) signX = 1;
-      auto rhsVecTy = cast<VectorType>(rhs.getType());
-      auto rhsScaTy = cast<IntegerType>(rhsVecTy.getElementType());
-      // NOTE: We're choosing 'signed' by default
-      if (!rhsScaTy.isUnsigned()) signY = 1;
+    Type accElType = accVecTy.getElementType();
+    Type lhsElType = lhsVecTy.getElementType();
+    Type rhsElType = rhsVecTy.getElementType();
 
-      unsigned lhsBitWidth = lhsScaTy.getWidth();
-      unsigned rhsBitWidth = rhsScaTy.getWidth();
-      auto accScaTy = cast<IntegerType>(accVecTy.getElementType());
-      unsigned accBitWidth = accScaTy.getWidth();
-
-      assert(accBitWidth == 32 &&
-             "currently only support 32-bit accumulator here");
-      assert(lhsBitWidth == rhsBitWidth &&
-             "currently only support same bitwidth for lhs and rhs");
-      assert(lhsBitWidth == 8 && "currently only support 8-bit input here");
-
-      configuration = {/*xSigned=*/signX,
-                       /*ySigned=*/signY,
-                       /*aMode=*/0, /*bMode=*/1, /*cMode=*/0};
-    }
+    uint32_t aMode = DataPathConfiguration::getAMode(accElType);
+    uint32_t bMode = DataPathConfiguration::getBMode(lhsElType, rhsElType);
 
     // Flatten the inputs
-    auto lhsFlattenedVecTy =
-        getFlattenedVectorType(cast<VectorType>(lhs.getType()));
+    VectorType lhsFlattenedVecTy = getFlattenedVectorType(lhsVecTy);
+    VectorType rhsFlattenedVecTy = getFlattenedVectorType(rhsVecTy);
+    VectorType accFlattenedVecTy = getFlattenedVectorType(accVecTy);
+
+    if (isa<Float32Type>(accVecTy.getElementType())) {
+      configuration = {/*xSigned=*/0, /*ySigned=*/0, aMode, bMode,
+                       /*cMode=*/0};
+    } else {
+      bool signX = cast<IntegerType>(lhsElType).isUnsigned() ? 0 : 1;
+      bool signY = cast<IntegerType>(rhsElType).isUnsigned() ? 0 : 1;
+      configuration = {/*xSigned=*/signX,
+                       /*ySigned=*/signY, aMode, bMode, /*cMode=*/0};
+    }
+
     lhs = rewriter.create<vector::ShapeCastOp>(loc, lhsFlattenedVecTy, lhs);
-
-    auto rhsFlattenedVecTy =
-        getFlattenedVectorType(cast<VectorType>(rhs.getType()));
     rhs = rewriter.create<vector::ShapeCastOp>(loc, rhsFlattenedVecTy, rhs);
-
-    auto accFlattenedVecTy =
-        getFlattenedVectorType(cast<VectorType>(acc.getType()));
     acc = rewriter.create<vector::ShapeCastOp>(loc, accFlattenedVecTy, acc);
 
     Type i32ty = rewriter.getI32Type();
@@ -716,21 +730,29 @@ class MatMulOpConversion
     Value matMulResVal;
 
     if (isa<Float32Type>(accVecTy.getElementType())) {
+      if (!AMDAIE::isAie2(device)) {
+        llvm_unreachable(
+            "no support for float matmul except for AIE2, for now");
+      }
       matMulResVal =
           forceCastOperandsAndCreateTarget<xllvm::AIEVec2MacConfBF16IntrOp>(
               rewriter, loc, {lhs, rhs, acc, confCst});
     } else {
       // In the case that it's i32 accumulation.
-      if (device == AMDAIE::AMDAIEDevice::npu4) {
+      if (AMDAIE::isAie2P(device)) {
         matMulResVal =
             forceCastOperandsAndCreateTarget<xllvm::AIEVec2PMacConfAcc64IntrOp>(
                 rewriter, loc, {lhs, rhs, acc, confCst});
       }
 
-      else {
+      else if (AMDAIE::isAie2(device)) {
         matMulResVal =
             forceCastOperandsAndCreateTarget<xllvm::AIEVec2MacConfAcc32IntrOp>(
                 rewriter, loc, {lhs, rhs, acc, confCst});
+      }
+
+      else {
+        llvm_unreachable("Int matmul not supported on this device, for now");
       }
     }
     auto castFromAcc =
