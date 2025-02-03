@@ -44,6 +44,19 @@ std::optional<AMDAIEDevice> getConfigAMDAIEDevice(Operation *op) {
   return getConfigAMDAIEDevice(targetAttr);
 }
 
+std::optional<AMDAIE::AMDAIEDevice> getConfigAMDAIEDeviceFromAncestor(
+    Operation *current) {
+  while (current) {
+    if (auto moduleOp = dyn_cast<ModuleOp>(current)) {
+      auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(moduleOp);
+      auto m = AMDAIE::getConfigAMDAIEDevice(targetAttr);
+      if (m.has_value()) return m;
+    }
+    current = current->getParentOp();
+  }
+  return std::nullopt;
+}
+
 /// Utility that returns the number of columns being targeted.
 std::optional<int64_t> getConfigNumColumns(
     IREE::HAL::ExecutableTargetAttr targetAttr) {

@@ -11,15 +11,6 @@ set(IREE_PACKAGE_ROOT_PREFIX "iree::target::amd-aie::aievec")
 # AIEVec Dialect
 ###############################################################################
 
-iree_tablegen_library(
-  NAME
-    AIEVecDialectGen
-  TD_FILE
-    AIEVecOps.td
-  OUTS
-    -gen-dialect-decls -dialect=aievec AIEVecOpsDialect.h.inc
-    -gen-dialect-defs -dialect=aievec AIEVecOpsDialect.cpp.inc
-)
 
 iree_tablegen_library(
   NAME
@@ -31,6 +22,18 @@ iree_tablegen_library(
     -gen-attrdef-defs -attrdefs-dialect=aievec AIEVecAttributes.cpp.inc
     -gen-enum-decls AIEVecEnums.h.inc
     -gen-enum-defs AIEVecEnums.cpp.inc
+)
+
+list(APPEND IREE_COMPILER_TABLEGEN_INCLUDE_DIRS
+  ${IREE_AMD_AIE_RUNTIME_SOURCE_DIR})
+iree_tablegen_library(
+  NAME
+    AIEVecDialectGen
+  TD_FILE
+    AIEVecDialect.td
+  OUTS
+    -gen-dialect-decls -dialect=aievec AIEVecDialect.h.inc
+    -gen-dialect-defs -dialect=aievec AIEVecDialect.cpp.inc
 )
 
 iree_tablegen_library(
@@ -47,12 +50,12 @@ iree_tablegen_library(
   NAME
     AIEVecXLLVMOpsGen
   TD_FILE
-    XLLVMAIE2IntrOps.td
+    XLLVMIntrOps.td
   OUTS
     -gen-dialect-decls -dialect=xllvm XLLVMDialect.h.inc
     -gen-dialect-defs -dialect=xllvm XLLVMDialect.cpp.inc
-    -gen-op-decls XLLVMAIE2IntrOps.h.inc
-    -gen-op-defs XLLVMAIE2IntrOps.cpp.inc
+    -gen-op-decls XLLVMIntrOps.h.inc
+    -gen-op-defs XLLVMIntrOps.cpp.inc
     -gen-llvmir-conversions XLLVMConversions.inc
 )
 
@@ -63,6 +66,7 @@ iree_cc_library(
     AIEVecOps.cpp
     XLLVMOps.cpp
   DEPS
+    iree-amd-aie::aie_runtime::iree_aie_runtime_static
     ::AIEVecOpsGen
     ::AIEVecDialectGen
     ::AIEVecAttrsGen
@@ -80,10 +84,10 @@ iree_cc_library(
     VectorToVectorConversions.cpp
     XLLVMToLLVMIRTranslation.cpp
   DEPS
+    iree-amd-aie::aie_runtime::iree_aie_runtime_static
     MLIREmitCDialect
     ::AIEVecDialectIR
     ::AIEVecXLLVMOpsGen
-    iree-amd-aie::aie_runtime::iree_aie_runtime_static
     iree::compiler::Dialect::HAL::IR
     iree::compiler::Dialect::HAL::IR::HALDialect
 )

@@ -13,12 +13,12 @@
 #ifndef AIEVEC_OPS
 #define AIEVEC_OPS
 
-// include "aie/Dialect/AIE/IR/AIEAttrs.td"
+include "AIEVecDialect.td"
 include "AIEVecAttributes.td"
 include "AIEVecTypeConstraints.td"
-
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "iree-amd-aie/aie_runtime/AMDAIEEnums.td"
 
 // Base class for AIE dialect ops.
 class AIEVec_Op<string mnemonic, list<Trait> traits = []> :
@@ -58,7 +58,6 @@ def AIEVec_ExtOp:
     Pure
   ]>,
   Arguments<(ins AnyVectorOfNonZeroRank:$source,
-             // ConfinedAttr<AIEI8Attr, [IntMinValue<0>, IntMaxValue<8>]>:$index)>,
              ConfinedAttr<I8Attr, [IntMinValue<0>, IntMaxValue<8>]>:$index)>,
   Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE ext";
@@ -130,39 +129,43 @@ def AIEVec_SRSOp:
 }
 
 def AIEVec_MatMulOp:
-  AIEVec_Op<"matmul", [
-    Pure,
-    AllRanksMatch<["lhs", "rhs", "acc"]>,
-    AllTypesMatch<["acc", "result"]>,
-    ShapesCompatibleWithContraction<"lhs", "rhs", "acc">,
-    IsValidAIE2MatMulShapeAndType<"lhs", "rhs", "acc">
-  ]>,
-  Arguments<(ins AIE2MatMulLHS:$lhs,
-                 AIE2MatMulRHS:$rhs,
-                 AIE2MatMulACC:$acc)>,
-  Results<(outs AIE2MatMulACC:$result)> {
-  let summary = "AIE2 matrix-multiply and accummulate";
+  AIEVec_Op<"matmul", [Pure,AllTypesMatch<["acc", "result"]>]>,
+   Arguments<(ins AnyVectorOfNonZeroRank:$lhs,
+                  AnyVectorOfNonZeroRank:$rhs,
+                  AnyVectorOfNonZeroRank:$acc)>,
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
+  let summary = "AIE matrix-multiply and accummulate";
   let description = [{
-    AMD AIEv2-specific intrinsic that performs a matrix multiplications
+    AMD AIE-specific intrinsic that performs a matrix multiplications
     between `lhs` and `rhs`, and accumulates the result in `acc`.
 
-    Currently, this intrinsic supports the following type combinations:
+    Currently, this intrinsic supports the following type combinations
+    for aie2 (phoenix):
 
-         lhs                | rhs                | Accumulator
-        :------------------:|:------------------:|:-----------------:
-         `vector<4x16xi8>`  | `vector<16x8xi4>`  | `vector<4x8xi32>`
-         `vector<4x8xi8>`   | `vector<8x8xi8>`   | `vector<4x8xi32>`
-         `vector<4x4xi16>`  | `vector<4x8xi8>`   | `vector<4x8xi32>`
-         `vector<4x2xi16>`  | `vector<2x8xi16>`  | `vector<4x8xi32>`
-         `vector<2x8xi16>`  | `vector<8x8xi8>`   | `vector<2x8xi64>`
-         `vector<4x8xi16>`  | `vector<8x4xi8>`   | `vector<4x4xi64>`
-         `vector<2x4xi16>`  | `vector<4x8xi16>`  | `vector<2x8xi64>`
-         `vector<4x4xi16>`  | `vector<4x4xi16>`  | `vector<4x4xi64>`
-         `vector<4x2xi32>`  | `vector<2x4xi16>`  | `vector<4x4xi64>`
-         `vector<4x8xbf16>` | `vector<8x4xbf16>` | `vector<4x4xf32>`
+       lhs                | rhs                | Accumulator
+      :------------------:|:------------------:|:-----------------:
+       `vector<4x8xi8>`   | `vector<8x8xi8>`   | `vector<4x8xi32>`
+       `vector<4x8xbf16>` | `vector<8x4xbf16>` | `vector<4x4xf32>`
+
+    for aie2P (strix):
+
+       lhs                | rhs                | Accumulator
+      :------------------:|:------------------:|:-----------------:
+       `vector<8x8xi8>`   | `vector<8x8xi8>`   | `vector<8x8xi32>`
+
+     These types are checked in `verifyOperands`.
   }];
   let assemblyFormat = [{$lhs `,` $rhs `,` $acc attr-dict `:` type($lhs) `,`
                          type($rhs) `into` type($acc)}];
+
+  let extraClassDeclaration = [{
+    static bool verifyOperands(
+        Type lhsType, Type rhsType, Type accType, AMDAIE::AMDAIEDevice device);
+  }];
+
+  // As the supported types are device dependent, verification needs to have
+  // the device type. The `verifyOperands` function should be called when
+  // the device type is available.
   let hasVerifier = 0;
 }
 

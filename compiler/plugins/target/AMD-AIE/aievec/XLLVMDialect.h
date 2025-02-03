@@ -14,8 +14,6 @@
 #ifndef AIE_DIALECT_XLLVM_XLLVMDIALECT_H
 #define AIE_DIALECT_XLLVM_XLLVMDIALECT_H
 
-#include "llvm/ADT/PointerEmbeddedInt.h"
-#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
@@ -38,8 +36,8 @@
 #include "mlir/Transforms/Mem2Reg.h"
 
 #define GET_OP_CLASSES
-#include "aievec/XLLVMAIE2IntrOps.h.inc"
 #include "aievec/XLLVMDialect.h.inc"
+#include "aievec/XLLVMIntrOps.h.inc"
 
 namespace llvm {
 
