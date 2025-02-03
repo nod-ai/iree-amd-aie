@@ -67,6 +67,7 @@ func.func @matmuli8i8i32(%A : vector<4x8xi8>, %B : vector<8x8xi8>,
 
 // -----
 
+// strix matmul.
 #foo = #hal.executable.target<"foo", "foo", {target_device = "npu4"}>
 module attributes {hal.executable.target = #foo} {
 func.func @matmuli8i8i32npu4(%A : vector<8x8xi8>, %B : vector<8x8xi8>,
