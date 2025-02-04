@@ -704,21 +704,19 @@ class MatMulOpConversion
     uint32_t aMode = DataPathConfiguration::getAMode(accElType);
     uint32_t bMode = DataPathConfiguration::getBMode(lhsElType, rhsElType);
 
+    bool signX = 0;
+    bool signY = 0;
+    if (isa<IntegerType>(accElType)) {
+      signX = cast<IntegerType>(lhsElType).isUnsigned() ? 0 : 1;
+      signY = cast<IntegerType>(rhsElType).isUnsigned() ? 0 : 1;
+    }
+    configuration = {signX, signY, aMode, bMode,
+                     /*cMode=*/0};
+
     // Flatten the inputs
     VectorType lhsFlattenedVecTy = getFlattenedVectorType(lhsVecTy);
     VectorType rhsFlattenedVecTy = getFlattenedVectorType(rhsVecTy);
     VectorType accFlattenedVecTy = getFlattenedVectorType(accVecTy);
-
-    if (isa<Float32Type>(accVecTy.getElementType())) {
-      configuration = {/*xSigned=*/0, /*ySigned=*/0, aMode, bMode,
-                       /*cMode=*/0};
-    } else {
-      bool signX = cast<IntegerType>(lhsElType).isUnsigned() ? 0 : 1;
-      bool signY = cast<IntegerType>(rhsElType).isUnsigned() ? 0 : 1;
-      configuration = {/*xSigned=*/signX,
-                       /*ySigned=*/signY, aMode, bMode, /*cMode=*/0};
-    }
-
     lhs = rewriter.create<vector::ShapeCastOp>(loc, lhsFlattenedVecTy, lhs);
     rhs = rewriter.create<vector::ShapeCastOp>(loc, rhsFlattenedVecTy, rhs);
     acc = rewriter.create<vector::ShapeCastOp>(loc, accFlattenedVecTy, acc);
@@ -810,8 +808,9 @@ class ShuffleOpConversion
     auto rhs = adaptor.getRhs();
     auto i32ty = rewriter.getI32Type();
     auto v16xi32ty = VectorType::get({16}, i32ty);
-    if (!rhs)
+    if (!rhs) {
       rhs = rewriter.create<xllvm::AIEVec2UndefV16I32IntrOp>(loc, v16xi32ty);
+    }
 
     auto modeAttrVal =
         rewriter

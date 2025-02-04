@@ -139,27 +139,26 @@ struct ConvertVectorFMAOpToAIEVecFMAElemOpPattern
   unsigned shiftParam;
 };
 
-/// The types for a matmul where
-/// A is `m` x `k` and has precision `bitWidthA`
-/// B is `k` x `n` and has precision `bitWidthB`
-/// C is `m` x `n` and has precision `bitWidthC`
-/// \returns {type of A, type of B, type of C}
+/// The types of A, B, and C, for an integer matrix-multiplication where
+///
+/// A has shape `m` x `k` and `aBits` bits.
+/// B has shape `k` x `n` and `bBits` bits.
+/// C has shape `m` x `n` and `cBits` bits.
 std::array<Type, 3> getIntegerMatmulVectorTypes(int64_t m, int64_t n, int64_t k,
-                                                int64_t bitWidthA,
-                                                int64_t bitWidthB,
-                                                int64_t bitWidthC,
+                                                int64_t aBits, int64_t bBits,
+                                                int64_t cBits,
                                                 MLIRContext *context) {
-  Type a = VectorType::get({m, k}, IntegerType::get(context, bitWidthA));
-  Type b = VectorType::get({k, n}, IntegerType::get(context, bitWidthB));
-  Type c = VectorType::get({m, n}, IntegerType::get(context, bitWidthC));
+  Type a = VectorType::get({m, k}, IntegerType::get(context, aBits));
+  Type b = VectorType::get({k, n}, IntegerType::get(context, bBits));
+  Type c = VectorType::get({m, n}, IntegerType::get(context, cBits));
   return {a, b, c};
 }
 
-/// The types for a matmul where
-/// A is `m` x `k` and with element type `bf16`
-/// B is `k` x `n` and with element type `bf16`
-/// C is `m` x `n` and with element type `f32`
-/// \returns {type of A, type of B, type of C}
+/// The types for a matrix-multiplication where
+///
+/// A is `m` x `k` and of element type `bf16`
+/// B is `k` x `n` and of element type `bf16`
+/// C is `m` x `n` and of element type `f32`
 std::array<Type, 3> getBFloatMatmul(int64_t m, int64_t n, int64_t k,
                                     MLIRContext *context) {
   Type a = VectorType::get({m, k}, BFloat16Type::get(context));
@@ -168,29 +167,33 @@ std::array<Type, 3> getBFloatMatmul(int64_t m, int64_t n, int64_t k,
   return {a, b, c};
 }
 
-/// Get the types (shapes x element types) of the matmuls that we currently
-/// support lowering to an AIE2 device from the AIEVec dialect.
+/// The peano intrinsics API for AIE2 (phoenix) , and the ISA specification,
+/// define a set of supported matmul shapes for integer and floating point
+/// types. This function returns a subset of these supported shapes/types which
+/// the iree-amd-aie compiler currently uses (can be extended).
 SmallVector<std::array<Type, 3>> getSupportedAie2Types(MLIRContext *context) {
   SmallVector<std::array<Type, 3>> types;
-  types.push_back(
-      getIntegerMatmulVectorTypes(/*m*/ 4, /*n*/ 8, /*k*/ 8, /*A bits*/ 8,
-                                  /*B bits*/ 8, /*acc bits*/ 32, context));
-  types.push_back(getBFloatMatmul(/*m*/ 4, /*n*/ 4, /*k*/ 8, context));
+  types.push_back(getIntegerMatmulVectorTypes(
+      /* M= */ 4, /* N= */ 8, /* K= */ 8, /* A precision (bits)= */ 8,
+      /* B precision (bits)= */ 8, /*C precision (bits)= */ 32, context));
+
+  types.push_back(getBFloatMatmul(/* M= */ 4, /* N= */ 4, /* K= */ 8, context));
   return types;
 }
 
-/// Get the types (shapes x element types) of the matmuls that we currently
-/// support lowering to a AIE2P device (strix) from the AIEVec dialect.
+/// Types currently supported for AIE2P (strix).
 SmallVector<std::array<Type, 3>> getSuportedAie2PTypes(MLIRContext *context) {
   SmallVector<std::array<Type, 3>> types;
   types.push_back(
-      getIntegerMatmulVectorTypes(/*m*/ 8, /*n*/ 8, /*k*/ 8, /*A bits*/ 8,
-                                  /*B bits*/ 8, /*acc bits*/ 32, context));
+      getIntegerMatmulVectorTypes(/* M= */ 8, /* N= */ 8, /* K= */ 8,
+                                  /* A precision (bits)= */ 8,
+                                  /* B precision (bits)= */ 8,
+                                  /*C precision (bits)= */ 32, context));
   return types;
 }
 
-/// Get the types (shapes x element types) of the matmuls that we currently
-/// support lowering from the AIEVec dialect, for the device `device`.
+/// Get the set of matmuls that we currently support lowering from the AIEVec
+/// dialect, for the device `device`.
 const SmallVector<std::array<Type, 3>> &getSupportedTypes(
     AMDAIE::AMDAIEDevice device, MLIRContext *context) {
   if (AMDAIE::isAie2(device)) {
@@ -210,16 +213,14 @@ const SmallVector<std::array<Type, 3>> &getSupportedTypes(
 /// looking for an exact match.
 bool MatMulOp::verifyOperands(Type lhs, Type rhs, Type acc,
                               AMDAIE::AMDAIEDevice device) {
-  for (auto &types : getSupportedTypes(device, lhs.getContext())) {
-    if (lhs == types[0] && rhs == types[1] && acc == types[2]) {
-      return true;
-    }
+  for (const auto &abc : getSupportedTypes(device, lhs.getContext())) {
+    if (lhs == abc[0] && rhs == abc[1] && acc == abc[2]) return true;
   }
   return false;
 }
 
-/// Get a string describing all the supported types for A, B, and C (lhs, rhs,
-/// and acc) for lowering from AIEVec to XLLVM for the device `device`.
+/// Append information listing all the currently supported types for `lhs`,
+/// `rhs`, and `acc` to `rso`. The list is specific to devices of type `device`.
 void appendSupportedTypes(AMDAIE::AMDAIEDevice device, MLIRContext *context,
                           llvm::raw_string_ostream &rso) {
   rso << "The supported types are: \n";
@@ -227,8 +228,8 @@ void appendSupportedTypes(AMDAIE::AMDAIEDevice device, MLIRContext *context,
     rso << "lhs type: " << types[0] << ", rhs type: " << types[1]
         << ", accumulator type: " << types[2] << "\n";
   }
-  rso << "The above list is not exhaustive of what AIE supports, we might be "
-         "able to extend it.";
+  rso << "The above list is a subset of the full ISA spec, we might be able to "
+         "extend it.";
 }
 
 // Convert a `vector.contract` op to an `aievec.matmul`.
@@ -244,15 +245,19 @@ struct LowerVectorContractionOpToAIEVecMatMulPattern
                                                 AMDAIE::AMDAIEDevice device)
       : OpConversionPattern(context), device(device) {}
 
-  Value withLeadingOnesDropped(OpBuilder &b, Value v) const {
-    auto initialType = dyn_cast<VectorType>(v.getType());
+  /// Create a vector.shape_cast op that 'squeezes' out all leading 1s from the
+  /// input vector. For example, if `unsqueezed` is a vector<1x1x1x4x1xf32>,
+  /// then it will be reshaped to vector<4x1xf32>.
+  static Value withLeadingOnesDropped(OpBuilder &b, Value unsqueezed) {
+    auto initialType = dyn_cast<VectorType>(unsqueezed.getType());
     assert(initialType && "expected a vector type");
     ArrayRef<int64_t> initialShape = initialType.getShape();
     ArrayRef<int64_t> newShape =
         initialShape.drop_until([](int64_t d) { return d != 1; });
     Type elementType = initialType.getElementType();
-    auto newType = VectorType::get(newShape, elementType);
-    return b.createOrFold<vector::ShapeCastOp>(v.getLoc(), newType, v);
+    VectorType newType = VectorType::get(newShape, elementType);
+    return b.createOrFold<vector::ShapeCastOp>(unsqueezed.getLoc(), newType,
+                                               unsqueezed);
   }
 
   Value getMatMulOperand(Value v, ConversionPatternRewriter &rewriter) const {

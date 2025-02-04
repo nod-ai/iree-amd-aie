@@ -1,4 +1,4 @@
-//===- XLLVMIntrOps.td - XLLVM AIE intrinsic op defs. ----*- tablegen -*-====//
+//===- XLLVMOps.td - XLLVM AIE intrinsic op defs. ----*- tablegen -*-====//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -33,18 +33,16 @@ include "XLLVMTypeConstraints.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
-//////////////////////////////////////
-// Intrinsics for AIE2P ('phoenix') //
-//////////////////////////////////////
+////////////////////////////////////
+// Intrinsics for AIE2P ('strix') //
+////////////////////////////////////
 
 class AIEVec2P_IntrOp<string mnemonic,
                       list<Trait> traits = [],
                       int numResults = 1> :
      ExtIntrOpBase</*opName =*/"intr.aie2p." # mnemonic,
                    /*enumName =*/"aie2p." # mnemonic,
-                   traits,
-                   numResults>;
-
+                   traits, numResults>;
 
 // ----- MAC -----
 
@@ -56,7 +54,6 @@ def AIEVec2PMacConfAcc64IntrOp :
                    VectorOfLengthAndType<[32], [I64]>:$acc,
                    I32:$conf)>{
 let extraClassDeclaration = [{
-    // TODO(newling) deduplicate with Argument type constraints above.
     static SmallVector<Type> expectedArgTypes(MLIRContext *context) {
         return {
             VectorType::get({16}, IntegerType::get(context, 32)),
@@ -86,11 +83,6 @@ class AIEVec2_IntrOp<string mnemonic,
 
 // ----- MAC -----
 
-// Used for matmul where A is 4x8xi8, B is 8x8xi8, and C is 4x8xi32.
-// Check that number of bits match:
-//        From matrix | From operand below
-// -------------------|---------------------
-// A:     4*8*8       | 64*i8
 def AIEVec2MacConfAcc32IntrOp :
     AIEVec2_IntrOp<"I512.I512.ACC1024.acc32.mac.conf",
         [TypeIs<"res", VectorOfLengthAndType<[16], [I64]>>]>,
@@ -99,7 +91,6 @@ def AIEVec2MacConfAcc32IntrOp :
                    VectorOfLengthAndType<[16], [I64]>:$acc,
                    I32:$conf)>{
 let extraClassDeclaration = [{
-    // TODO(newling) deduplicate with Argument type constraints above.
     static SmallVector<Type> expectedArgTypes(MLIRContext *context) {
         return {
             VectorType::get({64}, IntegerType::get(context, 8)),
@@ -132,7 +123,6 @@ def AIEVec2MacConfBF16IntrOp :
                    VectorOfLengthAndType<[8], [I64]>:$acc,
                    I32:$conf)> {
 let extraClassDeclaration = [{
-    // TODO(newling) deduplicate with Argument type constraints above.
     static SmallVector<Type> expectedArgTypes(MLIRContext *context) {
         return {
             VectorType::get({32}, BFloat16Type::get(context)),

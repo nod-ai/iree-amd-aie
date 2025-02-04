@@ -27,7 +27,7 @@ using namespace mlir::iree_compiler::aievec::xllvm;
 void XLLVMDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
-#include "aievec/XLLVMIntrOps.cpp.inc"
+#include "aievec/XLLVMOps.cpp.inc"
       >();
 }
 
@@ -62,11 +62,7 @@ llvm::CallInst *createExternalLLVMIntrinsicCall(
   return builder.CreateCall(llvmIntr, operands);
 }
 
-// LogicalResult AIEVec2MacConfAcc32IntrOp::verify() {
-//   return success();
-// }
-
 }  // namespace mlir::iree_compiler::aievec::xllvm
 
 #define GET_OP_CLASSES
-#include "aievec/XLLVMIntrOps.cpp.inc"
+#include "aievec/XLLVMOps.cpp.inc"

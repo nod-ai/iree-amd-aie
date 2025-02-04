@@ -6,6 +6,8 @@
 
 #include "AMDAIEUtils.h"
 
+#include <optional>
+
 #include "llvm/ADT/StringExtras.h"
 #include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -45,14 +47,16 @@ std::optional<AMDAIEDevice> getConfigAMDAIEDevice(Operation *op) {
 }
 
 std::optional<AMDAIE::AMDAIEDevice> getConfigAMDAIEDeviceFromAncestor(
-    Operation *current) {
-  while (current) {
-    if (auto moduleOp = dyn_cast<ModuleOp>(current)) {
-      auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(moduleOp);
-      auto m = AMDAIE::getConfigAMDAIEDevice(targetAttr);
-      if (m.has_value()) return m;
+    Operation *op) {
+  while (op) {
+    if (ModuleOp moduleOp = dyn_cast<ModuleOp>(op)) {
+      IREE::HAL::ExecutableTargetAttr targetAttr =
+          IREE::HAL::ExecutableTargetAttr::lookup(moduleOp);
+      std::optional<AMDAIEDevice> maybeDevice =
+          AMDAIE::getConfigAMDAIEDevice(targetAttr);
+      if (maybeDevice.has_value()) return maybeDevice;
     }
-    current = current->getParentOp();
+    op = op->getParentOp();
   }
   return std::nullopt;
 }

@@ -50,12 +50,12 @@ iree_tablegen_library(
   NAME
     AIEVecXLLVMOpsGen
   TD_FILE
-    XLLVMIntrOps.td
+    XLLVMOps.td
   OUTS
     -gen-dialect-decls -dialect=xllvm XLLVMDialect.h.inc
     -gen-dialect-defs -dialect=xllvm XLLVMDialect.cpp.inc
-    -gen-op-decls XLLVMIntrOps.h.inc
-    -gen-op-defs XLLVMIntrOps.cpp.inc
+    -gen-op-decls XLLVMOps.h.inc
+    -gen-op-defs XLLVMOps.cpp.inc
     -gen-llvmir-conversions XLLVMConversions.inc
 )
 
@@ -84,10 +84,10 @@ iree_cc_library(
     VectorToVectorConversions.cpp
     XLLVMToLLVMIRTranslation.cpp
   DEPS
-    iree-amd-aie::aie_runtime::iree_aie_runtime_static
     MLIREmitCDialect
     ::AIEVecDialectIR
     ::AIEVecXLLVMOpsGen
+    iree-amd-aie::aie_runtime::iree_aie_runtime_static
     iree::compiler::Dialect::HAL::IR
     iree::compiler::Dialect::HAL::IR::HALDialect
 )

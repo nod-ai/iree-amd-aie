@@ -129,7 +129,7 @@ def AIEVec_SRSOp:
 }
 
 def AIEVec_MatMulOp:
-  AIEVec_Op<"matmul", [Pure,AllTypesMatch<["acc", "result"]>]>,
+  AIEVec_Op<"matmul", [Pure, AllTypesMatch<["acc", "result"]>]>,
    Arguments<(ins AnyVectorOfNonZeroRank:$lhs,
                   AnyVectorOfNonZeroRank:$rhs,
                   AnyVectorOfNonZeroRank:$acc)>,
@@ -160,7 +160,7 @@ def AIEVec_MatMulOp:
 
   let extraClassDeclaration = [{
     static bool verifyOperands(
-        Type lhsType, Type rhsType, Type accType, AMDAIE::AMDAIEDevice device);
+                Type lhs, Type rhs, Type acc, AMDAIE::AMDAIEDevice);
   }];
 
   // As the supported types are device dependent, verification needs to have
