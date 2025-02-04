@@ -39,8 +39,8 @@ namespace {
 static bool isCoreComputeOp(Operation *op) {
   return isa<linalg::LinalgOp, vector::ContractionOp,
              memref::ExtractStridedMetadataOp, func::CallOp, arith::ExtFOp,
-             arith::TruncFOp, vector::TransferReadOp, vector::TransferWriteOp>(
-      op);
+             arith::TruncFOp, arith::TruncIOp, vector::TransferReadOp,
+             vector::TransferWriteOp>(op);
 }
 
 /// Utility to map the parallel mapping attributes to the corresponding
