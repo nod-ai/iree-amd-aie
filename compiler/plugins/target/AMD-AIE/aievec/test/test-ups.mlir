@@ -1,9 +1,12 @@
 // RUN: iree-opt %s -split-input-file --convert-aievec-to-llvm | FileCheck %s
 
+#foo = #hal.executable.target<"foo", "foo", {target_device = "npu1_4col"}>
+module attributes {hal.executable.target = #foo} {
 func.func @v16i32_ups_v16i16(%arg0 : vector<16xi16>) {
   %0 = aievec.ups %arg0 {shift = 0 : i8} : vector<16xi16>, vector<16xi32>
   %1 = aievec.ups %arg0 {shift = 5 : i8} : vector<16xi16>, vector<16xi32>
   return
+}
 }
 
 // CHECK-LABEL: @v16i32_ups_v16i16
@@ -23,10 +26,13 @@ func.func @v16i32_ups_v16i16(%arg0 : vector<16xi16>) {
 
 // -----
 
+#foo = #hal.executable.target<"foo", "foo", {target_device = "npu1_4col"}>
+module attributes {hal.executable.target = #foo} {
 func.func @v8acc64_ups_v8i32(%arg0 : vector<8xi32>) {
   %0 = aievec.ups %arg0 {shift = 0 : i8} : vector<8xi32>, vector<8xi64>
   %1 = aievec.ups %arg0 {shift = 5 : i8} : vector<8xi32>, vector<8xi64>
   return
+}
 }
 
 // CHECK-LABEL: @v8acc64_ups_v8i32
@@ -44,10 +50,13 @@ func.func @v8acc64_ups_v8i32(%arg0 : vector<8xi32>) {
 
 // -----
 
+#foo = #hal.executable.target<"foo", "foo", {target_device = "npu1_4col"}>
+module attributes {hal.executable.target = #foo} {
 func.func @v32i32_ups_v32i16(%arg0 : vector<32xi16>) {
   %0 = aievec.ups %arg0 {shift = 0 : i8} : vector<32xi16>, vector<32xi32>
   %1 = aievec.ups %arg0 {shift = 5 : i8} : vector<32xi16>, vector<32xi32>
   return
+}
 }
 
 // CHECK-LABEL: @v32i32_ups_v32i16
@@ -67,10 +76,13 @@ func.func @v32i32_ups_v32i16(%arg0 : vector<32xi16>) {
 
 // -----
 
+#foo = #hal.executable.target<"foo", "foo", {target_device = "npu1_4col"}>
+module attributes {hal.executable.target = #foo} {
 func.func @v16acc64_ups_v16i32(%arg0 : vector<16xi32>) {
   %0 = aievec.ups %arg0 {shift = 0 : i8} : vector<16xi32>, vector<16xi64>
   %1 = aievec.ups %arg0 {shift = 5 : i8} : vector<16xi32>, vector<16xi64>
   return
+}
 }
 
 // CHECK-LABEL: @v16acc64_ups_v16i32
@@ -88,10 +100,13 @@ func.func @v16acc64_ups_v16i32(%arg0 : vector<16xi32>) {
 
 // -----
 
+#foo = #hal.executable.target<"foo", "foo", {target_device = "npu1_4col"}>
+module attributes {hal.executable.target = #foo} {
 func.func @v16acc64_ups_v16i16(%arg0 : vector<16xi16>) {
   %0 = aievec.ups %arg0 {shift = 0 : i8} : vector<16xi16>, vector<16xi64>
   %1 = aievec.ups %arg0 {shift = 5 : i8} : vector<16xi16>, vector<16xi64>
   return
+}
 }
 
 // CHECK-LABEL: @v16acc64_ups_v16i16
@@ -109,10 +124,13 @@ func.func @v16acc64_ups_v16i16(%arg0 : vector<16xi16>) {
 
 // -----
 
+#foo = #hal.executable.target<"foo", "foo", {target_device = "npu1_4col"}>
+module attributes {hal.executable.target = #foo} {
 func.func @v32i32_ups_v32i8(%arg0 : vector<32xi8>) {
   %0 = aievec.ups %arg0 {shift = 0 : i8} : vector<32xi8>, vector<32xi32>
   %1 = aievec.ups %arg0 {shift = 5 : i8} : vector<32xi8>, vector<32xi32>
   return
+}
 }
 
 // CHECK-LABEL: @v32i32_ups_v32i8
@@ -132,10 +150,13 @@ func.func @v32i32_ups_v32i8(%arg0 : vector<32xi8>) {
 
 // -----
 
+#foo = #hal.executable.target<"foo", "foo", {target_device = "npu1_4col"}>
+module attributes {hal.executable.target = #foo} {
 func.func @v16f32_ups_v16bf16(%arg0 : vector<16xbf16>) {
   %0 = aievec.ups %arg0 {shift = 0 : i8} : vector<16xbf16>, vector<16xf32>
   %1 = aievec.ups %arg0 {shift = 5 : i8} : vector<16xbf16>, vector<16xf32>
   return
+}
 }
 
 // CHECK-LABEL: @v16f32_ups_v16bf16
@@ -151,9 +172,12 @@ func.func @v16f32_ups_v16bf16(%arg0 : vector<16xbf16>) {
 
 // -----
 
+#foo = #hal.executable.target<"foo", "foo", {target_device = "npu1_4col"}>
+module attributes {hal.executable.target = #foo} {
 func.func @v32f32_ups_v32bf16(%arg0 : vector<32xbf16>) {
   %0 = aievec.ups %arg0 {shift = 0 : i8} : vector<32xbf16>, vector<32xf32>
   return
+}
 }
 
 // CHECK-LABEL: @v32f32_ups_v32bf16
@@ -195,8 +219,12 @@ func.func @v32f32_ups_v32bf16(%arg0 : vector<32xbf16>) {
 // CHECK-SAME:                     : (vector<32xi8>, i32, i32) -> vector<16xi64>
 // CHECK: %[[FR:.*]] = llvm.bitcast %3 : vector<16xi64> to vector<32xi32>
 // CHECK: %[[UPS:.*]] = vector.shape_cast %[[FR]]
-// CHECK-sAME:                     : vector<32xi32> to vector<4x8xi32>
+// CHECK-SAME:                     : vector<32xi32> to vector<4x8xi32>
+
+#foo = #hal.executable.target<"foo", "foo", {target_device = "npu1_4col"}>
+module attributes {hal.executable.target = #foo} {
 func.func @multidim_ups_i8_to_i32(%arg0 : vector<4x8xi8>) -> vector<4x8xi32> {
   %0 = aievec.ups %arg0 {shift = 0 : i8} : vector<4x8xi8>, vector<4x8xi32>
   return %0 : vector<4x8xi32>
+}
 }

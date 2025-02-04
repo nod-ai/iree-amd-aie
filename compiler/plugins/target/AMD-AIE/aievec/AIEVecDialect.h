@@ -16,6 +16,6 @@
 #include "mlir/IR/Dialect.h"
 
 #define GET_OP_CLASSES
-#include "aievec/AIEVecOpsDialect.h.inc"
+#include "aievec/AIEVecDialect.h.inc"
 
 #endif  // AIE_DIALECT_AIEVEC_IR_AIEVECDIALECT_H

@@ -13,6 +13,7 @@
 #ifndef AIE_DIALECT_AIEVEC_IR_AIEVECOPS_H
 #define AIE_DIALECT_AIEVEC_IR_AIEVECOPS_H
 
+#include "iree-amd-aie/aie_runtime/AMDAIEEnums.h"
 #include "mlir/Bytecode/BytecodeOpInterface.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"

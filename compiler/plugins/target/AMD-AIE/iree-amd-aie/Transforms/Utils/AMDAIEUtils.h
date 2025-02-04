@@ -22,6 +22,11 @@ std::optional<AMDAIEDevice> getConfigAMDAIEDevice(
 /// attr in the AST.
 std::optional<AMDAIEDevice> getConfigAMDAIEDevice(Operation *op);
 
+/// Starting from operation `op`, consider ancestors until a module op
+/// containing an AMDAIE device is found. If no such device is found, return an
+/// empty optional.
+std::optional<AMDAIEDevice> getConfigAMDAIEDeviceFromAncestor(Operation *op);
+
 /// Returns the number of columns being targeted.
 std::optional<int64_t> getConfigNumColumns(
     IREE::HAL::ExecutableTargetAttr targetAttr);
