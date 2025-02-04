@@ -802,10 +802,11 @@ struct ToMinorIdentityTransferReadPattern
 ///     %1 = arith.truncf %0 : vector<6xf32> to vector<6xbf16>
 ///     %2 = vector.shape_cast %1 : vector<6xbf16> to vector<2x3xbf16>
 // clang-format on
-struct FlattenArithTruncFOpPattern : public OpRewritePattern<arith::TruncFOp> {
-  using OpRewritePattern<arith::TruncFOp>::OpRewritePattern;
+template <typename TruncOpTy>
+struct FlattenArithTruncOpPattern : public OpRewritePattern<TruncOpTy> {
+  using OpRewritePattern<TruncOpTy>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(arith::TruncFOp op,
+  LogicalResult matchAndRewrite(TruncOpTy op,
                                 PatternRewriter &rewriter) const override {
     // Get old shape type.
     auto oldShapedType = dyn_cast<VectorType>(op.getType());
@@ -826,7 +827,7 @@ struct FlattenArithTruncFOpPattern : public OpRewritePattern<arith::TruncFOp> {
     Value newInputVector = rewriter.create<vector::ShapeCastOp>(
         op.getLoc(), newVectorTypeForInput, origInputOfTruncFOp);
     // Create new base operation with the linearized input/output.
-    Value newTruncFOp = rewriter.create<arith::TruncFOp>(
+    Value newTruncFOp = rewriter.create<TruncOpTy>(
         op.getLoc(), newVectorTypeForOutput, newInputVector);
     // Delinearize the output back to the original type.
     rewriter.replaceOpWithNewOp<vector::ShapeCastOp>(op, op.getType(),
@@ -1054,11 +1055,12 @@ struct CanonicalizeVectorForAIEVecPass
 
     {
       RewritePatternSet patterns(context);
-      patterns
-          .add<ExtractTransposeFromContractionOp, FlattenArithTruncFOpPattern,
-               ToMinorIdentityTransferReadPattern,
-               ToMinorIdentityTransferWritePattern,
-               ConvertLeadingUnitDimInsertToReshapePattern>(context);
+      patterns.add<ExtractTransposeFromContractionOp,
+                   FlattenArithTruncOpPattern<arith::TruncFOp>,
+                   FlattenArithTruncOpPattern<arith::TruncIOp>,
+                   ToMinorIdentityTransferReadPattern,
+                   ToMinorIdentityTransferWritePattern,
+                   ConvertLeadingUnitDimInsertToReshapePattern>(context);
       patterns.add<ConvertSplatTransferReadToBroadcastPattern>(context);
       patterns
           .add<copied_from_mlir::FlattenContiguousRowMajorTransferReadPattern,

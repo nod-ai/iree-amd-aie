@@ -669,6 +669,88 @@ class MatmulTruncf(BaseMatmul):
         return True
 
 
+class MatmulTrunci(BaseMatmul):
+    """
+    A test of the form matmul(A,B) + trunci(C) where A:MxK, B:KxM and C:MxM
+    """
+
+    def __init__(
+        self,
+        M,
+        K,
+        input_type,
+        acc_type,
+        lhs,
+        rhs,
+        expected_out,
+        run_on_target=["npu1_4col"],
+        tile_pipeline="pack-peel",
+        aie_compilation_flags=None,
+        use_ukernel=False,
+        n_repeats=1,
+        use_chess=False,
+    ):
+        super().__init__(
+            run_on_target=run_on_target,
+            aie_compilation_flags=aie_compilation_flags,
+            M=M,
+            N=M,
+            K=K,
+            input_type=input_type,
+            acc_type=acc_type,
+            tile_pipeline=tile_pipeline,
+            n_repeats=n_repeats,
+            use_ukernel=use_ukernel,
+            use_chess=use_chess,
+        )
+        self.labels.append("MatmulTrunci")
+
+        # Assertions on shapes: Check that lhs is MxK, rhs is KxM, and expected_out is MxM
+        assert lhs.shape == (M, K)
+        assert rhs.shape == (K, M)
+        assert expected_out.shape == (M, M)
+
+        self.name = f"matmul_trunci_{M}_{K}_{input_type}_{acc_type}"
+        if tile_pipeline == "pack-peel-4-level-tiling":
+            self.name += "_4_level_tiling"
+        self.lhs = lhs
+        self.rhs = rhs
+        self.expected_out = expected_out
+
+    def _execute(self, config):
+        matmul_template_dir = config.file_dir / "matmul_template"
+        template_name = matmul_template_dir / "matmul_trunci_MxK_KxN.mlir"
+        self.generate(config, template_name)
+        filename = self.get_filename(config)
+        input_args = generate_inputs(
+            filename, self.get_dir(config), 1, {1: self.lhs, 2: self.rhs}
+        )
+        """
+        Currently without function outlining, we run out of program memory.
+        """
+        self.add_aie_compilation_flags(
+            ["--iree-amdaie-enable-function-outlining=balanced"]
+        )
+        aie_vs_baseline(
+            config=config,
+            aie_compilation_flags=self.aie_compilation_flags,
+            test_file=self.get_filename(config),
+            input_args=input_args,
+            baseline_value=self.expected_out,
+            use_ukernel=self.use_ukernel,
+            tile_pipeline=self.tile_pipeline,
+            function_name=None,
+            seed=1,
+            rtol=0,
+            atol=0,
+            lower_to_aie_pipeline=self.lower_to_aie_pipeline,
+            n_repeats=self.n_repeats,
+            output_type=get_output_type(self.get_filename(config)),
+        )
+
+        return True
+
+
 def find_executable(install_dir: Path, executable_name):
     """
     Search for an executable in the given directory and its subdirectories
@@ -1450,6 +1532,25 @@ class Tests:
         self.existing_names = []
         self.tests = []
 
+        self.register(
+            MatmulTrunci(
+                256,
+                32,
+                "i8",
+                "i32",
+                1 * np.ones([256, 32], dtype=np.int8),
+                1 * np.ones([32, 256], dtype=np.int8),
+                32 * np.ones([256, 256], dtype=np.int8),
+                tile_pipeline="pack-peel-4-level-tiling",
+                run_on_target=["npu4"],
+                aie_compilation_flags=[
+                    "--iree-amdaie-num-rows=4",
+                    "--iree-amdaie-num-cols=8",
+                ],
+                use_chess=True,
+                use_ukernel=True,
+            )
+        )
         # Matmul with truncf test(s):
         for tile_pipeline in ["pack-peel", "pack-peel-4-level-tiling"]:
             self.register(
@@ -1628,9 +1729,10 @@ class Tests:
         )
         self.register(
             Matmul(
-                512,
-                512,
+                128,
+                128,
                 256,
+                "i8",
                 "i32",
                 "i32",
                 test_params=TestParams(
@@ -1664,6 +1766,21 @@ class Tests:
                 )
             )
 
+        # self.register(
+        #     Matmul(
+        #         64,
+        #         64,
+        #         64,
+        #         "bf16",
+        #         "f32",
+        #         use_ukernel=True,
+        #         use_chess=True,
+        #         run_on_target=["npu4"],
+        #         aie_compilation_flags=[
+        #             "--mlir-print-ir-before-all",
+        #         ],
+        #     )
+        # )
         self.register(
             Matmul(
                 64,
