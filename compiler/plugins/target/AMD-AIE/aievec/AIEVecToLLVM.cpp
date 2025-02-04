@@ -171,7 +171,7 @@ class DataPathConfiguration {
   // Dynamic zero accumulation r[0]
   // 0 – Use default first accumulator input to the postadder.
   // 1 – Replace default first accumulator with zeros.
-  bool dynamcZeroAccumulation = 0;
+  bool dynamicZeroAccumulation = 0;
 
   // Accumulator width (amode) r[2..1]
   // 0 – 32-bit integer accumulator lanes
@@ -272,7 +272,7 @@ class DataPathConfiguration {
   DataPathConfiguration() = default;
 
   uint32_t get() const {
-    uint32_t output = static_cast<uint32_t>(dynamcZeroAccumulation) << 0 |
+    uint32_t output = static_cast<uint32_t>(dynamicZeroAccumulation) << 0 |
                       static_cast<uint32_t>(accumulatorWidth) << 1 |
                       static_cast<uint32_t>(multiplicationPrecision) << 3 |
                       static_cast<uint32_t>(multiplicationMode) << 5 |

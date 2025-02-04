@@ -15,21 +15,28 @@
 #include "iree-amd-aie/aie_runtime/AMDAIEEnums.h.inc"
 // clang-format on
 
-// TODO(someone_who_knows) explain the connection between npu numbering and
-// aie numbering, and why npu jumps from '1' to '4'.
 namespace mlir::iree_compiler::AMDAIE {
-static inline bool isNpu1(AMDAIEDevice device) {
-  return device == AMDAIEDevice::npu1 || device == AMDAIEDevice::npu1_1col ||
-         device == AMDAIEDevice::npu1_2col ||
-         device == AMDAIEDevice::npu1_3col || device == AMDAIEDevice::npu1_4col;
-}
 
+/// Some naming thoughts. Why is the mapping
+/// npu1 -> aie2 (Phoenix)
+/// npu4 -> aie2p (Strix) ?
+/// It seems like npu2 and npu3 are used in the xdna-driver for some custom
+/// devices, one might be a 4x4 variation of Strix.
+
+/////////////////////
+// AIE2 (Phoenix)  //
+/////////////////////
+static inline bool isNpu1(AMDAIEDevice d) {
+  return d == AMDAIEDevice::npu1 || d == AMDAIEDevice::npu1_1col ||
+         d == AMDAIEDevice::npu1_2col || d == AMDAIEDevice::npu1_3col ||
+         d == AMDAIEDevice::npu1_4col;
+}
 static inline bool isAie2(AMDAIEDevice device) { return isNpu1(device); }
 
-static inline bool isNpu4(AMDAIEDevice device) {
-  return device == AMDAIEDevice::npu4;
-}
-
+////////////////////
+// AIE2P (Strix)  //
+////////////////////
+static inline bool isNpu4(AMDAIEDevice d) { return d == AMDAIEDevice::npu4; }
 static inline bool isAie2P(AMDAIEDevice device) { return isNpu4(device); }
 
 }  // namespace mlir::iree_compiler::AMDAIE
