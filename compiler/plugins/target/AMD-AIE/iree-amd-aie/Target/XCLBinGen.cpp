@@ -1123,7 +1123,8 @@ LogicalResult generateUnifiedObject(
 
     if (failed(runTool(peanoOptBin.string(), peanoArgs.value(), verbose))) {
       llvm::errs() << "Failed to optimize ll with peano\n";
-      llvm::errs() << "Using peano at provided path: '" << peanoDir << "'\n";
+      llvm::errs() << "Using peano at provided path: '" << peanoDir.string()
+                   << "'\n";
       return failure();
     }
 
