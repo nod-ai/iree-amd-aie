@@ -766,6 +766,7 @@ class MatmulTruncf(BaseMatmul):
         run_on_target=["npu1_4col"],
         tile_pipeline="pack-peel",
         aie_compilation_flags=None,
+        use_ukernel=False,
     ):
         super().__init__(
             run_on_target=run_on_target,
@@ -777,6 +778,7 @@ class MatmulTruncf(BaseMatmul):
             acc_type=acc_type,
             tile_pipeline=tile_pipeline,
             n_repeats=1,
+            use_ukernel=False,
         )
         self.labels.append("MatmulTruncf")
 
@@ -1698,14 +1700,13 @@ class Tests:
                 7 * np.ones([8, 256], dtype=np.int8),
                 112 * np.ones([256, 256], dtype=np.int8),
                 tile_pipeline="pack-peel-4-level-tiling",
-                run_on_target=["npu4"],
+                run_on_target=["npu1_4col"],
                 aie_compilation_flags=[
                     "--iree-amdaie-num-rows=4",
-                    "--iree-amdaie-num-cols=8",
-                    "--mlir-print-ir-before-all",
+                    "--iree-amdaie-num-cols=4",
                 ],
-                use_chess=True,
                 use_ukernel=True,
+                
             )
         )
         # Matmul with truncf test(s):

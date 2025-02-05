@@ -295,15 +295,36 @@ void matmul_vectorized_4x8x4_bf16_bf16_f32(const bfloat16 *__restrict pA,
       pA, offsetA, pB, offsetB, pC, offsetC);
 }
 
+template <unsigned m, unsigned k, unsigned n>
+void matmul_vectorized_8x8x8_i8_i8_i32(const int8 *__restrict pA,
+                                      unsigned offsetA,
+                                      const int8 *__restrict pB,
+                                      unsigned offsetB, int32 *__restrict pC,
+                                      unsigned offsetC) {
+  constexpr int r = 8;
+  constexpr int s = 8;
+  constexpr int t = 8;
+  static_assert(m / r > 0);
+  static_assert(k / s > 0);
+  static_assert(n / t > 0);
+  return matmul_vectorized<int8, int32, m / r, k / s, n / t, r, s, t>(
+      pA, offsetA, pB, offsetB, pC, offsetC);
+}
+
+
 extern "C" {
 
 #define matmul_combos(X, M, N, K)                                     \
   X(bfloat16, bf16, bfloat16, bf16, bfloat16, bf16, M, N, K, 4, 8, 4) \
   X(bfloat16, bf16, bfloat16, bf16, float, f32, M, N, K, 4, 8, 4)
 
+#define matmul_combos_i8(X, M, N, K)                                  \
+  X(int8, i8, int8, i8, int32, i32, M, N, K, 8, 8, 8)
+
 #define zero_fill_combos(X, M, N)  \
   X(bfloat16, bf16, M, N, N/2)     \
-  X(float, f32, M, N, N/2)
+  X(float, f32, M, N, N/2)         \
+  X(int32, i32, M, N, N/2)
 
 #define matmul_vectorized_c_func(lhs_ctype_in, lhs_mlir_type_in,                                             \
                                  rhs_ctype_in, rhs_mlir_type_in,                                             \
@@ -324,6 +345,10 @@ matmul_combos(matmul_vectorized_c_func, 16, 16, 32)
 matmul_combos(matmul_vectorized_c_func, 32, 32, 32)
 matmul_combos(matmul_vectorized_c_func, 64, 64, 64)
 matmul_combos(matmul_vectorized_c_func, 32, 32, 64)
+matmul_combos_i8(matmul_vectorized_c_func, 16, 16, 32)
+matmul_combos_i8(matmul_vectorized_c_func, 32, 32, 32)
+matmul_combos_i8(matmul_vectorized_c_func, 32, 32, 64)
+matmul_combos_i8(matmul_vectorized_c_func, 64, 64, 64)
 
 zero_fill_combos(zero_vectorized_c_func, 16, 16)
 zero_fill_combos(zero_vectorized_c_func, 32, 32)
