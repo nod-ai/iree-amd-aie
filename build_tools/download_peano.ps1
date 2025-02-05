@@ -7,7 +7,7 @@
 $ErrorActionPreference = 'Stop'
 
 $this_dir = Split-Path -Path $MyInvocation.MyCommand.Path -Parent
-$RELEASE = (Get-Content -Path "$this_dir/peano_commit.txt")
+$RELEASE = (Get-Content -Path "$this_dir/peano_commit_windows.txt")
 pip download llvm_aie==$RELEASE -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
 $peano = (Get-ChildItem -Filter llvm*.whl)
 $new_name = ($peano.Basename + ".zip")

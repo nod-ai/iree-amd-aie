@@ -1870,6 +1870,25 @@ class Tests:
             )
         )
 
+        # Matmul tests on a single core.
+        for device in ["npu1_4col"]:
+            self.register(
+                Matmul(
+                    128,
+                    128,
+                    128,
+                    "i8",
+                    "i32",
+                    aie_compilation_flags=[
+                        "--iree-amdaie-num-rows=1",
+                        "--iree-amdaie-num-cols=1",
+                    ],
+                    name_suffix="OneCore_" + device,
+                    additional_labels=["OneCore"],
+                    run_on_target=[device],
+                )
+            )
+
         performance_tests = [
             ##############
             # NPU1 Tests #
