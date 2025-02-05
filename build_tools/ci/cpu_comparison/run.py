@@ -1871,7 +1871,7 @@ class Tests:
         )
 
         # Matmul tests on a single core.
-        for device in ["npu1_4col"]:
+        for device in ["npu1_4col", "npu4"]:
             self.register(
                 Matmul(
                     128,

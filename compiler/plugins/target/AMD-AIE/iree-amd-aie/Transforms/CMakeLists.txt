@@ -86,7 +86,7 @@ iree_cc_library(
     "AMDAIEInsertLoopsForVectorization.cpp"
     "AMDAIELinkExecutables.cpp"
     "AMDAIELocalizeLogicalObjectFifo.cpp"
-    "AMDAIELoadAlignmentReset.cpp"
+    "AMDAIELoadStoreAlignmentReset.cpp"
     "AMDAIELowerExecutableTarget.cpp"
     "AMDAIELowerFuncArgs.cpp"
     "AMDAIELowerToAIE.cpp"
