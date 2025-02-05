@@ -929,7 +929,7 @@ void addMLIRAIELoweringPasses(OpPassManager &pm) {
   pm.addPass(createArithToLLVMConversionPass());
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
-  pm.addPass(createAMDAIELoadAlignmentResetPass());
+  pm.addPass(createAMDAIELoadStoreAlignmentResetPass());
   pm.addPass(createCanonicalizerPass());
 }
 

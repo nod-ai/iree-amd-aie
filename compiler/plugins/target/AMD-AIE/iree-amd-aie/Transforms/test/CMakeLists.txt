@@ -57,6 +57,7 @@ iree_lit_test_suite(
     "insert_dma_bd_chain.mlir"
     "insert_infinite_loop_around_core_block.mlir"
     "insert_loops_for_vectorization.mlir"
+    "load_store_alignment_reset.mlir"
     "localize_logical_objectfifo.mlir"
     "lower_func_args.mlir"
     "lower_to_aie.mlir"
