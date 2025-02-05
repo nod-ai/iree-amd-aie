@@ -254,5 +254,31 @@
         "time_mean_unit": "us"
       }
     ]
+  },
+  {
+    "commit_hash": "4c437952faf2da08d9161e2d4e0a6247695af7ee",
+    "cpu": "AMD Ryzen AI 9 HX 370 w/ Radeon 890M",
+    "tests": [
+      {
+        "name": "matmul_benchmark_512_4096_512_i8_i32_O3_npu4_outline_ukernel",
+        "time_mean": "1743",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_benchmark_512_4096_512_i8_i32_O3_npu4_outline_empty",
+        "time_mean": "1213",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_benchmark_512_4096_512_i8_i32_O3_npu4_outline_4_level_tiling_ukernel",
+        "time_mean": "1517",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_benchmark_512_4096_512_i8_i32_O3_npu4_outline_empty_4_level_tiling",
+        "time_mean": "776",
+        "time_mean_unit": "us"
+      }
+    ]
   }
 ]
