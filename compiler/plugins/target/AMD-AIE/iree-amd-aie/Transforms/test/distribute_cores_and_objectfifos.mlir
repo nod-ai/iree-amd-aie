@@ -196,12 +196,12 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 //
 // CHECK-LABEL: @hoist_dma_and_affine_single_loop_2x1
 // CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
-// CHECK-DAG:   %[[C1:.*]] = arith.constant 1 : index
 // CHECK-DAG:   %[[C2:.*]] = arith.constant 2 : index
 // CHECK-DAG:   %[[C3:.*]] = arith.constant 3 : index
 // CHECK-DAG:   %[[ALLOC_0:.*]] = memref.alloc() : memref<32x1024xi32, 1>
 // CHECK-DAG:   %[[ALLOC_1:.*]] = memref.alloc() : memref<32x64xi32, 2>
 // CHECK:       scf.forall (%[[ARG0:.*]], %[[ARG1:.*]]) in (1, 1) {
+// CHECK-DAG:     %[[C1:.*]] = arith.constant 1 : index
 // CHECK-DAG:     %[[TILE_0_2:.*]] = amdaie.tile(%[[C0]], %[[C2]])
 // CHECK-DAG:     %[[TILE_0_3:.*]] = amdaie.tile(%[[C0]], %[[C3]])
 // CHECK-DAG:     %[[TILE_0_1:.*]] = amdaie.tile(%[[C0]], %[[C1]])
@@ -251,12 +251,12 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 //
 // CHECK-LABEL: @unroll_dma_and_affine_single_loop
 // CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
-// CHECK-DAG:   %[[C1:.*]] = arith.constant 1 : index
 // CHECK-DAG:   %[[C2:.*]] = arith.constant 2 : index
 // CHECK-DAG:   %[[C3:.*]] = arith.constant 3 : index
 // CHECK-DAG:   %[[ALLOC_0:.*]] = memref.alloc() : memref<32x1024xi32, 1>
 // CHECK-DAG:   %[[ALLOC_1:.*]] = memref.alloc() : memref<32x64xi32, 2>
 // CHECK:       scf.forall (%[[ARG0:.*]], %[[ARG1:.*]]) in (1, 1) {
+// CHECK-DAG:     %[[C1:.*]] = arith.constant 1 : index
 // CHECK-DAG:     %[[TILE_0_2:.*]] = amdaie.tile(%[[C0]], %[[C2]])
 // CHECK-DAG:     %[[TILE_0_3:.*]] = amdaie.tile(%[[C0]], %[[C3]])
 // CHECK-DAG:     %[[TILE_0_1:.*]] = amdaie.tile(%[[C0]], %[[C1]])
@@ -696,8 +696,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-DAG:         %[[FROM_MEMREF_8:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC]], {%[[TILE_1_2]]}
 // CHECK-DAG:         %[[FROM_MEMREF_9:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC]], {%[[TILE_0_2]]}
 // CHECK-DAG:         %[[FROM_MEMREF_10:.*]] = amdaie.logicalobjectfifo.from_memref %[[OUTPUT]], {%[[TILE_0_0]]}
-// CHECK-DAG:         %[[FROM_MEMREF_11:.*]] = amdaie.logicalobjectfifo.from_memref %[[IN_A]], {%[[TILE_1_0]]}
-// CHECK-DAG:         %[[FROM_MEMREF_12:.*]] = amdaie.logicalobjectfifo.from_memref %[[IN_B]], {%[[TILE_0_0]]}
+// CHECK-DAG:         %[[FROM_MEMREF_11:.*]] = amdaie.logicalobjectfifo.from_memref %[[IN_A]], {%[[TILE_0_0]]}
+// CHECK-DAG:         %[[FROM_MEMREF_12:.*]] = amdaie.logicalobjectfifo.from_memref %[[IN_B]], {%[[TILE_1_0]]}
 // CHECK-DAG:         %[[DMA_0:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_0]]
 // CHECK-SAME:        %[[FROM_MEMREF_11]]
 // CHECK-DAG:         %[[DMA_1:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_7]]
