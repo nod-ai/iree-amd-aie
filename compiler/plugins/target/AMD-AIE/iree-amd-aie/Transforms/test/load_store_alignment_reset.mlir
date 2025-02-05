@@ -19,6 +19,5 @@ func.func  @alignmentsWillBeRemoved(%arg0: !llvm.ptr) {
   llvm.store %l1, %arg0 {alignment = 4 : i64} : vector<32xi8>, !llvm.ptr
 
   // CHECK-NEXT: return
-  return 
+  return
 }
-
