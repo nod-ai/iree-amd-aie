@@ -1117,12 +1117,13 @@ LogicalResult generateUnifiedObject(
         mlir::iree_compiler::AMDAIE::detail::makePeanoOptArgs(
             LLVMIRFile, OptLLVMIRFile, additionalPeanoOptFlags);
     if (failed(peanoArgs)) {
-      llvm::errs() << "Failed to make peano opt args";
+      llvm::errs() << "Failed to make peano opt args\n";
       return failure();
     }
 
     if (failed(runTool(peanoOptBin.string(), peanoArgs.value(), verbose))) {
-      llvm::errs() << "Failed to optimize ll with peano";
+      llvm::errs() << "Failed to optimize ll with peano\n";
+      llvm::errs() << "Using peano at provided path: '" << peanoDir << "'\n";
       return failure();
     }
 
