@@ -203,6 +203,7 @@ class BaseMatmul(BaseTest):
         use_chess=False,
         function_name="matmul",
         n_kernel_runs=1,
+        run_benchmark=False,
     ):
         """
         Base class for all variants of dispatches with a matmul, currently
@@ -228,6 +229,7 @@ class BaseMatmul(BaseTest):
         if use_ukernel:
             self.labels.append("UKernel")
         self.function_name = function_name
+        self.run_benchmark = run_benchmark
 
     def vs_cpu(self, config):
         filename = self.get_filename(config)
@@ -299,71 +301,10 @@ class Matmul(BaseMatmul):
         tile_pipeline="pack-peel",
         lower_to_aie_pipeline="objectFifo",
         n_repeats=1,
-        use_chess=False,
-    ):
-        super().__init__(
-            run_on_target=run_on_target,
-            aie_compilation_flags=aie_compilation_flags,
-            M=M,
-            N=N,
-            K=K,
-            input_type=input_type,
-            acc_type=acc_type,
-            tile_pipeline=tile_pipeline,
-            use_ukernel=use_ukernel,
-            n_repeats=n_repeats,
-            lower_to_aie_pipeline=lower_to_aie_pipeline,
-            use_chess=use_chess,
-        )
-        self.labels.append("Matmul")
-
-        self.name = f"matmul_{M}_{N}_{K}_{input_type}_{acc_type}"
-        if name_suffix:
-            self.name += f"_{name_suffix}"
-        if use_ukernel:
-            self.name += "_ukernel"
-        if additional_labels:
-            self.labels += additional_labels
-
-    def _execute(self, config):
-        matmul_template_dir = config.file_dir / "matmul_template"
-        template_name = matmul_template_dir / "matmul_MxK_KxN.mlir"
-        self.generate(config, template_name)
-        self.vs_cpu(config)
-
-        return True
-
-
-class MatmulBenchmark(BaseMatmul):
-    """
-    A test of the form matmul(A,B) where A:MxK, B:KxN
-    """
-
-    benchmark_compilation_flags = [
-        "--iree-amdaie-enable-infinite-loop-around-core-block=true"
-    ]
-
-    def __init__(
-        self,
-        M,
-        N,
-        K,
-        input_type,
-        acc_type,
-        name_suffix="",
-        use_ukernel=False,
-        run_on_target=["npu1_4col"],
-        tile_pipeline="pack-peel",
-        additional_labels=None,
-        aie_compilation_flags=None,
-        n_repeats=1,
         n_kernel_runs=1,
         use_chess=False,
+        run_benchmark=False,
     ):
-        aie_compilation_flags = (
-            [] if aie_compilation_flags is None else aie_compilation_flags
-        )
-        aie_compilation_flags += MatmulBenchmark.benchmark_compilation_flags
         super().__init__(
             run_on_target=run_on_target,
             aie_compilation_flags=aie_compilation_flags,
@@ -376,23 +317,39 @@ class MatmulBenchmark(BaseMatmul):
             use_ukernel=use_ukernel,
             n_repeats=n_repeats,
             n_kernel_runs=n_kernel_runs,
+            lower_to_aie_pipeline=lower_to_aie_pipeline,
             use_chess=use_chess,
+            run_benchmark=run_benchmark,
         )
+        self.run_benchmark = run_benchmark
+        self.labels.append("Matmul")
 
-        self.name = f"matmul_benchmark_{M}_{N}_{K}_{input_type}_{acc_type}"
+        self.name = f"matmul_{M}_{N}_{K}_{input_type}_{acc_type}"
         if name_suffix:
             self.name += f"_{name_suffix}"
         if use_ukernel:
             self.name += "_ukernel"
-        self.labels.append("MatmulBenchmark")
         if additional_labels:
             self.labels += additional_labels
+        if run_benchmark:
+            aie_compilation_flags = (
+                [] if aie_compilation_flags is None else aie_compilation_flags
+            )
+            aie_compilation_flags += [
+                "--iree-amdaie-enable-infinite-loop-around-core-block=true"
+            ]
+            self.aie_compilation_flags += aie_compilation_flags
+            self.name += "_benchmark"
+            self.labels.append("MatmulBenchmark")
 
     def _execute(self, config):
         matmul_template_dir = config.file_dir / "matmul_template"
         template_name = matmul_template_dir / "matmul_MxK_KxN.mlir"
         self.generate(config, template_name)
-        return self.benchmark(config)
+        if self.run_benchmark:
+            return self.benchmark(config)
+
+        return self.vs_cpu(config)
 
 
 class MatmulTransposeB(BaseMatmul):
@@ -414,6 +371,8 @@ class MatmulTransposeB(BaseMatmul):
         additional_labels=None,
         aie_compilation_flags=None,
         n_repeats=1,
+        n_kernel_runs=1,
+        run_benchmark=False,
     ):
         super().__init__(
             run_on_target=run_on_target,
@@ -427,7 +386,10 @@ class MatmulTransposeB(BaseMatmul):
             use_ukernel=use_ukernel,
             function_name="matmul_transpose_b",
             n_repeats=n_repeats,
+            n_kernel_runs=n_kernel_runs,
+            run_benchmark=run_benchmark,
         )
+        self.run_benchmark = run_benchmark
         self.labels.append("MatmulTransposeB")
 
         self.name = f"matmul_transpose_b_{M}_{N}_{K}_{input_type}_{acc_type}"
@@ -437,74 +399,25 @@ class MatmulTransposeB(BaseMatmul):
             self.name += "_ukernel"
         if additional_labels:
             self.labels += additional_labels
+        if run_benchmark:
+            aie_compilation_flags = (
+                [] if aie_compilation_flags is None else aie_compilation_flags
+            )
+            aie_compilation_flags += [
+                "--iree-amdaie-enable-infinite-loop-around-core-block=true"
+            ]
+            self.aie_compilation_flags += aie_compilation_flags
+            self.name += "_benchmark"
+            self.labels.append("MatmulTransposeBBenchmark")
 
     def _execute(self, config):
         matmul_template_dir = config.file_dir / "matmul_template"
         template_name = matmul_template_dir / "matmul_transpose_b_MxK_NxK.mlir"
         self.generate(config, template_name)
-        self.vs_cpu(config)
+        if self.run_benchmark:
+            return self.benchmark(config)
 
-        return True
-
-
-class MatmulTransposeBBenchmark(BaseMatmul):
-    """
-    A test of the form matmul_transpose_b(A,B) where A:MxK, B:NxK
-    """
-
-    benchmark_compilation_flags = [
-        "--iree-amdaie-enable-infinite-loop-around-core-block=true"
-    ]
-
-    def __init__(
-        self,
-        M,
-        N,
-        K,
-        input_type,
-        acc_type,
-        name_suffix="",
-        use_ukernel=False,
-        run_on_target=["npu1_4col"],
-        tile_pipeline="pack-peel",
-        additional_labels=None,
-        aie_compilation_flags=None,
-        n_repeats=1,
-        n_kernel_runs=1,
-    ):
-        aie_compilation_flags = (
-            [] if aie_compilation_flags is None else aie_compilation_flags
-        )
-        aie_compilation_flags += MatmulBenchmark.benchmark_compilation_flags
-        super().__init__(
-            run_on_target=run_on_target,
-            aie_compilation_flags=aie_compilation_flags,
-            M=M,
-            N=N,
-            K=K,
-            input_type=input_type,
-            acc_type=acc_type,
-            tile_pipeline=tile_pipeline,
-            use_ukernel=use_ukernel,
-            n_repeats=n_repeats,
-            n_kernel_runs=n_kernel_runs,
-            function_name="matmul_transpose_b",
-        )
-
-        self.name = f"matmul_transpose_b_benchmark_{M}_{N}_{K}_{input_type}_{acc_type}"
-        if name_suffix:
-            self.name += f"_{name_suffix}"
-        if use_ukernel:
-            self.name += "_ukernel"
-        self.labels.append("MatmulTransposeBBenchmark")
-        if additional_labels:
-            self.labels += additional_labels
-
-    def _execute(self, config):
-        matmul_template_dir = config.file_dir / "matmul_template"
-        template_name = matmul_template_dir / "matmul_transpose_b_MxK_NxK.mlir"
-        self.generate(config, template_name)
-        return self.benchmark(config)
+        return self.vs_cpu(config)
 
 
 class MatmulTransposeA(BaseMatmul):
@@ -526,6 +439,8 @@ class MatmulTransposeA(BaseMatmul):
         additional_labels=None,
         aie_compilation_flags=None,
         n_repeats=1,
+        n_kernel_runs=1,
+        run_benchmark=False,
     ):
         super().__init__(
             run_on_target=run_on_target,
@@ -539,7 +454,10 @@ class MatmulTransposeA(BaseMatmul):
             use_ukernel=use_ukernel,
             function_name="matmul_transpose_a",
             n_repeats=n_repeats,
+            n_kernel_runs=n_kernel_runs,
+            run_benchmark=run_benchmark,
         )
+        self.run_benchmark = run_benchmark
         self.labels.append("MatmulTransposeA")
 
         self.name = f"matmul_transpose_a_{M}_{N}_{K}_{input_type}_{acc_type}"
@@ -549,74 +467,25 @@ class MatmulTransposeA(BaseMatmul):
             self.name += "_ukernel"
         if additional_labels:
             self.labels += additional_labels
+        if run_benchmark:
+            aie_compilation_flags = (
+                [] if aie_compilation_flags is None else aie_compilation_flags
+            )
+            aie_compilation_flags += [
+                "--iree-amdaie-enable-infinite-loop-around-core-block=true"
+            ]
+            self.aie_compilation_flags += aie_compilation_flags
+            self.name += "_benchmark"
+            self.labels.append("MatmulTransposeABenchmark")
 
     def _execute(self, config):
         matmul_template_dir = config.file_dir / "matmul_template"
         template_name = matmul_template_dir / "matmul_transpose_a_KxM_KxN.mlir"
         self.generate(config, template_name)
-        self.vs_cpu(config)
+        if self.run_benchmark:
+            return self.benchmark(config)
 
-        return True
-
-
-class MatmulTransposeABenchmark(BaseMatmul):
-    """
-    A test of the form matmul_transpose_a(A,B) where A:KxM, B:KxN
-    """
-
-    benchmark_compilation_flags = [
-        "--iree-amdaie-enable-infinite-loop-around-core-block=true"
-    ]
-
-    def __init__(
-        self,
-        M,
-        N,
-        K,
-        input_type,
-        acc_type,
-        name_suffix="",
-        use_ukernel=False,
-        run_on_target=["npu1_4col"],
-        tile_pipeline="pack-peel",
-        additional_labels=None,
-        aie_compilation_flags=None,
-        n_repeats=1,
-        n_kernel_runs=1,
-    ):
-        aie_compilation_flags = (
-            [] if aie_compilation_flags is None else aie_compilation_flags
-        )
-        aie_compilation_flags += MatmulBenchmark.benchmark_compilation_flags
-        super().__init__(
-            run_on_target=run_on_target,
-            aie_compilation_flags=aie_compilation_flags,
-            M=M,
-            N=N,
-            K=K,
-            input_type=input_type,
-            acc_type=acc_type,
-            tile_pipeline=tile_pipeline,
-            use_ukernel=use_ukernel,
-            n_repeats=n_repeats,
-            n_kernel_runs=n_kernel_runs,
-            function_name="matmul_transpose_a",
-        )
-
-        self.name = f"matmul_transpose_a_benchmark_{M}_{N}_{K}_{input_type}_{acc_type}"
-        if name_suffix:
-            self.name += f"_{name_suffix}"
-        if use_ukernel:
-            self.name += "_ukernel"
-        self.labels.append("MatmulTransposeABenchmark")
-        if additional_labels:
-            self.labels += additional_labels
-
-    def _execute(self, config):
-        matmul_template_dir = config.file_dir / "matmul_template"
-        template_name = matmul_template_dir / "matmul_transpose_a_KxM_KxN.mlir"
-        self.generate(config, template_name)
-        return self.benchmark(config)
+        return self.vs_cpu(config)
 
 
 class MatmulThinBias(BaseMatmul):
@@ -2183,13 +2052,13 @@ class Tests:
 
             if (transpose_a, transpose_b) == (False, False):
                 NumericTestClass = Matmul
-                BenchmarkTestClass = MatmulBenchmark
+                BenchmarkTestClass = Matmul
             elif (transpose_a, transpose_b) == (True, False):
                 NumericTestClass = MatmulTransposeA
-                BenchmarkTestClass = MatmulTransposeABenchmark
+                BenchmarkTestClass = MatmulTransposeA
             elif (transpose_a, transpose_b) == (False, True):
                 NumericTestClass = MatmulTransposeB
-                BenchmarkTestClass = MatmulTransposeBBenchmark
+                BenchmarkTestClass = MatmulTransposeB
             else:
                 raise ValueError("Transposing both LHS and RHS is not supported.")
 
@@ -2233,6 +2102,7 @@ class Tests:
                     n_kernel_runs=100,
                     aie_compilation_flags=aie_compilation_flags,
                     name_suffix=name_suffix,
+                    run_benchmark=True,
                 )
             )
 
