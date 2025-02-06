@@ -426,25 +426,13 @@ struct AMDAIEDeviceModel {
   /// port.
   static const llvm::SmallDenseMap<std::pair<StrmSwPortType, uint8_t>,
                                    std::pair<StrmSwPortType, uint8_t>>
-      mm2sDmaNocToSpecialShimPortMap = {
-          {{StrmSwPortType::DMA, 0}, {StrmSwPortType::NORTH, 3}},
-          {{StrmSwPortType::DMA, 1}, {StrmSwPortType::NORTH, 7}},
-          {{StrmSwPortType::NOC, 0}, {StrmSwPortType::NORTH, 2}},
-          {{StrmSwPortType::NOC, 1}, {StrmSwPortType::NORTH, 3}},
-          {{StrmSwPortType::NOC, 2}, {StrmSwPortType::NORTH, 6}},
-          {{StrmSwPortType::NOC, 3}, {StrmSwPortType::NORTH, 7}}};
+      mm2sDmaNocToSpecialShimPortMap;
 
   /// Maps an S2MM (shim DMA or NOC) port to its corresponding special shim mux
   /// port.
   static const llvm::SmallDenseMap<std::pair<StrmSwPortType, uint8_t>,
                                    std::pair<StrmSwPortType, uint8_t>>
-      s2mmDmaNocToSpecialShimPortMap = {
-          {{StrmSwPortType::DMA, 0}, {StrmSwPortType::NORTH, 2}},
-          {{StrmSwPortType::DMA, 1}, {StrmSwPortType::NORTH, 3}},
-          {{StrmSwPortType::NOC, 0}, {StrmSwPortType::NORTH, 2}},
-          {{StrmSwPortType::NOC, 1}, {StrmSwPortType::NORTH, 3}},
-          {{StrmSwPortType::NOC, 2}, {StrmSwPortType::NORTH, 4}},
-          {{StrmSwPortType::NOC, 3}, {StrmSwPortType::NORTH, 5}}};
+      s2mmDmaNocToSpecialShimPortMap;
 
   /// Retrieves the speicial shim mux port that connects a given MM2S or S2MM
   /// DMA/NOC port. The shim DMA and NOC ports must go through

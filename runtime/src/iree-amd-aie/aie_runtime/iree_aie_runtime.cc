@@ -510,6 +510,26 @@ uint32_t AMDAIEDeviceModel::getNumDestSwitchboxConnections(
                                         static_cast<uint8_t>(row), bundle);
 }
 
+const llvm::SmallDenseMap<std::pair<StrmSwPortType, uint8_t>,
+                          std::pair<StrmSwPortType, uint8_t>>
+    AMDAIEDeviceModel::mm2sDmaNocToSpecialShimPortMap = {
+        {{StrmSwPortType::DMA, 0}, {StrmSwPortType::NORTH, 3}},
+        {{StrmSwPortType::DMA, 1}, {StrmSwPortType::NORTH, 7}},
+        {{StrmSwPortType::NOC, 0}, {StrmSwPortType::NORTH, 2}},
+        {{StrmSwPortType::NOC, 1}, {StrmSwPortType::NORTH, 3}},
+        {{StrmSwPortType::NOC, 2}, {StrmSwPortType::NORTH, 6}},
+        {{StrmSwPortType::NOC, 3}, {StrmSwPortType::NORTH, 7}}};
+
+const llvm::SmallDenseMap<std::pair<StrmSwPortType, uint8_t>,
+                          std::pair<StrmSwPortType, uint8_t>>
+    AMDAIEDeviceModel::s2mmDmaNocToSpecialShimPortMap = {
+        {{StrmSwPortType::DMA, 0}, {StrmSwPortType::NORTH, 2}},
+        {{StrmSwPortType::DMA, 1}, {StrmSwPortType::NORTH, 3}},
+        {{StrmSwPortType::NOC, 0}, {StrmSwPortType::NORTH, 2}},
+        {{StrmSwPortType::NOC, 1}, {StrmSwPortType::NORTH, 3}},
+        {{StrmSwPortType::NOC, 2}, {StrmSwPortType::NORTH, 4}},
+        {{StrmSwPortType::NOC, 3}, {StrmSwPortType::NORTH, 5}}};
+
 std::optional<std::pair<StrmSwPortType, uint8_t>>
 AMDAIEDeviceModel::getShimMuxPortMappingForDmaOrNoc(
     StrmSwPortType port, uint8_t channel, DMAChannelDir direction) const {
