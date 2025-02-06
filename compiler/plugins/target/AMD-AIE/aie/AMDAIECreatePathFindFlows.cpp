@@ -59,16 +59,34 @@ SwitchboxOp getOrCreateSwitchbox(OpBuilder &builder, DeviceOp &device, int col,
   return sbOp;
 }
 
-ShimMuxOp getOrCreateShimMux(OpBuilder &builder, DeviceOp &device, int col) {
-  auto tile = getOrCreateTile(builder, device, col, /*row*/ 0);
+ShimMuxOp getOrCreateShimMux(OpBuilder &builder, DeviceOp &device, int col,
+                             int row) {
+  auto tile = getOrCreateTile(builder, device, col, row);
   for (auto i : tile.getResult().getUsers()) {
     if (auto shim = llvm::dyn_cast<ShimMuxOp>(*i)) return shim;
   }
   OpBuilder::InsertionGuard g(builder);
-  auto shmuxOp = builder.create<ShimMuxOp>(builder.getUnknownLoc(), tile);
-  ShimMuxOp::ensureTerminator(shmuxOp.getConnections(), builder,
+  auto shimMuxOp = builder.create<ShimMuxOp>(builder.getUnknownLoc(), tile);
+  ShimMuxOp::ensureTerminator(shimMuxOp.getConnections(), builder,
                               builder.getUnknownLoc());
-  return shmuxOp;
+  return shimMuxOp;
+}
+
+ConnectOp getOrCreateConnect(OpBuilder &builder, Operation *parentOp,
+                             StrmSwPortType srcBundle, int srcChannel,
+                             StrmSwPortType destBundle, int destChannel) {
+  Block &b = parentOp->getRegion(0).front();
+  for (auto connect : b.getOps<ConnectOp>()) {
+    if (connect.getSourceBundle() == srcBundle &&
+        connect.getSourceChannel() == srcChannel &&
+        connect.getDestBundle() == destBundle &&
+        connect.getDestChannel() == destChannel)
+      return connect;
+  }
+  OpBuilder::InsertionGuard g(builder);
+  builder.setInsertionPoint(b.getTerminator());
+  return builder.create<ConnectOp>(builder.getUnknownLoc(), srcBundle,
+                                   srcChannel, destBundle, destChannel);
 }
 
 struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
@@ -111,7 +129,8 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
         Operation *op;
         switch (conn.interconnect) {
           case Connect::Interconnect::SHIMMUX:
-            op = getOrCreateShimMux(rewriter, device, conn.col).getOperation();
+            op = getOrCreateShimMux(rewriter, device, conn.col, conn.row)
+                     .getOperation();
             break;
           case Connect::Interconnect::SWB:
             op = switchboxOp.getOperation();
@@ -119,13 +138,8 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
           case Connect::Interconnect::NOCARE:
             return flowOp->emitOpError("unsupported/unknown interconnect");
         }
-
-        Block &b = op->getRegion(0).front();
-        OpBuilder::InsertionGuard g(rewriter);
-        rewriter.setInsertionPoint(b.getTerminator());
-        rewriter.create<ConnectOp>(rewriter.getUnknownLoc(), (conn.src.bundle),
-                                   conn.src.channel, (conn.dst.bundle),
-                                   conn.dst.channel);
+        getOrCreateConnect(rewriter, op, conn.src.bundle, conn.src.channel,
+                           conn.dst.bundle, conn.dst.channel);
       }
     }
 
@@ -358,72 +372,57 @@ LogicalResult runOnPacketFlow(
     }
   }
 
-  // Add support for shimDMA
-  // From shimDMA to BLI: 1) shimDMA 0 --> North 3
-  //                      2) shimDMA 1 --> North 7
-  // From BLI to shimDMA: 1) North   2 --> shimDMA 0
-  //                      2) North   3 --> shimDMA 1
+  // Add special shim mux connections between DMA/NOC streams and BLI.
   for (auto switchbox : make_early_inc_range(device.getOps<SwitchboxOp>())) {
     auto retVal = switchbox->getOperand(0);
     auto tileOp = retVal.getDefiningOp<TileOp>();
-
+    // Only requires special connection for Shim/NOC tile.
     if (!deviceModel.isShimNOCTile(tileOp.getCol(), tileOp.getRow())) continue;
-    // Check if the switchbox is empty
+    // Skip any empty switchbox.
     if (&switchbox.getBody()->front() == switchbox.getBody()->getTerminator())
       continue;
-
-    ShimMuxOp shimMuxOp = nullptr;
-    for (auto shimmux : device.getOps<ShimMuxOp>()) {
-      if (shimmux.getTile() != tileOp) continue;
-      shimMuxOp = shimmux;
-      break;
-    }
-    if (!shimMuxOp) {
-      builder.setInsertionPointAfter(tileOp);
-      shimMuxOp = getOrCreateShimMux(builder, device, tileOp.getCol());
-    }
-
+    // Get the shim mux operation.
+    builder.setInsertionPointAfter(tileOp);
+    ShimMuxOp shimMuxOp =
+        getOrCreateShimMux(builder, device, tileOp.getCol(), tileOp.getRow());
     for (Operation &op : switchbox.getConnections().getOps()) {
-      // check if there is MM2S DMA in the switchbox of the 0th row
-      if (auto pktrules = llvm::dyn_cast<PacketRulesOp>(op);
-          pktrules && (pktrules.getSourceBundle()) == StrmSwPortType::DMA) {
-        // If there is, then it should be put into the corresponding shimmux
-        OpBuilder::InsertionGuard g(builder);
-        Block &b0 = shimMuxOp.getConnections().front();
-        builder.setInsertionPointToStart(&b0);
-        pktrules.setSourceBundle((StrmSwPortType::SOUTH));
-        if (pktrules.getSourceChannel() == 0) {
-          pktrules.setSourceChannel(3);
-          builder.create<ConnectOp>(builder.getUnknownLoc(),
-                                    (StrmSwPortType::DMA), 0,
-                                    (StrmSwPortType::NORTH), 3);
-        } else if (pktrules.getSourceChannel() == 1) {
-          pktrules.setSourceChannel(7);
-          builder.create<ConnectOp>(builder.getUnknownLoc(),
-                                    (StrmSwPortType::DMA), 1,
-                                    (StrmSwPortType::NORTH), 7);
-        }
-      }
+      if (auto packetRulesOp = dyn_cast<PacketRulesOp>(op)) {
+        // Found the source (MM2S) of a packet flow.
+        StrmSwPortType srcBundle = packetRulesOp.getSourceBundle();
+        uint8_t srcChannel = packetRulesOp.getSourceChannel();
+        std::optional<std::pair<StrmSwPortType, uint8_t>> mappedShimMuxPort =
+            deviceModel.getShimMuxPortMappingForDmaOrNoc(srcBundle, srcChannel,
+                                                         DMAChannelDir::MM2S);
+        if (!mappedShimMuxPort) continue;
+        StrmSwPortType newSrcBundle = mappedShimMuxPort->first;
+        uint8_t newSrcChannel = mappedShimMuxPort->second;
+        // Add a special connection from `srcBundle/srcChannel` to
+        // `newSrcBundle/newSrcChannel`.
+        getOrCreateConnect(builder, shimMuxOp, srcBundle, srcChannel,
+                           newSrcBundle, newSrcChannel);
+        // Replace the source bundle and channel. `getConnectingBundle` is
+        // used to update bundle direction from shim mux to shim switchbox.
+        packetRulesOp.setSourceBundle(getConnectingBundle(newSrcBundle));
+        packetRulesOp.setSourceChannel(newSrcChannel);
 
-      // check if there is S2MM DMA in the switchbox of the 0th row
-      if (auto mtset = llvm::dyn_cast<MasterSetOp>(op);
-          mtset && (mtset.getDestBundle()) == StrmSwPortType::DMA) {
-        // If there is, then it should be put into the corresponding shimmux
-        OpBuilder::InsertionGuard g(builder);
-        Block &b0 = shimMuxOp.getConnections().front();
-        builder.setInsertionPointToStart(&b0);
-        mtset.setDestBundle((StrmSwPortType::SOUTH));
-        if (mtset.getDestChannel() == 0) {
-          mtset.setDestChannel(2);
-          builder.create<ConnectOp>(builder.getUnknownLoc(),
-                                    (StrmSwPortType::NORTH), 2,
-                                    (StrmSwPortType::DMA), 0);
-        } else if (mtset.getDestChannel() == 1) {
-          mtset.setDestChannel(3);
-          builder.create<ConnectOp>(builder.getUnknownLoc(),
-                                    (StrmSwPortType::NORTH), 3,
-                                    (StrmSwPortType::DMA), 1);
-        }
+      } else if (auto masterSetOp = dyn_cast<MasterSetOp>(op)) {
+        // Found the destination (S2MM) of a packet flow.
+        StrmSwPortType destBundle = masterSetOp.getDestBundle();
+        uint8_t destChannel = masterSetOp.getDestChannel();
+        std::optional<std::pair<StrmSwPortType, uint8_t>> mappedShimMuxPort =
+            deviceModel.getShimMuxPortMappingForDmaOrNoc(
+                destBundle, destChannel, DMAChannelDir::S2MM);
+        if (!mappedShimMuxPort) continue;
+        StrmSwPortType newDestBundle = mappedShimMuxPort->first;
+        uint8_t newDestChannel = mappedShimMuxPort->second;
+        // Add a special connection from `newDestBundle/newDestChannel` to
+        // `destBundle/destChannel`.
+        getOrCreateConnect(builder, shimMuxOp, newDestBundle, newDestChannel,
+                           destBundle, destChannel);
+        // Replace the destination bundle and channel. `getConnectingBundle` is
+        // used to update bundle direction from shim mux to shim switchbox.
+        masterSetOp.setDestBundle(getConnectingBundle(newDestBundle));
+        masterSetOp.setDestChannel(newDestChannel);
       }
     }
   }
