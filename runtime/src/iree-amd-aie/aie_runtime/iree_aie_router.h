@@ -84,21 +84,6 @@ struct PathEndPoint {
 };
 ASSERT_STANDARD_LAYOUT(PathEndPoint);
 
-struct RouterImpl;
-struct Router {
-  RouterImpl *impl;
-  Router();
-  ~Router();
-  void initialize(int maxCol, int maxRow, const AMDAIEDeviceModel &targetModel);
-  void addFlow(TileLoc srcCoords, Port srcPort, TileLoc dstCoords, Port dstPort,
-               bool isPacketFlow);
-  bool addFixedConnection(int col, int row,
-                          const std::vector<std::tuple<Port, Port>> &connects);
-  std::map<PathEndPoint, PathEndPoint> dijkstraShortestPaths(PathEndPoint src);
-  std::optional<std::map<PathEndPoint, SwitchSettings>> findPaths(
-      int maxIterations = 1000);
-};
-
 std::map<TileLoc, std::vector<Connect>> emitConnections(
     const std::map<PathEndPoint, SwitchSettings> &flowSolutions,
     const PathEndPoint &srcPoint, const AMDAIEDeviceModel &targetModel);
@@ -132,10 +117,29 @@ struct PhysPortAndID {
   TUPLE_LIKE_STRUCT_RELATIONAL_OPS(PhysPortAndID)
 };
 
+struct RouterImpl;
+struct Router {
+  RouterImpl *impl;
+  Router(int maxCol, int maxRow);
+  ~Router();
+  void initialize(const AMDAIEDeviceModel &targetModel);
+  void addFlow(TileLoc srcCoords, Port srcPort, TileLoc dstCoords, Port dstPort,
+               bool isPacketFlow);
+  bool addFixedCircuitConnection(
+      int col, int row, const std::vector<std::tuple<Port, Port>> &connects);
+  bool addFixedPacketConnection(const PhysPort &srcPhyPort,
+                                const PhysPort &destPhyPort);
+  std::map<PathEndPoint, PathEndPoint> dijkstraShortestPaths(PathEndPoint src);
+  std::optional<std::map<PathEndPoint, SwitchSettings>> findPaths(
+      int maxIterations = 1000);
+};
+
 // A map from a switchbox output (physical) port to the number of that port.
 using MasterSetsT =
     std::map<PhysPort, std::vector<std::pair<uint8_t, uint8_t>>>;
-using SlaveGroupsT = std::vector<std::vector<PhysPortAndID>>;
+// A map from a slave port to the groups of packet id. Ids belonging to the same
+// group will be lowered together to a single packet rule entry.
+using SlaveGroupsT = std::map<PhysPort, std::vector<std::set<int>>>;
 using SlaveMasksT = std::map<PhysPortAndID, int>;
 using SlaveAMSelsT = std::map<PhysPortAndID, std::pair<uint8_t, uint8_t>>;
 using ConnectionAndFlowIDT = std::pair<Connect, int>;
@@ -144,10 +148,13 @@ using TileLocToConnectionFlowIDT =
 using PacketFlowMapT = DenseMap<PhysPortAndID, llvm::SetVector<PhysPortAndID>>;
 
 std::tuple<SlaveGroupsT, SlaveMasksT> emitSlaveGroupsAndMasksRoutingConfig(
-    ArrayRef<PhysPortAndID> slavePorts, const PacketFlowMapT &packetFlows);
+    ArrayRef<PhysPortAndID> slavePorts, const PacketFlowMapT &packetFlows,
+    ArrayRef<PhysPortAndID> existingSlavePorts,
+    const PacketFlowMapT &existingPacketFlows);
 
 FailureOr<std::tuple<MasterSetsT, SlaveAMSelsT>> emitPacketRoutingConfiguration(
-    const AMDAIEDeviceModel &deviceModel, const PacketFlowMapT &packetFlows);
+    const AMDAIEDeviceModel &deviceModel, const PacketFlowMapT &packetFlows,
+    const PacketFlowMapT &existingPacketFlows);
 
 /// ============================= BEGIN ==================================
 /// ================== stringification utils =============================

@@ -19,8 +19,8 @@
 //CHECK:      }
 //CHECK:    }
 //CHECK:     %{{.*}} = aie.shim_mux(%[[T00]]) {
-//CHECK:      aie.connect<NORTH : 3, DMA : 1>
 //CHECK:      aie.connect<NORTH : 2, DMA : 0>
+//CHECK:      aie.connect<NORTH : 3, DMA : 1>
 //CHECK:    }
 //CHECK:     %{{.*}} = aie.switchbox(%[[T01]]) {
 //CHECK:      aie.connect<DMA : 0, SOUTH : 1>

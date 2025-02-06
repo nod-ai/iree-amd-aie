@@ -422,6 +422,45 @@ struct AMDAIEDeviceModel {
                              uint8_t srcChan, StrmSwPortType dstBundle,
                              uint8_t dstChan) const;
 
+  /// Maps an MM2S (shim DMA or NOC) port to its corresponding special shim mux
+  /// port.
+  llvm::SmallDenseMap<std::pair<StrmSwPortType, uint8_t>,
+                      std::pair<StrmSwPortType, uint8_t>>
+      mm2sDmaNocToSpecialShimPortMap = {
+          {{StrmSwPortType::DMA, 0}, {StrmSwPortType::NORTH, 3}},
+          {{StrmSwPortType::DMA, 1}, {StrmSwPortType::NORTH, 7}},
+          {{StrmSwPortType::NOC, 0}, {StrmSwPortType::NORTH, 2}},
+          {{StrmSwPortType::NOC, 1}, {StrmSwPortType::NORTH, 3}},
+          {{StrmSwPortType::NOC, 2}, {StrmSwPortType::NORTH, 6}},
+          {{StrmSwPortType::NOC, 3}, {StrmSwPortType::NORTH, 7}}};
+
+  /// Maps an S2MM (shim DMA or NOC) port to its corresponding special shim mux
+  /// port.
+  llvm::SmallDenseMap<std::pair<StrmSwPortType, uint8_t>,
+                      std::pair<StrmSwPortType, uint8_t>>
+      s2mmDmaNocToSpecialShimPortMap = {
+          {{StrmSwPortType::DMA, 0}, {StrmSwPortType::NORTH, 2}},
+          {{StrmSwPortType::DMA, 1}, {StrmSwPortType::NORTH, 3}},
+          {{StrmSwPortType::NOC, 0}, {StrmSwPortType::NORTH, 2}},
+          {{StrmSwPortType::NOC, 1}, {StrmSwPortType::NORTH, 3}},
+          {{StrmSwPortType::NOC, 2}, {StrmSwPortType::NORTH, 4}},
+          {{StrmSwPortType::NOC, 3}, {StrmSwPortType::NORTH, 5}}};
+
+  /// Retrieves the speicail shim mux port that connects a given MM2S or S2MM
+  /// DMA/NOC port. The shim DMA and NOC ports must go through
+  /// this special shim mux connection before being further routed to the rest
+  /// of the device.
+  std::optional<std::pair<StrmSwPortType, uint8_t>>
+  getShimMuxPortMappingForDmaOrNoc(StrmSwPortType port, uint8_t channel,
+                                   DMAChannelDir direction) const;
+
+  /// Retrieves the original DMA port that corresponds to a given
+  /// shim mux port. This performs the reverse lookup for
+  /// `getShimMuxPortMappingForDmaOrNoc()`.
+  std::optional<std::pair<StrmSwPortType, uint8_t>>
+  getDmaFromShimMuxPortMapping(StrmSwPortType port, uint8_t channel,
+                               DMAChannelDir direction) const;
+
   /// The returned string is used by `chess` to identify the device.
   std::optional<std::string> getNPUVersionString() const;
   /// The returned string is used by `peano` to identify the device.

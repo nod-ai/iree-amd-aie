@@ -13,11 +13,6 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
-struct AIERoutePathfinderFlowsOptions {
-  bool clRouteCircuit = true;
-  bool clRoutePacket = true;
-};
-
 std::unique_ptr<OperationPass<xilinx::AIE::DeviceOp>>
 createAMDAIEAssignBufferAddressesBasicPass();
 std::unique_ptr<OperationPass<xilinx::AIE::DeviceOp>>
@@ -29,7 +24,8 @@ createAMDAIELocalizeLocksPass();
 std::unique_ptr<OperationPass<xilinx::AIE::DeviceOp>>
 createAMDAIENormalizeAddressSpacesPass();
 std::unique_ptr<OperationPass<xilinx::AIE::DeviceOp>>
-createAMDAIEPathfinderPass();
+createAMDAIERouteFlowsWithPathfinderPass(
+    AMDAIERouteFlowsWithPathfinderOptions options = {});
 std::unique_ptr<OperationPass<ModuleOp>> createAMDAIECoreToStandardPass(
     AMDAIECoreToStandardOptions options = {});
 std::unique_ptr<OperationPass<xilinx::AIE::DeviceOp>>
@@ -39,7 +35,6 @@ void registerAMDAIEAssignBufferAddressesBasic();
 void registerAMDAIEAssignBufferDescriptorIDs();
 void registerAMDAIELocalizeLocks();
 void registerAMDAIENormalizeAddressSpaces();
-void registerAMDAIERoutePathfinderFlows();
 void registerAMDAIEDmaToNpu();
 
 }  // namespace mlir::iree_compiler::AMDAIE

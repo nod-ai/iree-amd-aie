@@ -86,22 +86,6 @@
 // CHECK:               aie.rule(31, 3, %[[VAL_26]])
 // CHECK:             }
 // CHECK:           }
-// CHECK:           aie.packet_flow(0) {
-// CHECK:             aie.packet_source<%[[TILE_0_2]], DMA : 0>
-// CHECK:             aie.packet_dest<%[[TILE_0_1]], DMA : 0>
-// CHECK:           }
-// CHECK:           aie.packet_flow(1) {
-// CHECK:             aie.packet_source<%[[TILE_0_3]], DMA : 0>
-// CHECK:             aie.packet_dest<%[[TILE_0_1]], DMA : 1>
-// CHECK:           }
-// CHECK:           aie.packet_flow(2) {
-// CHECK:             aie.packet_source<%[[TILE_0_4]], DMA : 0>
-// CHECK:             aie.packet_dest<%[[TILE_0_1]], DMA : 2>
-// CHECK:           }
-// CHECK:           aie.packet_flow(3) {
-// CHECK:             aie.packet_source<%[[TILE_0_5]], DMA : 0>
-// CHECK:             aie.packet_dest<%[[TILE_0_1]], DMA : 3>
-// CHECK:           }
 // CHECK:         }
 module {
   aie.device(npu1_1col) {

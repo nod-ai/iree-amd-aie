@@ -904,7 +904,22 @@ void addMLIRAIELoweringPasses(OpPassManager &pm) {
     devicePM.addPass(createCanonicalizerPass());
     devicePM.addPass(createAMDAIEAssignBufferDescriptorIDsPass());
     devicePM.addPass(createAMDAIEAssignBufferAddressesBasicPass());
-    devicePM.addPass(createAMDAIEPathfinderPass());
+
+    {
+      // Route `CTRL` flows first to ensure deterministic routing,
+      // then route `non-CTRL` flows separately.
+      AMDAIERouteFlowsWithPathfinderOptions options;
+
+      // Route only `CTRL` flows.
+      options.routeCtrl = true;
+      options.routeNonCtrl = false;
+      devicePM.addPass(createAMDAIERouteFlowsWithPathfinderPass(options));
+
+      // Route only `non-CTRL` flows.
+      options.routeCtrl = false;
+      options.routeNonCtrl = true;
+      devicePM.addPass(createAMDAIERouteFlowsWithPathfinderPass(options));
+    }
   }
 
   pm.addPass(createCanonicalizerPass());

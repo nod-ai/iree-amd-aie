@@ -59,8 +59,9 @@ SwitchboxOp getOrCreateSwitchbox(OpBuilder &builder, DeviceOp &device, int col,
   return sbOp;
 }
 
-ShimMuxOp getOrCreateShimMux(OpBuilder &builder, DeviceOp &device, int col) {
-  auto tile = getOrCreateTile(builder, device, col, /*row*/ 0);
+ShimMuxOp getOrCreateShimMux(OpBuilder &builder, DeviceOp &device, int col,
+                             int row) {
+  auto tile = getOrCreateTile(builder, device, col, row);
   for (auto i : tile.getResult().getUsers()) {
     if (auto shim = llvm::dyn_cast<ShimMuxOp>(*i)) return shim;
   }
@@ -71,22 +72,78 @@ ShimMuxOp getOrCreateShimMux(OpBuilder &builder, DeviceOp &device, int col) {
   return shmuxOp;
 }
 
-struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
-  using OpConversionPattern::OpConversionPattern;
-  const std::map<PathEndPoint, SwitchSettings> flowSolutions;
+ConnectOp getOrCreateConnect(OpBuilder &builder, Operation *parentOp,
+                             StrmSwPortType srcBundle, int srcChannel,
+                             StrmSwPortType destBundle, int destChannel) {
+  Block &b = parentOp->getRegion(0).front();
+  for (auto connect : b.getOps<ConnectOp>()) {
+    if (connect.getSourceBundle() == srcBundle &&
+        connect.getSourceChannel() == srcChannel &&
+        connect.getDestBundle() == destBundle &&
+        connect.getDestChannel() == destChannel)
+      return connect;
+  }
+  OpBuilder::InsertionGuard g(builder);
+  builder.setInsertionPoint(b.getTerminator());
+  return builder.create<ConnectOp>(builder.getUnknownLoc(), srcBundle,
+                                   srcChannel, destBundle, destChannel);
+}
+
+AMSelOp getOrCreateAMSel(OpBuilder &builder, SwitchboxOp &swboxOp,
+                         int arbiterID, int msel) {
+  Block &b = swboxOp.getConnections().front();
+  builder.setInsertionPoint(b.getTerminator());
+  for (auto amsel : swboxOp.getOps<AMSelOp>()) {
+    builder.setInsertionPointAfter(amsel);
+    if (amsel.getArbiterID() == arbiterID && amsel.getMsel() == msel)
+      return amsel;
+  }
+  return builder.create<AMSelOp>(builder.getUnknownLoc(), arbiterID, msel);
+}
+
+MasterSetOp getOrCreateMasterSet(OpBuilder &builder, SwitchboxOp &swboxOp,
+                                 StrmSwPortType bundle, int channel,
+                                 ArrayRef<Value> amselVals) {
+  Block &b = swboxOp.getConnections().front();
+  builder.setInsertionPoint(b.getTerminator());
+  for (auto masterSet : swboxOp.getOps<MasterSetOp>()) {
+    builder.setInsertionPointAfter(masterSet);
+    if (masterSet.getDestBundle() == bundle &&
+        masterSet.getDestChannel() == channel &&
+        masterSet.getAmsels() == amselVals)
+      return masterSet;
+  }
+  return builder.create<MasterSetOp>(builder.getUnknownLoc(),
+                                     builder.getIndexType(), bundle, channel,
+                                     amselVals);
+}
+
+PacketRulesOp getOrCreatePacketRules(OpBuilder &builder, SwitchboxOp &swboxOp,
+                                     StrmSwPortType bundle, int channel) {
+  Block &b = swboxOp.getConnections().front();
+  builder.setInsertionPoint(b.getTerminator());
+  for (auto packetRules : swboxOp.getOps<PacketRulesOp>()) {
+    builder.setInsertionPointAfter(packetRules);
+    if (packetRules.getSourceBundle() == bundle &&
+        packetRules.getSourceChannel() == channel)
+      return packetRules;
+  }
+  auto packetRules =
+      builder.create<PacketRulesOp>(builder.getUnknownLoc(), bundle, channel);
+  PacketRulesOp::ensureTerminator(packetRules.getRules(), builder,
+                                  builder.getUnknownLoc());
+  return packetRules;
+}
+
+LogicalResult runOnCircuitFlow(
+    DeviceOp device, std::vector<FlowOp> &flowOps,
+    const std::map<PathEndPoint, SwitchSettings> &flowSolutions) {
+  OpBuilder builder(device.getContext());
+  AMDAIEDeviceModel deviceModel =
+      getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
   std::set<PathEndPoint> processedFlows;
 
-  ConvertFlowsToInterconnect(
-      MLIRContext *context,
-      const std::map<PathEndPoint, SwitchSettings> &flowSolutions,
-      std::set<PathEndPoint> &processedFlows, PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit),
-        flowSolutions(flowSolutions),
-        processedFlows(processedFlows) {}
-
-  LogicalResult matchAndRewrite(
-      FlowOp flowOp, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
+  for (FlowOp flowOp : flowOps) {
     auto srcTile = llvm::cast<TileOp>(flowOp.getSource().getDefiningOp());
     TileLoc srcCoords = {static_cast<int>(srcTile.getCol()),
                          static_cast<int>(srcTile.getRow())};
@@ -95,23 +152,22 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
     Port srcPort = {srcBundle, srcChannel};
     PathEndPoint srcPe{srcCoords.col, srcCoords.row, srcPort};
     if (processedFlows.count(srcPe)) {
-      rewriter.eraseOp(flowOp);
-      return success();
+      flowOp.erase();
+      continue;
     }
 
-    DeviceOp device = flowOp->getParentOfType<DeviceOp>();
-    AMDAIEDeviceModel deviceModel =
-        getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
+    builder.setInsertionPointAfter(flowOp);
     for (auto &[curr, conns] :
          emitConnections(flowSolutions, srcPe, deviceModel)) {
       SwitchboxOp switchboxOp =
-          getOrCreateSwitchbox(rewriter, device, curr.col, curr.row);
+          getOrCreateSwitchbox(builder, device, curr.col, curr.row);
       for (const auto &conn : conns) {
-        // create switchboxes eagerly just to agree with mlir-aie tests
+        // Create switchboxes eagerly just to agree with mlir-aie tests.
         Operation *op;
         switch (conn.interconnect) {
           case Connect::Interconnect::SHIMMUX:
-            op = getOrCreateShimMux(rewriter, device, conn.col).getOperation();
+            op = getOrCreateShimMux(builder, device, conn.col, curr.row)
+                     .getOperation();
             break;
           case Connect::Interconnect::SWB:
             op = switchboxOp.getOperation();
@@ -119,52 +175,122 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
           case Connect::Interconnect::NOCARE:
             return flowOp->emitOpError("unsupported/unknown interconnect");
         }
-
-        Block &b = op->getRegion(0).front();
-        OpBuilder::InsertionGuard g(rewriter);
-        rewriter.setInsertionPoint(b.getTerminator());
-        rewriter.create<ConnectOp>(rewriter.getUnknownLoc(), (conn.src.bundle),
-                                   conn.src.channel, (conn.dst.bundle),
-                                   conn.dst.channel);
+        getOrCreateConnect(builder, op, conn.src.bundle, conn.src.channel,
+                           conn.dst.bundle, conn.dst.channel);
       }
     }
 
-    const_cast<ConvertFlowsToInterconnect *>(this)->processedFlows.insert(
-        srcPe);
-    rewriter.eraseOp(flowOp);
-    return success();
-  }
-};
-
-struct AIEPathfinderPass
-    : PassWrapper<AIEPathfinderPass, OperationPass<DeviceOp>> {
-  AIEPathfinderPass() = default;
-  AIEPathfinderPass(const AIEPathfinderPass &pass) : PassWrapper(pass) {}
-  AIEPathfinderPass(const AIERoutePathfinderFlowsOptions &options)
-      : AIEPathfinderPass() {
-    clRouteCircuit = options.clRouteCircuit;
-    clRoutePacket = options.clRoutePacket;
+    processedFlows.insert(srcPe);
+    flowOp.erase();
   }
 
-  llvm::StringRef getArgument() const override {
-    return "amdaie-create-pathfinder-flows";
+  return success();
+}
+
+struct AMDAIERouteFlowsWithPathfinderPass
+    : public impl::AMDAIERouteFlowsWithPathfinderBase<
+          AMDAIERouteFlowsWithPathfinderPass> {
+  AMDAIERouteFlowsWithPathfinderPass(
+      const AMDAIERouteFlowsWithPathfinderOptions &options)
+      : AMDAIERouteFlowsWithPathfinderBase(options) {}
+
+  void getDependentDialects(mlir::DialectRegistry &registry) const override {
+    registry.insert<xilinx::AIE::AIEDialect>();
   }
 
   void runOnOperation() override;
-
-  mlir::Pass::Option<bool> clRouteCircuit{
-      *this, "route-circuit",
-      llvm::cl::desc("Flag to enable aie.flow lowering."),
-      llvm::cl::init(true)};
-  mlir::Pass::Option<bool> clRoutePacket{
-      *this, "route-packet",
-      llvm::cl::desc("Flag to enable aie.packetflow lowering."),
-      llvm::cl::init(true)};
 };
 
+FailureOr<std::tuple<PacketFlowMapT, SmallVector<PhysPortAndID>>>
+getRoutedPacketFlows(DeviceOp device, AMDAIEDeviceModel &deviceModel) {
+  PacketFlowMapT routedPacketFlows;
+  SmallVector<PhysPortAndID> routedSlavePorts;
+  // Iterate over all switchboxes and collect the packet flows.
+  for (SwitchboxOp switchboxOp : device.getOps<SwitchboxOp>()) {
+    TileOp t = xilinx::AIE::getTileOp(*switchboxOp.getOperation());
+    TileLoc loc = {t.getCol(), t.getRow()};
+    DenseMap<std::pair<uint8_t, uint8_t>, SmallVector<PhysPort>>
+        amselToDestPhysPorts;
+    DenseMap<std::pair<uint8_t, uint8_t>, SmallVector<PhysPortAndID>>
+        amselToSrcPhysPortAndIDs;
+    // Inside each switchbox, look for `MasterSetOp` and `PacketRulesOp`.
+    for (Operation &op : switchboxOp.getConnections().getOps()) {
+      if (auto masterSetOp = dyn_cast<MasterSetOp>(op)) {
+        // Recover the original DMA port + channel from the special shim mux
+        // port.
+        if (std::optional<std::pair<StrmSwPortType, uint8_t>> mappedDmaPort =
+                deviceModel.getDmaFromShimMuxPortMapping(
+                    getConnectingBundle(masterSetOp.getDestBundle()),
+                    masterSetOp.getDestChannel(), DMAChannelDir::S2MM);
+            mappedDmaPort && deviceModel.isShimTile(t.getCol(), t.getRow())) {
+          masterSetOp.setDestBundle(mappedDmaPort->first);
+          masterSetOp.setDestChannel(mappedDmaPort->second);
+        }
+        // Get the destination for a packet flow.
+        PhysPort destPhyPort = {
+            loc,
+            Port{masterSetOp.getDestBundle(), masterSetOp.getDestChannel()},
+            PhysPort::Direction::DST};
+        for (Value val : masterSetOp.getAmsels()) {
+          AMSelOp amselOp = cast<AMSelOp>(val.getDefiningOp());
+          uint8_t arbiterID = amselOp.getArbiterID();
+          uint8_t msel = amselOp.getMsel();
+          amselToDestPhysPorts[{arbiterID, msel}].push_back(destPhyPort);
+        }
+      } else if (auto packetRulesOp = dyn_cast<PacketRulesOp>(op)) {
+        // Recover the original DMA port + channel from the special shim mux
+        // port.
+        if (std::optional<std::pair<StrmSwPortType, uint8_t>> mappedDmaPort =
+                deviceModel.getDmaFromShimMuxPortMapping(
+                    getConnectingBundle(packetRulesOp.getSourceBundle()),
+                    packetRulesOp.getSourceChannel(), DMAChannelDir::MM2S);
+            mappedDmaPort && deviceModel.isShimTile(t.getCol(), t.getRow())) {
+          packetRulesOp.setSourceBundle(mappedDmaPort->first);
+          packetRulesOp.setSourceChannel(mappedDmaPort->second);
+        }
+        // Get the source for a packet flow.
+        PhysPort sourcePhyPort = {loc,
+                                  Port{packetRulesOp.getSourceBundle(),
+                                       packetRulesOp.getSourceChannel()},
+                                  PhysPort::Direction::SRC};
+        Block &block = packetRulesOp.getRules().front();
+        for (auto packetRuleOp : block.getOps<PacketRuleOp>()) {
+          AMSelOp amselOp =
+              cast<AMSelOp>(packetRuleOp.getAmsel().getDefiningOp());
+          uint8_t arbiterID = amselOp.getArbiterID();
+          uint8_t msel = amselOp.getMsel();
+          std::optional<ArrayRef<int>> maybePacketIds =
+              packetRuleOp.getPacketIds();
+          if (!maybePacketIds.has_value()) return failure();
+          for (int pktId : *maybePacketIds) {
+            amselToSrcPhysPortAndIDs[{arbiterID, msel}].push_back(
+                {sourcePhyPort, pktId});
+          }
+        }
+      }
+    }
+    // Infer the connections between source and destination ports, by matching
+    // the amsel.
+    for (const auto &[amsel, srcPhysPortAndIDs] : amselToSrcPhysPortAndIDs) {
+      auto &destPhysPorts = amselToDestPhysPorts[amsel];
+      for (const auto &srcPhysPortAndID : srcPhysPortAndIDs) {
+        for (const auto &destPhysPort : destPhysPorts) {
+          routedPacketFlows[srcPhysPortAndID].insert(
+              {destPhysPort, srcPhysPortAndID.id});
+        }
+        routedSlavePorts.push_back(srcPhysPortAndID);
+      }
+    }
+  }
+  return std::make_tuple(routedPacketFlows, routedSlavePorts);
+}
+
 LogicalResult runOnPacketFlow(
-    DeviceOp device, OpBuilder &builder,
-    const std::map<PathEndPoint, SwitchSettings> &flowSolutions) {
+    DeviceOp device, std::vector<PacketFlowOp> &pktFlowOps,
+    const std::map<PathEndPoint, SwitchSettings> &flowSolutions,
+    const PacketFlowMapT &existingPacketFlows,
+    ArrayRef<PhysPortAndID> existingSlavePorts) {
+  OpBuilder builder(device.getContext());
   AMDAIEDeviceModel deviceModel =
       getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
   mlir::DenseMap<TileLoc, TileOp> tiles;
@@ -176,7 +302,7 @@ LogicalResult runOnPacketFlow(
 
   DenseMap<PhysPort, Attribute> keepPktHeaderAttr;
   TileLocToConnectionFlowIDT switchboxes;
-  for (PacketFlowOp pktFlowOp : device.getOps<PacketFlowOp>()) {
+  for (PacketFlowOp pktFlowOp : pktFlowOps) {
     int flowID = pktFlowOp.getID();
     Port srcPort{StrmSwPortType::SS_PORT_TYPE_MAX, -1};
     TileOp srcTile;
@@ -226,10 +352,16 @@ LogicalResult runOnPacketFlow(
                                static_cast<uint8_t>(currTile.row)};
             ConnectionAndFlowIDT connFlow = {connect, flowID};
             switchboxes[currTile].insert(connFlow);
+            if (tiles.count(currTile) == 0) {
+              builder.setInsertionPoint(device.getBody()->getTerminator());
+              tiles[currTile] =
+                  getOrCreateTile(builder, device, currTile.col, currTile.row);
+            }
           }
         }
       }
     }
+    pktFlowOp.erase();
   }
 
   SmallVector<TileLoc> tileLocs = llvm::map_to_vector(
@@ -252,16 +384,33 @@ LogicalResult runOnPacketFlow(
     }
   }
 
-  auto maybeRoutingConfiguration =
-      emitPacketRoutingConfiguration(deviceModel, packetFlows);
+  auto maybeRoutingConfiguration = emitPacketRoutingConfiguration(
+      deviceModel, packetFlows, existingPacketFlows);
   if (failed(maybeRoutingConfiguration)) {
     return device.emitOpError()
            << "could not create a valid routing configuration";
   }
   auto [masterSets, slaveAMSels] = maybeRoutingConfiguration.value();
+  auto [slaveGroups, slaveMasks] = emitSlaveGroupsAndMasksRoutingConfig(
+      slavePorts, packetFlows, existingSlavePorts, existingPacketFlows);
 
-  auto [slaveGroups, slaveMasks] =
-      emitSlaveGroupsAndMasksRoutingConfig(slavePorts, packetFlows);
+  // Erase any duplicate packet rules in exising, pre-routed packet flows.
+  std::vector<PacketRulesOp> existingPacketRules;
+  for (SwitchboxOp switchboxOp : device.getOps<SwitchboxOp>()) {
+    TileOp t = xilinx::AIE::getTileOp(*switchboxOp.getOperation());
+    TileLoc loc = {t.getCol(), t.getRow()};
+    for (Operation &op : switchboxOp.getConnections().getOps()) {
+      if (auto packetRulesOp = dyn_cast<PacketRulesOp>(op)) {
+        PhysPort sourcePhyPort = {loc,
+                                  Port{packetRulesOp.getSourceBundle(),
+                                       packetRulesOp.getSourceChannel()},
+                                  PhysPort::Direction::SRC};
+        if (slaveGroups.count(sourcePhyPort))
+          existingPacketRules.push_back(packetRulesOp);
+      }
+    }
+  }
+  for (PacketRulesOp packetRulesOp : existingPacketRules) packetRulesOp.erase();
 
   // Realize the routes in MLIR
   for (auto &[tileLoc, tileOp] : tiles) {
@@ -275,9 +424,6 @@ LogicalResult runOnPacketFlow(
         getOrCreateSwitchbox(builder, device, tileOp.getCol(), tileOp.getRow());
     SwitchboxOp::ensureTerminator(swbox.getConnections(), builder,
                                   builder.getUnknownLoc());
-    Block &b = swbox.getConnections().front();
-    builder.setInsertionPoint(b.getTerminator());
-
     std::vector<std::vector<bool>> amselOpNeededVector(
         numArbiters, std::vector<bool>(numMSels, false));
     for (const auto &[physPort, masterSet] : masterSets) {
@@ -289,13 +435,8 @@ LogicalResult runOnPacketFlow(
     DenseMap<std::pair<uint8_t, uint8_t>, AMSelOp> amselOps;
     for (int i = 0; i < numMSels; i++) {
       for (int a = 0; a < numArbiters; a++) {
-        if (amselOpNeededVector.at(a).at(i)) {
-          int arbiterID = a;
-          int msel = i;
-          auto amsel =
-              builder.create<AMSelOp>(builder.getUnknownLoc(), arbiterID, msel);
-          amselOps[{arbiterID, msel}] = amsel;
-        }
+        if (amselOpNeededVector.at(a).at(i))
+          amselOps[{a, i}] = getOrCreateAMSel(builder, swbox, a, i);
       }
     }
 
@@ -316,49 +457,41 @@ LogicalResult runOnPacketFlow(
         assert(amselOps.count(amsel) == 1 && "expected amsel in amselOps");
         amselVals.push_back(amselOps[amsel]);
       }
-      auto msOp = builder.create<MasterSetOp>(
-          builder.getUnknownLoc(), builder.getIndexType(), (tileMaster.bundle),
-          tileMaster.channel, amselVals);
+      MasterSetOp msOp = getOrCreateMasterSet(builder, swbox, tileMaster.bundle,
+                                              tileMaster.channel, amselVals);
       if (auto pktFlowAttrs = keepPktHeaderAttr[{tileLoc, tileMaster,
                                                  PhysPort::Direction::DST}])
         msOp->setAttr("keep_pkt_header", pktFlowAttrs);
     }
 
-    // Generate the packet rules
-    DenseMap<Port, PacketRulesOp> slaveRules;
-    for (std::vector<PhysPortAndID> group : slaveGroups) {
-      builder.setInsertionPoint(b.getTerminator());
-      PhysPortAndID physPortAndId = group.front();
-      PhysPort physPort = physPortAndId.physPort;
-      if (tileLoc != physPort.tileLoc) continue;
+    // Generate the packet rules.
+    for (auto &[physPort, groups] : slaveGroups) {
       Port slave = physPort.port;
-      int mask = slaveMasks[physPortAndId];
-      int ID = physPortAndId.id & mask;
+      if (tileLoc != physPort.tileLoc) continue;
+      for (std::set<int> &group : groups) {
+        PhysPortAndID physPortAndId = {physPort, *group.begin()};
+        int mask = slaveMasks[physPortAndId];
+        int maskedId = physPortAndId.id & mask;
 
 #ifndef NDEBUG
-      // Verify that we actually map all the ID's correctly.
-      for (PhysPortAndID _slave : group) assert((_slave.id & mask) == ID);
+        // Verify that we actually map all the ID's correctly.
+        for (int _pktId : group) assert((_pktId & mask) == maskedId);
 #endif
 
-      Value amsel = amselOps[slaveAMSels[physPortAndId]];
-      PacketRulesOp packetrules;
-      if (slaveRules.count(slave) == 0) {
-        packetrules = builder.create<PacketRulesOp>(
-            builder.getUnknownLoc(), (slave.bundle), slave.channel);
-        PacketRulesOp::ensureTerminator(packetrules.getRules(), builder,
-                                        builder.getUnknownLoc());
-        slaveRules[slave] = packetrules;
-      } else {
-        packetrules = slaveRules[slave];
+        Value amsel = amselOps[slaveAMSels[physPortAndId]];
+        PacketRulesOp packetrules =
+            getOrCreatePacketRules(builder, swbox, slave.bundle, slave.channel);
+        Block &rules = packetrules.getRules().front();
+        builder.setInsertionPoint(rules.getTerminator());
+        builder.create<PacketRuleOp>(
+            builder.getUnknownLoc(), mask, maskedId, amsel,
+            builder.getDenseI32ArrayAttr(
+                std::vector<int>(group.begin(), group.end())));
       }
-
-      Block &rules = packetrules.getRules().front();
-      builder.setInsertionPoint(rules.getTerminator());
-      builder.create<PacketRuleOp>(builder.getUnknownLoc(), mask, ID, amsel);
     }
   }
 
-  // Add support for shimDMA
+  // Add support for special shim mux connections.
   // From shimDMA to BLI: 1) shimDMA 0 --> North 3
   //                      2) shimDMA 1 --> North 7
   // From BLI to shimDMA: 1) North   2 --> shimDMA 0
@@ -367,63 +500,52 @@ LogicalResult runOnPacketFlow(
     auto retVal = switchbox->getOperand(0);
     auto tileOp = retVal.getDefiningOp<TileOp>();
 
-    if (!deviceModel.isShimNOCTile(tileOp.getCol(), tileOp.getRow())) continue;
-    // Check if the switchbox is empty
+    // Only requires special connection if it is a shim tile.
+    if (!deviceModel.isShimTile(tileOp.getCol(), tileOp.getRow())) continue;
+    // If the switchbox is empty, no need to add shim mux connections.
     if (&switchbox.getBody()->front() == switchbox.getBody()->getTerminator())
       continue;
-
-    ShimMuxOp shimMuxOp = nullptr;
-    for (auto shimmux : device.getOps<ShimMuxOp>()) {
-      if (shimmux.getTile() != tileOp) continue;
-      shimMuxOp = shimmux;
-      break;
-    }
-    if (!shimMuxOp) {
-      builder.setInsertionPointAfter(tileOp);
-      shimMuxOp = getOrCreateShimMux(builder, device, tileOp.getCol());
-    }
+    // Get the shim mux operation.
+    builder.setInsertionPointAfter(tileOp);
+    ShimMuxOp shimMuxOp =
+        getOrCreateShimMux(builder, device, tileOp.getCol(), tileOp.getRow());
 
     for (Operation &op : switchbox.getConnections().getOps()) {
-      // check if there is MM2S DMA in the switchbox of the 0th row
-      if (auto pktrules = llvm::dyn_cast<PacketRulesOp>(op);
-          pktrules && (pktrules.getSourceBundle()) == StrmSwPortType::DMA) {
-        // If there is, then it should be put into the corresponding shimmux
-        OpBuilder::InsertionGuard g(builder);
-        Block &b0 = shimMuxOp.getConnections().front();
-        builder.setInsertionPointToStart(&b0);
-        pktrules.setSourceBundle((StrmSwPortType::SOUTH));
-        if (pktrules.getSourceChannel() == 0) {
-          pktrules.setSourceChannel(3);
-          builder.create<ConnectOp>(builder.getUnknownLoc(),
-                                    (StrmSwPortType::DMA), 0,
-                                    (StrmSwPortType::NORTH), 3);
-        } else if (pktrules.getSourceChannel() == 1) {
-          pktrules.setSourceChannel(7);
-          builder.create<ConnectOp>(builder.getUnknownLoc(),
-                                    (StrmSwPortType::DMA), 1,
-                                    (StrmSwPortType::NORTH), 7);
-        }
-      }
+      if (auto packetRulesOp = dyn_cast<PacketRulesOp>(op)) {
+        // Found the source (MM2S) of a packet flow.
+        StrmSwPortType srcBundle = packetRulesOp.getSourceBundle();
+        uint8_t srcChannel = packetRulesOp.getSourceChannel();
+        std::optional<std::pair<StrmSwPortType, uint8_t>> mappedShimMuxPort =
+            deviceModel.getShimMuxPortMappingForDmaOrNoc(srcBundle, srcChannel,
+                                                         DMAChannelDir::MM2S);
+        if (!mappedShimMuxPort) continue;
+        StrmSwPortType newSrcBundle = mappedShimMuxPort->first;
+        uint8_t newSrcChannel = mappedShimMuxPort->second;
+        // Add a special connection from `srcBundle/srcChannel` to
+        // `newSrcBundle/newSrcChannel`.
+        getOrCreateConnect(builder, shimMuxOp, srcBundle, srcChannel,
+                           newSrcBundle, newSrcChannel);
+        // Replace the source bundle and channel.
+        packetRulesOp.setSourceBundle(getConnectingBundle(newSrcBundle));
+        packetRulesOp.setSourceChannel(newSrcChannel);
 
-      // check if there is S2MM DMA in the switchbox of the 0th row
-      if (auto mtset = llvm::dyn_cast<MasterSetOp>(op);
-          mtset && (mtset.getDestBundle()) == StrmSwPortType::DMA) {
-        // If there is, then it should be put into the corresponding shimmux
-        OpBuilder::InsertionGuard g(builder);
-        Block &b0 = shimMuxOp.getConnections().front();
-        builder.setInsertionPointToStart(&b0);
-        mtset.setDestBundle((StrmSwPortType::SOUTH));
-        if (mtset.getDestChannel() == 0) {
-          mtset.setDestChannel(2);
-          builder.create<ConnectOp>(builder.getUnknownLoc(),
-                                    (StrmSwPortType::NORTH), 2,
-                                    (StrmSwPortType::DMA), 0);
-        } else if (mtset.getDestChannel() == 1) {
-          mtset.setDestChannel(3);
-          builder.create<ConnectOp>(builder.getUnknownLoc(),
-                                    (StrmSwPortType::NORTH), 3,
-                                    (StrmSwPortType::DMA), 1);
-        }
+      } else if (auto masterSetOp = dyn_cast<MasterSetOp>(op)) {
+        // Found the destination (S2MM) of a packet flow.
+        StrmSwPortType destBundle = masterSetOp.getDestBundle();
+        uint8_t destChannel = masterSetOp.getDestChannel();
+        std::optional<std::pair<StrmSwPortType, uint8_t>> mappedShimMuxPort =
+            deviceModel.getShimMuxPortMappingForDmaOrNoc(
+                destBundle, destChannel, DMAChannelDir::S2MM);
+        if (!mappedShimMuxPort) continue;
+        StrmSwPortType newDestBundle = mappedShimMuxPort->first;
+        uint8_t newDestChannel = mappedShimMuxPort->second;
+        // Add a special connection from `newDestBundle/newDestChannel` to
+        // `destBundle/destChannel`.
+        getOrCreateConnect(builder, shimMuxOp, newDestBundle, newDestChannel,
+                           destBundle, destChannel);
+        // Replace the destination bundle and channel.
+        masterSetOp.setDestBundle(getConnectingBundle(newDestBundle));
+        masterSetOp.setDestChannel(newDestChannel);
       }
     }
   }
@@ -431,7 +553,8 @@ LogicalResult runOnPacketFlow(
 }
 
 /// Rough outline:
-/// 1. find aie.flow ops and translate them into the structs/data-structures the
+/// 1. find aie.flow ops and translate them into the structs/data-structures
+/// the
 ///    router expects
 /// 2. find aie.packet_flow ops and translate them into the
 ///    structs/data-structures the router expects
@@ -442,11 +565,9 @@ LogicalResult runOnPacketFlow(
 ///    aie.connects
 /// 6. feed the router results to runOnPacketFlow to insert packet routing ops
 /// (aie.packet_rules, aie.amsel, etc) into aie.switchboxes
-void AIEPathfinderPass::runOnOperation() {
+void AMDAIERouteFlowsWithPathfinderPass::runOnOperation() {
   DeviceOp device = getOperation();
-  Router pathfinder;
   std::map<PathEndPoint, SwitchSettings> flowSolutions;
-  std::set<PathEndPoint> processedFlows;
   // don't be clever and remove these initializations because
   // then you're doing a max against garbage data...
   uint8_t maxCol = 0, maxRow = 0;
@@ -457,45 +578,71 @@ void AIEPathfinderPass::runOnOperation() {
 
   AMDAIEDeviceModel deviceModel =
       getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
-  pathfinder.initialize(maxCol, maxRow, deviceModel);
+  Router pathfinder(maxCol, maxRow);
+  pathfinder.initialize(deviceModel);
 
   // for each flow in the device, add it to pathfinder
   // each source can map to multiple different destinations (fanout)
+  std::vector<FlowOp> circuitFlowOps;
   for (FlowOp flowOp : device.getOps<FlowOp>()) {
+    // Skip flows based on control/non-control routing flags.
+    bool isCtrlFlow = (flowOp.getSourceBundle() == StrmSwPortType::CTRL) ||
+                      (flowOp.getDestBundle() == StrmSwPortType::CTRL);
+    if ((isCtrlFlow && !routeCtrl) || (!isCtrlFlow && !routeNonCtrl)) continue;
+
+    // Not skipped, add the flow to the pathfinder.
     TileOp srcTile = llvm::cast<TileOp>(flowOp.getSource().getDefiningOp());
     TileOp dstTile = llvm::cast<TileOp>(flowOp.getDest().getDefiningOp());
     TileLoc srcCoords = {srcTile.getCol(), srcTile.getRow()};
     TileLoc dstCoords = {dstTile.getCol(), dstTile.getRow()};
     Port srcPort = {(flowOp.getSourceBundle()), flowOp.getSourceChannel()};
     Port dstPort = {(flowOp.getDestBundle()), flowOp.getDestChannel()};
-    pathfinder.addFlow(srcCoords, srcPort, dstCoords, dstPort, false);
+    pathfinder.addFlow(srcCoords, srcPort, dstCoords, dstPort,
+                       /*isPacketFlow=*/false);
+    circuitFlowOps.push_back(flowOp);
   }
 
+  std::vector<PacketFlowOp> packetFlowOps;
   for (PacketFlowOp pktFlowOp : device.getOps<PacketFlowOp>()) {
     Region &r = pktFlowOp.getPorts();
     Block &b = r.front();
-    Port srcPort{StrmSwPortType::SS_PORT_TYPE_MAX, -1};
-    TileOp srcTile;
-    TileLoc srcCoords{-1, -1};
+    SmallVector<PacketSourceOp> pktSrcs;
+    SmallVector<PacketDestOp> pktDests;
     for (Operation &op : b.getOperations()) {
-      if (auto pktSource = llvm::dyn_cast<PacketSourceOp>(op)) {
-        srcTile = llvm::cast<TileOp>(pktSource.getTile().getDefiningOp());
-        srcPort = {(pktSource.getBundle()), pktSource.getChannel()};
-        srcCoords = {srcTile.getCol(), srcTile.getRow()};
-      } else if (auto pktDest = llvm::dyn_cast<PacketDestOp>(op)) {
-        TileOp dstTile = llvm::cast<TileOp>(pktDest.getTile().getDefiningOp());
-        Port dstPort = {(pktDest.getBundle()), pktDest.getChannel()};
-        TileLoc dstCoords = {dstTile.getCol(), dstTile.getRow()};
-        assert(srcPort.bundle != StrmSwPortType::SS_PORT_TYPE_MAX &&
-               srcPort.channel != -1 && "expected srcPort to have been set");
-        assert(srcCoords.col != -1 && srcCoords.row != -1);
-        pathfinder.addFlow(srcCoords, srcPort, dstCoords, dstPort, true);
+      if (auto pktSourceOp = llvm::dyn_cast<PacketSourceOp>(op)) {
+        pktSrcs.push_back(pktSourceOp);
+      } else if (auto pktDestOp = llvm::dyn_cast<PacketDestOp>(op)) {
+        pktDests.push_back(pktDestOp);
       }
     }
+    if (pktSrcs.size() != 1 || pktDests.size() < 1) {
+      pktFlowOp.emitOpError()
+          << "expected exactly one source and at least one dest";
+      return signalPassFailure();
+    }
+    // Skip flows based on control/non-control routing flags.For desitnation,
+    // we only need to check the first one, as the `CTRL` flow would never be
+    // a broadcast.
+    bool isCtrlFlow = (pktSrcs[0].getBundle() == StrmSwPortType::CTRL) ||
+                      (pktDests[0].getBundle() == StrmSwPortType::CTRL);
+    if ((isCtrlFlow && !routeCtrl) || (!isCtrlFlow && !routeNonCtrl)) continue;
+
+    // Not skipped, add the flow to the pathfinder.
+    TileOp srcTile = llvm::cast<TileOp>(pktSrcs[0].getTile().getDefiningOp());
+    TileLoc srcCoords = {srcTile.getCol(), srcTile.getRow()};
+    Port srcPort = {(pktSrcs[0].getBundle()), pktSrcs[0].getChannel()};
+    for (PacketDestOp pktDest : pktDests) {
+      TileOp dstTile = llvm::cast<TileOp>(pktDest.getTile().getDefiningOp());
+      TileLoc dstCoords = {dstTile.getCol(), dstTile.getRow()};
+      Port dstPort = {(pktDest.getBundle()), pktDest.getChannel()};
+      pathfinder.addFlow(srcCoords, srcPort, dstCoords, dstPort,
+                         /*isPacketFlow=*/true);
+    }
+    packetFlowOps.push_back(pktFlowOp);
   }
 
-  // add existing connections so Pathfinder knows which resources are
-  // available search all existing SwitchBoxOps for exising connections
+  // Mark existing circuit-mode connections as unavailable in Pathfinder.
+  // These pre-routed connections are fixed and will not be modified.
   for (SwitchboxOp switchboxOp : device.getOps<SwitchboxOp>()) {
     std::vector<std::tuple<Port, Port>> connects;
     for (ConnectOp connectOp : switchboxOp.getOps<ConnectOp>()) {
@@ -504,9 +651,33 @@ void AIEPathfinderPass::runOnOperation() {
       connects.emplace_back(src, dst);
     }
     TileOp t = xilinx::AIE::getTileOp(*switchboxOp.getOperation());
-    if (!pathfinder.addFixedConnection(t.getCol(), t.getRow(), connects)) {
-      switchboxOp.emitOpError() << "Unable to add fixed connections";
+    if (!pathfinder.addFixedCircuitConnection(t.getCol(), t.getRow(),
+                                              connects)) {
+      switchboxOp.emitOpError() << "Unable to add fixed circuit connections";
       return signalPassFailure();
+    }
+  }
+
+  // Recover packet flows that already routed by looking for existing `amsel`
+  // + `packet_rules` and `masterset` operations.
+  PacketFlowMapT existingPacketFlows;
+  SmallVector<PhysPortAndID> existingSlavePorts;
+  auto result = getRoutedPacketFlows(device, deviceModel);
+  if (failed(result)) {
+    device.emitError("Unable to recover existing packet flows");
+    return signalPassFailure();
+  } else {
+    std::tie(existingPacketFlows, existingSlavePorts) = result.value();
+  }
+  // Add fixed packet connections to the pathfinder.
+  for (const auto &[srcPhysPortAndID, destPhysPortAndIDs] :
+       existingPacketFlows) {
+    for (const PhysPortAndID &destPhysPortAndID : destPhysPortAndIDs) {
+      if (!pathfinder.addFixedPacketConnection(srcPhysPortAndID.physPort,
+                                               destPhysPortAndID.physPort)) {
+        device.emitError("Unable to add fixed packet connections");
+        return signalPassFailure();
+      }
     }
   }
 
@@ -520,35 +691,24 @@ void AIEPathfinderPass::runOnOperation() {
     return signalPassFailure();
   }
 
-  OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
-
-  ConversionTarget target(getContext());
-  target.addLegalOp<TileOp>();
-  target.addLegalOp<ConnectOp>();
-  target.addLegalOp<SwitchboxOp>();
-  target.addLegalOp<ShimMuxOp>();
-  target.addLegalOp<EndOp>();
-
-  RewritePatternSet patterns(&getContext());
-  patterns.insert<ConvertFlowsToInterconnect>(&getContext(), flowSolutions,
-                                              processedFlows);
-  if (clRouteCircuit &&
-      failed(applyPartialConversion(device, target, std::move(patterns)))) {
-    device.emitError("failed to convert routed flows to interconnects");
+  if (routeCircuit &&
+      failed(runOnCircuitFlow(device, circuitFlowOps, flowSolutions))) {
+    device.emitError("failed to convert circuit flows to interconnects");
     return signalPassFailure();
   }
 
-  if (clRoutePacket && failed(runOnPacketFlow(device, builder, flowSolutions)))
+  if (routePacket &&
+      failed(runOnPacketFlow(device, packetFlowOps, flowSolutions,
+                             existingPacketFlows, existingSlavePorts))) {
+    device.emitError("failed to convert packet flows to amsels and rules");
     return signalPassFailure();
+  }
 }
 
-std::unique_ptr<OperationPass<DeviceOp>> createAMDAIEPathfinderPass() {
-  return std::make_unique<AIEPathfinderPass>();
+std::unique_ptr<OperationPass<DeviceOp>>
+createAMDAIERouteFlowsWithPathfinderPass(
+    AMDAIERouteFlowsWithPathfinderOptions options) {
+  return std::make_unique<AMDAIERouteFlowsWithPathfinderPass>(options);
 }
 
-void registerAMDAIERoutePathfinderFlows() {
-  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
-    return createAMDAIEPathfinderPass();
-  });
-}
 }  // namespace mlir::iree_compiler::AMDAIE

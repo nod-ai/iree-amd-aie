@@ -510,6 +510,39 @@ uint32_t AMDAIEDeviceModel::getNumDestSwitchboxConnections(
                                         static_cast<uint8_t>(row), bundle);
 }
 
+std::optional<std::pair<StrmSwPortType, uint8_t>>
+AMDAIEDeviceModel::getShimMuxPortMappingForDmaOrNoc(
+    StrmSwPortType port, uint8_t channel, DMAChannelDir direction) const {
+  auto key = std::make_pair(port, channel);
+  if (direction == DMAChannelDir::MM2S &&
+      mm2sDmaNocToSpecialShimPortMap.count(key)) {
+    return mm2sDmaNocToSpecialShimPortMap.at(key);
+  } else if (direction == DMAChannelDir::S2MM &&
+             s2mmDmaNocToSpecialShimPortMap.count(key)) {
+    return s2mmDmaNocToSpecialShimPortMap.at(key);
+  }
+  return std::nullopt;
+}
+
+std::optional<std::pair<StrmSwPortType, uint8_t>>
+AMDAIEDeviceModel::getDmaFromShimMuxPortMapping(StrmSwPortType port,
+                                                uint8_t channel,
+                                                DMAChannelDir direction) const {
+  auto key = std::make_pair(port, channel);
+  if (direction == DMAChannelDir::MM2S) {
+    for (auto &entry : mm2sDmaNocToSpecialShimPortMap) {
+      if (entry.first.first == StrmSwPortType::DMA && entry.second == key)
+        return entry.first;
+    }
+  } else if (direction == DMAChannelDir::S2MM) {
+    for (auto &entry : s2mmDmaNocToSpecialShimPortMap) {
+      if (entry.first.first == StrmSwPortType::DMA && entry.second == key)
+        return entry.first;
+    }
+  }
+  return std::nullopt;
+}
+
 std::optional<std::string> AMDAIEDeviceModel::getNPUVersionString() const {
   switch (configPtr.AieGen) {
     case XAIE_DEV_GEN_AIE2IPU:
@@ -759,8 +792,8 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
 }
 
 /// Generate a DenseMap key we can use for the element types (alternatives
-/// considered: implement tombstone for std::array, or use std::map instead of
-/// DenseMap).
+/// considered: implement tombstone for std::array, or use std::map instead
+/// of DenseMap).
 static constexpr uint32_t getElementTypeKey(uint32_t a, uint32_t b,
                                             uint32_t c) {
   return a + (b << 8) + (c << 16);
@@ -785,16 +818,16 @@ static constexpr uint32_t getElementTypeKey(uint32_t a, uint32_t b,
 ///   `vector<4x2xi32>`  | `vector<2x4xi16>`  | `vector<4x4xi64>`
 ///   `vector<4x8xbf16>` | `vector<8x4xbf16>` | `vector<4x4xf32>`
 ///
-/// An instruction size (m, n, k) is returned for each combination of element
-/// type in the table. Combinations of element type that are not covered by the
-/// table return failure.
+/// An instruction size (m, n, k) is returned for each combination of
+/// element type in the table. Combinations of element type that are not
+/// covered by the table return failure.
 ///
 /// Example: consider the first line of the table:
 ///   `vector<4x16xi8>`  | `vector<16x8xi4>`  | `vector<4x8xi32>`
 ///
-/// This first line says that if 'lhs' is an i8 tensor, 'rhs' is an i4 tensor
-/// and 'accumulator' is an i32 tensor, then there is an AIE instruction for
-/// matmul with m = 4, n = 8, k = 16.
+/// This first line says that if 'lhs' is an i8 tensor, 'rhs' is an i4
+/// tensor and 'accumulator' is an i32 tensor, then there is an AIE
+/// instruction for matmul with m = 4, n = 8, k = 16.
 static llvm::DenseMap<uint32_t, std::array<uint32_t, 3>> &
 getNpu1IntegerMatmulInstructionSizeMap() {
   // Sanity check.
@@ -838,16 +871,16 @@ getNpu1IntegerMatmulInstructionSizeMap() {
 ///  :------------------:|:------------------:|:-----------------:
 ///   `vector<8x8xi8>`   | `vector<8x8xi8>`   | `vector<8x8xi32>`
 ///
-/// An instruction size (m, n, k) is returned for each combination of element
-/// type in the table. Combinations of element type that are not covered by the
-/// table return failure.
+/// An instruction size (m, n, k) is returned for each combination of
+/// element type in the table. Combinations of element type that are not
+/// covered by the table return failure.
 ///
 /// Example: consider the line of the table:
 ///   `vector<8x8xi8>`  | `vector<8x8xi8>`  | `vector<8x8xi32>`
 ///
-/// This first line says that if 'lhs' is an i8 tensor, 'rhs' is an i8 tensor
-/// and 'accumulator' is an i32 tensor, then there is an AIE instruction for
-/// matmul with m = 8, n = 8, k = 8.
+/// This first line says that if 'lhs' is an i8 tensor, 'rhs' is an i8
+/// tensor and 'accumulator' is an i32 tensor, then there is an AIE
+/// instruction for matmul with m = 8, n = 8, k = 8.
 static llvm::DenseMap<uint32_t, std::array<uint32_t, 3>> &
 getNpu4IntegerMatmulInstructionSizeMap() {
   // Sanity check.
@@ -999,8 +1032,8 @@ std::string to_string(const AieRC &value) {
     STRINGIFY_ENUM_CASE(AieRC::XAIE_INVALID_API_POINTER)
     STRINGIFY_ENUM_CASE(AieRC::XAIE_ERR_MAX)
   }
-  // TODO(max): Don't understand why putting this under a default case doesn't
-  // work/solve
+  // TODO(max): Don't understand why putting this under a default case
+  // doesn't work/solve
   // TODO(max): We need to enable -Wswitch-enum as well
   llvm::report_fatal_error("Unhandled AieRC case");
 }

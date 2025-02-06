@@ -236,7 +236,8 @@ def AIE_PacketRuleOp: AIE_Op<"rule"> {
   let arguments = (
     ins I8Attr:$mask,
         I8Attr:$value,
-        Index:$amsel
+        Index:$amsel,
+        OptionalAttr<DenseI32ArrayAttr>:$packet_ids
   );
   let summary = "Packet switched routing rule";
   let assemblyFormat = [{
