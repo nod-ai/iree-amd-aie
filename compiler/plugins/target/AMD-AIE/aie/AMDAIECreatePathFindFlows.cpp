@@ -372,7 +372,7 @@ LogicalResult runOnPacketFlow(
     }
   }
 
-  // Add special shim mux connections between DMA/NOC streams and BLI.
+  // Add special shim mux connections for DMA/NOC streams.
   for (auto switchbox : make_early_inc_range(device.getOps<SwitchboxOp>())) {
     auto retVal = switchbox->getOperand(0);
     auto tileOp = retVal.getDefiningOp<TileOp>();
