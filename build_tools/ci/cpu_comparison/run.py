@@ -1532,6 +1532,45 @@ class Tests:
         self.existing_names = []
         self.tests = []
 
+        # Tests Matmul + Trunci.
+        # Phoenix : Ukernel + Peano.
+        self.register(
+            MatmulTrunci(
+                256,
+                32,
+                "i8",
+                "i32",
+                1 * np.ones([256, 32], dtype=np.int8),
+                1 * np.ones([32, 256], dtype=np.int8),
+                32 * np.ones([256, 256], dtype=np.int8),
+                tile_pipeline="pack-peel-4-level-tiling",
+                run_on_target=["npu1_4col"],
+                aie_compilation_flags=[
+                    "--iree-amdaie-num-rows=4",
+                    "--iree-amdaie-num-cols=4",
+                ],
+                use_ukernel=True,
+            )
+        )
+        # Phoenix : Vectorization + Peano.
+        self.register(
+            MatmulTrunci(
+                256,
+                32,
+                "i8",
+                "i32",
+                1 * np.ones([256, 32], dtype=np.int8),
+                1 * np.ones([32, 256], dtype=np.int8),
+                32 * np.ones([256, 256], dtype=np.int8),
+                tile_pipeline="pack-peel-4-level-tiling",
+                run_on_target=["npu1_4col"],
+                aie_compilation_flags=[
+                    "--iree-amdaie-num-rows=4",
+                    "--iree-amdaie-num-cols=4",
+                ],
+            )
+        )
+        # Strix : Ukernel + Chess.
         self.register(
             MatmulTrunci(
                 256,
