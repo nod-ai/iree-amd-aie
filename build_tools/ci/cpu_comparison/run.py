@@ -1616,6 +1616,18 @@ class Tests:
                     test_params=TestParams(tile_pipeline=tile_pipeline),
                 )
             )
+            self.register(
+                MatmulTruncf(
+                    128,
+                    256,
+                    "bf16",
+                    "f32",
+                    2 * np.ones([128, 256]),
+                    3 * np.ones([256, 128]),
+                    1536 * np.ones([128, 128]),
+                    tile_pipeline=tile_pipeline,
+                )
+            )
 
         # BatchMatmul test(s):
         # TODO(jornt): BatchMatmul tests with the pack-peel-4-level-tiling pipeline result in intermittent
@@ -1768,10 +1780,9 @@ class Tests:
         )
         self.register(
             Matmul(
-                128,
-                128,
+                512,
+                512,
                 256,
-                "i8",
                 "i32",
                 "i32",
                 test_params=TestParams(
@@ -1805,21 +1816,6 @@ class Tests:
                 )
             )
 
-        # self.register(
-        #     Matmul(
-        #         64,
-        #         64,
-        #         64,
-        #         "bf16",
-        #         "f32",
-        #         use_ukernel=True,
-        #         use_chess=True,
-        #         run_on_target=["npu4"],
-        #         aie_compilation_flags=[
-        #             "--mlir-print-ir-before-all",
-        #         ],
-        #     )
-        # )
         self.register(
             Matmul(
                 64,
