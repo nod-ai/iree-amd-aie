@@ -1,9 +1,9 @@
-// RUN: iree-opt --pass-pipeline="builtin.module(aie.device(amdaie-create-pathfinder-flows{route-ctrl=true route-non-ctrl=true}))" --split-input-file %s | FileCheck %s
+// RUN: iree-opt --pass-pipeline="builtin.module(aie.device(amdaie-create-pathfinder-flows{route-ctrl=true route-non-ctrl=false},amdaie-create-pathfinder-flows{route-ctrl=false route-non-ctrl=true}))" --split-input-file %s | FileCheck %s
 
 // Test Name: `one_ctrl_packet_flow_baseline`
 // CHECK-LABEL:   aie.device(npu1_4col) {
 // CHECK:           %[[TILE_0_0:.*]] = aie.tile(0, 0)
-// CHECK-NEXT:        %[[SHIM_MUX_0_0:.*]] = aie.shim_mux(%[[TILE_0_0]]) {
+// CHECK-NEXT:      %[[SHIM_MUX_0_0:.*]] = aie.shim_mux(%[[TILE_0_0]]) {
 // CHECK-NEXT:        aie.connect<DMA : 0, NORTH : 3>
 // CHECK-NEXT:      }
 // CHECK-NEXT:      %[[SWITCHBOX_0_0:.*]] = aie.switchbox(%[[TILE_0_0]]) {
@@ -49,7 +49,7 @@ module {
 // The remaining lines are expected to be the same.
 // CHECK-LABEL:   aie.device(npu1_4col) {
 // CHECK:           %[[TILE_0_0:.*]] = aie.tile(0, 0)
-// CHECK-NEXT:        %[[SHIM_MUX_0_0:.*]] = aie.shim_mux(%[[TILE_0_0]]) {
+// CHECK-NEXT:      %[[SHIM_MUX_0_0:.*]] = aie.shim_mux(%[[TILE_0_0]]) {
 // CHECK-NEXT:        aie.connect<DMA : 0, NORTH : 3>
 // **DIFF_START**
 // CHECK-NEXT:        aie.connect<DMA : 1, NORTH : 7>
@@ -110,7 +110,7 @@ module {
 // The remaining lines are expected to be the same.
 // CHECK-LABEL:   aie.device(npu1_4col) {
 // CHECK:           %[[TILE_0_0:.*]] = aie.tile(0, 0)
-// CHECK-NEXT:        %[[SHIM_MUX_0_0:.*]] = aie.shim_mux(%[[TILE_0_0]]) {
+// CHECK-NEXT:      %[[SHIM_MUX_0_0:.*]] = aie.shim_mux(%[[TILE_0_0]]) {
 // CHECK-NEXT:        aie.connect<DMA : 0, NORTH : 3>
 // **DIFF_START**
 // CHECK-NEXT:        aie.connect<DMA : 1, NORTH : 7>
@@ -181,7 +181,7 @@ module {
 // The remaining lines are expected to be the same.
 // CHECK-LABEL:   aie.device(npu1_4col) {
 // CHECK:           %[[TILE_0_0:.*]] = aie.tile(0, 0)
-// CHECK-NEXT:        %[[SHIM_MUX_0_0:.*]] = aie.shim_mux(%[[TILE_0_0]]) {
+// CHECK-NEXT:      %[[SHIM_MUX_0_0:.*]] = aie.shim_mux(%[[TILE_0_0]]) {
 // CHECK-NEXT:        aie.connect<DMA : 0, NORTH : 3>
 // CHECK-NEXT:      }
 // CHECK-NEXT:      %[[SWITCHBOX_0_0:.*]] = aie.switchbox(%[[TILE_0_0]]) {
@@ -246,7 +246,7 @@ module {
 // The remaining lines are expected to be the same.
 // CHECK-LABEL:   aie.device(npu1_4col) {
 // CHECK:           %[[TILE_0_0:.*]] = aie.tile(0, 0)
-// CHECK-NEXT:        %[[SHIM_MUX_0_0:.*]] = aie.shim_mux(%[[TILE_0_0]]) {
+// CHECK-NEXT:      %[[SHIM_MUX_0_0:.*]] = aie.shim_mux(%[[TILE_0_0]]) {
 // CHECK-NEXT:        aie.connect<DMA : 0, NORTH : 3>
 // CHECK-NEXT:      }
 // CHECK-NEXT:      %[[SWITCHBOX_0_0:.*]] = aie.switchbox(%[[TILE_0_0]]) {
@@ -317,7 +317,7 @@ module {
 // Test Name: `six_ctrl_packet_flows_one_ctrl_circuit_flow_baseline`
 // CHECK-LABEL:   aie.device(npu1_4col) {
 // CHECK:           %[[TILE_0_0:.*]] = aie.tile(0, 0)
-// CHECK-NEXT:     %[[SHIM_MUX_0_0:.*]] = aie.shim_mux(%[[TILE_0_0]]) {
+// CHECK-NEXT:      %[[SHIM_MUX_0_0:.*]] = aie.shim_mux(%[[TILE_0_0]]) {
 // CHECK-NEXT:        aie.connect<DMA : 0, NORTH : 3>
 // CHECK-NEXT:      }
 // CHECK-NEXT:      %[[TILE_0_1:.*]] = aie.tile(0, 1)
@@ -435,7 +435,7 @@ module {
 // Lines surrounding **DIFF_START** and **DIFF_END** are expected to be different from the `six_ctrl_packet_flows_one_ctrl_circuit_flow_baseline` test case.
 // The remaining lines are expected to be the same.
 // CHECK:           %[[TILE_0_0:.*]] = aie.tile(0, 0)
-// CHECK-NEXT:     %[[SHIM_MUX_0_0:.*]] = aie.shim_mux(%[[TILE_0_0]]) {
+// CHECK-NEXT:      %[[SHIM_MUX_0_0:.*]] = aie.shim_mux(%[[TILE_0_0]]) {
 // CHECK-NEXT:        aie.connect<DMA : 0, NORTH : 3>
 // **DIFF_START**
 // CHECK-NEXT:        aie.connect<DMA : 1, NORTH : 7>
