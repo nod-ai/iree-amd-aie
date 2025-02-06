@@ -38,13 +38,14 @@ LogicalResult splitLogicalObjectFifo(
     int64_t splitStride = 1);
 
 /// Split doubly strided operations on a source and target split dimension with
-/// the provided split factor. If no split factor is provided, the doubly
-/// strided operation will be split on the size of the dimension being split.
-LogicalResult splitDoublyStridedOp(
-    IRRewriter &rewriter, AMDAIE::DoublyStridedOpInterface op,
-    size_t sourceSplitDim = 0, size_t targetSplitDim = 0,
-    std::optional<size_t> splitFactor = std::nullopt,
-    int64_t sourceSplitStride = 1, int64_t targetSplitStride = 1);
+/// the provided split factor.
+LogicalResult splitDoublyStridedOp(IRRewriter &rewriter,
+                                   AMDAIE::DoublyStridedOpInterface op,
+                                   size_t sourceSplitDim = 0,
+                                   size_t targetSplitDim = 0,
+                                   int64_t splitFactor = 1,
+                                   int64_t sourceSplitStride = 1,
+                                   int64_t targetSplitStride = 1);
 
 }  // namespace mlir::iree_compiler::AMDAIE
 

@@ -332,18 +332,22 @@ LogicalResult foldLinearDims(
   newStrides.push_back(strides[strides.size() - 1]);
   newSizes.push_back(sizes[sizes.size() - 1]);
 
-  for (int i = offsets.size() - 2; i >= 0; i--) {
+  for (int i = static_cast<int>(offsets.size()) - 2; i >= 0; i--) {
     // Conditions for folding a dim.
-    // 1. Offsets[i] == 0.This is required because we are dropping the offset
-    // of the i dimension and keep newOffets[-1]
+    // 1. Either, offsets[i] == 0 and then we can fold with any `newOffsets[-1]`
+    // (even dynamic ones), OR offsets[i] multiplied by the respective stride,
+    // is a multiple of the previous stride.
     // 2. newSizes[-1] x newStrides[-1] == strides[i]. With this we can have
     // newSizes[-1] = sizes[i] * newSizes[-1] , and then fold away the i
     // dimension
     // 3. checkValidSize(sizes[i] * newSizes[-1]). This allows hardware
     // constraints to be checked.
     size_t vecSize = newOffsets.size();
+    std::optional<int64_t> maybeNewOffset = getConstantIntValue(offsets[i]);
     int64_t newStride = staticStrideVals[i];
     int64_t newSize = staticSizeVals[i];
+    std::optional<int64_t> maybePrevOffset =
+        getConstantIntValue(newOffsets[vecSize - 1]);
     int64_t prevStride = getConstantIndexOrAssert(newStrides[vecSize - 1]);
     int64_t prevSize = getConstantIndexOrAssert(newSizes[vecSize - 1]);
     int64_t dimExtent = prevStride * prevSize;
@@ -351,11 +355,29 @@ LogicalResult foldLinearDims(
     // offsets/sizes/strides start exceeding the number of provide max
     // constraints as this will result in undefined behaviour.
     bool fitsMaxConstraint = checkValidSize(vecSize - 1, newSize * prevSize);
-    if (fitsMaxConstraint && isConstantIntValue(offsets[i], 0) &&
-        dimExtent == newStride) {
-      foldableLinearDimsFound = true;
-      newSizes[vecSize - 1] = getAsIndexOpFoldResult(ctx, newSize * prevSize);
-      continue;
+    if (fitsMaxConstraint && dimExtent == newStride) {
+      // There are currently two cases supported for folding a dimension:
+      // 1. If the offset is 0, we can fold the dimension, no matter what the
+      // value of `newPrevOffset` is (it can be dynamic).
+      // 2. If the offset, multiplied by the respective stride, is a multiple of
+      // the previous stride, we can fold the dimension if we update the new
+      // offset as well. However, in this case we need to add to new offset and
+      // this is currently only supported for constant offsets.
+      if (isConstantIntValue(offsets[i], 0)) {
+        foldableLinearDimsFound = true;
+        newSizes[vecSize - 1] = getAsIndexOpFoldResult(ctx, newSize * prevSize);
+        continue;
+      } else if (maybeNewOffset.has_value() && maybePrevOffset.has_value()) {
+        // NOTE: It's guaranteed that
+        // `(maybeNewOffset.value() * newStride) % prevStride == 0`
+        // as `newStride == prevStride * prevSize`
+        foldableLinearDimsFound = true;
+        newSizes[vecSize - 1] = getAsIndexOpFoldResult(ctx, newSize * prevSize);
+        int64_t newPrevOffset = maybePrevOffset.value() +
+                                maybeNewOffset.value() * newStride / prevStride;
+        newOffsets[vecSize - 1] = getAsIndexOpFoldResult(ctx, newPrevOffset);
+        continue;
+      }
     }
     newOffsets.push_back(offsets[i]);
     newStrides.push_back(strides[i]);
@@ -474,7 +496,7 @@ bool mergeOffset(MLIRContext *ctx, int64_t offsetToMerge,
     if (cOffset.has_value() && cStride.has_value()) {
       int64_t offset = cOffset.value();
       int64_t stride = cStride.value();
-      if (offsetToMerge % stride == 0) {
+      if (stride != 0 && offsetToMerge % stride == 0) {
         offset += offsetToMerge / stride;
         offsets[i] = getAsIndexOpFoldResult(ctx, offset);
         return true;
@@ -561,13 +583,22 @@ bool DmaDimConfig::isValidAccessPattern(ArrayRef<int64_t> sizes,
                                         ArrayRef<int64_t> strides) const {
   assert(sizes.size() == strides.size() &&
          "`sizes` and `strides` should have the same size");
-  SmallVector<int64_t> maxSizes = getMaxSizes(sizes.size());
-  assert(maxSizes.size() >= sizes.size() &&
+  // No need to check the unit dimensions.
+  SmallVector<int64_t> nonUnitSizes;
+  SmallVector<int64_t> nonUnitStrides;
+  for (size_t i = 0; i < sizes.size(); ++i) {
+    if (sizes[i] != 1) {
+      nonUnitSizes.push_back(sizes[i]);
+      nonUnitStrides.push_back(strides[i]);
+    }
+  }
+  SmallVector<int64_t> maxSizes = getMaxSizes(nonUnitSizes.size());
+  assert(maxSizes.size() >= nonUnitSizes.size() &&
          "Max number of dimensions exceeded");
-  size_t frontToDrop = maxSizes.size() - sizes.size();
-  if (anyOutOfRange(sizes, maxSizes, frontToDrop)) return false;
-  SmallVector<int64_t> maxStrides = getMaxStrides(sizes.size());
-  if (anyOutOfRange(strides, maxStrides, frontToDrop)) return false;
+  size_t frontToDrop = maxSizes.size() - nonUnitSizes.size();
+  if (anyOutOfRange(nonUnitSizes, maxSizes, frontToDrop)) return false;
+  SmallVector<int64_t> maxStrides = getMaxStrides(nonUnitSizes.size());
+  if (anyOutOfRange(nonUnitStrides, maxStrides, frontToDrop)) return false;
   return true;
 }
 

@@ -338,7 +338,7 @@ std::unique_ptr<Pass> createAMDAIETileAndFusePass(
 std::unique_ptr<Pass> createAMDAIEPropagateDataLayoutPass();
 
 /// Create pass to reset the alignment of LLVM load operations.
-std::unique_ptr<Pass> createAMDAIELoadAlignmentResetPass();
+std::unique_ptr<Pass> createAMDAIELoadStoreAlignmentResetPass();
 
 void registerAMDAIEPasses();
 

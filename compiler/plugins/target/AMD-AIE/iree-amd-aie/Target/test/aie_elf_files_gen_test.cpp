@@ -4,7 +4,6 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include <iostream>
 #include <string>
 
 #include "aie/AIEDialect.h"
@@ -48,9 +47,9 @@ int main(int argc, char **argv) {
   llvm::SmallString<128> workDir(argv[2]);
   llvm::SmallString<128> artifactPath(workDir);
   llvm::sys::path::append(artifactPath, "artifact.pdi");
-  if (auto ecode = llvm::sys::fs::create_directories(workDir)) {
-    std::cerr << "Error: failed to create working directory: "
-              << ecode.message() << "\n";
+  if (std::error_code ecode = llvm::sys::fs::create_directories(workDir)) {
+    llvm::errs() << "Error: failed to create working directory: "
+                 << ecode.message() << "\n";
     return 1;
   }
 
@@ -69,7 +68,7 @@ int main(int argc, char **argv) {
   SmallVector<xilinx::AIE::DeviceOp> deviceOps(
       moduleOp.getOps<xilinx::AIE::DeviceOp>());
   if (deviceOps.size() != 1) {
-    std::cerr << "Error: Expected exactly one xilinx.aie.device op\n";
+    llvm::errs() << "Error: Expected exactly one xilinx.aie.device op\n";
     return 1;
   }
   xilinx::AIE::DeviceOp deviceOp = deviceOps[0];
@@ -79,7 +78,7 @@ int main(int argc, char **argv) {
   std::optional<std::string> npuVersion = deviceModel.getNPUVersionString();
   std::optional<std::string> targetArch = deviceModel.getTargetArchString();
   if (!npuVersion.has_value() || !targetArch.has_value()) {
-    std::cerr << "Error: unhandled NPU partitioning.\n";
+    llvm::errs() << "Error: unhandled NPU partitioning.\n";
     return 1;
   }
 
@@ -89,6 +88,15 @@ int main(int argc, char **argv) {
   llvm::DebugFlag = true;
   llvm::setCurrentDebugType("iree-amdaie-ert");
 #endif
+
+  const char *peanoDir = std::getenv("PEANO_INSTALL_DIR");
+  if (!peanoDir) {
+    llvm::errs()
+        << "Error: PEANO_INSTALL_DIR environment variable not set. A path to "
+           "an llvm-aie directory is needed to run aie2xclbin.";
+    return 1;
+  }
+  std::string peanoDirStr = peanoDir;
 
   // Use `aie2xclbin` to generate the elf files.
   if (failed(aie2xclbin(
@@ -107,7 +115,7 @@ int main(int argc, char **argv) {
           /*vitisDir=*/std::nullopt,
           /*targetArch=*/targetArch.value(),
           /*npuVersion=*/npuVersion.value(),
-          /*peanoDir=*/std::getenv("PEANO_INSTALL_DIR"),
+          /*peanoDir=*/peanoDirStr,
           /*deviceHal=*/AMDAIEOptions::DeviceHAL::XRT_LITE,
           /*xclBinKernelID=*/"",
           /*xclBinKernelName=*/"",
@@ -116,7 +124,8 @@ int main(int argc, char **argv) {
           /*InputXCLBin=*/std::nullopt,
           /*ukernel=*/std::nullopt,
           /*additionalPeanoOptFlags=*/""))) {
-    std::cerr << "Error: failed to generate xclbin\n";
+    llvm::errs() << "Error: failed to generate xclbin\n";
     return 1;
   }
+  return 0;
 }

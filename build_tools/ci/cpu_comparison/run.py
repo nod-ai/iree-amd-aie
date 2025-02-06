@@ -358,6 +358,7 @@ class MatmulBenchmark(BaseMatmul):
         aie_compilation_flags=None,
         n_repeats=1,
         n_kernel_runs=1,
+        use_chess=False,
     ):
         aie_compilation_flags = (
             [] if aie_compilation_flags is None else aie_compilation_flags
@@ -375,6 +376,7 @@ class MatmulBenchmark(BaseMatmul):
             use_ukernel=use_ukernel,
             n_repeats=n_repeats,
             n_kernel_runs=n_kernel_runs,
+            use_chess=use_chess,
         )
 
         self.name = f"matmul_benchmark_{M}_{N}_{K}_{input_type}_{acc_type}"
@@ -1719,6 +1721,22 @@ class Tests:
                 use_chess=False,
             )
         )
+        self.register(
+            Matmul(
+                512,
+                512,
+                256,
+                "i32",
+                "i32",
+                name_suffix="4rows_8cols_npu4_pack_peel_4_level_tiling",
+                tile_pipeline="pack-peel-4-level-tiling",
+                run_on_target=["npu4"],
+                aie_compilation_flags=[
+                    "--iree-amdaie-num-rows=4",
+                    "--iree-amdaie-num-cols=8",
+                ],
+            )
+        )
 
         for target in ["npu1_4col", "npu4"]:
             self.register(
@@ -1737,7 +1755,6 @@ class Tests:
                 )
             )
 
-        # TODO: Failure is expected for the 128x128 case we don't yet understand why.
         self.register(
             Matmul(
                 64,
@@ -1784,6 +1801,42 @@ class Tests:
                 additional_labels=["I8UKernel"],
             )
         )
+        self.register(
+            Matmul(
+                64,
+                64,
+                64,
+                "bf16",
+                "f32",
+                name_suffix="4rows_8cols_npu4_pack_peel_4_level_tiling_ukernel",
+                use_ukernel=True,
+                tile_pipeline="pack-peel-4-level-tiling",
+                run_on_target=["npu4"],
+                aie_compilation_flags=[
+                    "--iree-amdaie-num-rows=4",
+                    "--iree-amdaie-num-cols=8",
+                ],
+                use_chess=True,
+            )
+        )
+        self.register(
+            Matmul(
+                512,
+                512,
+                512,
+                "bf16",
+                "f32",
+                name_suffix="4rows_8cols_npu4_pack_peel_4_level_tiling_ukernel",
+                use_ukernel=True,
+                tile_pipeline="pack-peel-4-level-tiling",
+                run_on_target=["npu4"],
+                aie_compilation_flags=[
+                    "--iree-amdaie-num-rows=4",
+                    "--iree-amdaie-num-cols=8",
+                ],
+                use_chess=True,
+            )
+        )
 
         # Matmul test on 2(rows)x2(cols) cores
         self.register(
@@ -1817,7 +1870,29 @@ class Tests:
             )
         )
 
+        # Matmul tests on a single core.
+        for device in ["npu1_4col", "npu4"]:
+            self.register(
+                Matmul(
+                    128,
+                    128,
+                    128,
+                    "i8",
+                    "i32",
+                    aie_compilation_flags=[
+                        "--iree-amdaie-num-rows=1",
+                        "--iree-amdaie-num-cols=1",
+                    ],
+                    name_suffix="OneCore_" + device,
+                    additional_labels=["OneCore"],
+                    run_on_target=[device],
+                )
+            )
+
         performance_tests = [
+            ##############
+            # NPU1 Tests #
+            ##############
             {
                 "M": 512,
                 "N": 512,
@@ -1993,6 +2068,69 @@ class Tests:
                 "skip_numerics": True,
                 "tile_pipeline": "pack-peel-4-level-tiling",
             },
+            ##############
+            # NPU4 Tests #
+            ##############
+            {
+                "M": 512,
+                "N": 4096,
+                "K": 512,
+                "in_dtype": "i8",
+                "out_dtype": "i32",
+                "use_ukernel": True,
+                "peano_opt_level": 3,
+                "outline": "all",
+                "transpose_a": False,
+                "transpose_b": False,
+                "tile_pipeline": "pack-peel",
+                "run_on_target": "npu4",
+            },
+            {
+                "M": 512,
+                "N": 4096,
+                "K": 512,
+                "in_dtype": "i8",
+                "out_dtype": "i32",
+                "use_ukernel": False,
+                "peano_opt_level": 3,
+                "outline": "all",
+                "outline_to_empty_function": True,
+                "transpose_a": False,
+                "transpose_b": False,
+                "tile_pipeline": "pack-peel",
+                "run_on_target": "npu4",
+                "skip_numerics": True,
+            },
+            {
+                "M": 512,
+                "N": 4096,
+                "K": 512,
+                "in_dtype": "i8",
+                "out_dtype": "i32",
+                "use_ukernel": True,
+                "peano_opt_level": 3,
+                "outline": "all",
+                "transpose_a": False,
+                "transpose_b": False,
+                "tile_pipeline": "pack-peel-4-level-tiling",
+                "run_on_target": "npu4",
+            },
+            {
+                "M": 512,
+                "N": 4096,
+                "K": 512,
+                "in_dtype": "i8",
+                "out_dtype": "i32",
+                "use_ukernel": False,
+                "peano_opt_level": 3,
+                "outline": "all",
+                "outline_to_empty_function": True,
+                "transpose_a": False,
+                "transpose_b": False,
+                "tile_pipeline": "pack-peel-4-level-tiling",
+                "run_on_target": "npu4",
+                "skip_numerics": True,
+            },
         ]
 
         # Some bf16 Performance tests:
@@ -2006,14 +2144,26 @@ class Tests:
             transpose_a = test["transpose_a"]
             transpose_b = test["transpose_b"]
             tile_pipeline = test["tile_pipeline"]
+            run_on_target = (
+                test["run_on_target"] if "run_on_target" in test else "npu1_4col"
+            )
+            in_dtype = test["in_dtype"] if "in_dtype" in test else "bf16"
+            out_dtype = test["out_dtype"] if "out_dtype" in test else "f32"
 
             outlining_string = "--iree-amdaie-enable-function-outlining=" + outline
 
             peano_opt_level_string = f'"-O{peano_opt_level}"'
+            name_suffix = "O" + str(peano_opt_level)
+            name_suffix += "_" + run_on_target
+
             aie_compilation_flags = [
                 outlining_string,
                 f"--iree-amd-aie-additional-peano-opt-flags={peano_opt_level_string}",
             ]
+
+            if run_on_target == "npu4":
+                aie_compilation_flags.append("--iree-amdaie-num-rows=4")
+                aie_compilation_flags.append("--iree-amdaie-num-cols=8")
 
             outline_to_empty_function = False
             empty_key = "outline_to_empty_function"
@@ -2025,7 +2175,6 @@ class Tests:
                     "--iree-amdaie-replace-outlined-functions-with-empty"
                 )
 
-            name_suffix = "O" + str(peano_opt_level)
             if outline != "none":
                 if outline_to_empty_function:
                     name_suffix += "_outline_empty"
@@ -2057,8 +2206,9 @@ class Tests:
                         M,
                         N,
                         K,
-                        "bf16",
-                        "f32",
+                        in_dtype,
+                        out_dtype,
+                        run_on_target=run_on_target,
                         tile_pipeline=tile_pipeline,
                         use_ukernel=use_ukernel,
                         n_repeats=2,
@@ -2073,8 +2223,9 @@ class Tests:
                     M,
                     N,
                     K,
-                    "bf16",
-                    "f32",
+                    in_dtype,
+                    out_dtype,
+                    run_on_target=run_on_target,
                     tile_pipeline=tile_pipeline,
                     additional_labels=["Performance"],
                     use_ukernel=use_ukernel,

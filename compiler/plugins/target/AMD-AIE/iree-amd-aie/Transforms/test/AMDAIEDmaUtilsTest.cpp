@@ -535,8 +535,6 @@ TEST_F(FoldTest, NoLinearDimsFold) {
   checkFoldLinearDims({0}, {8}, {1}, {}, {0}, {8}, {1}, false);
   checkFoldLinearDims({0, 0}, {16, 8}, {16, 1}, {}, {0, 0}, {16, 8}, {16, 1},
                       false);
-  checkFoldLinearDims({8, 0}, {16, 8}, {8, 1}, {}, {8, 0}, {16, 8}, {8, 1},
-                      false);
 }
 
 TEST_F(FoldTest, FoldLinearDims) {
@@ -546,8 +544,8 @@ TEST_F(FoldTest, FoldLinearDims) {
                       true);
   checkFoldLinearDims({0, 0, 0, 0}, {4, 8, 16, 8}, {1024, 128, 8, 1}, {}, {0},
                       {4096}, {1}, true);
-  checkFoldLinearDims({0, 0, 8, 0}, {4, 8, 16, 8}, {1024, 128, 8, 1}, {},
-                      {8, 0}, {512, 8}, {8, 1}, true);
+  checkFoldLinearDims({5, 3, 8, 1}, {4, 8, 16, 8}, {1024, 128, 8, 1}, {},
+                      {5569}, {4096}, {1}, true);
 }
 
 TEST_F(FoldTest, FoldLinearDimsWithMax) {
@@ -561,9 +559,9 @@ TEST_F(FoldTest, FoldLinearDimsWithMax) {
   checkFoldLinearDims({0, 0, 0, 0}, {4, 8, 16, 8}, {1024, 128, 8, 1},
                       {1024, 1024, 1024, 1024}, {0, 0}, {4, 1024}, {1024, 1},
                       true);
-  checkFoldLinearDims({0, 0, 8, 0}, {4, 8, 16, 8}, {1024, 128, 8, 1},
-                      {511, 511, 511, 511}, {0, 8, 0}, {4, 128, 8},
-                      {1024, 8, 1}, true);
+  checkFoldLinearDims({4, 0, 8, 0}, {4, 8, 16, 8}, {1024, 128, 8, 1},
+                      {511, 511, 511, 511}, {32, 64}, {32, 128}, {128, 1},
+                      true);
 }
 
 TEST_F(FoldTest, NoUnitDimsFold) {
@@ -594,6 +592,8 @@ TEST_F(FoldTest, UnitDimsMerge) {
   EXPECT_TRUE(checkFoldUnitDims({2, 0, 1, 0}, {1, 32, 1, 8},
                                 {1024, 32, 1024, 1}, {96, 0}, {32, 8},
                                 {32, 1}));
+  EXPECT_TRUE(checkFoldUnitDims({0, 0, 1, 0}, {2, 32, 1, 8}, {0, 32, 1024, 1},
+                                {0, 32, 0}, {2, 32, 8}, {0, 32, 1}));
   EXPECT_TRUE(
       checkFoldUnitDims({2, 2, 15}, {1, 1, 10}, {4, 6, 10}, {17}, {10}, {10}));
   EXPECT_TRUE(checkFoldUnitDims({3, 1, 15}, {1, 1, 10}, {4, 6, 10}, {1, 15},
@@ -609,6 +609,8 @@ TEST_F(FoldTest, UnitDimsFoldAndMerge) {
                                 {1}, {1}, {96}));
   EXPECT_TRUE(checkFoldUnitDims({1, 0, 1, 0}, {1, 1, 1, 8}, {1024, 32, 1024, 1},
                                 {2048}, {8}, {1}));
+  EXPECT_TRUE(checkFoldUnitDims({0, 0, 1, 0}, {1, 32, 1, 8}, {0, 32, 1024, 1},
+                                {32, 0}, {32, 8}, {32, 1}));
 }
 
 TEST_F(FoldTest, FoldRepetitionCount) {

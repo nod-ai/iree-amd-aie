@@ -193,12 +193,23 @@ struct SubsumeLoopIntoDMA
       if (nbIterations == 0) return failure();
       if (nbIterations > 1) nbNonUnitIterations++;
     }
-    if (sourceDmaDimConfig.exceedsNbDims(newSourceOffsets.size() +
-                                         nbNonUnitIterations)) {
+
+    std::optional<SmallVector<int64_t>> staticSourceSizes =
+        getConstantIntValues(newSourceSizes);
+    if (!staticSourceSizes) return failure();
+    size_t nbUnitDimsSource = std::count(staticSourceSizes.value().begin(),
+                                         staticSourceSizes.value().end(), 1);
+    if (sourceDmaDimConfig.exceedsNbDims(
+            newSourceOffsets.size() - nbUnitDimsSource + nbNonUnitIterations)) {
       return failure();
     }
-    if (targetDmaDimConfig.exceedsNbDims(newTargetOffsets.size() +
-                                         nbNonUnitIterations)) {
+    std::optional<SmallVector<int64_t>> staticTargetSizes =
+        getConstantIntValues(newTargetSizes);
+    if (!staticTargetSizes) return failure();
+    size_t nbUnitDimsTarget = std::count(staticTargetSizes.value().begin(),
+                                         staticTargetSizes.value().end(), 1);
+    if (targetDmaDimConfig.exceedsNbDims(
+            newTargetOffsets.size() - nbUnitDimsTarget + nbNonUnitIterations)) {
       return failure();
     }
 

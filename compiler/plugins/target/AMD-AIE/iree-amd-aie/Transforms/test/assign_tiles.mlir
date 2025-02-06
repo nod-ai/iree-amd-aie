@@ -103,7 +103,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-DAG:   %[[C3:.*]] = arith.constant 3 : index
 // CHECK-DAG:   %[[ALLOC_0:.*]] = memref.alloc() : memref<2048xi32, 1>
 // CHECK-DAG:   %[[ALLOC_1:.*]] = memref.alloc() : memref<2048xi32, 2>
-// CHECK:       amdaie.workgroup
+// CHECK-DAG:   amdaie.workgroup
 // CHECK-DAG:     %[[TILE_0_1:.*]] = amdaie.tile(%[[C0]], %[[C1]])
 // CHECK-DAG:     %[[TILE_0_2:.*]] = amdaie.tile(%[[C0]], %[[C2]])
 // CHECK-DAG:     %[[TILE_0_3:.*]] = amdaie.tile(%[[C0]], %[[C3]])
@@ -203,7 +203,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-DAG:   %[[ALLOC_0:.*]] = memref.alloc() : memref<2048xi32>
 // CHECK-DAG:   %[[ALLOC_1:.*]] = memref.alloc() : memref<2048xi32, 1>
 // CHECK-DAG:   %[[ALLOC_2:.*]] = memref.alloc() : memref<2048xi32, 2>
-// CHECK:       amdaie.workgroup
+// CHECK-DAG:   amdaie.workgroup
 // CHECK-DAG:     %[[TILE_0_0:.*]] = amdaie.tile(%[[C0]], %[[C0]])
 // CHECK-DAG:     %[[TILE_0_1:.*]] = amdaie.tile(%[[C0]], %[[C1]])
 // CHECK-DAG:     %[[TILE_0_2:.*]] = amdaie.tile(%[[C0]], %[[C2]])
@@ -518,38 +518,38 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // This is needed for enabling 4x8 AIE array on Strix.
 
 // CHECK-LABEL: @same_tile_assg_for_l3_on_diff_block
-//  CHECK-DAG:    %[[C0:.*]] = arith.constant 0 : index
-//  CHECK-DAG:    %[[C1:.*]] = arith.constant 1 : index
-//  CHECK-DAG:    %[[C2:.*]] = arith.constant 2 : index
-//  CHECK-DAG:    %[[C30:.*]] = arith.constant 30 : index
-//      CHECK:    %[[LHS:.*]] = memref.alloc() : memref<2x3x4xi32>
-//      CHECK:    %[[RHS:.*]] = memref.alloc() : memref<3x4x5xi32>
-//      CHECK:    %[[OUT:.*]] = memref.alloc() : memref<4x5x6xi32>
-//      CHECK:    scf.forall
-//      CHECK:      %[[TILE_0_0:.*]] = amdaie.tile(%[[C0:.*]], %[[C0:.*]])
-//      CHECK:      %[[LOF_LHS_L3:.*]] = amdaie.logicalobjectfifo.from_memref %[[LHS]], {%[[TILE_0_0]]} :
-//      CHECK:      %[[LHS_L3_to_L2:.*]] = amdaie.dma_cpy_nd
+// CHECK-DAG:     %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:     %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG:     %[[C2:.*]] = arith.constant 2 : index
+// CHECK-DAG:     %[[C30:.*]] = arith.constant 30 : index
+// CHECK-DAG:     %[[LHS:.*]] = memref.alloc() : memref<2x3x4xi32>
+// CHECK-DAG:     %[[RHS:.*]] = memref.alloc() : memref<3x4x5xi32>
+// CHECK-DAG:     %[[OUT:.*]] = memref.alloc() : memref<4x5x6xi32>
+// CHECK-DAG:     %[[TILE_0_0:.*]] = amdaie.tile(%[[C0]], %[[C0]])
+// CHECK-DAG:     %[[TILE_1_0:.*]] = amdaie.tile(%[[C1]], %[[C0]])
+// CHECK:         scf.forall
+// CHECK:           %[[LOF_LHS_L3:.*]] = amdaie.logicalobjectfifo.from_memref %[[LHS]], {%[[TILE_0_0]]} :
+// CHECK:           %[[LHS_L3_to_L2:.*]] = amdaie.dma_cpy_nd
 // CHECK-SAME:              %[[LOF_LHS_L3]][0, 0, 0] [1, 3, 4] [12, 4, 1]) :
-//      CHECK:      %[[LOF_RHS_L3_0:.*]] = amdaie.logicalobjectfifo.from_memref %[[RHS]], {%[[TILE_0_0]]} :
-//      CHECK:      %[[RHS_L3_to_L2_0:.*]] = amdaie.dma_cpy_nd
+// CHECK:           %[[LOF_RHS_L3_0:.*]] = amdaie.logicalobjectfifo.from_memref %[[RHS]], {%[[TILE_0_0]]} :
+// CHECK:           %[[RHS_L3_to_L2_0:.*]] = amdaie.dma_cpy_nd
 // CHECK-SAME:              %[[LOF_RHS_L3_0]][0, 0, 0] [1, 4, 5] [20, 5, 1]) :
-//      CHECK:      %[[TILE_1_0:.*]] = amdaie.tile(%[[C1:.*]], %[[C0:.*]])
-//      CHECK:      %[[LOF_RHS_L3_1:.*]] = amdaie.logicalobjectfifo.from_memref %[[RHS]], {%[[TILE_1_0]]} :
-//      CHECK:      %[[RHS_L3_to_L2_1:.*]] = amdaie.dma_cpy_nd
+// CHECK:           %[[LOF_RHS_L3_1:.*]] = amdaie.logicalobjectfifo.from_memref %[[RHS]], {%[[TILE_1_0]]} :
+// CHECK:           %[[RHS_L3_to_L2_1:.*]] = amdaie.dma_cpy_nd
 // CHECK-SAME:              %[[LOF_RHS_L3_1]][0, 0, 0] [1, 4, 5] [20, 5, 1]) :
-//      CHECK:      scf.for
-//  CHECK-NOT:        amdaie.logicalobjectfifo.from_memref %[[LHS]], {%[[TILE_1_0]]} :
-//      CHECK:        %[[LHS_L3_to_L2:.*]] = amdaie.dma_cpy_nd
+// CHECK:           scf.for
+// CHECK-NOT:         amdaie.logicalobjectfifo.from_memref %[[LHS]], {%[[TILE_1_0]]} :
+// CHECK:             %[[LHS_L3_to_L2:.*]] = amdaie.dma_cpy_nd
 // CHECK-SAME:              %[[LOF_LHS_L3]][0, 0, 0] [1, 3, 4] [12, 4, 1]) :
-//      CHECK:        %[[RHS_L3_to_L2_0:.*]] = amdaie.dma_cpy_nd
+// CHECK:             %[[RHS_L3_to_L2_0:.*]] = amdaie.dma_cpy_nd
 // CHECK-SAME:              %[[LOF_RHS_L3_0]][0, 0, 0] [1, 4, 5] [20, 5, 1]) :
-//      CHECK:        %[[RHS_L3_to_L2_1:.*]] = amdaie.dma_cpy_nd
+// CHECK:             %[[RHS_L3_to_L2_1:.*]] = amdaie.dma_cpy_nd
 // CHECK-SAME:              %[[LOF_RHS_L3_1]][0, 0, 0] [1, 4, 5] [20, 5, 1]) :
-//      CHECK:      %[[LOF_OUT_L3_0:.*]] = amdaie.logicalobjectfifo.from_memref %[[OUT]], {%[[TILE_0_0]]} :
-//      CHECK:      %[[OUT_L2_to_L3_0:.*]] = amdaie.dma_cpy_nd
+// CHECK:             %[[LOF_OUT_L3_0:.*]] = amdaie.logicalobjectfifo.from_memref %[[OUT]], {%[[TILE_0_0]]} :
+// CHECK:           %[[OUT_L2_to_L3_0:.*]] = amdaie.dma_cpy_nd
 // CHECK-SAME:              (%[[LOF_OUT_L3_0]][0, 0, 0] [1, 5, 6] [30, 6, 1]
-//      CHECK:      %[[LOF_OUT_L3_1:.*]] = amdaie.logicalobjectfifo.from_memref %[[OUT]], {%[[TILE_1_0]]} :
-//      CHECK:      %[[OUT_L2_to_L3_1:.*]] = amdaie.dma_cpy_nd
+// CHECK:           %[[LOF_OUT_L3_1:.*]] = amdaie.logicalobjectfifo.from_memref %[[OUT]], {%[[TILE_1_0]]} :
+// CHECK:           %[[OUT_L2_to_L3_1:.*]] = amdaie.dma_cpy_nd
 // CHECK-SAME:              (%[[LOF_OUT_L3_1]][0, 0, 1] [1, 5, 6] [30, 6, 1]
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu4", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
@@ -653,40 +653,40 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // This case is observed for 64x64x64 4x8 AIE array on Strix.
 
 // CHECK-LABEL: @same_tile_assg_for_l3_on_same_block
-//  CHECK-DAG:    %[[C0:.*]] = arith.constant 0 : index
-//  CHECK-DAG:    %[[C1:.*]] = arith.constant 1 : index
-//  CHECK-DAG:    %[[C2:.*]] = arith.constant 2 : index
-//      CHECK:    %[[LHS:.*]] = memref.alloc() : memref<2x3x4xi32>
-//      CHECK:    %[[RHS:.*]] = memref.alloc() : memref<3x4x5xi32>
-//      CHECK:    %[[OUT:.*]] = memref.alloc() : memref<4x5x6xi32>
-//      CHECK:    scf.forall
-//      CHECK:      %[[TILE_0_0:.*]] = amdaie.tile(%[[C0:.*]], %[[C0:.*]])
-//      CHECK:      %[[LOF_LHS_L3:.*]] = amdaie.logicalobjectfifo.from_memref %[[LHS]], {%[[TILE_0_0]]} :
-//      CHECK:      %[[LHS_L3_to_L2:.*]] = amdaie.dma_cpy_nd
+// CHECK-DAG:     %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:     %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG:     %[[C2:.*]] = arith.constant 2 : index
+// CHECK-DAG:     %[[LHS:.*]] = memref.alloc() : memref<2x3x4xi32>
+// CHECK-DAG:     %[[RHS:.*]] = memref.alloc() : memref<3x4x5xi32>
+// CHECK-DAG:     %[[OUT:.*]] = memref.alloc() : memref<4x5x6xi32>
+// CHECK-DAG:     %[[TILE_0_0:.*]] = amdaie.tile(%[[C0]], %[[C0]])
+// CHECK-DAG:     %[[TILE_1_0:.*]] = amdaie.tile(%[[C1]], %[[C0]])
+// CHECK:         scf.forall
+// CHECK:           %[[LOF_LHS_L3:.*]] = amdaie.logicalobjectfifo.from_memref %[[LHS]], {%[[TILE_0_0]]} :
+// CHECK:           %[[LHS_L3_to_L2:.*]] = amdaie.dma_cpy_nd
 // CHECK-SAME:              %[[LOF_LHS_L3]][0, 0, 0] [1, 3, 4] [12, 4, 1]) :
-//      CHECK:      %[[LOF_RHS_L3_0:.*]] = amdaie.logicalobjectfifo.from_memref %[[RHS]], {%[[TILE_0_0]]} :
-//      CHECK:      %[[RHS_L3_to_L2_0:.*]] = amdaie.dma_cpy_nd
+// CHECK:           %[[LOF_RHS_L3_0:.*]] = amdaie.logicalobjectfifo.from_memref %[[RHS]], {%[[TILE_0_0]]} :
+// CHECK:           %[[RHS_L3_to_L2_0:.*]] = amdaie.dma_cpy_nd
 // CHECK-SAME:              %[[LOF_RHS_L3_0]][0, 0, 0] [1, 4, 5] [20, 5, 1]) :
-//      CHECK:      %[[TILE_1_0:.*]] = amdaie.tile(%[[C1:.*]], %[[C0:.*]])
-//      CHECK:      %[[LOF_RHS_L3_1:.*]] = amdaie.logicalobjectfifo.from_memref %[[RHS]], {%[[TILE_1_0]]} :
-//      CHECK:      %[[RHS_L3_to_L2_1:.*]] = amdaie.dma_cpy_nd
+// CHECK:           %[[LOF_RHS_L3_1:.*]] = amdaie.logicalobjectfifo.from_memref %[[RHS]], {%[[TILE_1_0]]} :
+// CHECK:           %[[RHS_L3_to_L2_1:.*]] = amdaie.dma_cpy_nd
 // CHECK-SAME:              %[[LOF_RHS_L3_1]][0, 0, 0] [1, 4, 5] [20, 5, 1]) :
-//      CHECK:      amdaie.core
-//      CHECK:      amdaie.core
-//      CHECK:      %[[LHS_L3_to_L2:.*]] = amdaie.dma_cpy_nd
+// CHECK:           amdaie.core
+// CHECK:           amdaie.core
+// CHECK:           %[[LHS_L3_to_L2:.*]] = amdaie.dma_cpy_nd
 // CHECK-SAME:              %[[LOF_LHS_L3]][0, 0, 0] [1, 3, 4] [12, 4, 1]) :
-//  CHECK-NOT:      amdaie.logicalobjectfifo.from_memref %[[LHS]], {%[[TILE_1_0]]} :
-//      CHECK:      %[[RHS_L3_to_L2_0:.*]] = amdaie.dma_cpy_nd
+// CHECK-NOT:       amdaie.logicalobjectfifo.from_memref %[[LHS]], {%[[TILE_1_0]]} :
+// CHECK:           %[[RHS_L3_to_L2_0:.*]] = amdaie.dma_cpy_nd
 // CHECK-SAME:              %[[LOF_RHS_L3_0]][0, 0, 0] [1, 4, 5] [20, 5, 1]) :
-//      CHECK:      %[[RHS_L3_to_L2_1:.*]] = amdaie.dma_cpy_nd
+// CHECK:           %[[RHS_L3_to_L2_1:.*]] = amdaie.dma_cpy_nd
 // CHECK-SAME:              %[[LOF_RHS_L3_1]][0, 0, 0] [1, 4, 5] [20, 5, 1]) :
-//      CHECK:      amdaie.core
-//      CHECK:      amdaie.core
-//      CHECK:      %[[LOF_OUT_L3_0:.*]] = amdaie.logicalobjectfifo.from_memref %[[OUT]], {%[[TILE_0_0]]} :
-//      CHECK:      %[[OUT_L2_to_L3_0:.*]] = amdaie.dma_cpy_nd
+// CHECK:           amdaie.core
+// CHECK:           amdaie.core
+// CHECK:           %[[LOF_OUT_L3_0:.*]] = amdaie.logicalobjectfifo.from_memref %[[OUT]], {%[[TILE_0_0]]} :
+// CHECK:           %[[OUT_L2_to_L3_0:.*]] = amdaie.dma_cpy_nd
 // CHECK-SAME:              (%[[LOF_OUT_L3_0]][0, 0, 0] [1, 5, 6] [30, 6, 1]
-//      CHECK:      %[[LOF_OUT_L3_1:.*]] = amdaie.logicalobjectfifo.from_memref %[[OUT]], {%[[TILE_1_0]]} :
-//      CHECK:      %[[OUT_L2_to_L3_1:.*]] = amdaie.dma_cpy_nd
+// CHECK:           %[[LOF_OUT_L3_1:.*]] = amdaie.logicalobjectfifo.from_memref %[[OUT]], {%[[TILE_1_0]]} :
+// CHECK:           %[[OUT_L2_to_L3_1:.*]] = amdaie.dma_cpy_nd
 // CHECK-SAME:              (%[[LOF_OUT_L3_1]][0, 0, 1] [1, 5, 6] [30, 6, 1]
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu4", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {

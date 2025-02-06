@@ -14,13 +14,8 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
-/// Assign tile locations to the logical objectfifos with local memory space
-/// (L1).
-LogicalResult assignLocalTiles(RewriterBase &rewriter, Operation *op);
-
-/// Assign tile locations to the logical objectfifos with non-local memory space
-/// (L2, L3 etc, not L1).
-LogicalResult assignNonLocalTiles(
+/// Assign tile locations to the logical objectfifos.
+LogicalResult assignTiles(
     RewriterBase &rewriter, Operation *op, const AMDAIEDeviceModel &deviceModel,
     DenseMap<Operation *, DenseSet<Operation *>> uniqueL3L2Pair);
 

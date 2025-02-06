@@ -321,8 +321,8 @@ def AMDAIELinalgFunctionOutlining :
                    "All ops are outlined."),
         clEnumValN(mlir::iree_compiler::AMDAIE::OutliningStrategy::Balanced, "balanced",
                    "A strategy that tries to achieve a balanced tradeoff between performance and program size.")
-      )}]>,
-  ];
+      )}]>
+    ];
 }
 
 def AMDAIEFoldDmaWaits :
@@ -467,14 +467,14 @@ def AMDAIELinkExecutables :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELinkExecutablesPass()";
 }
 
-def AMDAIELoadAlignmentReset :
-    Pass<"iree-amdaie-load-alignment-reset", ""> {
+def AMDAIELoadStoreAlignmentReset :
+    Pass<"iree-amdaie-load-store-alignment-reset", ""> {
     let summary = "Reset the alignment of the LLVM load operations.";
-    let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELoadAlignmentResetPass()";
+    let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELoadStoreAlignmentResetPass()";
     let description = [{
-      Reset the alignment of the LLVM load operations to the 'unset'
-      optional value. This is a workaround for an issue in peano, and
-      should eventually be removed.
+      Reset the alignment of the LLVM load and store operations to the 'unset'
+      optional value. This is a workaround for an issue where alignments assigned
+      are too low/conservative in the vector-to-llvm pass.
     }];
 }
 

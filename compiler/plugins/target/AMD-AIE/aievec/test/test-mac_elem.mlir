@@ -4,6 +4,9 @@
 // CHECK-SAME: %[[V0:[a-zA-Z0-9]+]]: vector<16xbf16>,
 // CHECK-SAME: %[[V1:.*]]: vector<16xbf16>,
 // CHECK-SAME: %[[V2:.*]]: vector<16xf32>)
+
+#foo = #hal.executable.target<"foo", "foo", {target_device = "npu1_4col"}>
+module attributes {hal.executable.target = #foo} {
 func.func @mac_flat_vec(%v0 : vector<16xbf16>,
                         %v1 : vector<16xbf16>,
                         %v2 : vector<16xf32>) -> vector<16xf32> {
@@ -37,6 +40,7 @@ func.func @mac_flat_vec(%v0 : vector<16xbf16>,
   %0 = aievec.mac_elem %v0, %v1, %v2 : vector<16xbf16>, vector<16xbf16>, vector<16xf32>
   return %0 : vector<16xf32>
 }
+}
 
 // -----
 
@@ -44,6 +48,9 @@ func.func @mac_flat_vec(%v0 : vector<16xbf16>,
 // CHECK-SAME: %[[V02D:[a-zA-Z0-9]+]]: vector<4x4xbf16>,
 // CHECK-SAME: %[[V12D:.*]]: vector<4x4xbf16>,
 // CHECK-SAME: %[[V22D:.*]]: vector<4x4xf32>)
+
+#foo = #hal.executable.target<"foo", "foo", {target_device = "npu1_4col"}>
+module attributes {hal.executable.target = #foo} {
 func.func @mac_2d_vec(%v0 : vector<4x4xbf16>,
                       %v1 : vector<4x4xbf16>,
                       %v2 : vector<4x4xf32>) -> vector<4x4xf32> {
@@ -86,4 +93,5 @@ func.func @mac_2d_vec(%v0 : vector<4x4xbf16>,
 
   %0 = aievec.mac_elem %v0, %v1, %v2 : vector<4x4xbf16>, vector<4x4xbf16>, vector<4x4xf32>
   return %0 : vector<4x4xf32>
+}
 }
