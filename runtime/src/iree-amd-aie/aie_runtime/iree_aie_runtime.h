@@ -422,6 +422,33 @@ struct AMDAIEDeviceModel {
                              uint8_t srcChan, StrmSwPortType dstBundle,
                              uint8_t dstChan) const;
 
+  /// Maps an MM2S (shim DMA or NOC) port to its corresponding special shim mux
+  /// port.
+  static const llvm::SmallDenseMap<std::pair<StrmSwPortType, uint8_t>,
+                                   std::pair<StrmSwPortType, uint8_t>>
+      mm2sDmaNocToSpecialShimPortMap;
+
+  /// Maps an S2MM (shim DMA or NOC) port to its corresponding special shim mux
+  /// port.
+  static const llvm::SmallDenseMap<std::pair<StrmSwPortType, uint8_t>,
+                                   std::pair<StrmSwPortType, uint8_t>>
+      s2mmDmaNocToSpecialShimPortMap;
+
+  /// Retrieves the speicial shim mux port that connects a given MM2S or S2MM
+  /// DMA/NOC port. The shim DMA and NOC ports must go through
+  /// this special shim mux connection before being further routed to the rest
+  /// of the device.
+  std::optional<std::pair<StrmSwPortType, uint8_t>>
+  getShimMuxPortMappingForDmaOrNoc(StrmSwPortType port, uint8_t channel,
+                                   DMAChannelDir direction) const;
+
+  /// Retrieves the original DMA port that corresponds to a given
+  /// shim mux port. This performs the reverse lookup for
+  /// `getShimMuxPortMappingForDmaOrNoc()`.
+  std::optional<std::pair<StrmSwPortType, uint8_t>>
+  getDmaFromShimMuxPortMapping(StrmSwPortType port, uint8_t channel,
+                               DMAChannelDir direction) const;
+
   /// The returned string is used by `chess` to identify the device.
   std::optional<std::string> getNPUVersionString() const;
   /// The returned string is used by `peano` to identify the device.
