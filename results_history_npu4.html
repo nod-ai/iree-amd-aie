@@ -15,158 +15,6 @@
         <p>Overview of test results for the most recent commits:</p>
     
         <div class="chart-container">
-            <h2>Performance for matmul_benchmark_512_4096_512_i8_i32_O3_npu4_outline_ukernel</h2>
-            <canvas id="chart-matmul_benchmark_512_4096_512_i8_i32_O3_npu4_outline_ukernel"></canvas>
-        </div>
-        <script>
-            const ctx_matmul_benchmark_512_4096_512_i8_i32_O3_npu4_outline_ukernel = document.getElementById('chart-matmul_benchmark_512_4096_512_i8_i32_O3_npu4_outline_ukernel')
-            const chart_matmul_benchmark_512_4096_512_i8_i32_O3_npu4_outline_ukernel = new Chart(ctx_matmul_benchmark_512_4096_512_i8_i32_O3_npu4_outline_ukernel, {
-                type: 'line',
-                data: {
-                    labels: ['406debf', 'ddcbe0c', 'b29bd11', '2b89dc2', '6417b4a', 'e2b0e9d', 'c3c05fa', '31ec62b', 'be85230', '70f2e36', 'f13c033', '4c43795', 'ed9e895', '2fdbd35', '4108e90'],  // Truncated commit hashes as X-axis labels
-                    datasets: [{
-                        label: 'Duration (us)',
-                        data: ['1720', '1718', '1703', '1714', '1726', '1797', '1712', '1707', '1716', '1787', '1702', '1743', '1710', '1716', '1719'],   // Test durations as Y-axis
-                        borderColor: 'rgba(75, 192, 192, 1)',
-                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                        borderWidth: 2
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    scales: {
-                        x: {
-                            title: {
-                                display: true,
-                                text: 'Commit Hash'
-                            }
-                        },
-                        y: {
-                            title: {
-                                display: true,
-                                text: 'Duration (us)'
-                            }
-                        }
-                    }
-                }
-            });
-        </script>
-        
-        <div class="chart-container">
-            <h2>Performance for matmul_benchmark_512_4096_512_i8_i32_O3_npu4_outline_empty</h2>
-            <canvas id="chart-matmul_benchmark_512_4096_512_i8_i32_O3_npu4_outline_empty"></canvas>
-        </div>
-        <script>
-            const ctx_matmul_benchmark_512_4096_512_i8_i32_O3_npu4_outline_empty = document.getElementById('chart-matmul_benchmark_512_4096_512_i8_i32_O3_npu4_outline_empty')
-            const chart_matmul_benchmark_512_4096_512_i8_i32_O3_npu4_outline_empty = new Chart(ctx_matmul_benchmark_512_4096_512_i8_i32_O3_npu4_outline_empty, {
-                type: 'line',
-                data: {
-                    labels: ['406debf', 'ddcbe0c', 'b29bd11', '2b89dc2', '6417b4a', 'e2b0e9d', 'c3c05fa', '31ec62b', 'be85230', '70f2e36', 'f13c033', '4c43795', 'ed9e895', '2fdbd35', '4108e90'],  // Truncated commit hashes as X-axis labels
-                    datasets: [{
-                        label: 'Duration (us)',
-                        data: ['1195', '1189', '1171', '1181', '1177', '1203', '1175', '1202', '1185', '1237', '1186', '1213', '1199', '1188', '1190'],   // Test durations as Y-axis
-                        borderColor: 'rgba(75, 192, 192, 1)',
-                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                        borderWidth: 2
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    scales: {
-                        x: {
-                            title: {
-                                display: true,
-                                text: 'Commit Hash'
-                            }
-                        },
-                        y: {
-                            title: {
-                                display: true,
-                                text: 'Duration (us)'
-                            }
-                        }
-                    }
-                }
-            });
-        </script>
-        
-        <div class="chart-container">
-            <h2>Performance for matmul_benchmark_512_4096_512_i8_i32_O3_npu4_outline_4_level_tiling_ukernel</h2>
-            <canvas id="chart-matmul_benchmark_512_4096_512_i8_i32_O3_npu4_outline_4_level_tiling_ukernel"></canvas>
-        </div>
-        <script>
-            const ctx_matmul_benchmark_512_4096_512_i8_i32_O3_npu4_outline_4_level_tiling_ukernel = document.getElementById('chart-matmul_benchmark_512_4096_512_i8_i32_O3_npu4_outline_4_level_tiling_ukernel')
-            const chart_matmul_benchmark_512_4096_512_i8_i32_O3_npu4_outline_4_level_tiling_ukernel = new Chart(ctx_matmul_benchmark_512_4096_512_i8_i32_O3_npu4_outline_4_level_tiling_ukernel, {
-                type: 'line',
-                data: {
-                    labels: ['2b89dc2', '6417b4a', 'e2b0e9d', 'c3c05fa', '31ec62b', 'be85230', '70f2e36', 'f13c033', '4c43795', 'ed9e895', '2fdbd35', '4108e90'],  // Truncated commit hashes as X-axis labels
-                    datasets: [{
-                        label: 'Duration (us)',
-                        data: ['1520', '1520', '1512', '1515', '1517', '1513', '1512', '1516', '1517', '1523', '1516', '1514'],   // Test durations as Y-axis
-                        borderColor: 'rgba(75, 192, 192, 1)',
-                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                        borderWidth: 2
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    scales: {
-                        x: {
-                            title: {
-                                display: true,
-                                text: 'Commit Hash'
-                            }
-                        },
-                        y: {
-                            title: {
-                                display: true,
-                                text: 'Duration (us)'
-                            }
-                        }
-                    }
-                }
-            });
-        </script>
-        
-        <div class="chart-container">
-            <h2>Performance for matmul_benchmark_512_4096_512_i8_i32_O3_npu4_outline_empty_4_level_tiling</h2>
-            <canvas id="chart-matmul_benchmark_512_4096_512_i8_i32_O3_npu4_outline_empty_4_level_tiling"></canvas>
-        </div>
-        <script>
-            const ctx_matmul_benchmark_512_4096_512_i8_i32_O3_npu4_outline_empty_4_level_tiling = document.getElementById('chart-matmul_benchmark_512_4096_512_i8_i32_O3_npu4_outline_empty_4_level_tiling')
-            const chart_matmul_benchmark_512_4096_512_i8_i32_O3_npu4_outline_empty_4_level_tiling = new Chart(ctx_matmul_benchmark_512_4096_512_i8_i32_O3_npu4_outline_empty_4_level_tiling, {
-                type: 'line',
-                data: {
-                    labels: ['2b89dc2', '6417b4a', 'e2b0e9d', 'c3c05fa', '31ec62b', 'be85230', '70f2e36', 'f13c033', '4c43795', 'ed9e895', '2fdbd35', '4108e90'],  // Truncated commit hashes as X-axis labels
-                    datasets: [{
-                        label: 'Duration (us)',
-                        data: ['794', '754', '728', '776', '759', '787', '760', '775', '776', '763', '750', '786'],   // Test durations as Y-axis
-                        borderColor: 'rgba(75, 192, 192, 1)',
-                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                        borderWidth: 2
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    scales: {
-                        x: {
-                            title: {
-                                display: true,
-                                text: 'Commit Hash'
-                            }
-                        },
-                        y: {
-                            title: {
-                                display: true,
-                                text: 'Duration (us)'
-                            }
-                        }
-                    }
-                }
-            });
-        </script>
-        
-        <div class="chart-container">
             <h2>Performance for matmul_512_4096_512_i8_i32_O3_npu4_outline_ukernel_benchmark</h2>
             <canvas id="chart-matmul_512_4096_512_i8_i32_O3_npu4_outline_ukernel_benchmark"></canvas>
         </div>
@@ -175,10 +23,10 @@
             const chart_matmul_512_4096_512_i8_i32_O3_npu4_outline_ukernel_benchmark = new Chart(ctx_matmul_512_4096_512_i8_i32_O3_npu4_outline_ukernel_benchmark, {
                 type: 'line',
                 data: {
-                    labels: ['416a925'],  // Truncated commit hashes as X-axis labels
+                    labels: ['406debf', 'ddcbe0c', 'b29bd11', '2b89dc2', '6417b4a', 'e2b0e9d', 'c3c05fa', '31ec62b', 'be85230', '70f2e36', 'f13c033', '4c43795', 'ed9e895', '2fdbd35', '4108e90', '416a925'],  // Truncated commit hashes as X-axis labels
                     datasets: [{
                         label: 'Duration (us)',
-                        data: ['1717'],   // Test durations as Y-axis
+                        data: ['1720', '1718', '1703', '1714', '1726', '1797', '1712', '1707', '1716', '1787', '1702', '1743', '1710', '1716', '1719', '1717'],   // Test durations as Y-axis
                         borderColor: 'rgba(75, 192, 192, 1)',
                         backgroundColor: 'rgba(75, 192, 192, 0.2)',
                         borderWidth: 2
@@ -213,10 +61,10 @@
             const chart_matmul_512_4096_512_i8_i32_O3_npu4_outline_empty_benchmark = new Chart(ctx_matmul_512_4096_512_i8_i32_O3_npu4_outline_empty_benchmark, {
                 type: 'line',
                 data: {
-                    labels: ['416a925'],  // Truncated commit hashes as X-axis labels
+                    labels: ['406debf', 'ddcbe0c', 'b29bd11', '2b89dc2', '6417b4a', 'e2b0e9d', 'c3c05fa', '31ec62b', 'be85230', '70f2e36', 'f13c033', '4c43795', 'ed9e895', '2fdbd35', '4108e90', '416a925'],  // Truncated commit hashes as X-axis labels
                     datasets: [{
                         label: 'Duration (us)',
-                        data: ['1168'],   // Test durations as Y-axis
+                        data: ['1195', '1189', '1171', '1181', '1177', '1203', '1175', '1202', '1185', '1237', '1186', '1213', '1199', '1188', '1190', '1168'],   // Test durations as Y-axis
                         borderColor: 'rgba(75, 192, 192, 1)',
                         backgroundColor: 'rgba(75, 192, 192, 0.2)',
                         borderWidth: 2
@@ -251,10 +99,10 @@
             const chart_matmul_512_4096_512_i8_i32_O3_npu4_outline_4_level_tiling_ukernel_benchmark = new Chart(ctx_matmul_512_4096_512_i8_i32_O3_npu4_outline_4_level_tiling_ukernel_benchmark, {
                 type: 'line',
                 data: {
-                    labels: ['416a925'],  // Truncated commit hashes as X-axis labels
+                    labels: ['2b89dc2', '6417b4a', 'e2b0e9d', 'c3c05fa', '31ec62b', 'be85230', '70f2e36', 'f13c033', '4c43795', 'ed9e895', '2fdbd35', '4108e90', '416a925'],  // Truncated commit hashes as X-axis labels
                     datasets: [{
                         label: 'Duration (us)',
-                        data: ['1520'],   // Test durations as Y-axis
+                        data: ['1520', '1520', '1512', '1515', '1517', '1513', '1512', '1516', '1517', '1523', '1516', '1514', '1520'],   // Test durations as Y-axis
                         borderColor: 'rgba(75, 192, 192, 1)',
                         backgroundColor: 'rgba(75, 192, 192, 0.2)',
                         borderWidth: 2
@@ -289,10 +137,10 @@
             const chart_matmul_512_4096_512_i8_i32_O3_npu4_outline_empty_4_level_tiling_benchmark = new Chart(ctx_matmul_512_4096_512_i8_i32_O3_npu4_outline_empty_4_level_tiling_benchmark, {
                 type: 'line',
                 data: {
-                    labels: ['416a925'],  // Truncated commit hashes as X-axis labels
+                    labels: ['2b89dc2', '6417b4a', 'e2b0e9d', 'c3c05fa', '31ec62b', 'be85230', '70f2e36', 'f13c033', '4c43795', 'ed9e895', '2fdbd35', '4108e90', '416a925'],  // Truncated commit hashes as X-axis labels
                     datasets: [{
                         label: 'Duration (us)',
-                        data: ['751'],   // Test durations as Y-axis
+                        data: ['794', '754', '728', '776', '759', '787', '760', '775', '776', '763', '750', '786', '751'],   // Test durations as Y-axis
                         borderColor: 'rgba(75, 192, 192, 1)',
                         backgroundColor: 'rgba(75, 192, 192, 0.2)',
                         borderWidth: 2
