@@ -510,6 +510,26 @@ uint32_t AMDAIEDeviceModel::getNumDestSwitchboxConnections(
                                         static_cast<uint8_t>(row), bundle);
 }
 
+const llvm::SmallDenseMap<std::pair<StrmSwPortType, uint8_t>,
+                          std::pair<StrmSwPortType, uint8_t>>
+    AMDAIEDeviceModel::mm2sDmaNocToSpecialShimPortMap = {
+        {{StrmSwPortType::DMA, 0}, {StrmSwPortType::NORTH, 3}},
+        {{StrmSwPortType::DMA, 1}, {StrmSwPortType::NORTH, 7}},
+        {{StrmSwPortType::NOC, 0}, {StrmSwPortType::NORTH, 2}},
+        {{StrmSwPortType::NOC, 1}, {StrmSwPortType::NORTH, 3}},
+        {{StrmSwPortType::NOC, 2}, {StrmSwPortType::NORTH, 6}},
+        {{StrmSwPortType::NOC, 3}, {StrmSwPortType::NORTH, 7}}};
+
+const llvm::SmallDenseMap<std::pair<StrmSwPortType, uint8_t>,
+                          std::pair<StrmSwPortType, uint8_t>>
+    AMDAIEDeviceModel::s2mmDmaNocToSpecialShimPortMap = {
+        {{StrmSwPortType::DMA, 0}, {StrmSwPortType::NORTH, 2}},
+        {{StrmSwPortType::DMA, 1}, {StrmSwPortType::NORTH, 3}},
+        {{StrmSwPortType::NOC, 0}, {StrmSwPortType::NORTH, 2}},
+        {{StrmSwPortType::NOC, 1}, {StrmSwPortType::NORTH, 3}},
+        {{StrmSwPortType::NOC, 2}, {StrmSwPortType::NORTH, 4}},
+        {{StrmSwPortType::NOC, 3}, {StrmSwPortType::NORTH, 5}}};
+
 std::optional<std::pair<StrmSwPortType, uint8_t>>
 AMDAIEDeviceModel::getShimMuxPortMappingForDmaOrNoc(
     StrmSwPortType port, uint8_t channel, DMAChannelDir direction) const {
@@ -828,8 +848,8 @@ static constexpr uint32_t getElementTypeKey(uint32_t a, uint32_t b,
 /// This first line says that if 'lhs' is an i8 tensor, 'rhs' is an i4
 /// tensor and 'accumulator' is an i32 tensor, then there is an AIE
 /// instruction for matmul with m = 4, n = 8, k = 16.
-static llvm::DenseMap<uint32_t, std::array<uint32_t, 3>> &
-getNpu1IntegerMatmulInstructionSizeMap() {
+static llvm::DenseMap<uint32_t, std::array<uint32_t, 3>>
+    &getNpu1IntegerMatmulInstructionSizeMap() {
   // Sanity check.
   static_assert(getElementTypeKey(1, 2, 3) == 1 + 2 * 256 + 3 * 65536);
 
@@ -881,8 +901,8 @@ getNpu1IntegerMatmulInstructionSizeMap() {
 /// This first line says that if 'lhs' is an i8 tensor, 'rhs' is an i8
 /// tensor and 'accumulator' is an i32 tensor, then there is an AIE
 /// instruction for matmul with m = 8, n = 8, k = 8.
-static llvm::DenseMap<uint32_t, std::array<uint32_t, 3>> &
-getNpu4IntegerMatmulInstructionSizeMap() {
+static llvm::DenseMap<uint32_t, std::array<uint32_t, 3>>
+    &getNpu4IntegerMatmulInstructionSizeMap() {
   // Sanity check.
   static_assert(getElementTypeKey(1, 2, 3) == 1 + 2 * 256 + 3 * 65536);
 

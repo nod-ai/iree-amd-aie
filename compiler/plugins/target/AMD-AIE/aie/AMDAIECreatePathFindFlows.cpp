@@ -66,10 +66,10 @@ ShimMuxOp getOrCreateShimMux(OpBuilder &builder, DeviceOp &device, int col,
     if (auto shim = llvm::dyn_cast<ShimMuxOp>(*i)) return shim;
   }
   OpBuilder::InsertionGuard g(builder);
-  auto shmuxOp = builder.create<ShimMuxOp>(builder.getUnknownLoc(), tile);
-  ShimMuxOp::ensureTerminator(shmuxOp.getConnections(), builder,
+  auto shimMuxOp = builder.create<ShimMuxOp>(builder.getUnknownLoc(), tile);
+  ShimMuxOp::ensureTerminator(shimMuxOp.getConnections(), builder,
                               builder.getUnknownLoc());
-  return shmuxOp;
+  return shimMuxOp;
 }
 
 ConnectOp getOrCreateConnect(OpBuilder &builder, Operation *parentOp,
@@ -166,7 +166,7 @@ LogicalResult runOnCircuitFlow(
         Operation *op;
         switch (conn.interconnect) {
           case Connect::Interconnect::SHIMMUX:
-            op = getOrCreateShimMux(builder, device, conn.col, curr.row)
+            op = getOrCreateShimMux(builder, device, conn.col, conn.row)
                      .getOperation();
             break;
           case Connect::Interconnect::SWB:
@@ -491,25 +491,19 @@ LogicalResult runOnPacketFlow(
     }
   }
 
-  // Add support for special shim mux connections.
-  // From shimDMA to BLI: 1) shimDMA 0 --> North 3
-  //                      2) shimDMA 1 --> North 7
-  // From BLI to shimDMA: 1) North   2 --> shimDMA 0
-  //                      2) North   3 --> shimDMA 1
+  // Add special shim mux connections for DMA/NOC streams.
   for (auto switchbox : make_early_inc_range(device.getOps<SwitchboxOp>())) {
     auto retVal = switchbox->getOperand(0);
     auto tileOp = retVal.getDefiningOp<TileOp>();
-
-    // Only requires special connection if it is a shim tile.
-    if (!deviceModel.isShimTile(tileOp.getCol(), tileOp.getRow())) continue;
-    // If the switchbox is empty, no need to add shim mux connections.
+    // Only requires special connection for Shim/NOC tile.
+    if (!deviceModel.isShimNOCTile(tileOp.getCol(), tileOp.getRow())) continue;
+    // Skip any empty switchbox.
     if (&switchbox.getBody()->front() == switchbox.getBody()->getTerminator())
       continue;
     // Get the shim mux operation.
     builder.setInsertionPointAfter(tileOp);
     ShimMuxOp shimMuxOp =
         getOrCreateShimMux(builder, device, tileOp.getCol(), tileOp.getRow());
-
     for (Operation &op : switchbox.getConnections().getOps()) {
       if (auto packetRulesOp = dyn_cast<PacketRulesOp>(op)) {
         // Found the source (MM2S) of a packet flow.
@@ -525,7 +519,8 @@ LogicalResult runOnPacketFlow(
         // `newSrcBundle/newSrcChannel`.
         getOrCreateConnect(builder, shimMuxOp, srcBundle, srcChannel,
                            newSrcBundle, newSrcChannel);
-        // Replace the source bundle and channel.
+        // Replace the source bundle and channel. `getConnectingBundle` is
+        // used to update bundle direction from shim mux to shim switchbox.
         packetRulesOp.setSourceBundle(getConnectingBundle(newSrcBundle));
         packetRulesOp.setSourceChannel(newSrcChannel);
 
@@ -543,7 +538,8 @@ LogicalResult runOnPacketFlow(
         // `destBundle/destChannel`.
         getOrCreateConnect(builder, shimMuxOp, newDestBundle, newDestChannel,
                            destBundle, destChannel);
-        // Replace the destination bundle and channel.
+        // Replace the destination bundle and channel. `getConnectingBundle` is
+        // used to update bundle direction from shim mux to shim switchbox.
         masterSetOp.setDestBundle(getConnectingBundle(newDestBundle));
         masterSetOp.setDestChannel(newDestChannel);
       }
