@@ -559,6 +559,14 @@ uint8_t AMDAIEDeviceModel::getPacketIdMaxIdx() const {
   return deviceConfig.packetIdMaxIdx;
 }
 
+uint8_t AMDAIEDeviceModel::getNumPacketRuleSlots(uint8_t col,
+                                                 uint8_t row) const {
+  AMDAIETileType tileType = getTileType(col, row);
+  const XAie_StrmMod *strmMod =
+      devInst.DevProp.DevMod[static_cast<uint8_t>(tileType)].StrmSw;
+  return strmMod->NumSlaveSlots;
+}
+
 uint8_t AMDAIEDeviceModel::getStreamSwitchArbiterMax(uint8_t col,
                                                      uint8_t row) const {
   assert(isCoreTile(col, row) || isMemTile(col, row) || isShimTile(col, row));

@@ -135,7 +135,12 @@ struct PhysPortAndID {
 // A map from a switchbox output (physical) port to the number of that port.
 using MasterSetsT =
     std::map<PhysPort, std::vector<std::pair<uint8_t, uint8_t>>>;
-using SlaveGroupsT = std::vector<std::vector<PhysPortAndID>>;
+/// Maps a slave port to groups of packet IDs.
+/// Groups associated with the same slave port will be lowered together into a
+/// `packet_rules` operation.
+/// IDs within the same group will be converted into a single `packet_rule`
+/// entry.
+using SlaveGroupsT = std::map<PhysPort, std::vector<std::set<int>>>;
 using SlaveMasksT = std::map<PhysPortAndID, int>;
 using SlaveAMSelsT = std::map<PhysPortAndID, std::pair<uint8_t, uint8_t>>;
 using ConnectionAndFlowIDT = std::pair<Connect, int>;

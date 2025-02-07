@@ -733,6 +733,99 @@ bool existsPathToDest(const SwitchSettings &settings, TileLoc currTile,
   return false;
 }
 
+/// Generate the mask value for all the IDs in the group.
+void updateGroupMask(const PhysPort &slavePort, std::set<int> &group,
+                     std::map<PhysPortAndID, int> &slaveMasks) {
+  // Iterate over all the ID values in a group.If bit n-th (n <= 5) of an ID
+  // value differs from bit n-th of another ID value, the bit position should be
+  // "don't care", and we will set the mask bit of that position to 0.
+  int mask[5] = {-1, -1, -1, -1, -1};
+  for (int id : group) {
+    for (int i = 0; i < 5; i++) {
+      if (mask[i] == -1) {
+        mask[i] = id >> i & 0x1;
+      } else if (mask[i] != (id >> i & 0x1)) {
+        // Found bit difference --> mark as "don't care".
+        mask[i] = 2;
+      }
+    }
+  }
+  int maskValue = 0;
+  for (int i = 4; i >= 0; i--) {
+    if (mask[i] == 2) {
+      // Don't care.
+      mask[i] = 0;
+    } else {
+      mask[i] = 1;
+    }
+    maskValue = (maskValue << 1) + mask[i];
+  }
+  for (int id : group) slaveMasks[PhysPortAndID{slavePort, id}] = maskValue;
+}
+
+/// Sort groups by their size in ascending order. A smaller group size can
+/// represent a stricter `packet_rule`, which should be placed first to prevent
+/// other broader (less strict) rules from matching unintended IDs.
+///
+/// Example:
+/// Consider two slave groups, A and B, that share the same `physPort`
+/// (i.e., the same `tileLoc`, `bundle`, and `channel`). These groups
+/// will later be merged into a single `packet_rules` operation,
+/// where each group contributes a `packet_rule` entry. The order
+/// of these entries is critical because the first matching `packet_rule`
+/// takes precedence.
+///
+/// - `Group A` contains IDs `{0x3, 0x4, 0x5}` with `mask = 0x18`,
+///   and defines a `packet_rule`: `(ID & 0x18) == 0x00`.
+/// - `Group B` contains ID `{0x2}` with `mask = 0x1F`,
+///   and defines a `packet_rule`: `(ID & 0x1F) == 0x02`.
+///
+/// In this case, `Group B`'s `packet_rule` must precede `Group A`'s
+/// within the `packet_rules` operation. Otherwise, ID `0x02`
+/// would incorrectly match `(ID & 0x18) == 0x00`, leading to incorrect
+/// behavior.
+void sortGroupsBySize(std::vector<std::set<int>> &groups) {
+  auto sortBySize = [](auto &lhs, auto &rhs) {
+    if (lhs.size() != rhs.size()) return lhs.size() < rhs.size();
+    return lhs < rhs;
+  };
+  std::sort(groups.begin(), groups.end(), sortBySize);
+}
+
+/// Verifies the correctness of ID groupings before putting them into a single
+/// `packet_rules` set. Each group contributes a `packet_rule` entry, and this
+/// function checks if any ID in a later group incorrectly matches a preceding
+/// group's masked ID.
+///
+/// Example:
+/// Consider three groups: A, B, and C.
+/// - `Group A`: Contains IDs `{0x0}` with `mask = 0x1F`.
+///   - Packet rule: `(ID & 0x1F) ?= (0x0 & 0x1F)`.
+/// - `Group B`: Contains IDs `{0x6, 0x7}` with `mask = 0x18`.
+///   - Packet rule: `(ID & 0x18) ?= (0x6 & 0x18)`.
+/// - `Group C`: Contains IDs `{0x1, 0x2, 0x3, 0x4, 0x5}` with `mask = 0x18`.
+///   - Packet rule: `(ID & 0x18) ?= (0x1 & 0x18)`.
+///
+/// ID `0x1` belongs to `Group C`, however, due to the limitation of masking, it
+/// matches both `Group B` and `C`'s rules. Since `Group B` precedes `Group C`,
+/// and `packet_rule` entries are evaluated in order, the function returns
+/// `false` to indicate an invalid grouping.
+bool verifyGroupsByMask(PhysPort slavePort,
+                        const std::vector<std::set<int>> &groups,
+                        const std::map<PhysPortAndID, int> &slaveMasks) {
+  for (size_t i = 0; i < groups.size(); ++i) {
+    int iPktId = *groups[i].begin();
+    int iMask = slaveMasks.at({slavePort, iPktId});
+    int iMaskedId = iPktId & iMask;
+    for (size_t j = i + 1; j < groups.size(); ++j) {
+      for (int jPktId : groups[j]) {
+        if ((jPktId & iMask) == iMaskedId) return false;
+      }
+    }
+  }
+  return true;
+}
+
 std::tuple<SlaveGroupsT, SlaveMasksT> emitSlaveGroupsAndMasksRoutingConfig(
     ArrayRef<PhysPortAndID> slavePorts, const PacketFlowMapT &packetFlows) {
   // Convert packet flow map into a map from src 'port and id's to destination
@@ -746,22 +839,23 @@ std::tuple<SlaveGroupsT, SlaveMasksT> emitSlaveGroupsAndMasksRoutingConfig(
         });
     physPortAndIDToPhysPort[src].insert(physPorts.begin(), physPorts.end());
   }
-  // Compute mask values
-  // Merging as many stream flows as possible
-  // The flows must originate from the same source port and have different IDs
-  // Two flows can be merged if they share the same destinations
+  // `slaveGroups` maps a slave port to groups of packet IDs. The groups will be
+  // later used for generating `packet_rules`.
   SlaveGroupsT slaveGroups;
+  // `slaveMasks` maps a slave port and packet ID to a mask value, used for
+  // `packet_rule` entries.
+  SlaveMasksT slaveMasks;
+  // Start the grouping process by iterating over all `slavePorts`. Grouping
+  // as many as possible to reduce the number of `packet_rule` entries.
   SmallVector<PhysPortAndID> workList(slavePorts.begin(), slavePorts.end());
   while (!workList.empty()) {
     PhysPortAndID slave1 = workList.pop_back_val();
-    Port slavePort1 = slave1.physPort.port;
-
-    bool foundgroup = false;
-    for (auto &group : slaveGroups) {
-      PhysPortAndID slave2 = group.front();
-      if (Port slavePort2 = slave2.physPort.port; slavePort1 != slavePort2)
-        continue;
-
+    // Try to find a matching group that can be merged with.
+    std::optional<int> matchedGroupIdx;
+    std::vector<std::set<int>> &groups = slaveGroups[slave1.physPort];
+    for (size_t i = 0; i < groups.size(); ++i) {
+      PhysPortAndID slave2 = {slave1.physPort, *groups[i].begin()};
+      // Can be merged if `slave1` and `slave2` share the same destinations.
       const llvm::SetVector<PhysPort> &dests1 =
           physPortAndIDToPhysPort.at(slave1);
       const llvm::SetVector<PhysPort> &dests2 =
@@ -771,51 +865,32 @@ std::tuple<SlaveGroupsT, SlaveMasksT> emitSlaveGroupsAndMasksRoutingConfig(
                       [&dests2](const PhysPort &dest1) {
                         return dests2.count(dest1);
                       })) {
-        group.push_back(slave1);
-        foundgroup = true;
+        // Found a matching group.
+        matchedGroupIdx = i;
         break;
       }
     }
-
-    if (!foundgroup) {
-      slaveGroups.emplace_back(std::vector<PhysPortAndID>{slave1});
+    // Attempt to merge, and verify that the merged group is still valid.
+    if (matchedGroupIdx.has_value()) {
+      // Make a copy of the groups in case the merge is invalid.
+      std::vector<std::set<int>> groupsCopy = groups;
+      std::set<int> &group = groups[matchedGroupIdx.value()];
+      // Merge `slave1.id` into the group.
+      group.insert(slave1.id);
+      updateGroupMask(slave1.physPort, group, slaveMasks);
+      sortGroupsBySize(groups);
+      // If the merge is valid, simply continue the while loop on `workList`.
+      if (verifyGroupsByMask(slave1.physPort, groups, slaveMasks)) continue;
+      // Not a valid merge, so revert the changes on `groups` and `slaveMasks`.
+      slaveGroups[slave1.physPort] = groupsCopy;
+      updateGroupMask(slave1.physPort, group, slaveMasks);
     }
+    // No mergeable group, create a new group instead.
+    std::set<int> group = {slave1.id};
+    groups.emplace_back(group);
+    updateGroupMask(slave1.physPort, group, slaveMasks);
+    sortGroupsBySize(groups);
   }
-
-  SlaveMasksT slaveMasks;
-  for (const auto &group : slaveGroups) {
-    // Iterate over all the ID values in a group
-    // If bit n-th (n <= 5) of an ID value differs from bit n-th of another ID
-    // value, the bit position should be "don't care", and we will set the
-    // mask bit of that position to 0
-    int mask[5] = {-1, -1, -1, -1, -1};
-    for (PhysPortAndID port : group) {
-      for (int i = 0; i < 5; i++) {
-        if (mask[i] == -1) {
-          mask[i] = port.id >> i & 0x1;
-        } else if (mask[i] != (port.id >> i & 0x1)) {
-          // found bit difference --> mark as "don't care"
-          mask[i] = 2;
-        }
-      }
-    }
-
-    int maskValue = 0;
-    for (int i = 4; i >= 0; i--) {
-      if (mask[i] == 2) {
-        // don't care
-        mask[i] = 0;
-      } else {
-        mask[i] = 1;
-      }
-      maskValue = (maskValue << 1) + mask[i];
-    }
-    for (PhysPortAndID port : group) slaveMasks[port] = maskValue;
-  }
-
-  // sort for deterministic IR output
-  for (auto &item : slaveGroups) std::sort(item.begin(), item.end());
-  std::sort(slaveGroups.begin(), slaveGroups.end());
   return std::make_tuple(slaveGroups, slaveMasks);
 }
 

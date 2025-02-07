@@ -446,6 +446,8 @@ struct AMDAIEDeviceModel {
   uint32_t getOffsetFromAddress(uint32_t address) const;
 
   uint8_t getPacketIdMaxIdx() const;
+  /// Get the maximum number of packet rule slots available for each slave port.
+  uint8_t getNumPacketRuleSlots(uint8_t col, uint8_t row) const;
 
   uint8_t getStreamSwitchArbiterMax(uint8_t col, uint8_t row) const;
   uint8_t getStreamSwitchMSelMax(uint8_t col, uint8_t row) const;
