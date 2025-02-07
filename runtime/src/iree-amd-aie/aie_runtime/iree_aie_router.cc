@@ -588,9 +588,9 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
   return routingSolution;
 }
 
-/// Transform outputs produced by the router into representations (structs) that
-/// directly map to stream switch configuration ops (soon-to-be aie-rt calls).
-/// Namely pairs of (switchbox, internal connections).
+/// Transform outputs produced by the router into representations (structs)
+/// that directly map to stream switch configuration ops (soon-to-be aie-rt
+/// calls). Namely pairs of (switchbox, internal connections).
 std::map<TileLoc, std::vector<Connect>> emitConnections(
     const std::map<PathEndPoint, SwitchSettings> &flowSolutions,
     const PathEndPoint &srcPoint, const AMDAIEDeviceModel &deviceModel) {
@@ -611,74 +611,71 @@ std::map<TileLoc, std::vector<Connect>> emitConnections(
   };
   SwitchSettings settings = flowSolutions.at(srcPoint);
   for (const auto &[curr, setting] : settings) {
-    int shimCh = srcChannel;
+    // Check the source (based on `srcTileLoc` and `srcBundle`) of the flow.
+    // Shim DMAs/NOCs require special handling.
+    std::optional<StrmSwPortType> newSrcBundle = std::nullopt;
+    std::optional<int> newSrcChannel = std::nullopt;
     // TODO: must reserve N3, N7, S2, S3 for DMA connections
-    if (curr == srcTileLoc &&
+    if (std::optional<std::pair<StrmSwPortType, uint8_t>> mappedShimMuxPort =
+            deviceModel.getShimMuxPortMappingForDmaOrNoc(srcBundle, srcChannel,
+                                                         DMAChannelDir::MM2S);
+        mappedShimMuxPort.has_value() && curr == srcTileLoc &&
         deviceModel.isShimNOCTile(srcTileLoc.col, srcTileLoc.row)) {
-      // Check for special shim connectivity at the start (based on `srcTileLoc`
-      // and `srcBundle`) of the flow. Shim DMAs/NOCs require special handling.
-      auto shimMux = std::pair(Connect::Interconnect::SHIMMUX, srcTileLoc.col);
-      if (srcBundle == StrmSwPortType::DMA) {
-        // must be either DMA0 -> N3 or DMA1 -> N7
-        shimCh = srcChannel == 0 ? 3 : 7;
-        addConnection(curr, srcBundle, srcChannel, StrmSwPortType::NORTH,
-                      shimCh, shimMux.first, shimMux.second);
-      } else if (srcBundle == StrmSwPortType::NOC) {
-        // must be NOC0/NOC1 -> N2/N3 or NOC2/NOC3 -> N6/N7
-        shimCh = srcChannel >= 2 ? srcChannel + 4 : srcChannel + 2;
-        addConnection(curr, srcBundle, srcChannel, StrmSwPortType::NORTH,
-                      shimCh, shimMux.first, shimMux.second);
-      }
+      newSrcBundle = mappedShimMuxPort->first;
+      newSrcChannel = mappedShimMuxPort->second;
+      // The connection is updated as: `srcBundle/srcChannel` ->
+      // `newSrcBundle/newSrcChannel` -> `destBundle/destChannel`. The following
+      // line establishes the first half of the connection; the second half will
+      // be handled later.
+      addConnection(curr, srcBundle, srcChannel, newSrcBundle.value(),
+                    newSrcChannel.value(), Connect::Interconnect::SHIMMUX,
+                    curr.col, curr.row);
     }
 
-    auto sw = std::make_tuple(Connect::Interconnect::SWB, curr.col, curr.row);
     assert(setting.srcs.size() == setting.dsts.size());
     for (size_t i = 0; i < setting.srcs.size(); i++) {
       Port src = setting.srcs[i];
       Port dst = setting.dsts[i];
-      StrmSwPortType bundle = dst.bundle;
-      int channel = dst.channel;
-      // Check for special shim connectivity at the start (based on `srcTileLoc`
-      // and `srcBundle`) or at the end (based on `curr` and `bundle`) of the
-      // flow. Shim DMAs/NOCs require special handling.
-      if (curr == srcTileLoc &&
-          deviceModel.isShimNOCorPLTile(srcTileLoc.col, srcTileLoc.row) &&
-          (srcBundle == StrmSwPortType::DMA ||
-           srcBundle == StrmSwPortType::NOC)) {
-        addConnection(curr, StrmSwPortType::SOUTH, shimCh, bundle, channel,
-                      std::get<0>(sw), std::get<1>(sw), std::get<2>(sw));
-      } else if (deviceModel.isShimNOCorPLTile(curr.col, curr.row) &&
-                 (bundle == StrmSwPortType::DMA ||
-                  bundle == StrmSwPortType::NOC)) {
-        auto shimMux = std::make_pair(Connect::Interconnect::SHIMMUX, curr.col);
-        shimCh = channel;
-        if (deviceModel.isShimNOCTile(curr.col, curr.row)) {
-          // shim DMAs at end of flows
-          if (bundle == StrmSwPortType::DMA) {
-            // must be either N2 -> DMA0 or N3 -> DMA1
-            shimCh = channel == 0 ? 2 : 3;
-            addConnection(curr, StrmSwPortType::NORTH, shimCh, bundle, channel,
-                          shimMux.first, shimMux.second);
-          } else if (bundle == StrmSwPortType::NOC) {
-            // must be either N2/3/4/5 -> NOC0/1/2/3
-            shimCh = channel + 2;
-            addConnection(curr, StrmSwPortType::NORTH, shimCh, bundle, channel,
-                          shimMux.first, shimMux.second);
-          }
-        }
-        addConnection(curr, src.bundle, src.channel, StrmSwPortType::SOUTH,
-                      shimCh, std::get<0>(sw), std::get<1>(sw),
-                      std::get<2>(sw));
+      StrmSwPortType destBundle = dst.bundle;
+      int destChannel = dst.channel;
+      if (newSrcBundle.has_value() && newSrcChannel.has_value()) {
+        // Complete the second half of `src.bundle/src.channel` ->
+        // `newSrcBundle/newSrcChannel` -> `destBundle/destChannel`.
+        // `getConnectingBundle` is used to update bundle direction from shim
+        // mux to shim switchbox.
+        addConnection(curr, getConnectingBundle(newSrcBundle.value()),
+                      newSrcChannel.value(), destBundle, destChannel,
+                      Connect::Interconnect::SWB, curr.col, curr.row);
+      } else if (std::optional<std::pair<StrmSwPortType, uint8_t>>
+                     mappedShimMuxPort =
+                         deviceModel.getShimMuxPortMappingForDmaOrNoc(
+                             destBundle, destChannel, DMAChannelDir::S2MM);
+                 mappedShimMuxPort &&
+                 deviceModel.isShimNOCTile(curr.col, curr.row)) {
+        // Check for special shim connectivity at the destination (based on
+        // `curr` and `destBundle`) of the flow. Shim DMAs/NOCs require special
+        // handling.
+        StrmSwPortType newDestBundle = mappedShimMuxPort->first;
+        int newDestChannel = mappedShimMuxPort->second;
+        // The connection is updated as: `src.bundle/src.channel` ->
+        // `newDestBundle/newDestChannel` -> `destBundle/destChannel`.
+        // `getConnectingBundle` is used to update bundle direction from shim
+        // mux to shim switchbox.
+        addConnection(curr, src.bundle, src.channel,
+                      getConnectingBundle(newDestBundle), newDestChannel,
+                      Connect::Interconnect::SWB, curr.col, curr.row);
+        addConnection(curr, newDestBundle, newDestChannel, destBundle,
+                      destChannel, Connect::Interconnect::SHIMMUX, curr.col,
+                      curr.row);
       } else {
-        // otherwise, regular switchbox connection
-        addConnection(curr, src.bundle, src.channel, bundle, channel,
-                      std::get<0>(sw), std::get<1>(sw), std::get<2>(sw));
+        // Otherwise, add the regular switchbox connection.
+        addConnection(curr, src.bundle, src.channel, destBundle, destChannel,
+                      Connect::Interconnect::SWB, curr.col, curr.row);
       }
     }
   }
-  // sort for deterministic order in IR
+  // Sort for deterministic order in IR.
   for (auto &[_, conns] : connections) std::sort(conns.begin(), conns.end());
-
   return connections;
 }
 
