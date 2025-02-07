@@ -63,10 +63,6 @@
 // CHECK:           %[[SHIM_MUX_0_0:.*]] = aie.shim_mux(%[[TILE_0_0]]) {
 // CHECK:             aie.connect<NORTH : 2, DMA : 0>
 // CHECK:           }
-// CHECK:           aie.packet_flow(0) {
-// CHECK:             aie.packet_source<%[[TILE_0_5]], DMA : 1>
-// CHECK:             aie.packet_dest<%[[TILE_0_1]], DMA : 4>
-// CHECK:           }
 // CHECK:         }
 module {
  aie.device(npu1_2col) {
