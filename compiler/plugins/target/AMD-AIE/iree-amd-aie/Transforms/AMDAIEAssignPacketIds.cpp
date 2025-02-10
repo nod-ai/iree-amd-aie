@@ -46,7 +46,7 @@ void AMDAIEAssignPacketIdsPass::runOnOperation() {
   // normal flows. Control packet flows will be prioritized for packet ID
   // assignment.
   SmallVector<AMDAIE::FlowOp> ctrlPktFlowOps;
-  SmallVector<AMDAIE::FlowOp> normalPktFlowOps;
+  SmallVector<AMDAIE::FlowOp> dataPktFlowOps;
   WalkResult res = parentOp->walk([&](AMDAIE::FlowOp flowOp) {
     if (!flowOp.getIsPacketFlow()) return WalkResult::advance();
     FailureOr<bool> maybeIsControlFlow = flowOp.isControlFlow();
@@ -54,14 +54,14 @@ void AMDAIEAssignPacketIdsPass::runOnOperation() {
     if (*maybeIsControlFlow) {
       ctrlPktFlowOps.push_back(flowOp);
     } else {
-      normalPktFlowOps.push_back(flowOp);
+      dataPktFlowOps.push_back(flowOp);
     }
     return WalkResult::advance();
   });
   if (res.wasInterrupted()) return signalPassFailure();
   SmallVector<AMDAIE::FlowOp> allPktFlowOps = std::move(ctrlPktFlowOps);
-  allPktFlowOps.append(std::make_move_iterator(normalPktFlowOps.begin()),
-                       std::make_move_iterator(normalPktFlowOps.end()));
+  allPktFlowOps.append(std::make_move_iterator(dataPktFlowOps.begin()),
+                       std::make_move_iterator(dataPktFlowOps.end()));
 
   // Perform assignment of packet IDs based on the source channels of the flow
   // ops. I.e. `amdaie.flow` ops with the same source channel will get a

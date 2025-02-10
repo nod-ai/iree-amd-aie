@@ -216,7 +216,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
-// Test that control packets should take priority in the ID assignment.
+// Test that control packets should take priority (by getting `packet_id=0`) in the ID assignment.
 // CHECK-LABEL: @assign_ctrl_packet_ids_in_priority
 // CHECK:       %[[C0:.*]] = arith.constant 0 : index
 // CHECK:       %[[C1:.*]] = arith.constant 1 : index
