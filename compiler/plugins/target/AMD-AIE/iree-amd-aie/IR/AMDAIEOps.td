@@ -126,6 +126,12 @@ def AMDAIE_FlowOp: AMDAIE_Op<"flow", [AttrSizedOperandSegments]>,
 
   let assemblyFormat = [{ `(` `{` $sources `}` `->` `{` $targets `}` `)` attr-dict }];
   let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    FailureOr<AMDAIE::ChannelOp> getSourceChannelOp();
+    FailureOr<SmallVector<AMDAIE::ChannelOp>> getTargetChannelOps();
+    FailureOr<bool> isControlFlow();
+  }];
 }
 
 def AMDAIE_TileOp: AMDAIE_Op<"tile", [
