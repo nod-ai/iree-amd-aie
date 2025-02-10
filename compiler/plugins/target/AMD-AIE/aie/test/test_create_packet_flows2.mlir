@@ -12,15 +12,6 @@
 // CHECK:               aie.rule(31, 1, %[[VAL_1]])
 // CHECK:             }
 // CHECK:           }
-// CHECK:           aie.packet_flow(0) {
-// CHECK:             aie.packet_source<%[[TILE_1_1]], WEST : 0>
-// CHECK:             aie.packet_dest<%[[TILE_1_1]], CORE : 0>
-// CHECK:             aie.packet_dest<%[[TILE_1_1]], CORE : 1>
-// CHECK:           }
-// CHECK:           aie.packet_flow(1) {
-// CHECK:             aie.packet_source<%[[TILE_1_1]], WEST : 0>
-// CHECK:             aie.packet_dest<%[[TILE_1_1]], CORE : 1>
-// CHECK:           }
 // CHECK:         }
 
 module @test_create_packet_flows2 {

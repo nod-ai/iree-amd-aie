@@ -209,7 +209,8 @@ LogicalResult runOnPacketFlow(
 
   DenseMap<PhysPort, Attribute> keepPktHeaderAttr;
   TileLocToConnectionFlowIDT switchboxes;
-  for (PacketFlowOp pktFlowOp : device.getOps<PacketFlowOp>()) {
+  for (PacketFlowOp pktFlowOp :
+       make_early_inc_range(device.getOps<PacketFlowOp>())) {
     int flowID = pktFlowOp.getID();
     Port srcPort{StrmSwPortType::SS_PORT_TYPE_MAX, -1};
     TileOp srcTile;
@@ -263,6 +264,7 @@ LogicalResult runOnPacketFlow(
         }
       }
     }
+    pktFlowOp.erase();
   }
 
   SmallVector<TileLoc> tileLocs = llvm::map_to_vector(
