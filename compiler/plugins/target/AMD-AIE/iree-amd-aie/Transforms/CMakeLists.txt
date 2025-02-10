@@ -109,6 +109,7 @@ iree_cc_library(
     "AMDAIETemporaryAllocBufferization.cpp"
     "AMDAIETile.cpp"
     "AMDAIETileAndFuse.cpp"
+    "AMDAIEAddNoAliasFunctionArguments.cpp"
     "AMDAIEVectorization.cpp"
     "BridgeToAIRPass.cpp"
     "DecomposeLinalgExtPackUnPackToAIR.cpp"

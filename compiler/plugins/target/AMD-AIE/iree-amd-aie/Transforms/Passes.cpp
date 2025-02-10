@@ -120,6 +120,7 @@ void addAMDAIEToAIEPasses(OpPassManager &passManager,
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createAMDAIESinkIntoCorePass());
   passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createAMDAIEAddNoAliasFunctionArgumentsPass());
   passManager.addPass(createAMDAIELowerToAIEPass());
   passManager.addPass(createAMDAIERemoveMemorySpacePass());
   passManager.addPass(createCanonicalizerPass());
