@@ -38,7 +38,7 @@ def run_conv_test(config, aie_compilation_flags, filename, n_repeats):
     return True
 
 
-class RunningParams(ABC):
+class TestParams(ABC):
     def __init__(
         self,
         run_on_target=["npu1_4col"],
@@ -86,10 +86,11 @@ class BaseTest(ABC):
     def __init__(
         self,
         name="",
-        running_params: RunningParams = RunningParams(),
+        test_params=None,
     ):
-        self.run_on_target = running_params.run_on_target
-        self.aie_compilation_flags = running_params.aie_compilation_flags
+        test_params = test_params if test_params is not None else TestParams()
+        self.run_on_target = test_params.run_on_target
+        self.aie_compilation_flags = test_params.aie_compilation_flags
         assert isinstance(self.aie_compilation_flags, list)
         assert all(isinstance(flag, str) for flag in self.aie_compilation_flags)
 
@@ -97,12 +98,12 @@ class BaseTest(ABC):
         # constructor, never overwrite it.
         self.labels = ["All"]
 
-        name_suffix = running_params.name_suffix
-        tile_pipeline = running_params.tile_pipeline
-        lower_to_aie_pipeline = running_params.lower_to_aie_pipeline
-        use_chess = running_params.use_chess
-        use_ukernel = running_params.use_ukernel
-        run_benchmark = running_params.run_benchmark
+        name_suffix = test_params.name_suffix
+        tile_pipeline = test_params.tile_pipeline
+        lower_to_aie_pipeline = test_params.lower_to_aie_pipeline
+        use_chess = test_params.use_chess
+        use_ukernel = test_params.use_ukernel
+        run_benchmark = test_params.run_benchmark
 
         # Form test name.
         self.name = f"{name}_{name_suffix}" if name_suffix else name
@@ -178,11 +179,11 @@ class ConvolutionFromTemplate(BaseTest):
     def __init__(
         self,
         generator,
-        running_params: RunningParams = RunningParams(),
+        test_params=None,
     ):
         super().__init__(
             name=f"{generator.params['conv_type']}_{generator.params['N']}_{generator.params['IW']}_{generator.params['input_element_type']}_{generator.params['output_element_type']}",
-            running_params=running_params,
+            test_params=test_params,
         )
         self.generator = generator
         # TODO(newling) Use all parameters in name, to avoid name collision.
@@ -199,11 +200,11 @@ class ConvolutionFromTemplate(BaseTest):
 class ConvolutionNHWCQ(BaseTest):
     def __init__(
         self,
-        running_params: RunningParams = RunningParams(),
+        test_params=None,
     ):
         super().__init__(
             name="convolution_nhwc_q",
-            running_params=running_params,
+            test_params=test_params,
         )
         self.labels += ["Convolution", "ConvolutionNHWCQ"]
 
@@ -217,11 +218,11 @@ class MultipleDispatches(BaseTest):
     def __init__(
         self,
         name,
-        running_params: RunningParams = RunningParams(),
+        test_params=None,
     ):
         super().__init__(
             name=name,
-            running_params=running_params,
+            test_params=test_params,
         )
         self.labels += ["Matmul", "MultipleDispatches"]
 
@@ -255,7 +256,7 @@ class BaseMatmul(BaseTest):
         n_repeats=1,
         function_name="matmul",
         n_kernel_runs=1,
-        running_params: RunningParams = RunningParams(),
+        test_params=None,
     ):
         """
         Base class for all variants of dispatches with a matmul, currently
@@ -263,7 +264,7 @@ class BaseMatmul(BaseTest):
         """
         super().__init__(
             name=name,
-            running_params=running_params,
+            test_params=test_params,
         )
         self.labels.append("BaseMatmul")
         self.M = M
@@ -345,11 +346,11 @@ class Matmul(BaseMatmul):
         additional_labels=None,
         n_repeats=1,
         n_kernel_runs=1,
-        running_params: RunningParams = RunningParams(),
+        test_params=None,
     ):
         super().__init__(
             name=f"matmul_{M}_{N}_{K}_{input_type}_{acc_type}",
-            running_params=running_params,
+            test_params=test_params,
             M=M,
             N=N,
             K=K,
@@ -393,11 +394,11 @@ class MatmulTransposeB(BaseMatmul):
         additional_labels=None,
         n_repeats=1,
         n_kernel_runs=1,
-        running_params: RunningParams = RunningParams(),
+        test_params=None,
     ):
         super().__init__(
             name=f"matmul_transpose_b_{M}_{N}_{K}_{input_type}_{acc_type}",
-            running_params=running_params,
+            test_params=test_params,
             M=M,
             N=N,
             K=K,
@@ -442,11 +443,11 @@ class MatmulTransposeA(BaseMatmul):
         additional_labels=None,
         n_repeats=1,
         n_kernel_runs=1,
-        running_params: RunningParams = RunningParams(),
+        test_params=None,
     ):
         super().__init__(
             name=f"matmul_transpose_a_{M}_{N}_{K}_{input_type}_{acc_type}",
-            running_params=running_params,
+            test_params=test_params,
             M=M,
             N=N,
             K=K,
@@ -488,11 +489,13 @@ class MatmulThinBias(BaseMatmul):
         K,
         input_type,
         acc_type,
-        running_params: RunningParams = RunningParams(lower_to_aie_pipeline="air"),
+        test_params=None,
     ):
         super().__init__(
             name=f"matmul_thin_bias_{M}_{N}_{K}_{input_type}_{acc_type}",
-            running_params=running_params,
+            test_params=test_params
+            if test_params is not None
+            else TestParams(lower_to_aie_pipeline="air"),
             M=M,
             N=N,
             K=K,
@@ -527,11 +530,13 @@ class MatmulFullBias(BaseMatmul):
         K,
         input_type,
         acc_type,
-        running_params: RunningParams = RunningParams(lower_to_aie_pipeline="air"),
+        test_params=None,
     ):
         super().__init__(
             name=f"matmul_full_bias_{M}_{N}_{K}_{input_type}_{acc_type}",
-            running_params=running_params,
+            test_params=test_params
+            if test_params is not None
+            else TestParams(lower_to_aie_pipeline="air"),
             M=M,
             N=N,
             K=K,
@@ -568,11 +573,11 @@ class BatchMatmul(BaseMatmul):
         K,
         input_type,
         acc_type,
-        running_params: RunningParams = RunningParams(),
+        test_params=None,
     ):
         super().__init__(
             name=f"batch_matmul_{B}_{M}_{N}_{K}_{input_type}_{acc_type}",
-            running_params=running_params,
+            test_params=test_params,
             M=M,
             N=N,
             K=K,
@@ -613,11 +618,11 @@ class MatmulTruncf(BaseMatmul):
         lhs,
         rhs,
         expected_out,
-        running_params: RunningParams = RunningParams(),
+        test_params=None,
     ):
         super().__init__(
             name=f"matmul_truncf_{M}_{K}_{input_type}_{acc_type}",
-            running_params=running_params,
+            test_params=test_params,
             M=M,
             N=M,
             K=K,
@@ -1462,7 +1467,7 @@ class Tests:
                     101 * np.ones([16, 16]),
                     3 * np.eye(16),
                     302 * np.ones([16, 16]),
-                    running_params=RunningParams(tile_pipeline=tile_pipeline),
+                    test_params=TestParams(tile_pipeline=tile_pipeline),
                 )
             )
             self.register(
@@ -1474,7 +1479,7 @@ class Tests:
                     2 * np.ones([128, 256]),
                     3 * np.ones([256, 128]),
                     1536 * np.ones([128, 128]),
-                    running_params=RunningParams(tile_pipeline=tile_pipeline),
+                    test_params=TestParams(tile_pipeline=tile_pipeline),
                 )
             )
 
@@ -1492,7 +1497,7 @@ class Tests:
                         256,
                         input_type,
                         acc_type,
-                        running_params=RunningParams(tile_pipeline=tile_pipeline),
+                        test_params=TestParams(tile_pipeline=tile_pipeline),
                     )
                 )
                 # Batch size = 2:
@@ -1504,7 +1509,7 @@ class Tests:
                         64,
                         input_type,
                         acc_type,
-                        running_params=RunningParams(tile_pipeline=tile_pipeline),
+                        test_params=TestParams(tile_pipeline=tile_pipeline),
                     )
                 )
 
@@ -1516,9 +1521,7 @@ class Tests:
                 512,
                 "bf16",
                 "f32",
-                running_params=RunningParams(
-                    use_ukernel=True, lower_to_aie_pipeline="air"
-                ),
+                test_params=TestParams(use_ukernel=True, lower_to_aie_pipeline="air"),
             )
         )
         self.register(MatmulThinBias(1024, 1024, 512, "bf16", "f32"))
@@ -1537,7 +1540,7 @@ class Tests:
                     128,
                     input_type,
                     acc_type,
-                    running_params=RunningParams(
+                    test_params=TestParams(
                         tile_pipeline="pack-peel-4-level-tiling",
                         name_suffix="4level",
                     ),
@@ -1563,9 +1566,7 @@ class Tests:
                     32,
                     "i32",
                     "i32",
-                    running_params=RunningParams(
-                        run_on_target=["npu4"], use_chess=use_chess
-                    ),
+                    test_params=TestParams(run_on_target=["npu4"], use_chess=use_chess),
                 )
             )
 
@@ -1576,7 +1577,7 @@ class Tests:
                 1024,
                 "i32",
                 "i32",
-                running_params=RunningParams(
+                test_params=TestParams(
                     name_suffix="4rows_8cols_npu4",
                     run_on_target=["npu4"],
                     aie_compilation_flags=[
@@ -1594,7 +1595,7 @@ class Tests:
                 256,
                 "i32",
                 "i32",
-                running_params=RunningParams(
+                test_params=TestParams(
                     name_suffix="4rows_8cols_npu4_pack_peel_4_level_tiling",
                     tile_pipeline="pack-peel-4-level-tiling",
                     run_on_target=["npu4"],
@@ -1614,7 +1615,7 @@ class Tests:
                     32,
                     "i32",
                     "i32",
-                    running_params=RunningParams(
+                    test_params=TestParams(
                         name_suffix="infinite_loop_" + target,
                         run_on_target=[target],
                         use_chess=False,
@@ -1632,7 +1633,7 @@ class Tests:
                 64,
                 "bf16",
                 "f32",
-                running_params=RunningParams(
+                test_params=TestParams(
                     use_ukernel=True,
                     use_chess=True,
                     run_on_target=["npu4"],
@@ -1646,7 +1647,7 @@ class Tests:
                 64,
                 "bf16",
                 "f32",
-                running_params=RunningParams(
+                test_params=TestParams(
                     name_suffix="npu4_4x8",
                     use_ukernel=True,
                     aie_compilation_flags=[
@@ -1665,7 +1666,7 @@ class Tests:
                 512,
                 "i8",
                 "i32",
-                running_params=RunningParams(
+                test_params=TestParams(
                     use_ukernel=True,
                     use_chess=False,
                     run_on_target=["npu4"],
@@ -1684,7 +1685,7 @@ class Tests:
                 64,
                 "bf16",
                 "f32",
-                running_params=RunningParams(
+                test_params=TestParams(
                     name_suffix="4rows_8cols_npu4",
                     use_ukernel=True,
                     tile_pipeline="pack-peel-4-level-tiling",
@@ -1704,7 +1705,7 @@ class Tests:
                 512,
                 "bf16",
                 "f32",
-                running_params=RunningParams(
+                test_params=TestParams(
                     name_suffix="4rows_8cols_npu4",
                     use_ukernel=True,
                     tile_pipeline="pack-peel-4-level-tiling",
@@ -1726,7 +1727,7 @@ class Tests:
                 32,
                 "bf16",
                 "f32",
-                running_params=RunningParams(
+                test_params=TestParams(
                     aie_compilation_flags=[
                         "--iree-amdaie-num-rows=2",
                         "--iree-amdaie-num-cols=2",
@@ -1744,7 +1745,7 @@ class Tests:
                 32,
                 "bf16",
                 "f32",
-                running_params=RunningParams(
+                test_params=TestParams(
                     aie_compilation_flags=[
                         "--iree-amdaie-num-rows=4",
                         "--iree-amdaie-num-cols=2",
@@ -1763,7 +1764,7 @@ class Tests:
                     128,
                     "i8",
                     "i32",
-                    running_params=RunningParams(
+                    test_params=TestParams(
                         aie_compilation_flags=[
                             "--iree-amdaie-num-rows=1",
                             "--iree-amdaie-num-cols=1",
@@ -2088,7 +2089,7 @@ class Tests:
                         K,
                         in_dtype,
                         out_dtype,
-                        running_params=RunningParams(
+                        test_params=TestParams(
                             run_on_target=run_on_target,
                             tile_pipeline=tile_pipeline,
                             use_ukernel=use_ukernel,
@@ -2107,7 +2108,7 @@ class Tests:
                     K,
                     in_dtype,
                     out_dtype,
-                    running_params=RunningParams(
+                    test_params=TestParams(
                         run_on_target=run_on_target,
                         tile_pipeline=tile_pipeline,
                         use_ukernel=use_ukernel,
@@ -2129,7 +2130,7 @@ class Tests:
                 256,
                 "bf16",
                 "f32",
-                running_params=RunningParams(
+                test_params=TestParams(
                     name_suffix="air_pad_pack",
                     use_ukernel=True,
                     lower_to_aie_pipeline="air",
@@ -2152,7 +2153,7 @@ class Tests:
                     shape[1],
                     "bf16",
                     "f32",
-                    running_params=RunningParams(
+                    test_params=TestParams(
                         use_ukernel=True,
                         lower_to_aie_pipeline="objectFifo",
                         tile_pipeline="pack-peel",
@@ -2169,7 +2170,7 @@ class Tests:
                 32,
                 "i32",
                 "i32",
-                running_params=RunningParams(
+                test_params=TestParams(
                     name_suffix="chess",
                     use_chess=True,
                 ),
@@ -2185,7 +2186,7 @@ class Tests:
                 64,
                 "bf16",
                 "f32",
-                running_params=RunningParams(
+                test_params=TestParams(
                     name_suffix="chess",
                     use_chess=True,
                     use_ukernel=True,
