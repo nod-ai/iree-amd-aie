@@ -135,8 +135,13 @@ struct PhysPortAndID {
 // A map from a switchbox output (physical) port to the number of that port.
 using MasterSetsT =
     std::map<PhysPort, std::vector<std::pair<uint8_t, uint8_t>>>;
-using SlaveGroupsT = std::vector<std::vector<PhysPortAndID>>;
-using SlaveMasksT = std::map<PhysPortAndID, int>;
+/// Maps a slave port to groups of packet IDs.
+/// Groups associated with the same slave port will be lowered together into a
+/// `packet_rules` operation.
+/// IDs within the same group will be converted into a single `packet_rule`
+/// entry.
+using SlaveGroupsT = std::map<PhysPort, SmallVector<std::set<uint32_t>>>;
+using SlaveMasksT = std::map<PhysPortAndID, uint32_t>;
 using SlaveAMSelsT = std::map<PhysPortAndID, std::pair<uint8_t, uint8_t>>;
 using ConnectionAndFlowIDT = std::pair<Connect, int>;
 using TileLocToConnectionFlowIDT =
@@ -144,7 +149,8 @@ using TileLocToConnectionFlowIDT =
 using PacketFlowMapT = DenseMap<PhysPortAndID, llvm::SetVector<PhysPortAndID>>;
 
 std::tuple<SlaveGroupsT, SlaveMasksT> emitSlaveGroupsAndMasksRoutingConfig(
-    ArrayRef<PhysPortAndID> slavePorts, const PacketFlowMapT &packetFlows);
+    ArrayRef<PhysPortAndID> slavePorts, const PacketFlowMapT &packetFlows,
+    uint32_t numMaskBits);
 
 FailureOr<std::tuple<MasterSetsT, SlaveAMSelsT>> emitPacketRoutingConfiguration(
     const AMDAIEDeviceModel &deviceModel, const PacketFlowMapT &packetFlows);
