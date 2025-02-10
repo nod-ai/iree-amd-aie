@@ -38,6 +38,30 @@ def run_conv_test(config, aie_compilation_flags, filename, n_repeats):
     return True
 
 
+class TestParams(ABC):
+    def __init__(
+        self,
+        run_on_target=["npu1_4col"],
+        aie_compilation_flags=None,
+        tile_pipeline="pack-peel",
+        lower_to_aie_pipeline="objectFifo",
+        name_suffix="",
+        use_chess=False,
+        use_ukernel=False,
+        run_benchmark=False,
+    ):
+        self.run_on_target = run_on_target
+        self.aie_compilation_flags = (
+            [] if aie_compilation_flags is None else aie_compilation_flags
+        )
+        self.tile_pipeline = tile_pipeline
+        self.lower_to_aie_pipeline = lower_to_aie_pipeline
+        self.name_suffix = name_suffix
+        self.use_chess = use_chess
+        self.use_ukernel = use_ukernel
+        self.run_benchmark = run_benchmark
+
+
 class BaseTest(ABC):
     """
     Base class to be inherited by all tests.
@@ -61,14 +85,12 @@ class BaseTest(ABC):
 
     def __init__(
         self,
-        run_on_target=["npu1_4col"],
-        aie_compilation_flags=None,
-        use_chess=False,
+        name="",
+        test_params=None,
     ):
-        self.run_on_target = [] if run_on_target is None else run_on_target
-        self.aie_compilation_flags = (
-            [] if aie_compilation_flags is None else aie_compilation_flags
-        )
+        test_params = test_params if test_params is not None else TestParams()
+        self.run_on_target = test_params.run_on_target
+        self.aie_compilation_flags = test_params.aie_compilation_flags
         assert isinstance(self.aie_compilation_flags, list)
         assert all(isinstance(flag, str) for flag in self.aie_compilation_flags)
 
@@ -76,12 +98,37 @@ class BaseTest(ABC):
         # constructor, never overwrite it.
         self.labels = ["All"]
 
+        name_suffix = test_params.name_suffix
+        tile_pipeline = test_params.tile_pipeline
+        lower_to_aie_pipeline = test_params.lower_to_aie_pipeline
+        use_chess = test_params.use_chess
+        use_ukernel = test_params.use_ukernel
+        run_benchmark = test_params.run_benchmark
+
+        # Form test name.
+        self.name = f"{name}_{name_suffix}" if name_suffix else name
+        self.tile_pipeline = tile_pipeline
+        self.lower_to_aie_pipeline = lower_to_aie_pipeline
         self.use_chess = use_chess
+        self.use_ukernel = use_ukernel
+        self.run_benchmark = run_benchmark
+
+        if tile_pipeline == "pack-peel-4-level-tiling":
+            self.name += "_4_level_tiling"
+
         if use_chess:
+            self.name += f"_chess"
             self.labels.append("Chess")
             self.add_aie_compilation_flags([f"--iree-amd-aie-enable-chess=1"])
         else:
             self.labels.append("Peano")
+
+        if use_ukernel:
+            self.name += "_ukernel"
+            self.labels.append("UKernel")
+
+        if run_benchmark:
+            self.name += "_benchmark"
 
     def add_aie_compilation_flags(self, flags):
         if flags:
@@ -129,17 +176,17 @@ class BaseTest(ABC):
 
 
 class ConvolutionFromTemplate(BaseTest):
-    def __init__(self, params):
-        super().__init__()
-        self.generator = ConvolutionMlirGenerator(**params)
-        params = self.generator.params
-        conv_type = params["conv_type"]
-        N = params["N"]
-        IW = params["IW"]
-        in_type = params["input_element_type"]
-        out_type = params["output_element_type"]
+    def __init__(
+        self,
+        generator,
+        test_params=None,
+    ):
+        super().__init__(
+            name=f"{generator.params['conv_type']}_{generator.params['N']}_{generator.params['IW']}_{generator.params['input_element_type']}_{generator.params['output_element_type']}",
+            test_params=test_params,
+        )
+        self.generator = generator
         # TODO(newling) Use all parameters in name, to avoid name collision.
-        self.name = f"{conv_type}_{N}_{IW}_{in_type}_{out_type}"
         self.labels += ["Convolution"]
 
     def _execute(self, config):
@@ -151,9 +198,14 @@ class ConvolutionFromTemplate(BaseTest):
 
 
 class ConvolutionNHWCQ(BaseTest):
-    def __init__(self):
-        super().__init__()
-        self.name = "convolution_nhwc_q"
+    def __init__(
+        self,
+        test_params=None,
+    ):
+        super().__init__(
+            name="convolution_nhwc_q",
+            test_params=test_params,
+        )
         self.labels += ["Convolution", "ConvolutionNHWCQ"]
 
     def _execute(self, config):
@@ -163,9 +215,15 @@ class ConvolutionNHWCQ(BaseTest):
 
 
 class MultipleDispatches(BaseTest):
-    def __init__(self, name):
-        super().__init__()
-        self.name = name
+    def __init__(
+        self,
+        name,
+        test_params=None,
+    ):
+        super().__init__(
+            name=name,
+            test_params=test_params,
+        )
         self.labels += ["Matmul", "MultipleDispatches"]
 
     def _execute(self, config):
@@ -189,27 +247,25 @@ class MultipleDispatches(BaseTest):
 class BaseMatmul(BaseTest):
     def __init__(
         self,
-        run_on_target,
-        aie_compilation_flags,
         M,
         N,
         K,
         input_type,
         acc_type,
-        use_ukernel=False,
-        lower_to_aie_pipeline="objectFifo",
-        tile_pipeline="pack-peel",
+        name="",
         n_repeats=1,
-        use_chess=False,
         function_name="matmul",
         n_kernel_runs=1,
-        run_benchmark=False,
+        test_params=None,
     ):
         """
         Base class for all variants of dispatches with a matmul, currently
         matmuls, and matmuls with fused elementwise operations.
         """
-        super().__init__(run_on_target, aie_compilation_flags, use_chess)
+        super().__init__(
+            name=name,
+            test_params=test_params,
+        )
         self.labels.append("BaseMatmul")
         self.M = M
         self.N = N
@@ -219,17 +275,11 @@ class BaseMatmul(BaseTest):
         self.n_repeats = n_repeats
         self.n_kernel_runs = n_kernel_runs
 
-        self.tile_pipeline = tile_pipeline
         self.labels.append(self.tile_pipeline)
 
-        self.lower_to_aie_pipeline = lower_to_aie_pipeline
         self.labels.append(self.lower_to_aie_pipeline)
 
-        self.use_ukernel = use_ukernel
-        if use_ukernel:
-            self.labels.append("UKernel")
         self.function_name = function_name
-        self.run_benchmark = run_benchmark
 
     def vs_cpu(self, config):
         filename = self.get_filename(config)
@@ -293,53 +343,30 @@ class Matmul(BaseMatmul):
         K,
         input_type,
         acc_type,
-        name_suffix="",
-        use_ukernel=False,
-        run_on_target=["npu1_4col"],
         additional_labels=None,
-        aie_compilation_flags=None,
-        tile_pipeline="pack-peel",
-        lower_to_aie_pipeline="objectFifo",
         n_repeats=1,
         n_kernel_runs=1,
-        use_chess=False,
-        run_benchmark=False,
+        test_params=None,
     ):
         super().__init__(
-            run_on_target=run_on_target,
-            aie_compilation_flags=aie_compilation_flags,
+            name=f"matmul_{M}_{N}_{K}_{input_type}_{acc_type}",
+            test_params=test_params,
             M=M,
             N=N,
             K=K,
             input_type=input_type,
             acc_type=acc_type,
-            tile_pipeline=tile_pipeline,
-            use_ukernel=use_ukernel,
             n_repeats=n_repeats,
             n_kernel_runs=n_kernel_runs,
-            lower_to_aie_pipeline=lower_to_aie_pipeline,
-            use_chess=use_chess,
-            run_benchmark=run_benchmark,
         )
-        self.run_benchmark = run_benchmark
         self.labels.append("Matmul")
 
-        self.name = f"matmul_{M}_{N}_{K}_{input_type}_{acc_type}"
-        if name_suffix:
-            self.name += f"_{name_suffix}"
-        if use_ukernel:
-            self.name += "_ukernel"
         if additional_labels:
             self.labels += additional_labels
-        if run_benchmark:
-            aie_compilation_flags = (
-                [] if aie_compilation_flags is None else aie_compilation_flags
-            )
-            aie_compilation_flags += [
+        if self.run_benchmark:
+            self.aie_compilation_flags += [
                 "--iree-amdaie-enable-infinite-loop-around-core-block=true"
             ]
-            self.aie_compilation_flags += aie_compilation_flags
-            self.name += "_benchmark"
             self.labels.append("MatmulBenchmark")
 
     def _execute(self, config):
@@ -364,50 +391,31 @@ class MatmulTransposeB(BaseMatmul):
         K,
         input_type,
         acc_type,
-        name_suffix="",
-        use_ukernel=False,
-        run_on_target=["npu1_4col"],
-        tile_pipeline="pack-peel",
         additional_labels=None,
-        aie_compilation_flags=None,
         n_repeats=1,
         n_kernel_runs=1,
-        run_benchmark=False,
+        test_params=None,
     ):
         super().__init__(
-            run_on_target=run_on_target,
-            aie_compilation_flags=aie_compilation_flags,
+            name=f"matmul_transpose_b_{M}_{N}_{K}_{input_type}_{acc_type}",
+            test_params=test_params,
             M=M,
             N=N,
             K=K,
             input_type=input_type,
             acc_type=acc_type,
-            tile_pipeline=tile_pipeline,
-            use_ukernel=use_ukernel,
             function_name="matmul_transpose_b",
             n_repeats=n_repeats,
             n_kernel_runs=n_kernel_runs,
-            run_benchmark=run_benchmark,
         )
-        self.run_benchmark = run_benchmark
         self.labels.append("MatmulTransposeB")
 
-        self.name = f"matmul_transpose_b_{M}_{N}_{K}_{input_type}_{acc_type}"
-        if name_suffix:
-            self.name += f"_{name_suffix}"
-        if use_ukernel:
-            self.name += "_ukernel"
         if additional_labels:
             self.labels += additional_labels
-        if run_benchmark:
-            aie_compilation_flags = (
-                [] if aie_compilation_flags is None else aie_compilation_flags
-            )
-            aie_compilation_flags += [
+        if self.run_benchmark:
+            self.aie_compilation_flags += [
                 "--iree-amdaie-enable-infinite-loop-around-core-block=true"
             ]
-            self.aie_compilation_flags += aie_compilation_flags
-            self.name += "_benchmark"
             self.labels.append("MatmulTransposeBBenchmark")
 
     def _execute(self, config):
@@ -432,50 +440,31 @@ class MatmulTransposeA(BaseMatmul):
         K,
         input_type,
         acc_type,
-        name_suffix="",
-        use_ukernel=False,
-        run_on_target=["npu1_4col"],
-        tile_pipeline="pack-peel",
         additional_labels=None,
-        aie_compilation_flags=None,
         n_repeats=1,
         n_kernel_runs=1,
-        run_benchmark=False,
+        test_params=None,
     ):
         super().__init__(
-            run_on_target=run_on_target,
-            aie_compilation_flags=aie_compilation_flags,
+            name=f"matmul_transpose_a_{M}_{N}_{K}_{input_type}_{acc_type}",
+            test_params=test_params,
             M=M,
             N=N,
             K=K,
             input_type=input_type,
             acc_type=acc_type,
-            tile_pipeline=tile_pipeline,
-            use_ukernel=use_ukernel,
             function_name="matmul_transpose_a",
             n_repeats=n_repeats,
             n_kernel_runs=n_kernel_runs,
-            run_benchmark=run_benchmark,
         )
-        self.run_benchmark = run_benchmark
         self.labels.append("MatmulTransposeA")
 
-        self.name = f"matmul_transpose_a_{M}_{N}_{K}_{input_type}_{acc_type}"
-        if name_suffix:
-            self.name += f"_{name_suffix}"
-        if use_ukernel:
-            self.name += "_ukernel"
         if additional_labels:
             self.labels += additional_labels
-        if run_benchmark:
-            aie_compilation_flags = (
-                [] if aie_compilation_flags is None else aie_compilation_flags
-            )
-            aie_compilation_flags += [
+        if self.run_benchmark:
+            self.aie_compilation_flags += [
                 "--iree-amdaie-enable-infinite-loop-around-core-block=true"
             ]
-            self.aie_compilation_flags += aie_compilation_flags
-            self.name += "_benchmark"
             self.labels.append("MatmulTransposeABenchmark")
 
     def _execute(self, config):
@@ -500,25 +489,20 @@ class MatmulThinBias(BaseMatmul):
         K,
         input_type,
         acc_type,
-        use_ukernel=False,
-        run_on_target=["npu1_4col"],
+        test_params=None,
     ):
         super().__init__(
-            run_on_target=run_on_target,
-            aie_compilation_flags=None,
+            name=f"matmul_thin_bias_{M}_{N}_{K}_{input_type}_{acc_type}",
+            test_params=test_params
+            if test_params is not None
+            else TestParams(lower_to_aie_pipeline="air"),
             M=M,
             N=N,
             K=K,
             input_type=input_type,
             acc_type=acc_type,
-            lower_to_aie_pipeline="air",
-            use_ukernel=use_ukernel,
         )
         self.labels.append("MatmulThinBias")
-
-        self.name = f"matmul_thin_bias_{M}_{N}_{K}_{input_type}_{acc_type}"
-        if use_ukernel:
-            self.name += "_ukernel"
 
     def _execute(self, config):
         matmul_template_dir = config.file_dir / "matmul_template"
@@ -539,19 +523,27 @@ class MatmulFullBias(BaseMatmul):
     A test of the form matmul(A,B) + C where A:MxK, B:KxN, C:MxN
     """
 
-    def __init__(self, M, N, K, input_type, acc_type, run_on_target=["npu1_4col"]):
+    def __init__(
+        self,
+        M,
+        N,
+        K,
+        input_type,
+        acc_type,
+        test_params=None,
+    ):
         super().__init__(
-            run_on_target=run_on_target,
-            aie_compilation_flags=None,
+            name=f"matmul_full_bias_{M}_{N}_{K}_{input_type}_{acc_type}",
+            test_params=test_params
+            if test_params is not None
+            else TestParams(lower_to_aie_pipeline="air"),
             M=M,
             N=N,
             K=K,
             input_type=input_type,
             acc_type=acc_type,
-            lower_to_aie_pipeline="air",
         )
         self.labels.append("MatmulFullBias")
-        self.name = f"matmul_full_bias_{M}_{N}_{K}_{input_type}_{acc_type}"
 
     def _execute(self, config):
         matmul_template_dir = config.file_dir / "matmul_template"
@@ -581,25 +573,19 @@ class BatchMatmul(BaseMatmul):
         K,
         input_type,
         acc_type,
-        run_on_target=["npu1_4col"],
-        tile_pipeline="pack-peel",
+        test_params=None,
     ):
         super().__init__(
-            run_on_target=run_on_target,
-            aie_compilation_flags=None,
+            name=f"batch_matmul_{B}_{M}_{N}_{K}_{input_type}_{acc_type}",
+            test_params=test_params,
             M=M,
             N=N,
             K=K,
             input_type=input_type,
             acc_type=acc_type,
-            tile_pipeline=tile_pipeline,
             n_repeats=1,
         )
         self.labels.append("BatchMatmul")
-
-        self.name = f"batch_matmul_{B}_{M}_{N}_{K}_{input_type}_{acc_type}"
-        if tile_pipeline == "pack-peel-4-level-tiling":
-            self.name += "_4_level_tiling"
         self.B = B
 
     def _execute(self, config):
@@ -632,18 +618,16 @@ class MatmulTruncf(BaseMatmul):
         lhs,
         rhs,
         expected_out,
-        run_on_target=["npu1_4col"],
-        tile_pipeline="pack-peel",
+        test_params=None,
     ):
         super().__init__(
-            run_on_target=run_on_target,
-            aie_compilation_flags=None,
+            name=f"matmul_truncf_{M}_{K}_{input_type}_{acc_type}",
+            test_params=test_params,
             M=M,
             N=M,
             K=K,
             input_type=input_type,
             acc_type=acc_type,
-            tile_pipeline=tile_pipeline,
             n_repeats=1,
         )
         self.labels.append("MatmulTruncf")
@@ -653,9 +637,6 @@ class MatmulTruncf(BaseMatmul):
         assert rhs.shape == (K, M)
         assert expected_out.shape == (M, M)
 
-        self.name = f"matmul_truncf_{M}_{K}_{input_type}_{acc_type}"
-        if tile_pipeline == "pack-peel-4-level-tiling":
-            self.name += "_4_level_tiling"
         self.lhs = lhs
         self.rhs = rhs
         self.expected_out = expected_out
@@ -1486,7 +1467,7 @@ class Tests:
                     101 * np.ones([16, 16]),
                     3 * np.eye(16),
                     302 * np.ones([16, 16]),
-                    tile_pipeline=tile_pipeline,
+                    test_params=TestParams(tile_pipeline=tile_pipeline),
                 )
             )
             self.register(
@@ -1498,7 +1479,7 @@ class Tests:
                     2 * np.ones([128, 256]),
                     3 * np.ones([256, 128]),
                     1536 * np.ones([128, 128]),
-                    tile_pipeline=tile_pipeline,
+                    test_params=TestParams(tile_pipeline=tile_pipeline),
                 )
             )
 
@@ -1516,18 +1497,33 @@ class Tests:
                         256,
                         input_type,
                         acc_type,
-                        tile_pipeline=tile_pipeline,
+                        test_params=TestParams(tile_pipeline=tile_pipeline),
                     )
                 )
                 # Batch size = 2:
                 self.register(
                     BatchMatmul(
-                        2, 64, 64, 64, input_type, acc_type, tile_pipeline=tile_pipeline
+                        2,
+                        64,
+                        64,
+                        64,
+                        input_type,
+                        acc_type,
+                        test_params=TestParams(tile_pipeline=tile_pipeline),
                     )
                 )
 
         # MatmulThinBias test(s):
-        self.register(MatmulThinBias(1024, 1024, 512, "bf16", "f32", use_ukernel=True))
+        self.register(
+            MatmulThinBias(
+                1024,
+                1024,
+                512,
+                "bf16",
+                "f32",
+                test_params=TestParams(use_ukernel=True, lower_to_aie_pipeline="air"),
+            )
+        )
         self.register(MatmulThinBias(1024, 1024, 512, "bf16", "f32"))
 
         # MatmulFullBias test:
@@ -1544,8 +1540,10 @@ class Tests:
                     128,
                     input_type,
                     acc_type,
-                    tile_pipeline="pack-peel-4-level-tiling",
-                    name_suffix="4level",
+                    test_params=TestParams(
+                        tile_pipeline="pack-peel-4-level-tiling",
+                        name_suffix="4level",
+                    ),
                 )
             )
             self.register(MatmulTransposeB(1536, 1536, 2048, input_type, acc_type))
@@ -1568,9 +1566,7 @@ class Tests:
                     32,
                     "i32",
                     "i32",
-                    name_suffix="chess_" + str(use_chess),
-                    run_on_target=["npu4"],
-                    use_chess=False,
+                    test_params=TestParams(run_on_target=["npu4"], use_chess=use_chess),
                 )
             )
 
@@ -1581,13 +1577,15 @@ class Tests:
                 1024,
                 "i32",
                 "i32",
-                name_suffix="4rows_8cols_npu4",
-                run_on_target=["npu4"],
-                aie_compilation_flags=[
-                    "--iree-amdaie-num-rows=4",
-                    "--iree-amdaie-num-cols=8",
-                ],
-                use_chess=False,
+                test_params=TestParams(
+                    name_suffix="4rows_8cols_npu4",
+                    run_on_target=["npu4"],
+                    aie_compilation_flags=[
+                        "--iree-amdaie-num-rows=4",
+                        "--iree-amdaie-num-cols=8",
+                    ],
+                    use_chess=False,
+                ),
             )
         )
         self.register(
@@ -1597,13 +1595,15 @@ class Tests:
                 256,
                 "i32",
                 "i32",
-                name_suffix="4rows_8cols_npu4_pack_peel_4_level_tiling",
-                tile_pipeline="pack-peel-4-level-tiling",
-                run_on_target=["npu4"],
-                aie_compilation_flags=[
-                    "--iree-amdaie-num-rows=4",
-                    "--iree-amdaie-num-cols=8",
-                ],
+                test_params=TestParams(
+                    name_suffix="4rows_8cols_npu4_pack_peel_4_level_tiling",
+                    tile_pipeline="pack-peel-4-level-tiling",
+                    run_on_target=["npu4"],
+                    aie_compilation_flags=[
+                        "--iree-amdaie-num-rows=4",
+                        "--iree-amdaie-num-cols=8",
+                    ],
+                ),
             )
         )
 
@@ -1615,12 +1615,14 @@ class Tests:
                     32,
                     "i32",
                     "i32",
-                    name_suffix="infinite_loop_" + target,
-                    run_on_target=[target],
-                    use_chess=False,
-                    aie_compilation_flags=[
-                        "--iree-amdaie-enable-infinite-loop-around-core-block=true"
-                    ],
+                    test_params=TestParams(
+                        name_suffix="infinite_loop_" + target,
+                        run_on_target=[target],
+                        use_chess=False,
+                        aie_compilation_flags=[
+                            "--iree-amdaie-enable-infinite-loop-around-core-block=true"
+                        ],
+                    ),
                 )
             )
 
@@ -1631,9 +1633,11 @@ class Tests:
                 64,
                 "bf16",
                 "f32",
-                use_ukernel=True,
-                use_chess=True,
-                run_on_target=["npu4"],
+                test_params=TestParams(
+                    use_ukernel=True,
+                    use_chess=True,
+                    run_on_target=["npu4"],
+                ),
             )
         )
         self.register(
@@ -1643,14 +1647,16 @@ class Tests:
                 64,
                 "bf16",
                 "f32",
-                name_suffix="ukernel_npu4_4x8",
-                use_ukernel=True,
-                aie_compilation_flags=[
-                    "--iree-amdaie-num-rows=4",
-                    "--iree-amdaie-num-cols=8",
-                ],
-                use_chess=True,
-                run_on_target=["npu4"],
+                test_params=TestParams(
+                    name_suffix="npu4_4x8",
+                    use_ukernel=True,
+                    aie_compilation_flags=[
+                        "--iree-amdaie-num-rows=4",
+                        "--iree-amdaie-num-cols=8",
+                    ],
+                    use_chess=True,
+                    run_on_target=["npu4"],
+                ),
             )
         )
         self.register(
@@ -1660,13 +1666,15 @@ class Tests:
                 512,
                 "i8",
                 "i32",
-                use_ukernel=True,
-                use_chess=False,
-                run_on_target=["npu4"],
-                aie_compilation_flags=[
-                    "--iree-amdaie-num-rows=4",
-                    "--iree-amdaie-num-cols=8",
-                ],
+                test_params=TestParams(
+                    use_ukernel=True,
+                    use_chess=False,
+                    run_on_target=["npu4"],
+                    aie_compilation_flags=[
+                        "--iree-amdaie-num-rows=4",
+                        "--iree-amdaie-num-cols=8",
+                    ],
+                ),
                 additional_labels=["I8UKernel"],
             )
         )
@@ -1677,15 +1685,17 @@ class Tests:
                 64,
                 "bf16",
                 "f32",
-                name_suffix="4rows_8cols_npu4_pack_peel_4_level_tiling_ukernel",
-                use_ukernel=True,
-                tile_pipeline="pack-peel-4-level-tiling",
-                run_on_target=["npu4"],
-                aie_compilation_flags=[
-                    "--iree-amdaie-num-rows=4",
-                    "--iree-amdaie-num-cols=8",
-                ],
-                use_chess=True,
+                test_params=TestParams(
+                    name_suffix="4rows_8cols_npu4",
+                    use_ukernel=True,
+                    tile_pipeline="pack-peel-4-level-tiling",
+                    run_on_target=["npu4"],
+                    aie_compilation_flags=[
+                        "--iree-amdaie-num-rows=4",
+                        "--iree-amdaie-num-cols=8",
+                    ],
+                    use_chess=True,
+                ),
             )
         )
         self.register(
@@ -1695,15 +1705,17 @@ class Tests:
                 512,
                 "bf16",
                 "f32",
-                name_suffix="4rows_8cols_npu4_pack_peel_4_level_tiling_ukernel",
-                use_ukernel=True,
-                tile_pipeline="pack-peel-4-level-tiling",
-                run_on_target=["npu4"],
-                aie_compilation_flags=[
-                    "--iree-amdaie-num-rows=4",
-                    "--iree-amdaie-num-cols=8",
-                ],
-                use_chess=True,
+                test_params=TestParams(
+                    name_suffix="4rows_8cols_npu4",
+                    use_ukernel=True,
+                    tile_pipeline="pack-peel-4-level-tiling",
+                    run_on_target=["npu4"],
+                    aie_compilation_flags=[
+                        "--iree-amdaie-num-rows=4",
+                        "--iree-amdaie-num-cols=8",
+                    ],
+                    use_chess=True,
+                ),
             )
         )
 
@@ -1715,11 +1727,13 @@ class Tests:
                 32,
                 "bf16",
                 "f32",
-                aie_compilation_flags=[
-                    "--iree-amdaie-num-rows=2",
-                    "--iree-amdaie-num-cols=2",
-                ],
-                name_suffix="2rows_2cols",
+                test_params=TestParams(
+                    aie_compilation_flags=[
+                        "--iree-amdaie-num-rows=2",
+                        "--iree-amdaie-num-cols=2",
+                    ],
+                    name_suffix="2rows_2cols",
+                ),
             )
         )
 
@@ -1731,11 +1745,13 @@ class Tests:
                 32,
                 "bf16",
                 "f32",
-                aie_compilation_flags=[
-                    "--iree-amdaie-num-rows=4",
-                    "--iree-amdaie-num-cols=2",
-                ],
-                name_suffix="4rows_2cols",
+                test_params=TestParams(
+                    aie_compilation_flags=[
+                        "--iree-amdaie-num-rows=4",
+                        "--iree-amdaie-num-cols=2",
+                    ],
+                    name_suffix="4rows_2cols",
+                ),
             )
         )
 
@@ -1748,13 +1764,15 @@ class Tests:
                     128,
                     "i8",
                     "i32",
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=1",
-                        "--iree-amdaie-num-cols=1",
-                    ],
-                    name_suffix="OneCore_" + device,
+                    test_params=TestParams(
+                        aie_compilation_flags=[
+                            "--iree-amdaie-num-rows=1",
+                            "--iree-amdaie-num-cols=1",
+                        ],
+                        name_suffix="OneCore_" + device,
+                        run_on_target=[device],
+                    ),
                     additional_labels=["OneCore"],
-                    run_on_target=[device],
                 )
             )
 
@@ -2059,9 +2077,6 @@ class Tests:
             else:
                 raise ValueError("Transposing both LHS and RHS is not supported.")
 
-            if tile_pipeline == "pack-peel-4-level-tiling":
-                name_suffix += "_4_level_tiling"
-
             # This should only be the case for benchmark tests which we expect
             # to not pass numerically.
             if "skip_numerics" in test and test["skip_numerics"]:
@@ -2074,12 +2089,14 @@ class Tests:
                         K,
                         in_dtype,
                         out_dtype,
-                        run_on_target=run_on_target,
-                        tile_pipeline=tile_pipeline,
-                        use_ukernel=use_ukernel,
+                        test_params=TestParams(
+                            run_on_target=run_on_target,
+                            tile_pipeline=tile_pipeline,
+                            use_ukernel=use_ukernel,
+                            aie_compilation_flags=aie_compilation_flags,
+                            name_suffix=name_suffix,
+                        ),
                         n_repeats=2,
-                        aie_compilation_flags=aie_compilation_flags,
-                        name_suffix=name_suffix,
                         additional_labels=["PerformanceCorrectness"],
                     )
                 )
@@ -2091,15 +2108,17 @@ class Tests:
                     K,
                     in_dtype,
                     out_dtype,
-                    run_on_target=run_on_target,
-                    tile_pipeline=tile_pipeline,
+                    test_params=TestParams(
+                        run_on_target=run_on_target,
+                        tile_pipeline=tile_pipeline,
+                        use_ukernel=use_ukernel,
+                        aie_compilation_flags=aie_compilation_flags,
+                        name_suffix=name_suffix,
+                        run_benchmark=True,
+                    ),
                     additional_labels=["Performance"],
-                    use_ukernel=use_ukernel,
                     n_repeats=5,
                     n_kernel_runs=100,
-                    aie_compilation_flags=aie_compilation_flags,
-                    name_suffix=name_suffix,
-                    run_benchmark=True,
                 )
             )
 
@@ -2111,10 +2130,12 @@ class Tests:
                 256,
                 "bf16",
                 "f32",
-                name_suffix="air_pad_pack",
-                use_ukernel=True,
-                lower_to_aie_pipeline="air",
-                tile_pipeline="pad-pack",
+                test_params=TestParams(
+                    name_suffix="air_pad_pack",
+                    use_ukernel=True,
+                    lower_to_aie_pipeline="air",
+                    tile_pipeline="pad-pack",
+                ),
             )
         )
 
@@ -2132,9 +2153,11 @@ class Tests:
                     shape[1],
                     "bf16",
                     "f32",
-                    use_ukernel=True,
-                    lower_to_aie_pipeline="objectFifo",
-                    tile_pipeline="pack-peel",
+                    test_params=TestParams(
+                        use_ukernel=True,
+                        lower_to_aie_pipeline="objectFifo",
+                        tile_pipeline="pack-peel",
+                    ),
                     n_repeats=2,
                 )
             )
@@ -2147,8 +2170,10 @@ class Tests:
                 32,
                 "i32",
                 "i32",
-                name_suffix="chess",
-                use_chess=True,
+                test_params=TestParams(
+                    name_suffix="chess",
+                    use_chess=True,
+                ),
                 n_repeats=10,
             )
         )
@@ -2161,9 +2186,11 @@ class Tests:
                 64,
                 "bf16",
                 "f32",
-                name_suffix="chess",
-                use_chess=True,
-                use_ukernel=True,
+                test_params=TestParams(
+                    name_suffix="chess",
+                    use_chess=True,
+                    use_ukernel=True,
+                ),
                 n_repeats=10,
             )
         )
@@ -2189,7 +2216,8 @@ class Tests:
         ):
             conv_2d_map["input_element_type"] = input_type
             conv_2d_map["output_element_type"] = output_type
-            self.register(ConvolutionFromTemplate(conv_2d_map))
+            generator = ConvolutionMlirGenerator(**conv_2d_map)
+            self.register(ConvolutionFromTemplate(generator))
 
         # Depthwise convolution tests:
         depthwise_map = {
@@ -2201,7 +2229,8 @@ class Tests:
             "input_element_type": "i32",
             "output_element_type": "i32",
         }
-        self.register(ConvolutionFromTemplate(depthwise_map))
+        generator = ConvolutionMlirGenerator(**depthwise_map)
+        self.register(ConvolutionFromTemplate(generator))
 
 
 def all_tests(
