@@ -159,6 +159,8 @@ class BaseTest(ABC):
         # does not).
         if self.use_chess and not config.vitis_dir:
             return False
+        if self.use_ukernel and not config.vitis_dir:
+            return False
 
         # If use_chess=0, and config has not provided a valid
         # path to peano, then bail: a path to peano must be provided.
@@ -684,11 +686,11 @@ class MatmulTrunci(BaseMatmul):
         rhs,
         expected_out,
         n_repeats=1,
-        running_params: RunningParams = RunningParams(),
+        test_params=None,
     ):
         super().__init__(
             name=f"matmul_trunci_{M}_{K}_{input_type}_{acc_type}",
-            running_params=running_params,
+            test_params=test_params,
             M=M,
             N=M,
             K=K,
@@ -1533,7 +1535,7 @@ class Tests:
                 1 * np.ones([256, 32], dtype=np.int8),
                 1 * np.ones([32, 256], dtype=np.int8),
                 32 * np.ones([256, 256], dtype=np.int8),
-                running_params=RunningParams(
+                test_params=TestParams(
                     tile_pipeline="pack-peel-4-level-tiling",
                     run_on_target=["npu1_4col"],
                     aie_compilation_flags=[
@@ -1554,7 +1556,7 @@ class Tests:
                 1 * np.ones([256, 32], dtype=np.int8),
                 1 * np.ones([32, 256], dtype=np.int8),
                 32 * np.ones([256, 256], dtype=np.int8),
-                running_params=RunningParams(
+                test_params=TestParams(
                     tile_pipeline="pack-peel-4-level-tiling",
                     run_on_target=["npu1_4col"],
                     aie_compilation_flags=[
@@ -1574,7 +1576,7 @@ class Tests:
                 1 * np.ones([256, 32], dtype=np.int8),
                 1 * np.ones([32, 256], dtype=np.int8),
                 32 * np.ones([256, 256], dtype=np.int8),
-                running_params=RunningParams(
+                test_params=TestParams(
                     tile_pipeline="pack-peel-4-level-tiling",
                     run_on_target=["npu4"],
                     aie_compilation_flags=[
