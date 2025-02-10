@@ -683,25 +683,18 @@ class MatmulTrunci(BaseMatmul):
         lhs,
         rhs,
         expected_out,
-        run_on_target=["npu1_4col"],
-        tile_pipeline="pack-peel",
-        aie_compilation_flags=None,
-        use_ukernel=False,
         n_repeats=1,
-        use_chess=False,
+        running_params: RunningParams = RunningParams(),
     ):
         super().__init__(
-            run_on_target=run_on_target,
-            aie_compilation_flags=aie_compilation_flags,
+            name=f"matmul_trunci_{M}_{K}_{input_type}_{acc_type}",
+            running_params=running_params,
             M=M,
             N=M,
             K=K,
             input_type=input_type,
             acc_type=acc_type,
-            tile_pipeline=tile_pipeline,
             n_repeats=n_repeats,
-            use_ukernel=use_ukernel,
-            use_chess=use_chess,
         )
         self.labels.append("MatmulTrunci")
 
@@ -710,9 +703,6 @@ class MatmulTrunci(BaseMatmul):
         assert rhs.shape == (K, M)
         assert expected_out.shape == (M, M)
 
-        self.name = f"matmul_trunci_{M}_{K}_{input_type}_{acc_type}"
-        if tile_pipeline == "pack-peel-4-level-tiling":
-            self.name += "_4_level_tiling"
         self.lhs = lhs
         self.rhs = rhs
         self.expected_out = expected_out
@@ -1543,13 +1533,15 @@ class Tests:
                 1 * np.ones([256, 32], dtype=np.int8),
                 1 * np.ones([32, 256], dtype=np.int8),
                 32 * np.ones([256, 256], dtype=np.int8),
-                tile_pipeline="pack-peel-4-level-tiling",
-                run_on_target=["npu1_4col"],
-                aie_compilation_flags=[
-                    "--iree-amdaie-num-rows=4",
-                    "--iree-amdaie-num-cols=4",
-                ],
-                use_ukernel=True,
+                running_params=RunningParams(
+                    tile_pipeline="pack-peel-4-level-tiling",
+                    run_on_target=["npu1_4col"],
+                    aie_compilation_flags=[
+                        "--iree-amdaie-num-rows=4",
+                        "--iree-amdaie-num-cols=4",
+                    ],
+                    use_ukernel=True,
+                ),
             )
         )
         # Phoenix : Vectorization + Peano.
@@ -1562,12 +1554,14 @@ class Tests:
                 1 * np.ones([256, 32], dtype=np.int8),
                 1 * np.ones([32, 256], dtype=np.int8),
                 32 * np.ones([256, 256], dtype=np.int8),
-                tile_pipeline="pack-peel-4-level-tiling",
-                run_on_target=["npu1_4col"],
-                aie_compilation_flags=[
-                    "--iree-amdaie-num-rows=4",
-                    "--iree-amdaie-num-cols=4",
-                ],
+                running_params=RunningParams(
+                    tile_pipeline="pack-peel-4-level-tiling",
+                    run_on_target=["npu1_4col"],
+                    aie_compilation_flags=[
+                        "--iree-amdaie-num-rows=4",
+                        "--iree-amdaie-num-cols=4",
+                    ],
+                ),
             )
         )
         # Strix : Ukernel + Chess.
@@ -1580,14 +1574,16 @@ class Tests:
                 1 * np.ones([256, 32], dtype=np.int8),
                 1 * np.ones([32, 256], dtype=np.int8),
                 32 * np.ones([256, 256], dtype=np.int8),
-                tile_pipeline="pack-peel-4-level-tiling",
-                run_on_target=["npu4"],
-                aie_compilation_flags=[
-                    "--iree-amdaie-num-rows=4",
-                    "--iree-amdaie-num-cols=8",
-                ],
-                use_chess=True,
-                use_ukernel=True,
+                running_params=RunningParams(
+                    tile_pipeline="pack-peel-4-level-tiling",
+                    run_on_target=["npu4"],
+                    aie_compilation_flags=[
+                        "--iree-amdaie-num-rows=4",
+                        "--iree-amdaie-num-cols=8",
+                    ],
+                    use_chess=True,
+                    use_ukernel=True,
+                ),
             )
         )
         # Matmul with truncf test(s):
@@ -1614,18 +1610,6 @@ class Tests:
                     3 * np.ones([256, 128]),
                     1536 * np.ones([128, 128]),
                     test_params=TestParams(tile_pipeline=tile_pipeline),
-                )
-            )
-            self.register(
-                MatmulTruncf(
-                    128,
-                    256,
-                    "bf16",
-                    "f32",
-                    2 * np.ones([128, 256]),
-                    3 * np.ones([256, 128]),
-                    1536 * np.ones([128, 128]),
-                    tile_pipeline=tile_pipeline,
                 )
             )
 
