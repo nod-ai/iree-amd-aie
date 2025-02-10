@@ -8,6 +8,7 @@
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-amd-aie/Transforms/Transforms.h"
 #include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
+#include "llvm/ADT/STLExtras.h"
 
 #define DEBUG_TYPE "iree-amdaie-assign-packet-ids"
 
@@ -41,45 +42,50 @@ void AMDAIEAssignPacketIdsPass::runOnOperation() {
   auto ui8ty =
       IntegerType::get(rewriter.getContext(), 8, IntegerType::Unsigned);
 
+  // Collect all packet flow operations and categorize them into control and
+  // normal flows. Control packet flows will be prioritized for packet ID
+  // assignment.
+  SmallVector<AMDAIE::FlowOp> ctrlPktFlowOps;
+  SmallVector<AMDAIE::FlowOp> normalPktFlowOps;
+  WalkResult res = parentOp->walk([&](AMDAIE::FlowOp flowOp) {
+    if (!flowOp.getIsPacketFlow()) return WalkResult::advance();
+    FailureOr<bool> maybeIsControlFlow = flowOp.isControlFlow();
+    if (failed(maybeIsControlFlow)) return WalkResult::interrupt();
+    if (*maybeIsControlFlow) {
+      ctrlPktFlowOps.push_back(flowOp);
+    } else {
+      normalPktFlowOps.push_back(flowOp);
+    }
+    return WalkResult::advance();
+  });
+  if (res.wasInterrupted()) return signalPassFailure();
+  SmallVector<AMDAIE::FlowOp> allPktFlowOps = std::move(ctrlPktFlowOps);
+  allPktFlowOps.append(std::make_move_iterator(normalPktFlowOps.begin()),
+                       std::make_move_iterator(normalPktFlowOps.end()));
+
   // Perform assignment of packet IDs based on the source channels of the flow
   // ops. I.e. `amdaie.flow` ops with the same source channel will get a
   // different packet IDs assigned to accommodate multiple data packets being
   // routed through the same ports.
   DenseMap<AMDAIE::ChannelOp, size_t> channelToPktFlowIndex;
-  WalkResult res =
-      parentOp->walk([&](AMDAIE::FlowOp flowOp) {
-        if (!flowOp.getIsPacketFlow()) return WalkResult::advance();
-        SmallVector<Value> sourceChannels = flowOp.getSources();
-        if (sourceChannels.size() == 0) {
-          flowOp.emitOpError() << "with no source channel is unsupported";
-          return WalkResult::interrupt();
-        }
-        if (sourceChannels.size() > 1) {
-          flowOp.emitOpError()
-              << "with multiple source channels is unsupported";
-          return WalkResult::interrupt();
-        }
-        auto sourceChannelOp = dyn_cast_if_present<AMDAIE::ChannelOp>(
-            sourceChannels[0].getDefiningOp());
-        if (!sourceChannelOp) {
-          flowOp.emitOpError() << "source should be an `amdaie.channel` op";
-          return WalkResult::interrupt();
-        }
-        size_t pktFlowIndex = channelToPktFlowIndex[sourceChannelOp];
-        if (pktFlowIndex > deviceModel.getPacketIdMaxIdx()) {
-          flowOp.emitOpError()
-              << "ran out of packet IDs to assign for source channel";
-          return WalkResult::interrupt();
-        }
-        IntegerAttr pktIdAttr = IntegerAttr::get(ui8ty, pktFlowIndex);
-        rewriter.setInsertionPoint(flowOp);
-        rewriter.replaceOpWithNewOp<AMDAIE::FlowOp>(
-            flowOp, flowOp.getSources(), flowOp.getTargets(),
-            flowOp.getIsPacketFlow(), pktIdAttr);
-        channelToPktFlowIndex[sourceChannelOp]++;
-        return WalkResult::advance();
-      });
-  if (res.wasInterrupted()) return signalPassFailure();
+  for (AMDAIE::FlowOp flowOp : allPktFlowOps) {
+    FailureOr<AMDAIE::ChannelOp> maybeSourceChannelOp =
+        flowOp.getSourceChannelOp();
+    if (failed(maybeSourceChannelOp)) return signalPassFailure();
+    AMDAIE::ChannelOp sourceChannelOp = *maybeSourceChannelOp;
+    size_t pktFlowIndex = channelToPktFlowIndex[sourceChannelOp];
+    if (pktFlowIndex > deviceModel.getPacketIdMaxIdx()) {
+      flowOp.emitOpError()
+          << "ran out of packet IDs to assign for source channel";
+      return signalPassFailure();
+    }
+    IntegerAttr pktIdAttr = IntegerAttr::get(ui8ty, pktFlowIndex);
+    rewriter.setInsertionPoint(flowOp);
+    rewriter.replaceOpWithNewOp<AMDAIE::FlowOp>(
+        flowOp, flowOp.getSources(), flowOp.getTargets(),
+        flowOp.getIsPacketFlow(), pktIdAttr);
+    channelToPktFlowIndex[sourceChannelOp]++;
+  }
 }
 
 }  // namespace

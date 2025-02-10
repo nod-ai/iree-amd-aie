@@ -509,6 +509,52 @@ std::optional<FlowOp> ConnectionOp::getFlowOp() {
 // AMDAIE_FlowOp
 //===----------------------------------------------------------------------===//
 
+FailureOr<AMDAIE::ChannelOp> FlowOp::getSourceChannelOp() {
+  SmallVector<Value> sourceChannels = getSources();
+  int numSources = sourceChannels.size();
+  if (numSources == 0)
+    return emitOpError() << "with no source channel is unsupported";
+  if (numSources > 1)
+    return emitOpError() << "with multiple source channels is unsupported";
+  auto sourceChannelOp =
+      dyn_cast_if_present<AMDAIE::ChannelOp>(sourceChannels[0].getDefiningOp());
+  if (!sourceChannelOp)
+    return emitOpError() << "source should be an `amdaie.channel` op";
+  return sourceChannelOp;
+}
+
+FailureOr<SmallVector<AMDAIE::ChannelOp>> FlowOp::getTargetChannelOps() {
+  SmallVector<Value> targetChannels = getTargets();
+  SmallVector<AMDAIE::ChannelOp> targetChannelOps;
+  if (targetChannels.size() == 0)
+    return emitOpError() << "with no target channel is unsupported";
+  for (Value targetChannel : targetChannels) {
+    auto targetChannelOp =
+        dyn_cast_if_present<AMDAIE::ChannelOp>(targetChannel.getDefiningOp());
+    if (!targetChannelOp)
+      return emitOpError() << "target should be an `amdaie.channel` op";
+    targetChannelOps.push_back(targetChannelOp);
+  }
+  return targetChannelOps;
+}
+
+FailureOr<bool> FlowOp::isControlFlow() {
+  // Fetch source channel.
+  auto maybeSourceChannelOp = getSourceChannelOp();
+  if (failed(maybeSourceChannelOp)) return failure();
+  AMDAIE::ChannelOp sourceChannelOp = *maybeSourceChannelOp;
+  // Fetch target channels.
+  auto maybeTargetChannelOps = getTargetChannelOps();
+  if (failed(maybeTargetChannelOps)) return failure();
+  // Check source port type first.
+  if (sourceChannelOp.getPortType() == StrmSwPortType::CTRL) return true;
+  // Check if any target port type is `CTRL`.
+  return llvm::any_of(
+      *maybeTargetChannelOps, [](AMDAIE::ChannelOp targetChannelOp) {
+        return targetChannelOp.getPortType() == StrmSwPortType::CTRL;
+      });
+}
+
 LogicalResult FlowOp::verify() {
   if (getSources().size() > 1 && getTargets().size() > 1) {
     return emitOpError()
