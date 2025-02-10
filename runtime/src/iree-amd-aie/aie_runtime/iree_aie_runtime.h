@@ -271,6 +271,9 @@ struct AMDAIEDeviceModel {
     uint8_t minStrideBitWidth{32};
     /// The max packet id.
     uint8_t packetIdMaxIdx{0};
+    /// The bitwidth of the packet ID mask. This is currently buried in
+    /// aie-rt and not exposed for configuration.
+    uint8_t packetIdMaskWidth{5};
     /// Currently, the max arbiter/msel is hidden inside aie-rt.
     uint8_t streamSwitchCoreArbiterMax{0};
     uint8_t streamSwitchCoreMSelMax{0};
@@ -473,6 +476,8 @@ struct AMDAIEDeviceModel {
   uint32_t getOffsetFromAddress(uint32_t address) const;
 
   uint8_t getPacketIdMaxIdx() const;
+  /// Get the bitwidth of the packet id mask.
+  uint8_t getPacketIdMaskWidth() const;
   /// Get the maximum number of packet rule slots available for each slave port.
   uint8_t getNumPacketRuleSlots(uint8_t col, uint8_t row) const;
 

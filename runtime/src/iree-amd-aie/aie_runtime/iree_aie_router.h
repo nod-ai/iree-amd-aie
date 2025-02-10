@@ -140,8 +140,8 @@ using MasterSetsT =
 /// `packet_rules` operation.
 /// IDs within the same group will be converted into a single `packet_rule`
 /// entry.
-using SlaveGroupsT = std::map<PhysPort, std::vector<std::set<int>>>;
-using SlaveMasksT = std::map<PhysPortAndID, int>;
+using SlaveGroupsT = std::map<PhysPort, std::vector<std::set<uint32_t>>>;
+using SlaveMasksT = std::map<PhysPortAndID, uint32_t>;
 using SlaveAMSelsT = std::map<PhysPortAndID, std::pair<uint8_t, uint8_t>>;
 using ConnectionAndFlowIDT = std::pair<Connect, int>;
 using TileLocToConnectionFlowIDT =
@@ -149,7 +149,8 @@ using TileLocToConnectionFlowIDT =
 using PacketFlowMapT = DenseMap<PhysPortAndID, llvm::SetVector<PhysPortAndID>>;
 
 std::tuple<SlaveGroupsT, SlaveMasksT> emitSlaveGroupsAndMasksRoutingConfig(
-    ArrayRef<PhysPortAndID> slavePorts, const PacketFlowMapT &packetFlows);
+    ArrayRef<PhysPortAndID> slavePorts, const PacketFlowMapT &packetFlows,
+    uint32_t numMaskBits);
 
 FailureOr<std::tuple<MasterSetsT, SlaveAMSelsT>> emitPacketRoutingConfiguration(
     const AMDAIEDeviceModel &deviceModel, const PacketFlowMapT &packetFlows);

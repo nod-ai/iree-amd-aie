@@ -92,12 +92,14 @@ ConnectOp getOrCreateConnect(OpBuilder &builder, Operation *parentOp,
 PacketRulesOp getOrCreatePacketRules(OpBuilder &builder, SwitchboxOp &swboxOp,
                                      StrmSwPortType bundle, int channel) {
   Block &b = swboxOp.getConnections().front();
+  OpBuilder::InsertionGuard g(builder);
   builder.setInsertionPoint(b.getTerminator());
   for (auto packetRules : swboxOp.getOps<PacketRulesOp>()) {
     builder.setInsertionPointAfter(packetRules);
     if (packetRules.getSourceBundle() == bundle &&
-        packetRules.getSourceChannel() == channel)
+        packetRules.getSourceChannel() == channel) {
       return packetRules;
+    }
   }
   auto packetRules =
       builder.create<PacketRulesOp>(builder.getUnknownLoc(), bundle, channel);
@@ -291,8 +293,8 @@ LogicalResult runOnPacketFlow(
   }
   auto [masterSets, slaveAMSels] = maybeRoutingConfiguration.value();
 
-  auto [slaveGroups, slaveMasks] =
-      emitSlaveGroupsAndMasksRoutingConfig(slavePorts, packetFlows);
+  auto [slaveGroups, slaveMasks] = emitSlaveGroupsAndMasksRoutingConfig(
+      slavePorts, packetFlows, deviceModel.getPacketIdMaskWidth());
 
   // Realize the routes in MLIR
   for (auto &[tileLoc, tileOp] : tiles) {
@@ -356,20 +358,20 @@ LogicalResult runOnPacketFlow(
     }
 
     // Generate the packet rules.
-    int numPacketRuleSlots =
+    uint32_t numPacketRuleSlots =
         deviceModel.getNumPacketRuleSlots(tileLoc.col, tileLoc.row);
     DenseMap<Port, PacketRulesOp> slaveRules;
     for (auto &[physPort, groups] : slaveGroups) {
       if (tileLoc != physPort.tileLoc) continue;
       Port slave = physPort.port;
-      for (std::set<int> &group : groups) {
-        PhysPortAndID physPortAndId = {physPort, *group.begin()};
-        int mask = slaveMasks[physPortAndId];
-        int maskedId = physPortAndId.id & mask;
+      for (std::set<uint32_t> &group : groups) {
+        PhysPortAndID physPortAndId(physPort, *group.begin());
+        uint32_t mask = slaveMasks[physPortAndId];
+        uint32_t maskedId = physPortAndId.id & mask;
 
 #ifndef NDEBUG
         // Verify that we actually map all the ID's correctly.
-        for (int _pktId : group) assert((_pktId & mask) == maskedId);
+        for (uint32_t _pktId : group) assert((_pktId & mask) == maskedId);
 #endif
 
         Value amsel = amselOps[slaveAMSels[physPortAndId]];

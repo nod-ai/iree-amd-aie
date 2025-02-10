@@ -612,6 +612,10 @@ uint8_t AMDAIEDeviceModel::getPacketIdMaxIdx() const {
   return deviceConfig.packetIdMaxIdx;
 }
 
+uint8_t AMDAIEDeviceModel::getPacketIdMaskWidth() const {
+  return deviceConfig.packetIdMaskWidth;
+}
+
 uint8_t AMDAIEDeviceModel::getNumPacketRuleSlots(uint8_t col,
                                                  uint8_t row) const {
   AMDAIETileType tileType = getTileType(col, row);
