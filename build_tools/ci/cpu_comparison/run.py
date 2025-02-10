@@ -177,20 +177,14 @@ class BaseTest(ABC):
 class ConvolutionFromTemplate(BaseTest):
     def __init__(
         self,
-        params,
+        generator,
         running_params: RunningParams = RunningParams(),
     ):
         super().__init__(
-            name=f"{conv_type}_{N}_{IW}_{in_type}_{out_type}",
+            name=f"{generator.params['conv_type']}_{generator.params['N']}_{generator.params['IW']}_{generator.params['input_element_type']}_{generator.params['output_element_type']}",
             running_params=running_params,
         )
-        self.generator = ConvolutionMlirGenerator(**params)
-        params = self.generator.params
-        conv_type = params["conv_type"]
-        N = params["N"]
-        IW = params["IW"]
-        in_type = params["input_element_type"]
-        out_type = params["output_element_type"]
+        self.generator = generator
         # TODO(newling) Use all parameters in name, to avoid name collision.
         self.labels += ["Convolution"]
 
@@ -1522,7 +1516,9 @@ class Tests:
                 512,
                 "bf16",
                 "f32",
-                running_params=RunningParams(use_ukernel=True),
+                running_params=RunningParams(
+                    use_ukernel=True, lower_to_aie_pipeline="air"
+                ),
             )
         )
         self.register(MatmulThinBias(1024, 1024, 512, "bf16", "f32"))
@@ -2219,7 +2215,8 @@ class Tests:
         ):
             conv_2d_map["input_element_type"] = input_type
             conv_2d_map["output_element_type"] = output_type
-            self.register(ConvolutionFromTemplate(conv_2d_map))
+            generator = ConvolutionMlirGenerator(**conv_2d_map)
+            self.register(ConvolutionFromTemplate(generator))
 
         # Depthwise convolution tests:
         depthwise_map = {
@@ -2231,7 +2228,8 @@ class Tests:
             "input_element_type": "i32",
             "output_element_type": "i32",
         }
-        self.register(ConvolutionFromTemplate(depthwise_map))
+        generator = ConvolutionMlirGenerator(**depthwise_map)
+        self.register(ConvolutionFromTemplate(generator))
 
 
 def all_tests(
