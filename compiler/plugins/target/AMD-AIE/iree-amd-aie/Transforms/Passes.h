@@ -334,6 +334,10 @@ std::unique_ptr<Pass> createAMDAIETilePass(AMDAIETileOptions options = {});
 std::unique_ptr<Pass> createAMDAIETileAndFusePass(
     AMDAIETileAndFuseOptions options = {});
 
+/// Create pass to add the llvm.noalias attribute to function arguments
+/// where it is safe to do so.
+std::unique_ptr<Pass> createAMDAIEAddNoAliasFunctionArgumentsPass();
+
 /// Create pass to propagate pack/unpack ops using upstream patterns.
 std::unique_ptr<Pass> createAMDAIEPropagateDataLayoutPass();
 
