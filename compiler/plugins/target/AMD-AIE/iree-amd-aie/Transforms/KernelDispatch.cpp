@@ -107,19 +107,15 @@ FailureOr<InputDimsAndSizes> getInputDimsAndSizes(linalg::LinalgOp linalgOp) {
   SmallVector<unsigned, 2> mDims = contractionDims.m;
   SmallVector<unsigned, 2> nDims = contractionDims.n;
   SmallVector<unsigned, 2> kDims = contractionDims.k;
-  if (mDims.empty() || nDims.empty() || kDims.empty()) {
-    return linalgOp.emitOpError("failed to fetch m/n/k dims.");
-  }
 
   SmallVector<int64_t> shapes = linalgOp.getStaticLoopRanges();
-  size_t totalNumDims =
+  [[maybe_unused]] size_t totalNumDims =
       batchDims.size() + mDims.size() + nDims.size() + kDims.size();
   assert(totalNumDims == shapes.size() &&
          ("the total number of dims " + std::to_string(totalNumDims) +
           " is not the same as the number of loops " +
           std::to_string(shapes.size()) + ".")
              .c_str());
-  (void)totalNumDims;
 
   auto getSizesAt = [&shapes](ArrayRef<unsigned> idx) {
     SmallVector<int64_t, 2> sizes;
@@ -460,6 +456,9 @@ static LogicalResult setRootConfigForPackPeel4LevelTilingPipeline(
   SmallVector<unsigned, 2> mDims = maybeInputDimsAndSizes.value().mDims;
   SmallVector<unsigned, 2> nDims = maybeInputDimsAndSizes.value().nDims;
   SmallVector<unsigned, 2> kDims = maybeInputDimsAndSizes.value().kDims;
+  if (mDims.empty() || nDims.empty() || kDims.empty()) {
+    return linalgOp.emitOpError("failed to fetch m/n/k dims.");
+  }
 
   AMDAIEDeviceModel deviceModel = getDeviceModel(targetDevice);
 
@@ -554,6 +553,7 @@ static LogicalResult setRootConfigForPackPeel4LevelTilingPipeline(
 
   SmallVector<int64_t> tileSizeLevel0(numLoops, 0);
   if (isa<linalg::BatchMatmulOp>(linalgOp)) {
+    assert(!batchDims.empty() && "expected batch dims not empty");
     tileSizeLevel0[batchDims[0]] = 1;
   }
   tileSizeLevel0[mDims[0]] = packPeelTiling.M0 * scaleL0;
@@ -600,6 +600,9 @@ static LogicalResult setRootConfigForPackPeelPipeline(
   SmallVector<unsigned, 2> mDims = maybeInputDimsAndSizes.value().mDims;
   SmallVector<unsigned, 2> nDims = maybeInputDimsAndSizes.value().nDims;
   SmallVector<unsigned, 2> kDims = maybeInputDimsAndSizes.value().kDims;
+  if (mDims.empty() || nDims.empty() || kDims.empty()) {
+    return linalgOp.emitOpError("failed to fetch m/n/k dims.");
+  }
 
   // ------------------------------------------------------
   // --------------- Set packing config -------------------
@@ -683,6 +686,7 @@ static LogicalResult setRootConfigForPackPeelPipeline(
   // ------------------------------------------------------
   SmallVector<int64_t> tileSizeLevel0(numLoops, 0);
   if (isa<linalg::BatchMatmulOp>(linalgOp)) {
+    assert(!batchDims.empty() && "expected batch dims not empty");
     tileSizeLevel0[batchDims[0]] = 1;
   }
   tileSizeLevel0[mDims[0]] = packPeelTiling.M0;
