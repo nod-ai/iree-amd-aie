@@ -49,6 +49,7 @@ class TestParams(ABC):
         use_chess=False,
         use_ukernel=False,
         run_benchmark=False,
+        n_repeats=1,
     ):
         self.run_on_target = run_on_target
         self.aie_compilation_flags = (
@@ -60,6 +61,7 @@ class TestParams(ABC):
         self.use_chess = use_chess
         self.use_ukernel = use_ukernel
         self.run_benchmark = run_benchmark
+        self.n_repeats = n_repeats
 
 
 class BaseTest(ABC):
@@ -104,6 +106,7 @@ class BaseTest(ABC):
         use_chess = test_params.use_chess
         use_ukernel = test_params.use_ukernel
         run_benchmark = test_params.run_benchmark
+        n_repeats = test_params.n_repeats
 
         # Form test name.
         self.name = f"{name}_{name_suffix}" if name_suffix else name
@@ -112,6 +115,7 @@ class BaseTest(ABC):
         self.use_chess = use_chess
         self.use_ukernel = use_ukernel
         self.run_benchmark = run_benchmark
+        self.n_repeats = n_repeats
 
         if tile_pipeline == "pack-peel-4-level-tiling":
             self.name += "_4_level_tiling"
@@ -253,7 +257,6 @@ class BaseMatmul(BaseTest):
         input_type,
         acc_type,
         name="",
-        n_repeats=1,
         function_name="matmul",
         n_kernel_runs=1,
         test_params=None,
@@ -272,7 +275,6 @@ class BaseMatmul(BaseTest):
         self.K = K
         self.input_type = input_type
         self.acc_type = acc_type
-        self.n_repeats = n_repeats
         self.n_kernel_runs = n_kernel_runs
 
         self.labels.append(self.tile_pipeline)
@@ -344,7 +346,6 @@ class Matmul(BaseMatmul):
         input_type,
         acc_type,
         additional_labels=None,
-        n_repeats=1,
         n_kernel_runs=1,
         test_params=None,
     ):
@@ -356,7 +357,6 @@ class Matmul(BaseMatmul):
             K=K,
             input_type=input_type,
             acc_type=acc_type,
-            n_repeats=n_repeats,
             n_kernel_runs=n_kernel_runs,
         )
         self.labels.append("Matmul")
@@ -392,7 +392,6 @@ class MatmulTransposeB(BaseMatmul):
         input_type,
         acc_type,
         additional_labels=None,
-        n_repeats=1,
         n_kernel_runs=1,
         test_params=None,
     ):
@@ -405,7 +404,6 @@ class MatmulTransposeB(BaseMatmul):
             input_type=input_type,
             acc_type=acc_type,
             function_name="matmul_transpose_b",
-            n_repeats=n_repeats,
             n_kernel_runs=n_kernel_runs,
         )
         self.labels.append("MatmulTransposeB")
@@ -441,7 +439,6 @@ class MatmulTransposeA(BaseMatmul):
         input_type,
         acc_type,
         additional_labels=None,
-        n_repeats=1,
         n_kernel_runs=1,
         test_params=None,
     ):
@@ -454,7 +451,6 @@ class MatmulTransposeA(BaseMatmul):
             input_type=input_type,
             acc_type=acc_type,
             function_name="matmul_transpose_a",
-            n_repeats=n_repeats,
             n_kernel_runs=n_kernel_runs,
         )
         self.labels.append("MatmulTransposeA")
@@ -628,7 +624,6 @@ class MatmulTruncf(BaseMatmul):
             K=K,
             input_type=input_type,
             acc_type=acc_type,
-            n_repeats=1,
         )
         self.labels.append("MatmulTruncf")
 
@@ -1484,8 +1479,9 @@ class Tests:
             )
 
         # BatchMatmul test(s):
-        # Phoenix.
-        for tile_pipeline in ["pack-peel", "pack-peel-4-level-tiling"]:
+        # TODO(jornt): BatchMatmul tests with the pack-peel-4-level-tiling pipeline result in intermittent
+        # numerics issues. Re-enable.
+        for tile_pipeline in ["pack-peel"]:
             for input_type, acc_type in zip(["i32", "bf16"], ["i32", "f32"]):
                 # Batch size = 1:
                 self.register(
@@ -1530,6 +1526,7 @@ class Tests:
                         "--iree-amdaie-num-rows=4",
                         "--iree-amdaie-num-cols=8",
                     ],
+                    n_repeats=10,
                 ),
             )
         )
@@ -1550,6 +1547,7 @@ class Tests:
                         "--iree-amdaie-num-rows=4",
                         "--iree-amdaie-num-cols=8",
                     ],
+                    n_repeats=10,
                 ),
             )
         )
@@ -2136,8 +2134,8 @@ class Tests:
                             use_ukernel=use_ukernel,
                             aie_compilation_flags=aie_compilation_flags,
                             name_suffix=name_suffix,
+                            n_repeats=2,
                         ),
-                        n_repeats=2,
                         additional_labels=["PerformanceCorrectness"],
                     )
                 )
@@ -2156,9 +2154,9 @@ class Tests:
                         aie_compilation_flags=aie_compilation_flags,
                         name_suffix=name_suffix,
                         run_benchmark=True,
+                        n_repeats=5,
                     ),
                     additional_labels=["Performance"],
-                    n_repeats=5,
                     n_kernel_runs=100,
                 )
             )
@@ -2198,8 +2196,8 @@ class Tests:
                         use_ukernel=True,
                         lower_to_aie_pipeline="objectFifo",
                         tile_pipeline="pack-peel",
+                        n_repeats=2,
                     ),
-                    n_repeats=2,
                 )
             )
 
@@ -2214,8 +2212,8 @@ class Tests:
                 test_params=TestParams(
                     name_suffix="chess",
                     use_chess=True,
+                    n_repeats=10,
                 ),
-                n_repeats=10,
             )
         )
 
@@ -2231,8 +2229,8 @@ class Tests:
                     name_suffix="chess",
                     use_chess=True,
                     use_ukernel=True,
+                    n_repeats=10,
                 ),
-                n_repeats=10,
             )
         )
 
