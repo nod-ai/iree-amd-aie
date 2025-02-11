@@ -75,6 +75,8 @@ static FailureOr<func::FuncOp> outline(IRRewriter &rewriter, ModuleOp moduleOp,
 /// Utility to check whether the linalg should be outlined if the balanced
 /// strategy is enabled.
 static bool mustOutlineBalanced(linalg::LinalgOp linalgOp) {
+  // TODO(newling) next step, outline the fill. Because with ping-pong there are
+  // 2+ cases of this. if (isa<linalg::FillOp>(linalgOp)) return true;
   if (isa<linalg::CopyOp, linalg::FillOp>(linalgOp)) return false;
   if (isElementwise(linalgOp)) return false;
   // TODO(newling) not all remaining ops should be outlined, not even all

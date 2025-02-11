@@ -409,4 +409,51 @@ int detail::findLargestFactor(int num, int max, int multiple) {
   return factor ? factor : detail::findLargestFactor(num, max);
 }
 
+bool sinkInto(Region &region, IRRewriter &rewriter,
+              std::function<bool(Operation *)> shouldSink) {
+  Operation *parentOfRegion = region.getParentOp();
+  assert(parentOfRegion && "Region has no parent operation");
+
+  bool regionChanged = false;
+  for (Block &block : region.getBlocks()) {
+    bool blockChangedThisIteration{false};
+
+    // Collect all ops in the block.
+    llvm::DenseSet<Operation *> ops;
+    block.walk([&](Operation *op) { ops.insert(op); });
+
+    do {
+      blockChangedThisIteration = false;
+      for (Operation *op : ops) {
+        for (Value operand : op->getOperands()) {
+          if (!operand || !operand.getDefiningOp()) continue;
+          Operation *dependencyOp = operand.getDefiningOp();
+
+          // Skip if the dependency is already in the core.
+          if (parentOfRegion->isAncestor(dependencyOp)) continue;
+          if (!shouldSink(dependencyOp)) continue;
+
+          rewriter.setInsertionPointToStart(&block);
+          Operation *sunkOp = rewriter.clone(*dependencyOp);
+          ops.insert(sunkOp);
+
+          // Replace uses of the dependency op inside the block.
+          dependencyOp->replaceUsesWithIf(sunkOp, [&](OpOperand &use) {
+            return parentOfRegion->isAncestor(use.getOwner());
+          });
+
+          // If dependency op now has no users, erase it.
+          if (dependencyOp->use_empty()) {
+            rewriter.eraseOp(dependencyOp);
+          }
+          blockChangedThisIteration = true;
+          regionChanged = true;
+        }
+        ops.erase(op);
+      }
+    } while (blockChangedThisIteration);
+  }
+  return regionChanged;
+}
+
 }  // namespace mlir::iree_compiler::AMDAIE

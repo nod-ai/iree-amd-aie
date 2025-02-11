@@ -298,6 +298,26 @@ struct AMDAIEDeviceModel {
     /// https://www.xilinx.com/htmldocs/xilinx2024_1/aiengine_ml_intrinsics/intrinsics/group__intr__gpvectorop__shift.html
     uint32_t shiftOperandBits{512};
 
+    /// On aie2 (and very similar on aie2P), I have observed the
+    /// following lowerings at different load sized through peano:
+    ///
+    /// Number of bytes | vectorized | asm lines (aie2P) |
+    /// ----------------+------------+-------------------+
+    /// 16              | no         | 14 (vpush.hi.8)   |
+    /// 32              | yes        | 6 (1 vst)         |
+    /// 64              | yes        | 7 (2 vst)         |
+    /// 128             | yes        | 8 (4 vst)         |
+    /// 256 LLVM ERROR: unable to legalize instruction.. |
+    /// 512             | no         | ~3000 (st.s8)     |
+    /// 1024            | no         | ~6000 (st.s8)     |
+    /// ----------------+------------+-------------------+
+    ///
+    /// We choose the maximum number of bytes for which the store is vectorized:
+    ///
+    /// I suspect this is just 4x the `vectorLoadStoreAlignmentBits` value,
+    /// and peano hasn't considered the 8x case (??).
+    uint8_t preferredLoadBytes{128};
+
     AMDAIEDeviceConfig() = default;
   };
 
@@ -496,6 +516,10 @@ struct AMDAIEDeviceModel {
   uint32_t getNumCoreCols() const { return columns(); }
 
   uint32_t getShiftOperandBits() const { return deviceConfig.shiftOperandBits; }
+
+  uint32_t getPreferredLoadBytes() const {
+    return deviceConfig.preferredLoadBytes;
+  }
 
   /// Return a map from channels to valid BD ids for the requested tile type.
   /// TODO(jornt): find these ranges in the device model.

@@ -6,6 +6,7 @@
 
 #include "AIEDialect.h"
 #include "Passes.h"
+#include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -192,6 +193,22 @@ struct AMDAIECoreToStandardPass
     return true;
   }
 
+  // Ensure that all aie.core ops are isolated from above, i.e. that all
+  // operands of ops within an aie.core are produced inside the aie.core (or are
+  // block arguments of the core). The expection is ops in the aie dialect --
+  // operands produced by for example an aie.buffer may be outside the core.
+  static void isolateCores(ModuleOp m) {
+    IRRewriter rewriter(m->getContext());
+    auto notAieDialect = [](Operation *op) -> bool {
+      StringRef dialect = op->getDialect()->getNamespace();
+      if (dialect == AIEDialect::getDialectNamespace()) return false;
+      return true;
+    };
+    m->walk([&](CoreOp coreOp) {
+      sinkInto(coreOp.getRegion(), rewriter, notAieDialect);
+    });
+  }
+
   void runOnOperation() override {
     ModuleOp m = getOperation();
 
@@ -222,8 +239,11 @@ struct AMDAIECoreToStandardPass
     m->setAttr(LLVM::LLVMDialect::getTargetTripleAttrName(),
                rewriter.getStringAttr(targetArchStr));
 
-    if (failed(lockToStd(rewriter, m, targetArchStr)))
+    isolateCores(m);
+
+    if (failed(lockToStd(rewriter, m, targetArchStr))) {
       return signalPassFailure();
+    }
 
     m.walk([&](BufferOp buffer) { bufferToStd(m, buffer, rewriter); });
 
