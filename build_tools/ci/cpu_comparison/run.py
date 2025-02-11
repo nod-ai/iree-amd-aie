@@ -579,7 +579,6 @@ class BatchMatmul(BaseMatmul):
             K=K,
             input_type=input_type,
             acc_type=acc_type,
-            n_repeats=1,
         )
         self.labels.append("BatchMatmul")
         self.B = B
