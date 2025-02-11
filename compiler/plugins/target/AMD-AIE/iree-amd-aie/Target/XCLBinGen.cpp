@@ -60,6 +60,23 @@ using Path = std::filesystem::path;
 namespace mlir::iree_compiler::AMDAIE {
 namespace detail {
 
+FailureOr<std::vector<std::string>> flagStringToVector(
+    const std::string &flags) {
+  if (flags.empty()) return std::vector<std::string>{};
+  // Check that flags string is of the form "-flag1 -flag2".
+  // i.e. that it starts and ends with ".
+  if (flags.size() < 2 || flags.front() != '"' || flags.back() != '"') {
+    llvm::errs()
+        << "additional peano opt flags must be of the form "
+           "\"-flag1 -flag2 ...\". Specifically it must start and end with \".";
+    return failure();
+  }
+  // Split the additional flags on whitespace, and then add to the default args.
+  std::istringstream iss(flags.substr(1, flags.size() - 2));
+  return std::vector<std::string>{std::istream_iterator<std::string>{iss},
+                                  std::istream_iterator<std::string>{}};
+}
+
 // Peano's `opt` program optimizes llvm-ir (.ll files). We run it with a system
 // call. This functions constructs the flags to pass to `opt`. There are some
 // default flags, most of which are copied from llvm-aie. See
@@ -70,11 +87,10 @@ namespace detail {
 // clang-format on
 //
 // There are also additional flags which have been passed down from the user,
-// `additionalPeanoOptFlags`. This function appends these user specific flags,
+// `additionalFlags`. This function appends these user specific flags,
 // and checks that they are valid. If they are not, it returns failure.
 FailureOr<std::vector<std::string>> makePeanoOptArgs(
-    const std::string &filenameIrIn, const std::string &filenameIrOut,
-    const std::string &additionalPeanoOptFlags) {
+    const std::vector<std::string> &additionalFlags) {
   std::vector<std::string> args{
       // peano has no proper vectorization cost model for AIE
       "-vectorize-loops=false",
@@ -98,33 +114,9 @@ FailureOr<std::vector<std::string>> makePeanoOptArgs(
       "--inline-threshold=10",
       // missing from libc
       "--disable-builtin=memset",
-      // Source file, IR to optimize
-      "-S", filenameIrIn,
-      // Output file, optimized IR
-      "-o", filenameIrOut};
+  };
 
-  if (additionalPeanoOptFlags.empty()) return args;
-
-  // Check that additionalPeanoOptFlags is of the form "-flag1 -flag2".
-  // i.e. that it starts and ends with ".
-  if (additionalPeanoOptFlags.size() < 2 ||
-      additionalPeanoOptFlags.front() != '"' ||
-      additionalPeanoOptFlags.back() != '"') {
-    llvm::errs()
-        << "additional peano opt flags must be of the form "
-           "\"-flag1 -flag2 ...\". Specifically it must start and end with \".";
-    return failure();
-  }
-
-  // TODO(newling) use string_view, shouldn't need to copy the string here.
-  std::string stripped =
-      additionalPeanoOptFlags.substr(1, additionalPeanoOptFlags.size() - 2);
-
-  // Split the additional flags on whitespace, and then add to the default args.
-  std::istringstream iss(stripped);
-  std::vector<std::string> additionalFlags{
-      std::istream_iterator<std::string>{iss},
-      std::istream_iterator<std::string>{}};
+  if (additionalFlags.empty()) return args;
 
   // Return true if `flag` is an optimization level flag, like -O2.
   auto isOptLevelFlag = [](const std::string &flag) {
@@ -202,9 +194,13 @@ static const std::string _CHESS_INTRINSIC_WRAPPER_CPP{
 static const std::string _MM_NPU1_CC{
 #include "mm_npu1.cc"
 };
-// This is a string that contains a mm kernel for npu4.
+// This is a string that contains kernelS for npu4 for compilation by chess.
 static const std::string _MM_NPU4_CC{
 #include "mm_npu4.cc"
+};
+// This is a string that contains kernels for npu4 for compilation by peano.
+static const std::string _MM_NPU4_PEANO_CC{
+#include "mm_npu4_peano.cc"
 };
 
 FailureOr<std::string> getTargetDir(const std::string &npuVersion) {
@@ -509,6 +505,27 @@ LogicalResult runTool(
   return success();
 }
 
+static LogicalResult assembleFileUsingPeano(
+    const std::string &inputFile, const std::string &outputFile,
+    const std::vector<std::string> &extraArgs, Path &_tempDir, Path &peanoDir,
+    const std::string &npuVersion, bool verbose) {
+  std::vector<std::string> args;
+  args.reserve(args.size() + std::distance(extraArgs.begin(), extraArgs.end()));
+  args.insert(args.end(), extraArgs.begin(), extraArgs.end());
+  // TODO(jornt): O0 fails with peano, so we use O1 for now.
+  args.emplace_back("-O1");
+  args.emplace_back("-c");
+  args.emplace_back(inputFile);
+  args.emplace_back("-o");
+  args.emplace_back(outputFile);
+  if (verbose) args.emplace_back("-v");
+  if (failed(runTool(peanoDir / "bin" / "clang", args, verbose))) {
+    llvm::errs() << "Failed to assemble " << outputFile << ".o with peano";
+    return failure();
+  }
+  return success();
+}
+
 LogicalResult assembleFileUsingChess(const std::string &inputFile,
                                      const std::string &outputFile,
                                      const std::vector<std::string> &extraArgs,
@@ -560,10 +577,15 @@ static auto assembleStringUsingChess =
     std::bind(assembleStringUsing, assembleFileUsingChess, _1, _2, _3, _4, _5,
               _6, _7, _8, _9);
 
+static auto assembleStringUsingPeano =
+    std::bind(assembleStringUsing, assembleFileUsingPeano, _1, _2, _3, _4, _5,
+              _6, _7, _8, _9);
+
 // Generate the elf files for the core
 LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
                                    const std::string &objFile, Path &tempDir,
-                                   bool useChess, std::optional<Path> vitisDir,
+                                   bool useChess, bool useChessForUKernel,
+                                   std::optional<Path> vitisDir,
                                    const std::string &targetArch, bool verbose,
                                    Path peanoDir, const std::string &npuVersion,
                                    const std::optional<std::string> &ukernel) {
@@ -578,7 +600,7 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
     ukernelFileName = "mm_npu1.cc";
     ukernelObjectName = "mm_npu1.o";
   } else if (npuVersion == "npu4") {
-    ukernelFileContent = _MM_NPU4_CC;
+    ukernelFileContent = useChessForUKernel ? _MM_NPU4_CC : _MM_NPU4_PEANO_CC;
     ukernelFileName = "mm_npu4.cc";
     ukernelObjectName = "mm_npu4.o";
   } else {
@@ -613,15 +635,31 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
         return failure();
       }
       if (!std::filesystem::exists(cwd / ukernelObjectName)) {
-        mmObjectFilePath = assembleStringUsingChess(
-            /*inputFileStr=*/ukernelFileContent,
-            /*inputFileName=*/ukernelFileName,
-            /*outputFileName=*/ukernelObjectName,
-            /*outputDir=*/cwd,
-            /*extraArgs*/ std::vector<std::string>{},
-            /*workDir=*/tempDir,
-            /*vitisDir=*/*maybeVitisDir,
-            /*npuVersion*/ npuVersion, verbose);
+        llvm::outs() << "useChessForUKernel: " << useChessForUKernel << "\n";
+        if (useChessForUKernel) {
+          mmObjectFilePath = assembleStringUsingChess(
+              /*inputFileStr=*/ukernelFileContent,
+              /*inputFileName=*/ukernelFileName,
+              /*outputFileName=*/ukernelObjectName,
+              /*outputDir=*/cwd,
+              /*extraArgs=*/std::vector<std::string>{},
+              /*workDir=*/tempDir,
+              /*vitisDir=*/*maybeVitisDir,
+              /*npuVersion*/ npuVersion, verbose);
+        } else {
+          std::string targetLower = StringRef(targetArch).lower();
+          std::vector<std::string> extraArgs{"--target=" + targetLower +
+                                             "-none-unknown-elf"};
+          mmObjectFilePath = assembleStringUsingPeano(
+              /*inputFileStr=*/ukernelFileContent,
+              /*inputFileName=*/ukernelFileName,
+              /*outputFileName=*/ukernelObjectName,
+              /*outputDir=*/cwd,
+              /*extraArgs=*/extraArgs,
+              /*workDir=*/tempDir,
+              /*vitisDir=*/peanoDir,
+              /*npuVersion*/ npuVersion, verbose);
+        }
         if (failed(mmObjectFilePath)) return failure();
       } else {
         mmObjectFilePath = cwd / ukernelObjectName;
@@ -1113,15 +1151,30 @@ LogicalResult generateUnifiedObject(
 
     std::string OptLLVMIRFile = (tempDir / "input.opt.ll").string();
 
-    FailureOr<std::vector<std::string>> peanoArgs =
-        mlir::iree_compiler::AMDAIE::detail::makePeanoOptArgs(
-            LLVMIRFile, OptLLVMIRFile, additionalPeanoOptFlags);
-    if (failed(peanoArgs)) {
-      llvm::errs() << "Failed to make peano opt args\n";
+    FailureOr<std::vector<std::string>> maybeAdditionalPeanoArgs =
+        mlir::iree_compiler::AMDAIE::detail::flagStringToVector(
+            additionalPeanoOptFlags);
+    if (failed(maybeAdditionalPeanoArgs)) {
+      llvm::errs() << "Failed to parse additional peano args\n";
       return failure();
     }
 
-    if (failed(runTool(peanoOptBin.string(), peanoArgs.value(), verbose))) {
+    FailureOr<std::vector<std::string>> maybePeanoArgs =
+        mlir::iree_compiler::AMDAIE::detail::makePeanoOptArgs(
+            maybeAdditionalPeanoArgs.value());
+    if (failed(maybePeanoArgs)) {
+      llvm::errs() << "Failed to make peano opt args\n";
+      return failure();
+    }
+    std::vector<std::string> peanoArgs = maybePeanoArgs.value();
+    // Source file, IR to optimize
+    peanoArgs.emplace_back("-S");
+    peanoArgs.emplace_back(LLVMIRFile);
+    // Output file, optimized IR
+    peanoArgs.emplace_back("-o");
+    peanoArgs.emplace_back(OptLLVMIRFile);
+
+    if (failed(runTool(peanoOptBin.string(), peanoArgs, verbose))) {
       llvm::errs() << "Failed to optimize ll with peano\n";
       llvm::errs() << "Using peano at provided path: '" << peanoDir.string()
                    << "'\n";
@@ -1216,9 +1269,10 @@ LogicalResult aie2xclbin(
     const std::optional<std::string> &outputNPU, bool emitCtrlPkt,
     const std::string &artifactPath, bool printIRBeforeAll,
     bool printIRAfterAll, bool printIRModuleScope, bool timing,
-    const std::string &tempDir, bool useChess, bool verbose,
-    const std::optional<std::string> &vitisDir, const std::string &targetArch,
-    const std::string &npuVersion, const std::string &peanoDir,
+    const std::string &tempDir, bool useChess, bool useChessForUKernel,
+    bool verbose, const std::optional<std::string> &vitisDir,
+    const std::string &targetArch, const std::string &npuVersion,
+    const std::string &peanoDir,
     const mlir::iree_compiler::AMDAIE::AMDAIEOptions::DeviceHAL deviceHal,
     const std::string &xclBinKernelID, const std::string &xclBinKernelName,
     const std::string &xclBinInstanceName, const std::string &amdAIEInstallDir,
@@ -1248,8 +1302,9 @@ LogicalResult aie2xclbin(
   }
 
   if (failed(generateCoreElfFiles(deviceOp, unifiedObj.string(), tempDirPath,
-                                  useChess, vitisDirPath, targetArch, verbose,
-                                  peanoDir, npuVersion, ukernel))) {
+                                  useChess, useChessForUKernel, vitisDirPath,
+                                  targetArch, verbose, peanoDir, npuVersion,
+                                  ukernel))) {
     llvm::errs() << "Failed to generate core ELF file(s)\n";
     return failure();
   }
