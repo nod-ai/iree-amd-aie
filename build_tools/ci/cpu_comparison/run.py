@@ -1484,9 +1484,8 @@ class Tests:
             )
 
         # BatchMatmul test(s):
-        # TODO(jornt): BatchMatmul tests with the pack-peel-4-level-tiling pipeline result in intermittent
-        # numerics issues. Re-enable.
-        for tile_pipeline in ["pack-peel"]:
+        # Phoenix.
+        for tile_pipeline in ["pack-peel", "pack-peel-4-level-tiling"]:
             for input_type, acc_type in zip(["i32", "bf16"], ["i32", "f32"]):
                 # Batch size = 1:
                 self.register(
@@ -1497,7 +1496,10 @@ class Tests:
                         256,
                         input_type,
                         acc_type,
-                        test_params=TestParams(tile_pipeline=tile_pipeline),
+                        test_params=TestParams(
+                            tile_pipeline=tile_pipeline,
+                            run_on_target=run_on_target,
+                        ),
                     )
                 )
                 # Batch size = 2:
@@ -1509,9 +1511,54 @@ class Tests:
                         64,
                         input_type,
                         acc_type,
-                        test_params=TestParams(tile_pipeline=tile_pipeline),
+                        test_params=TestParams(
+                            tile_pipeline=tile_pipeline,
+                            run_on_target=run_on_target,
+                        ),
                     )
                 )
+        # Strix + pack-peel-4-level-tiling + 4x8 + i32->i32.
+        # TODO(avarma): Currently bf16->f32 vectorization is not supported for npu4.
+        #               Enable the same once it is.
+        self.register(
+            BatchMatmul(
+                1,
+                128,
+                128,
+                256,
+                "i32",
+                "i32",
+                test_params=TestParams(
+                    tile_pipeline="pack-peel-4-level-tiling",
+                    run_on_target=["npu4"],
+                    name_suffix="4x8_npu4",
+                    aie_compilation_flags=[
+                        "--iree-amdaie-num-rows=4",
+                        "--iree-amdaie-num-cols=8",
+                    ],
+                ),
+            )
+        )
+        # Batch size = 2:
+        self.register(
+            BatchMatmul(
+                2,
+                64,
+                64,
+                64,
+                "i32",
+                "i32",
+                test_params=TestParams(
+                    tile_pipeline="pack-peel-4-level-tiling",
+                    run_on_target=["npu4"],
+                    name_suffix="4x8_npu4",
+                    aie_compilation_flags=[
+                        "--iree-amdaie-num-rows=4",
+                        "--iree-amdaie-num-cols=8",
+                    ],
+                ),
+            )
+        )
 
         # MatmulThinBias test(s):
         self.register(
