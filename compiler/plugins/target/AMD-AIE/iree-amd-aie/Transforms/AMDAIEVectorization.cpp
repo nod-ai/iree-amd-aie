@@ -73,8 +73,6 @@ void AMDAIEVectorizationPass::runOnOperation() {
     // vector.transfer_read/transfer_write ops.
     if (isa<linalg::CopyOp>(op)) return WalkResult::advance();
 
-    if (isa<linalg::FillOp>(op)) return WalkResult::advance();
-
     // For quantized ops elementwise ops are vectorized to ops that operate on
     // extremely large vectors, e.g., things like arith.addi %60, %63 :
     // vector<1x1x10x10x4x8xi32>. We'd be better off massaging the vectorization

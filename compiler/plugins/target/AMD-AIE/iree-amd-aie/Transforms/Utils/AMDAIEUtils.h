@@ -113,7 +113,7 @@ std::string getConstantIntValuesString(ArrayRef<OpFoldResult> opFoldResults);
 /// Consider all operations in the region `r`, recursively. If the operation
 /// has an operand that is not in the region, and the `shouldSink` function
 /// returns true for that operation, then replace all uses of the operand inside
-/// the region with a clone of the operand in the first block of the region.
+/// the region with a clone of the operand in the block.
 ///
 /// If `shouldSink` returns true for all operations, then this function will
 /// essentially make the region `r` isolated from above.

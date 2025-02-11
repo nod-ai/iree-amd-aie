@@ -413,14 +413,11 @@ bool sinkInto(Region &region, IRRewriter &rewriter,
               std::function<bool(Operation *)> shouldSink) {
   Operation *parentOfRegion = region.getParentOp();
   assert(parentOfRegion && "Region has no parent operation");
-  assert(!region.getBlocks().empty()&& "Region has no blocks");
-  Block &firstBlock = region.front();
+  assert(!region.getBlocks().empty() && "Region has no blocks");
 
   bool regionChanged = false;
   for (Block &block : region.getBlocks()) {
     bool blockChangedThisIteration{false};
-
-  rewriter.setInsertionPointToStart(&firstBlock);
 
     // Collect all ops in the block.
     llvm::DenseSet<Operation *> ops;
@@ -437,12 +434,19 @@ bool sinkInto(Region &region, IRRewriter &rewriter,
           if (parentOfRegion->isAncestor(dependencyOp)) continue;
           if (!shouldSink(dependencyOp)) continue;
 
+          rewriter.setInsertionPointToStart(&block);
           Operation *sunkOp = rewriter.clone(*dependencyOp);
           ops.insert(sunkOp);
 
-          // Replace uses of the dependency op inside the block.
+          // Replace uses of the dependency op inside the block. Specifically,
+          // if `use` is in `block` then replace its operand with `sunkOp`.
           dependencyOp->replaceUsesWithIf(sunkOp, [&](OpOperand &use) {
-            return parentOfRegion->isAncestor(use.getOwner());
+            auto op = use.getOwner();
+            while (op) {
+              if (op->getBlock() == &block) return true;
+              op = op->getParentOp();
+            }
+            return false;
           });
           blockChangedThisIteration = true;
           regionChanged = true;
