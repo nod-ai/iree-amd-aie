@@ -441,11 +441,12 @@ function run_matmul_test() {
   total_num_runs=$(( num_repeat_runs * num_corruption_repeat_runs))
   echo "**** Running '${name}' matmul test ${total_num_runs} times (command ${COMMAND}) ****"
   for i in $(seq 1 $num_repeat_runs); do
+    # Disabled reset npu temporarily due to instability issues in CI.
     # Only reset NPU in CI to facilitate easier local testing without sudo access.
-    if [[ "$OSTYPE" == "linux-gnu"* ]] && [ "${GITHUB_ACTIONS}" = true ]; then
-      echo "Reset NPU"
-      bash $THIS_DIR/reset_npu.sh
-    fi
+#    if [[ "$OSTYPE" == "linux-gnu"* ]] && [ "${GITHUB_ACTIONS}" = true ]; then
+#      echo "Reset NPU"
+#      bash $THIS_DIR/reset_npu.sh
+#    fi
     for j in $(seq 1 $num_corruption_repeat_runs); do
       run_number=$(( (i - 1) * num_corruption_repeat_runs + j))
       echo "Run number ${run_number} / ${total_num_runs}"
