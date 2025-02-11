@@ -25,6 +25,7 @@
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Utils/ReshapeOpsUtils.h"
@@ -516,6 +517,28 @@ struct SerializeSplatTransferReadWithTargetLoadSize
     Value cStep = getConstant(elementsPerWrite);
     scf::ForOp loopOp =
         rewriter.create<scf::ForOp>(writeOp.getLoc(), cStart, cEnd, cStep);
+
+    // TODO(newling) don't blanket prevent this from being unrolled. Without
+    // this though, I see program memory going overboard.
+    mlir::LLVM::LoopUnrollAttr unrollAttr;
+    mlir::LLVM::LoopAnnotationAttr loopAnnotationAttr;
+    BoolAttr disableAttr = rewriter.getBoolAttr(true);
+    unrollAttr = mlir::LLVM::LoopUnrollAttr::get(
+        rewriter.getContext(), /*disable=*/disableAttr, /*count=*/{},
+        /*runtimeDisable=*/{}, /*full=*/{}, /*followupUnrolled=*/{},
+        /*followupRemainder=*/{}, /*followupAll=*/{});
+
+    loopAnnotationAttr = mlir::LLVM::LoopAnnotationAttr::get(
+        rewriter.getContext(), /*disableNonforced=*/{},
+        /*vectorize=*/{}, /*interleave=*/{}, /*unroll=*/unrollAttr,
+        /*unrollAndJam=*/{}, /*licm=*/{}, /*distribute=*/{},
+        /*pipeline=*/{},
+        /*peeled=*/{}, /*unswitch=*/{}, /*mustProgress=*/{},
+        /*isVectorized=*/{}, /*startLoc=*/{}, /*endLoc=*/{},
+        /*parallelAccesses=*/{});
+
+    // Add the llvm.loop_annotation attribute to the loop.
+    loopOp->setAttr("loop_annotation", loopAnnotationAttr);
 
     // Create transfer_write inside loop body.
     rewriter.setInsertionPointToStart(loopOp.getBody());
