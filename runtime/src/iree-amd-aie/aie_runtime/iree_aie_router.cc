@@ -121,11 +121,6 @@ struct Flow {
 
 struct RouterImpl {
   RouterImpl(int maxCol, int maxRow) : maxCol(maxCol), maxRow(maxRow) {}
-  // The dimensions (columns and rows) of the AIE device to be routed.
-  // These values may be smaller than the actual device size if only a portion
-  // of the device is intended to be routed.
-  int maxCol, maxRow;
-
   // Flows to be routed
   std::vector<Flow> flows;
   // Represent all routable paths as a graph
@@ -139,7 +134,27 @@ struct RouterImpl {
   // The value is a vector of PathEndPoints representing the possible ends of
   // the path
   std::map<PathEndPoint, std::vector<PathEndPoint>> channels;
+  /// The dimensions (columns and rows) of the AIE device to be routed.
+  /// These values may be smaller than the actual device size if only a portion
+  /// of the device is intended to be routed.
+  int maxCol, maxRow;
+  /// Map to get the neighbor tile location given a direction.
+  static const llvm::SmallDenseMap<std::pair<StrmSwPortType, StrmSwPortType>,
+                                   std::pair<int, int>>
+      directionToDeltaCoordsMap;
 };
+
+const llvm::SmallDenseMap<std::pair<StrmSwPortType, StrmSwPortType>,
+                          std::pair<int, int>>
+    RouterImpl::directionToDeltaCoordsMap = {
+        {{StrmSwPortType::SOUTH, StrmSwPortType::NORTH},
+         {0, -1}},  // South to North, going down, row - 1
+        {{StrmSwPortType::NORTH, StrmSwPortType::SOUTH},
+         {0, 1}},  // North to South, going up, row + 1
+        {{StrmSwPortType::WEST, StrmSwPortType::EAST},
+         {-1, 0}},  // West to East, going left, col - 1
+        {{StrmSwPortType::EAST, StrmSwPortType::WEST},
+         {1, 0}}};  // East to West, going right, col + 1
 
 Router::Router(int maxCol, int maxRow) {
   impl = new RouterImpl(maxCol, maxRow);
@@ -233,25 +248,16 @@ void Router::initialize(const AMDAIEDeviceModel &deviceModel) {
       intraconnect(col, row);
 
       // connections between switchboxes
-      if (row > 0) {
-        // from south to north
-        interconnect(col, row, col, row - 1, StrmSwPortType::SOUTH,
-                     StrmSwPortType::NORTH);
-      }
-      if (row < impl->maxRow) {
-        // from north to south
-        interconnect(col, row, col, row + 1, StrmSwPortType::NORTH,
-                     StrmSwPortType::SOUTH);
-      }
-      if (col > 0) {
-        // from east to west
-        interconnect(col, row, col - 1, row, StrmSwPortType::WEST,
-                     StrmSwPortType::EAST);
-      }
-      if (col < impl->maxCol) {
-        // from west to east
-        interconnect(col, row, col + 1, row, StrmSwPortType::EAST,
-                     StrmSwPortType::WEST);
+      for (auto &[direction, deltaCoords] : impl->directionToDeltaCoordsMap) {
+        int neighborCol = col + deltaCoords.first;
+        int neighborRow = row + deltaCoords.second;
+        // Check if the neighboring switchbox exists.
+        if (neighborCol < 0 || neighborCol > impl->maxCol || neighborRow < 0 ||
+            neighborRow > impl->maxRow) {
+          continue;
+        }
+        interconnect(col, row, neighborCol, neighborRow, direction.first,
+                     direction.second);
       }
     }
   }
@@ -325,106 +331,66 @@ bool Router::addFixedCircuitConnection(
   return true;
 }
 
+/// Tracks existing pre-routed packet flows by setting `fixedPacketFlowCount`.
+/// This ensures that the pathfinder algorithm does not reuse the same channel
+/// for a new circuit flow. Reuse for new packet flows is allowed, as packet IDs
+/// will differentiate them.
 bool Router::addFixedPacketConnection(const PhysPort &srcPhyPort,
                                       const PhysPort &destPhyPort) {
   SwitchboxConnect &sb =
       impl->graph[std::make_pair(srcPhyPort.tileLoc, destPhyPort.tileLoc)];
-  size_t i = std::distance(
+  size_t srcPortIdx = std::distance(
       sb.srcPorts.begin(),
       std::find(sb.srcPorts.begin(), sb.srcPorts.end(), srcPhyPort.port));
-  size_t j = std::distance(
+  size_t destPortIdx = std::distance(
       sb.dstPorts.begin(),
       std::find(sb.dstPorts.begin(), sb.dstPorts.end(), destPhyPort.port));
-  // Could not find the source or destination port.
-  if (i >= sb.srcPorts.size() || j >= sb.dstPorts.size()) return false;
-  // Increment the fixed packet flow count.
-  sb.fixedPacketFlowCount[i][j]++;
-  // Populate to the neighboring switchboxes.
+  // Could not find the source or destination port, something is wrong.
+  if (srcPortIdx >= sb.srcPorts.size() || destPortIdx >= sb.dstPorts.size())
+    return false;
+  // Increment the fixed packet flow count, to indicate there is an existing,
+  // pre-routed packet stream using this channel.
+  sb.fixedPacketFlowCount[srcPortIdx][destPortIdx]++;
+  // There are two types of `SwitchboxConnect` in `impl->graph`:
+  // 1. intra-switchbox connections (`srcPhyPort.tileLoc ==
+  // destPhyPort.tileLoc`), representing configurable routes within a single
+  // switchbox.
+  // 2. inter-switchbox connections (`srcPhyPort.tileLoc !=
+  // destPhyPort.tileLoc`): representing unconfigurable connections between
+  // neighboring switchboxes. For example, tile (0,0) North is always tied
+  // to tile (0,1) South.
+  // When handling intra-switchbox connections connections,
+  // we must also propagate to inter-switchbox connections.
   if (srcPhyPort.tileLoc == destPhyPort.tileLoc) {
     int col = srcPhyPort.tileLoc.col;
     int row = srcPhyPort.tileLoc.row;
     int srcChannel = srcPhyPort.port.channel;
     int destChannel = destPhyPort.port.channel;
-    // Populate to the neighboring SOUTH switchbox.
-    if (row > 0) {
-      if (srcPhyPort.port.bundle == StrmSwPortType::SOUTH &&
-          !addFixedPacketConnection({{col, row - 1},
-                                     {StrmSwPortType::NORTH, srcChannel},
+    for (auto &[direction, deltaCoords] : impl->directionToDeltaCoordsMap) {
+      int neighborCol = col + deltaCoords.first;
+      int neighborRow = row + deltaCoords.second;
+      // Check if the neighboring switchbox exists.
+      if (neighborCol < 0 || neighborCol > impl->maxCol || neighborRow < 0 ||
+          neighborRow > impl->maxRow) {
+        continue;
+      }
+      // Propagate to the neighboring switchbox from `srcPhyPort`.
+      if (srcPhyPort.port.bundle == direction.first &&
+          !addFixedPacketConnection({{neighborCol, neighborRow},
+                                     {direction.second, srcChannel},
                                      PhysPort::Direction::SRC},
                                     {{col, row},
-                                     {StrmSwPortType::SOUTH, srcChannel},
+                                     {direction.first, srcChannel},
                                      PhysPort::Direction::DST})) {
         return false;
       }
-      if (destPhyPort.port.bundle == StrmSwPortType::SOUTH &&
+      // Propagate to the neighboring switchbox from `destPhyPort`.
+      if (destPhyPort.port.bundle == direction.first &&
           !addFixedPacketConnection({{col, row},
-                                     {StrmSwPortType::SOUTH, destChannel},
+                                     {direction.first, destChannel},
                                      PhysPort::Direction::SRC},
-                                    {{col, row - 1},
-                                     {StrmSwPortType::NORTH, destChannel},
-                                     PhysPort::Direction::DST})) {
-        return false;
-      }
-    }
-    // Populate to the neighboring NORTH switchbox.
-    if (row < impl->maxRow) {
-      if (srcPhyPort.port.bundle == StrmSwPortType::NORTH &&
-          !addFixedPacketConnection({{col, row + 1},
-                                     {StrmSwPortType::SOUTH, srcChannel},
-                                     PhysPort::Direction::SRC},
-                                    {{col, row},
-                                     {StrmSwPortType::NORTH, srcChannel},
-                                     PhysPort::Direction::DST})) {
-        return false;
-      }
-      if (destPhyPort.port.bundle == StrmSwPortType::NORTH &&
-          !addFixedPacketConnection({{col, row},
-                                     {StrmSwPortType::NORTH, destChannel},
-                                     PhysPort::Direction::SRC},
-                                    {{col, row + 1},
-                                     {StrmSwPortType::SOUTH, destChannel},
-                                     PhysPort::Direction::DST})) {
-        return false;
-      }
-    }
-    // Populate to the neighboring WEST switchbox.
-    if (col > 0) {
-      if (srcPhyPort.port.bundle == StrmSwPortType::WEST &&
-          !addFixedPacketConnection({{col - 1, row},
-                                     {StrmSwPortType::EAST, srcChannel},
-                                     PhysPort::Direction::SRC},
-                                    {{col, row},
-                                     {StrmSwPortType::WEST, srcChannel},
-                                     PhysPort::Direction::DST})) {
-        return false;
-      }
-      if (destPhyPort.port.bundle == StrmSwPortType::WEST &&
-          !addFixedPacketConnection({{col, row},
-                                     {StrmSwPortType::WEST, destChannel},
-                                     PhysPort::Direction::SRC},
-                                    {{col - 1, row},
-                                     {StrmSwPortType::EAST, destChannel},
-                                     PhysPort::Direction::DST})) {
-        return false;
-      }
-    }
-    // Populate to the neighboring EAST switchbox.
-    if (col < impl->maxCol) {
-      if (srcPhyPort.port.bundle == StrmSwPortType::EAST &&
-          !addFixedPacketConnection({{col + 1, row},
-                                     {StrmSwPortType::WEST, srcChannel},
-                                     PhysPort::Direction::SRC},
-                                    {{col, row},
-                                     {StrmSwPortType::EAST, srcChannel},
-                                     PhysPort::Direction::DST})) {
-        return false;
-      }
-      if (destPhyPort.port.bundle == StrmSwPortType::EAST &&
-          !addFixedPacketConnection({{col, row},
-                                     {StrmSwPortType::EAST, destChannel},
-                                     PhysPort::Direction::SRC},
-                                    {{col + 1, row},
-                                     {StrmSwPortType::WEST, destChannel},
+                                    {{neighborCol, neighborRow},
+                                     {direction.second, destChannel},
                                      PhysPort::Direction::DST})) {
         return false;
       }
@@ -978,8 +944,7 @@ std::tuple<SlaveGroupsT, SlaveMasksT> emitSlaveGroupsAndMasksRoutingConfig(
   SmallVector<PhysPortAndID> workList(existingSlavePorts.begin(),
                                       existingSlavePorts.end());
   workList.append(slavePorts.begin(), slavePorts.end());
-  while (!workList.empty()) {
-    PhysPortAndID slave1 = workList.pop_back_val();
+  for (PhysPortAndID &slave1 : workList) {
     // Try to find a matching group that can be merged with.
     std::optional<uint32_t> matchedGroupIdx;
     SmallVector<std::set<uint32_t>> &groups = slaveGroups[slave1.physPort];
@@ -1040,27 +1005,17 @@ FailureOr<std::tuple<MasterSetsT, SlaveAMSelsT>> emitPacketRoutingConfiguration(
   size_t existingPacketFlowsSize = existingPacketFlows.size();
   sortedPacketFlows.append(packetFlows.begin(), packetFlows.end());
 
-  // Sort for deterministic AMSel allocation.
-  // Note that `first.id` is intentionally excluded from the sorting key.
-  // This is because `existingPacketFlows` may contain a superset of actual
-  // packet IDs, as they are inferred from packet rule masks and values.
-  // Including `first.id` in the comparison could lead to inconsistent
-  // ordering between multiple runs of the router.
-  auto sortByLocPortPktid = [](const auto &lhs, const auto &rhs) {
-    return std::tuple(lhs.first.physPort.tileLoc.col,
-                      lhs.first.physPort.tileLoc.row, lhs.first.physPort.port,
-                      std::vector(lhs.second.begin(), lhs.second.end())) <
-           std::tuple(rhs.first.physPort.tileLoc.col,
-                      rhs.first.physPort.tileLoc.row, rhs.first.physPort.port,
-                      std::vector(rhs.second.begin(), rhs.second.end()));
+  // Sort for deterministic AMSel allocation, using the source PhysPortAndID as
+  // the key.
+  auto sortBySrc = [](const auto &lhs, const auto &rhs) {
+    return lhs.first < rhs.first;
   };
   // Existing flows and new flows are sorted separately to maintain their
-  // relative order within their respective groups.
+  // relative order.
   std::sort(sortedPacketFlows.begin(),
-            sortedPacketFlows.begin() + existingPacketFlowsSize,
-            sortByLocPortPktid);
+            sortedPacketFlows.begin() + existingPacketFlowsSize, sortBySrc);
   std::sort(sortedPacketFlows.begin() + existingPacketFlowsSize,
-            sortedPacketFlows.end(), sortByLocPortPktid);
+            sortedPacketFlows.end(), sortBySrc);
 
   // A map from Tile and master selectValue to the ports targeted by that
   // master select.

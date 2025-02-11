@@ -1,4 +1,4 @@
-// RUN: iree-opt --pass-pipeline="builtin.module(aie.device(amdaie-create-pathfinder-flows{route-ctrl=true route-non-ctrl=false},amdaie-create-pathfinder-flows{route-ctrl=false route-non-ctrl=true}))" --split-input-file %s | FileCheck %s
+// RUN: iree-opt --pass-pipeline="builtin.module(aie.device(amdaie-create-pathfinder-flows{route-ctrl=true route-data=false},amdaie-create-pathfinder-flows{route-ctrl=false route-data=true}))" --split-input-file %s | FileCheck %s
 
 // Test Name: `one_ctrl_packet_flow_baseline`
 // CHECK-LABEL:   aie.device(npu1_4col) {
@@ -45,8 +45,10 @@ module {
 // -----
 
 // Test Name: `one_ctrl_packet_flow_plus_one_data_circuit_flow`
-// Lines surrounding **DIFF_START** and **DIFF_END** are expected to be different from the `one_ctrl_packet_flow_baseline` test case.
-// The remaining lines are expected to be the same.
+// This test is based on `one_ctrl_packet_flow_baseline`. The routing for control flows,
+// (including the switchboxes, ports, and arbiters used), are expected to remain
+// unchanged from the baseline test case. The key difference is addition of a data circuit flow,
+// whose routing is highlighted between **DIFF_START** and **DIFF_END**.
 // CHECK-LABEL:   aie.device(npu1_4col) {
 // CHECK:           %[[TILE_0_0:.*]] = aie.tile(0, 0)
 // CHECK-NEXT:      %[[SHIM_MUX_0_0:.*]] = aie.shim_mux(%[[TILE_0_0]]) {
@@ -106,8 +108,11 @@ module {
 // -----
 
 // Test Name: `one_ctrl_packet_flow_plus_one_data_packet_flow_different_srcs`
-// Lines surrounding **DIFF_START** and **DIFF_END** are expected to be different from the `one_ctrl_packet_flow_baseline` test case.
-// The remaining lines are expected to be the same.
+// Same as before, this test is based on `one_ctrl_packet_flow_baseline`, but the added
+// data flow is in packet-mode rather than circuit-mode. The routing for control flows,
+// are expected to remain unchanged from the baseline test case, though the data flow
+// might share the same ports and arbiters with the control flow (e.g., %[[AMSEL_0]] in
+// %[[TILE_0_1]]).
 // CHECK-LABEL:   aie.device(npu1_4col) {
 // CHECK:           %[[TILE_0_0:.*]] = aie.tile(0, 0)
 // CHECK-NEXT:      %[[SHIM_MUX_0_0:.*]] = aie.shim_mux(%[[TILE_0_0]]) {
@@ -177,8 +182,10 @@ module {
 // -----
 
 // Test Name: `one_ctrl_packet_flow_plus_one_data_packet_flow_same_srcs_same_dests`
-// Lines surrounding **DIFF_START** and **DIFF_END** are expected to be different from the `one_ctrl_packet_flow_baseline` test case.
-// The remaining lines are expected to be the same.
+// Same as before, this test is based on `one_ctrl_packet_flow_baseline`. The routing
+// for control flows are expected to remain unchanged from the baseline test case.
+// In this test, the control flow and the data flow have the same source tile, source channel,
+// destination tile, but different destination ports.
 // CHECK-LABEL:   aie.device(npu1_4col) {
 // CHECK:           %[[TILE_0_0:.*]] = aie.tile(0, 0)
 // CHECK-NEXT:      %[[SHIM_MUX_0_0:.*]] = aie.shim_mux(%[[TILE_0_0]]) {
@@ -242,8 +249,10 @@ module {
 // -----
 
 // Test Name: `one_ctrl_packet_flow_plus_one_data_packet_flow_different_dests`
-// Lines surrounding **DIFF_START** and **DIFF_END** are expected to be different from the `one_ctrl_packet_flow_baseline` test case.
-// The remaining lines are expected to be the same.
+// Same as before, this test is based on `one_ctrl_packet_flow_baseline`. The routing
+// for control flows are expected to remain unchanged from the baseline test case.
+// In this test, the control flow and the data flow have the same source tile, but
+// different destination tiles.
 // CHECK-LABEL:   aie.device(npu1_4col) {
 // CHECK:           %[[TILE_0_0:.*]] = aie.tile(0, 0)
 // CHECK-NEXT:      %[[SHIM_MUX_0_0:.*]] = aie.shim_mux(%[[TILE_0_0]]) {
@@ -380,12 +389,12 @@ module {
 // CHECK-NEXT:        %[[AMSEL_1:.*]] = aie.amsel<1> (0)
 // CHECK-NEXT:        %[[AMSEL_2:.*]] = aie.amsel<2> (0)
 // CHECK-NEXT:        %[[MASTERSET_CTRL:.*]] = aie.masterset(CTRL : 0, %[[AMSEL_0]])
-// CHECK-NEXT:        %[[MASTERSET_NORTH1:.*]] = aie.masterset(NORTH : 1, %[[AMSEL_1]])
-// CHECK-NEXT:        %[[MASTERSET_NORTH4:.*]] = aie.masterset(NORTH : 4, %[[AMSEL_2]])
+// CHECK-NEXT:        %[[MASTERSET_NORTH1:.*]] = aie.masterset(NORTH : 1, %[[AMSEL_2]])
+// CHECK-NEXT:        %[[MASTERSET_NORTH4:.*]] = aie.masterset(NORTH : 4, %[[AMSEL_1]])
 // CHECK-NEXT:        aie.packet_rules(SOUTH : 3) {
 // CHECK-NEXT:          aie.rule(31, 0, %[[AMSEL_0]]) {packet_ids = array<i32: 0>}
-// CHECK-NEXT:          aie.rule(31, 1, %[[AMSEL_2]]) {packet_ids = array<i32: 1>}
-// CHECK-NEXT:          aie.rule(24, 0, %[[AMSEL_1]]) {packet_ids = array<i32: 2, 3, 4, 5>}
+// CHECK-NEXT:          aie.rule(31, 1, %[[AMSEL_1]]) {packet_ids = array<i32: 1>}
+// CHECK-NEXT:          aie.rule(24, 0, %[[AMSEL_2]]) {packet_ids = array<i32: 2, 3, 4, 5>}
 // CHECK-NEXT:        }
 // CHECK-NEXT:      }
 module {
@@ -432,8 +441,10 @@ module {
 // -----
 
 // Test Name: `six_ctrl_packet_flows_one_ctrl_circuit_flow_plus_two_channels_data_packet_flows_broadcast`
-// Lines surrounding **DIFF_START** and **DIFF_END** are expected to be different from the `six_ctrl_packet_flows_one_ctrl_circuit_flow_baseline` test case.
-// The remaining lines are expected to be the same.
+// This test is based on `six_ctrl_packet_flows_one_ctrl_circuit_flow_baseline`. The routing for control
+// flows, (including the switchboxes, ports, and arbiters used), are expected to remain unchanged from
+// the baseline test case. The key difference is the addition of four data packet flows, including two
+// broadcasts. The differences compared to the baseline are highlighted between **DIFF_START** and **DIFF_END**.
 // CHECK:           %[[TILE_0_0:.*]] = aie.tile(0, 0)
 // CHECK-NEXT:      %[[SHIM_MUX_0_0:.*]] = aie.shim_mux(%[[TILE_0_0]]) {
 // CHECK-NEXT:        aie.connect<DMA : 0, NORTH : 3>
@@ -596,18 +607,18 @@ module {
 // CHECK-NEXT:        %[[AMSEL_3:.*]] = aie.amsel<3> (0)
 // **DIFF_END**
 // CHECK-NEXT:        %[[MASTERSET_CTRL:.*]] = aie.masterset(CTRL : 0, %[[AMSEL_0]])
-// CHECK-NEXT:        %[[MASTERSET_NORTH1:.*]] = aie.masterset(NORTH : 1, %[[AMSEL_1]])
-// CHECK-NEXT:        %[[MASTERSET_NORTH4:.*]] = aie.masterset(NORTH : 4, %[[AMSEL_2]])
+// CHECK-NEXT:        %[[MASTERSET_NORTH1:.*]] = aie.masterset(NORTH : 1, %[[AMSEL_2]])
+// CHECK-NEXT:        %[[MASTERSET_NORTH4:.*]] = aie.masterset(NORTH : 4, %[[AMSEL_1]])
 // **DIFF_START**
 // CHECK-NEXT:        %[[MASTERSET_NORTH5:.*]] = aie.masterset(NORTH : 5, %[[AMSEL_3]])
 // **DIFF_END**
 // CHECK-NEXT:        aie.packet_rules(SOUTH : 3) {
 // CHECK-NEXT:          aie.rule(31, 0, %[[AMSEL_0]]) {packet_ids = array<i32: 0>}
-// CHECK-NEXT:          aie.rule(31, 1, %[[AMSEL_2]]) {packet_ids = array<i32: 1>}
+// CHECK-NEXT:          aie.rule(31, 1, %[[AMSEL_1]]) {packet_ids = array<i32: 1>}
 // **DIFF_START**
-// CHECK-NEXT:          aie.rule(31, 6, %[[AMSEL_2]]) {packet_ids = array<i32: 6>}
+// CHECK-NEXT:          aie.rule(31, 6, %[[AMSEL_1]]) {packet_ids = array<i32: 6>}
 // **DIFF_END**
-// CHECK-NEXT:          aie.rule(24, 0, %[[AMSEL_1]]) {packet_ids = array<i32: 2, 3, 4, 5>}
+// CHECK-NEXT:          aie.rule(24, 0, %[[AMSEL_2]]) {packet_ids = array<i32: 2, 3, 4, 5>}
 // CHECK-NEXT:        }
 // **DIFF_START**
 // CHECK-NEXT:        aie.packet_rules(SOUTH : 7) {

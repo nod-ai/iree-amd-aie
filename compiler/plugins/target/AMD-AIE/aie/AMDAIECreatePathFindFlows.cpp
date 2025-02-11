@@ -92,6 +92,7 @@ ConnectOp getOrCreateConnect(OpBuilder &builder, Operation *parentOp,
 AMSelOp getOrCreateAMSel(OpBuilder &builder, SwitchboxOp &swboxOp,
                          int arbiterID, int msel) {
   Block &b = swboxOp.getConnections().front();
+  OpBuilder::InsertionGuard g(builder);
   builder.setInsertionPoint(b.getTerminator());
   for (auto amsel : swboxOp.getOps<AMSelOp>()) {
     builder.setInsertionPointAfter(amsel);
@@ -105,6 +106,7 @@ MasterSetOp getOrCreateMasterSet(OpBuilder &builder, SwitchboxOp &swboxOp,
                                  StrmSwPortType bundle, int channel,
                                  ArrayRef<Value> amselVals) {
   Block &b = swboxOp.getConnections().front();
+  OpBuilder::InsertionGuard g(builder);
   builder.setInsertionPoint(b.getTerminator());
   for (auto masterSet : swboxOp.getOps<MasterSetOp>()) {
     builder.setInsertionPointAfter(masterSet);
@@ -137,6 +139,8 @@ PacketRulesOp getOrCreatePacketRules(OpBuilder &builder, SwitchboxOp &swboxOp,
   return packetRules;
 }
 
+/// Convert the `flowSolutions` returned by the pathfinder into actual
+/// `connect` operations in the IR.
 LogicalResult runOnCircuitFlow(
     DeviceOp device, std::vector<FlowOp> &flowOps,
     const std::map<PathEndPoint, SwitchSettings> &flowSolutions) {
@@ -203,6 +207,7 @@ struct AMDAIERouteFlowsWithPathfinderPass
   void runOnOperation() override;
 };
 
+/// Utility function to get existing pre-routed packet flows from the IR.
 FailureOr<std::tuple<PacketFlowMapT, SmallVector<PhysPortAndID>>>
 getRoutedPacketFlows(DeviceOp device, AMDAIEDeviceModel &deviceModel) {
   PacketFlowMapT routedPacketFlows;
@@ -218,8 +223,8 @@ getRoutedPacketFlows(DeviceOp device, AMDAIEDeviceModel &deviceModel) {
     // Inside each switchbox, look for `MasterSetOp` and `PacketRulesOp`.
     for (Operation &op : switchboxOp.getConnections().getOps()) {
       if (auto masterSetOp = dyn_cast<MasterSetOp>(op)) {
-        // Recover the original DMA port + channel from the special shim mux
-        // port.
+        // For shim tiles, convert the special shim mux port back to the
+        // original DMA port.
         if (std::optional<std::pair<StrmSwPortType, uint8_t>> mappedDmaPort =
                 deviceModel.getDmaFromShimMuxPortMapping(
                     getConnectingBundle(masterSetOp.getDestBundle()),
@@ -228,7 +233,7 @@ getRoutedPacketFlows(DeviceOp device, AMDAIEDeviceModel &deviceModel) {
           masterSetOp.setDestBundle(mappedDmaPort->first);
           masterSetOp.setDestChannel(mappedDmaPort->second);
         }
-        // Get the destination for a packet flow.
+        // Get the destination inside the current switchbox.
         PhysPort destPhyPort = {
             loc,
             Port{masterSetOp.getDestBundle(), masterSetOp.getDestChannel()},
@@ -240,8 +245,8 @@ getRoutedPacketFlows(DeviceOp device, AMDAIEDeviceModel &deviceModel) {
           amselToDestPhysPorts[{arbiterID, msel}].push_back(destPhyPort);
         }
       } else if (auto packetRulesOp = dyn_cast<PacketRulesOp>(op)) {
-        // Recover the original DMA port + channel from the special shim mux
-        // port.
+        // For shim tiles, convert the special shim mux port back to the
+        // original DMA port.
         if (std::optional<std::pair<StrmSwPortType, uint8_t>> mappedDmaPort =
                 deviceModel.getDmaFromShimMuxPortMapping(
                     getConnectingBundle(packetRulesOp.getSourceBundle()),
@@ -250,7 +255,7 @@ getRoutedPacketFlows(DeviceOp device, AMDAIEDeviceModel &deviceModel) {
           packetRulesOp.setSourceBundle(mappedDmaPort->first);
           packetRulesOp.setSourceChannel(mappedDmaPort->second);
         }
-        // Get the source for a packet flow.
+        // Get the source inside the current switchbox.
         PhysPort sourcePhyPort = {loc,
                                   Port{packetRulesOp.getSourceBundle(),
                                        packetRulesOp.getSourceChannel()},
@@ -287,6 +292,8 @@ getRoutedPacketFlows(DeviceOp device, AMDAIEDeviceModel &deviceModel) {
   return std::make_tuple(routedPacketFlows, routedSlavePorts);
 }
 
+/// Convert the `flowSolutions` returned by the pathfinder into actual
+/// `amsel`, `masterSet`, and `packetRules` operations in the IR.
 LogicalResult runOnPacketFlow(
     DeviceOp device, std::vector<PacketFlowOp> &pktFlowOps,
     const std::map<PathEndPoint, SwitchSettings> &flowSolutions,
@@ -561,18 +568,18 @@ LogicalResult runOnPacketFlow(
 }
 
 /// Rough outline:
-/// 1. find aie.flow ops and translate them into the structs/data-structures
-/// the
-///    router expects
-/// 2. find aie.packet_flow ops and translate them into the
-///    structs/data-structures the router expects
-/// 3. add existing ("fixed") internal switchbox connections
-/// 4. run the router (findPaths)
-/// 5. run the ConvertFlowsToInterconnect rewrite pattern that uses the router
-///    results to translate flow ops into aie.switchbox ops that can contain
-///    aie.connects
-/// 6. feed the router results to runOnPacketFlow to insert packet routing ops
-/// (aie.packet_rules, aie.amsel, etc) into aie.switchboxes
+/// 1. Identify unrouted `aie.flow` operations and convert them into data
+/// structures expected by the router.
+/// 2. Identify unrouted `aie.packet_flow` operations and convert them into data
+/// structures expected by the router.
+/// 3. Load existing, pre-routed circuit/packet flows from the IR. Their
+/// configuration is preserved and will not be modified.
+/// 4. Execute the router (`pathfinder.findPaths`).
+/// 5. Feed router results to `runOnCircuitFlow` which will insert `aie.connect`
+/// operations into `aie.switchboxes`.
+/// 6. Feed router results to `runOnPacketFlow` which will
+/// insert `aie.packet_rules`, `aie.amsel`, and `aie.masterset` operations into
+/// `aie.switchboxes`.
 void AMDAIERouteFlowsWithPathfinderPass::runOnOperation() {
   DeviceOp device = getOperation();
   std::map<PathEndPoint, SwitchSettings> flowSolutions;
@@ -589,16 +596,14 @@ void AMDAIERouteFlowsWithPathfinderPass::runOnOperation() {
   Router pathfinder(maxCol, maxRow);
   pathfinder.initialize(deviceModel);
 
-  // for each flow in the device, add it to pathfinder
-  // each source can map to multiple different destinations (fanout)
+  // Add circuit flows to the pathfinder.
   std::vector<FlowOp> circuitFlowOps;
   for (FlowOp flowOp : device.getOps<FlowOp>()) {
-    // Skip flows based on control/non-control routing flags.
+    // Decide whether to route control and/or data flows.
     bool isCtrlFlow = (flowOp.getSourceBundle() == StrmSwPortType::CTRL) ||
                       (flowOp.getDestBundle() == StrmSwPortType::CTRL);
-    if ((isCtrlFlow && !routeCtrl) || (!isCtrlFlow && !routeNonCtrl)) continue;
-
-    // Not skipped, add the flow to the pathfinder.
+    if ((isCtrlFlow && !routeCtrl) || (!isCtrlFlow && !routeData)) continue;
+    // Get the source and destination of the circuit flow.
     TileOp srcTile = llvm::cast<TileOp>(flowOp.getSource().getDefiningOp());
     TileOp dstTile = llvm::cast<TileOp>(flowOp.getDest().getDefiningOp());
     TileLoc srcCoords = {srcTile.getCol(), srcTile.getRow()};
@@ -610,6 +615,7 @@ void AMDAIERouteFlowsWithPathfinderPass::runOnOperation() {
     circuitFlowOps.push_back(flowOp);
   }
 
+  // Add packet flows to the pathfinder.
   std::vector<PacketFlowOp> packetFlowOps;
   for (PacketFlowOp pktFlowOp : device.getOps<PacketFlowOp>()) {
     Region &r = pktFlowOp.getPorts();
@@ -628,14 +634,11 @@ void AMDAIERouteFlowsWithPathfinderPass::runOnOperation() {
           << "expected exactly one source and at least one dest";
       return signalPassFailure();
     }
-    // Skip flows based on control/non-control routing flags.For desitnation,
-    // we only need to check the first one, as the `CTRL` flow would never be
-    // a broadcast.
+    // Decide whether to route control and/or data flows.
     bool isCtrlFlow = (pktSrcs[0].getBundle() == StrmSwPortType::CTRL) ||
                       (pktDests[0].getBundle() == StrmSwPortType::CTRL);
-    if ((isCtrlFlow && !routeCtrl) || (!isCtrlFlow && !routeNonCtrl)) continue;
-
-    // Not skipped, add the flow to the pathfinder.
+    if ((isCtrlFlow && !routeCtrl) || (!isCtrlFlow && !routeData)) continue;
+    // Get the source and destination of the packet flow.
     TileOp srcTile = llvm::cast<TileOp>(pktSrcs[0].getTile().getDefiningOp());
     TileLoc srcCoords = {srcTile.getCol(), srcTile.getRow()};
     Port srcPort = {(pktSrcs[0].getBundle()), pktSrcs[0].getChannel()};
@@ -649,8 +652,8 @@ void AMDAIERouteFlowsWithPathfinderPass::runOnOperation() {
     packetFlowOps.push_back(pktFlowOp);
   }
 
-  // Mark existing circuit-mode connections as unavailable in Pathfinder.
-  // These pre-routed connections are fixed and will not be modified.
+  // Identify existing pre-routed circuit flows by looking for `connect`
+  // operations.
   for (SwitchboxOp switchboxOp : device.getOps<SwitchboxOp>()) {
     std::vector<std::tuple<Port, Port>> connects;
     for (ConnectOp connectOp : switchboxOp.getOps<ConnectOp>()) {
@@ -659,6 +662,8 @@ void AMDAIERouteFlowsWithPathfinderPass::runOnOperation() {
       connects.emplace_back(src, dst);
     }
     TileOp t = xilinx::AIE::getTileOp(*switchboxOp.getOperation());
+    // Mark these pre-routed circuit flows as fixed in the pathfinder,
+    // ensuring they are not altered or used by any other flow.
     if (!pathfinder.addFixedCircuitConnection(t.getCol(), t.getRow(),
                                               connects)) {
       switchboxOp.emitOpError() << "Unable to add fixed circuit connections";
@@ -666,8 +671,8 @@ void AMDAIERouteFlowsWithPathfinderPass::runOnOperation() {
     }
   }
 
-  // Recover packet flows that already routed by looking for existing `amsel`
-  // + `packet_rules` and `masterset` operations.
+  // Identify existing pre-routed packet flows by looking for `amsel`,
+  // `packet_rules` and `masterset` operations.
   PacketFlowMapT existingPacketFlows;
   SmallVector<PhysPortAndID> existingSlavePorts;
   auto result = getRoutedPacketFlows(device, deviceModel);
@@ -677,7 +682,8 @@ void AMDAIERouteFlowsWithPathfinderPass::runOnOperation() {
   } else {
     std::tie(existingPacketFlows, existingSlavePorts) = result.value();
   }
-  // Add fixed packet connections to the pathfinder.
+  // Mark these pre-routed packet flows as fixed in the pathfinder. Their routes
+  // will not be altered, but can be shared with other packet flows.
   for (const auto &[srcPhysPortAndID, destPhysPortAndIDs] :
        existingPacketFlows) {
     for (const PhysPortAndID &destPhysPortAndID : destPhysPortAndIDs) {
@@ -689,9 +695,9 @@ void AMDAIERouteFlowsWithPathfinderPass::runOnOperation() {
     }
   }
 
-  // all flows are now populated, call the congestion-aware pathfinder
-  // algorithm
-  // check whether the pathfinder algorithm creates a legal routing
+  // All flows are now populated, call the congestion-aware pathfinder
+  // algorithm, and check whether the pathfinder algorithm creates a legal
+  // routing.
   if (auto maybeFlowSolutions = pathfinder.findPaths(/*maxIterations=*/1000)) {
     flowSolutions.swap(maybeFlowSolutions.value());
   } else {
@@ -699,12 +705,14 @@ void AMDAIERouteFlowsWithPathfinderPass::runOnOperation() {
     return signalPassFailure();
   }
 
+  // Convert the circuit flow solutions into actual IR operations.
   if (routeCircuit &&
       failed(runOnCircuitFlow(device, circuitFlowOps, flowSolutions))) {
     device.emitError("failed to convert circuit flows to interconnects");
     return signalPassFailure();
   }
 
+  // Convert the packet flow solutions into actual IR operations.
   if (routePacket &&
       failed(runOnPacketFlow(device, packetFlowOps, flowSolutions,
                              existingPacketFlows, existingSlavePorts))) {

@@ -21,9 +21,9 @@ def AMDAIERouteFlowsWithPathfinder :
     Option<"routePacket", "route-packet", "bool", /*default=*/"true",
       "Enable `aie.packet_flow` routing.">,
     Option<"routeCtrl", "route-ctrl", "bool", /*default=*/"true",
-      "Enable routing for flows that involve a `CTRL` port as either source or destination.">,
-    Option<"routeNonCtrl", "route-non-ctrl", "bool", /*default=*/"true",
-      "Enable routing only for flows where both source and destination are non-`CTRL` ports.">,
+      "Enable routing for control flows, i.e., flows where a `CTRL` port is either the source or the destination.">,
+    Option<"routeData", "route-data", "bool", /*default=*/"true",
+       "Enable routing for data flows, i.e., flows where both the source and destination are non-`CTRL` ports.">,
   ];
 }
 
