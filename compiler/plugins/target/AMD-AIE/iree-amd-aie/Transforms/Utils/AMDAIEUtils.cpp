@@ -441,18 +441,13 @@ bool sinkInto(Region &region, IRRewriter &rewriter,
           dependencyOp->replaceUsesWithIf(sunkOp, [&](OpOperand &use) {
             return parentOfRegion->isAncestor(use.getOwner());
           });
-
-          // If dependency op now has no users, erase it.
-          if (dependencyOp->use_empty()) {
-            rewriter.eraseOp(dependencyOp);
-          }
           blockChangedThisIteration = true;
           regionChanged = true;
         }
-        ops.erase(op);
       }
     } while (blockChangedThisIteration);
   }
+
   return regionChanged;
 }
 
