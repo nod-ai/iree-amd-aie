@@ -19,7 +19,6 @@ from output_comparer import compare
 from input_generator import (
     generate_inputs,
     verify_determinism,
-    load_input,
     get_output_type,
     np_from_binfile,
 )
@@ -486,6 +485,61 @@ class MatmulTransposeA(BaseMatmul):
         return self.vs_cpu(config)
 
 
+class Matmul4d(BaseMatmul):
+    """
+    A test of linalg.generic with 4d inputs and output implementing form:
+    C += matmul4d(A,B) where A:MxKxM0xK0, B:NxKxK0xN0, C:NxMxM0xN0
+
+    Note that the order of the input dims for this operation corresponds to
+    the L2 shapes of a standard matmul op after the first level packing.
+    For comparison purpose, the input values of inner dims M0/N0/K0 are
+    fixed as 32/32/64 currently.
+    TODO(vivian): Generalize the class and the template.
+    """
+
+    def __init__(
+        self,
+        M,
+        N,
+        K,
+        input_type,
+        acc_type,
+        additional_labels=None,
+        n_repeats=1,
+        n_kernel_runs=1,
+        test_params=None,
+    ):
+        super().__init__(
+            name=f"matmul4d_{M}_{N}_{K}_{input_type}_{acc_type}",
+            test_params=test_params,
+            M=M,
+            N=N,
+            K=K,
+            input_type=input_type,
+            acc_type=acc_type,
+            function_name="matmul4d",
+            n_repeats=n_repeats,
+            n_kernel_runs=n_kernel_runs,
+        )
+        self.labels.append("Matmul4d")
+        if additional_labels:
+            self.labels += additional_labels
+        if self.run_benchmark:
+            self.aie_compilation_flags += [
+                "--iree-amdaie-enable-infinite-loop-around-core-block=true"
+            ]
+            self.labels.append("Matmul4dBenchmark")
+
+    def _execute(self, config):
+        matmul_template_dir = config.file_dir / "matmul_template"
+        template_name = matmul_template_dir / "matmul4d_MxKxM0xK0_NxKxK0xN0.mlir"
+        self.generate(config, template_name)
+        if self.run_benchmark:
+            return self.benchmark(config)
+
+        return self.vs_cpu(config)
+
+
 class MatmulThinBias(BaseMatmul):
     """
     A test of the form matmul(A,B) + C where A:MxK, B:KxN, C:N
@@ -502,9 +556,11 @@ class MatmulThinBias(BaseMatmul):
     ):
         super().__init__(
             name=f"matmul_thin_bias_{M}_{N}_{K}_{input_type}_{acc_type}",
-            test_params=test_params
-            if test_params is not None
-            else TestParams(lower_to_aie_pipeline="air"),
+            test_params=(
+                test_params
+                if test_params is not None
+                else TestParams(lower_to_aie_pipeline="air")
+            ),
             M=M,
             N=N,
             K=K,
@@ -543,9 +599,11 @@ class MatmulFullBias(BaseMatmul):
     ):
         super().__init__(
             name=f"matmul_full_bias_{M}_{N}_{K}_{input_type}_{acc_type}",
-            test_params=test_params
-            if test_params is not None
-            else TestParams(lower_to_aie_pipeline="air"),
+            test_params=(
+                test_params
+                if test_params is not None
+                else TestParams(lower_to_aie_pipeline="air")
+            ),
             M=M,
             N=N,
             K=K,
@@ -565,8 +623,7 @@ class MatmulFullBias(BaseMatmul):
                 "--iree-amdaie-num-cols=2",
             ]
         )
-        self.vs_cpu(config)
-        return True
+        return self.vs_cpu(config)
 
 
 class BatchMatmul(BaseMatmul):
@@ -2118,6 +2175,21 @@ class Tests:
                 "transpose_b": False,
                 "tile_pipeline": "pack-peel-4-level-tiling",
             },
+            # matmul4d test where the input M/N/K are outer dim values.
+            # The total input values correspond to a standard matmul
+            # from the above test are M:512, N:4096, K:512.
+            {
+                "M": 16,
+                "N": 128,
+                "K": 8,
+                "use_ukernel": True,
+                "peano_opt_level": 3,
+                "outline": "balanced",
+                "transpose_a": False,
+                "transpose_b": False,
+                "matmul4d": True,
+                "tile_pipeline": "pack-peel-4-level-tiling",
+            },
             # Test where the compute is omitted, this should help triangulate
             # how much performance gain can be obtained with better matmul
             # on core vs data movement.
@@ -2225,6 +2297,7 @@ class Tests:
             transpose_a = test["transpose_a"]
             transpose_b = test["transpose_b"]
             tile_pipeline = test["tile_pipeline"]
+            matmul4d = test["matmul4d"] if "matmul4d" in test else False
             run_on_target = (
                 test["run_on_target"] if "run_on_target" in test else "npu1_4col"
             )
@@ -2267,7 +2340,9 @@ class Tests:
                 else:
                     name_suffix += "_outline"
 
-            if (transpose_a, transpose_b) == (False, False):
+            if matmul4d:
+                TestClass = Matmul4d
+            elif (transpose_a, transpose_b) == (False, False):
                 TestClass = Matmul
             elif (transpose_a, transpose_b) == (True, False):
                 TestClass = MatmulTransposeA
