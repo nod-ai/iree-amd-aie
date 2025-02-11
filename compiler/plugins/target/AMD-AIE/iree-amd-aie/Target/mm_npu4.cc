@@ -20,15 +20,19 @@ R"chess(
 
 #include <aie_api/aie.hpp>
 
-template<typename T, int M, int N, int val>
+template<typename T, int M, int N, int r>
 void zero_vectorized(T *__restrict pC, unsigned offsetC)
 {
+  const aie::vector<T, r> zeros = aie::zeros<T, r>();
   T *__restrict pC1 = pC + offsetC;
-  for (unsigned r = 0; r < M; r += 1) {
-    for (unsigned c = 0; c < N; c += 1) {
-      unsigned o0 = N * r + c;
-      pC1[o0] = T(0);
-    }
+  const T *__restrict c_end = pC1 + M * N;
+  for (; pC1 + r < c_end; pC1 += r) {
+    aie::store_v(pC1, zeros);
+  }
+  // Do a scalar write for any remainder not divisible by vector instruction
+  // size r
+  for (; pC1 < c_end; pC1++) {
+    *pC1 = 0;
   }
 }
 
@@ -269,7 +273,7 @@ extern "C" {
   X(int8, i8, int8, i8, int32, i32, M, N, K, 8, 8, 8)
 
 #define zero_fill_combos(X, M, N)  \
-  X(bfloat16, bf16, M, N, N/2)     \
+  X(bfloat16, bf16, M, N, N)     \
   X(float, f32, M, N, N/2)         \
   X(int32, i32, M, N, N/2)
 
