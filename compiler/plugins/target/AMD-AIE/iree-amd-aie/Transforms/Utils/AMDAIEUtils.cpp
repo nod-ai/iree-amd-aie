@@ -413,10 +413,14 @@ bool sinkInto(Region &region, IRRewriter &rewriter,
               std::function<bool(Operation *)> shouldSink) {
   Operation *parentOfRegion = region.getParentOp();
   assert(parentOfRegion && "Region has no parent operation");
+  assert(!region.getBlocks().empty()&& "Region has no blocks");
+  Block &firstBlock = region.front();
 
   bool regionChanged = false;
   for (Block &block : region.getBlocks()) {
     bool blockChangedThisIteration{false};
+
+  rewriter.setInsertionPointToStart(&firstBlock);
 
     // Collect all ops in the block.
     llvm::DenseSet<Operation *> ops;
@@ -433,7 +437,6 @@ bool sinkInto(Region &region, IRRewriter &rewriter,
           if (parentOfRegion->isAncestor(dependencyOp)) continue;
           if (!shouldSink(dependencyOp)) continue;
 
-          rewriter.setInsertionPointToStart(&block);
           Operation *sunkOp = rewriter.clone(*dependencyOp);
           ops.insert(sunkOp);
 
