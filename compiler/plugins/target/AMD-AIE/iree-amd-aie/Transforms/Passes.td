@@ -10,6 +10,7 @@
 include "iree-amd-aie/IR/AMDAIEDialect.td"
 include "mlir/Pass/PassBase.td"
 
+
 def AMDAIEAccessToAcquireRelease :
     Pass<"iree-amdaie-access-to-acquire-release", ""> {
   let summary = "Convert logical objectFifo access operations to acquire/release "
@@ -123,13 +124,13 @@ def AMDAIECanonicalizeDoublyStridedOp :
 def AMDAIECanonicalizeNpuDmaCpyNd :
   Pass<"iree-amdaie-canonicalize-npu-dma-cpy-nd", "ModuleOp"> {
   let summary = "Canonicalize npu.dma_cpy_nd operations.";
-let description = [{
+  let description = [{
   Canonicalize the offsets/sizes/strides of npu.dma_cpy_nd operations on the L3
   side of the data movement, to make them more representative of the DMA in hardware.
   This pass ensures the offsets/sizes/strides are of size `nbDimensions`, and that no
   dimensions with size>1 have stride=0 except for dimension zero (outer dimension).
   This is a HW constraint.
-}];
+  }];
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIECanonicalizeNpuDmaCpyNdPass()";
   let options = [
     Option<"nbDimensions", "nb-dimensions", "uint64_t", /*default=*/"4",
@@ -600,6 +601,23 @@ def AMDAIEMapForallToCores :
     Option<"blockSizeCol", "block-size-col", "int64_t", /*default=*/"1",
       "Block size along x dimension">
   ];
+}
+
+def AMDAIEAddNoAliasFunctionArguments :
+    Pass<"iree-amdaie-add-no-alias-function-arguments", ""> {
+ let summary = "Add `llvm.noalias` to function arguments when safe.";
+ let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAddNoAliasFunctionArgumentsPass()";
+  let description = [{
+    Where it is safe to do so, give function arguments the `llvm.noalias`
+    attribute. Motivation: peano can generate much faster code if it knows
+    that the arguments to a function do not alias.
+
+    Basic algorithm: for each function, for each call site, for each operand:
+    check if the operand's defining memory allocation (currently `memref.alloc`
+    or `amdaie.buffer`) is the same as any other operand's. If it is the same,
+    then the function signature cannot have the `llvm.noalias` attribute for
+    the corresponding argument.
+  }];
 }
 
 def AMDAIENoneAccessToTemporaryBuffer :

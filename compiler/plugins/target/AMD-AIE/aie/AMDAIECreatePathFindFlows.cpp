@@ -121,12 +121,14 @@ MasterSetOp getOrCreateMasterSet(OpBuilder &builder, SwitchboxOp &swboxOp,
 PacketRulesOp getOrCreatePacketRules(OpBuilder &builder, SwitchboxOp &swboxOp,
                                      StrmSwPortType bundle, int channel) {
   Block &b = swboxOp.getConnections().front();
+  OpBuilder::InsertionGuard g(builder);
   builder.setInsertionPoint(b.getTerminator());
   for (auto packetRules : swboxOp.getOps<PacketRulesOp>()) {
     builder.setInsertionPointAfter(packetRules);
     if (packetRules.getSourceBundle() == bundle &&
-        packetRules.getSourceChannel() == channel)
+        packetRules.getSourceChannel() == channel) {
       return packetRules;
+    }
   }
   auto packetRules =
       builder.create<PacketRulesOp>(builder.getUnknownLoc(), bundle, channel);
@@ -392,7 +394,8 @@ LogicalResult runOnPacketFlow(
   }
   auto [masterSets, slaveAMSels] = maybeRoutingConfiguration.value();
   auto [slaveGroups, slaveMasks] = emitSlaveGroupsAndMasksRoutingConfig(
-      slavePorts, packetFlows, existingSlavePorts, existingPacketFlows);
+      slavePorts, packetFlows, existingSlavePorts, existingPacketFlows,
+      deviceModel.getPacketIdMaskWidth());
 
   // Erase any duplicate packet rules in exising, pre-routed packet flows.
   std::vector<PacketRulesOp> existingPacketRules;
@@ -465,22 +468,31 @@ LogicalResult runOnPacketFlow(
     }
 
     // Generate the packet rules.
+    uint32_t numPacketRuleSlots =
+        deviceModel.getNumPacketRuleSlots(tileLoc.col, tileLoc.row);
+    DenseMap<Port, PacketRulesOp> slaveRules;
     for (auto &[physPort, groups] : slaveGroups) {
-      Port slave = physPort.port;
       if (tileLoc != physPort.tileLoc) continue;
-      for (std::set<int> &group : groups) {
-        PhysPortAndID physPortAndId = {physPort, *group.begin()};
-        int mask = slaveMasks[physPortAndId];
-        int maskedId = physPortAndId.id & mask;
+      Port slave = physPort.port;
+      for (std::set<uint32_t> &group : groups) {
+        PhysPortAndID physPortAndId(physPort, *group.begin());
+        uint32_t mask = slaveMasks[physPortAndId];
+        uint32_t maskedId = physPortAndId.id & mask;
 
 #ifndef NDEBUG
         // Verify that we actually map all the ID's correctly.
-        for (int _pktId : group) assert((_pktId & mask) == maskedId);
+        for (uint32_t _pktId : group) assert((_pktId & mask) == maskedId);
 #endif
 
         Value amsel = amselOps[slaveAMSels[physPortAndId]];
         PacketRulesOp packetrules =
             getOrCreatePacketRules(builder, swbox, slave.bundle, slave.channel);
+        // Ensure the number of packet rules does not exceed the allowed slots.
+        if (groups.size() > numPacketRuleSlots) {
+          return packetrules.emitOpError()
+                 << "Exceeded packet rule limit. Allowed: "
+                 << numPacketRuleSlots << " Required: " << groups.size();
+        }
         Block &rules = packetrules.getRules().front();
         builder.setInsertionPoint(rules.getTerminator());
         builder.create<PacketRuleOp>(
