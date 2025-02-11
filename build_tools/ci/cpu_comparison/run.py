@@ -1496,10 +1496,7 @@ class Tests:
                         256,
                         input_type,
                         acc_type,
-                        test_params=TestParams(
-                            tile_pipeline=tile_pipeline,
-                            run_on_target=run_on_target,
-                        ),
+                        test_params=TestParams(tile_pipeline=tile_pipeline),
                     )
                 )
                 # Batch size = 2:
@@ -1511,10 +1508,7 @@ class Tests:
                         64,
                         input_type,
                         acc_type,
-                        test_params=TestParams(
-                            tile_pipeline=tile_pipeline,
-                            run_on_target=run_on_target,
-                        ),
+                        test_params=TestParams(tile_pipeline=tile_pipeline),
                     )
                 )
         # Strix + pack-peel-4-level-tiling + 4x8 + i32->i32.
