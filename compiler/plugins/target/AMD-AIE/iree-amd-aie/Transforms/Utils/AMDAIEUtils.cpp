@@ -417,14 +417,12 @@ bool sinkInto(Region &region, IRRewriter &rewriter,
 
   bool regionChanged = false;
   for (Block &block : region.getBlocks()) {
-    bool blockChangedThisIteration{false};
-
     // Collect all ops in the block.
-    llvm::DenseSet<Operation *> ops;
-    block.walk([&](Operation *op) { ops.insert(op); });
+    SmallVector<Operation *> ops;
+    SmallVector<Operation *> nextIterationOps;
+    block.walk([&](Operation *op) { ops.push_back(op); });
 
-    do {
-      blockChangedThisIteration = false;
+    while (!ops.empty()) {
       for (Operation *op : ops) {
         for (Value operand : op->getOperands()) {
           if (!operand || !operand.getDefiningOp()) continue;
@@ -436,7 +434,7 @@ bool sinkInto(Region &region, IRRewriter &rewriter,
 
           rewriter.setInsertionPointToStart(&block);
           Operation *sunkOp = rewriter.clone(*dependencyOp);
-          ops.insert(sunkOp);
+          nextIterationOps.push_back(sunkOp);
 
           // Replace uses of the dependency op inside the block. Specifically,
           // if `use` is in `block` then replace its operand with `sunkOp`.
@@ -448,13 +446,13 @@ bool sinkInto(Region &region, IRRewriter &rewriter,
             }
             return false;
           });
-          blockChangedThisIteration = true;
           regionChanged = true;
         }
       }
-    } while (blockChangedThisIteration);
+      std::swap(ops, nextIterationOps);
+      nextIterationOps.clear();
+    }
   }
-
   return regionChanged;
 }
 
