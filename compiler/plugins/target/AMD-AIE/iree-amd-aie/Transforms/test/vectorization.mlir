@@ -64,9 +64,9 @@ func.func @fillAndCopy() -> tensor<8xbf16> {
 }
 
 
-// CHECK-LABEL: @matmul_elementwise
+// CHECK-LABEL: @matmul_elementwise_truncf
 //  CHECK-SAME: (%[[ARG0:.*]]: tensor<4240x160xf32>, %[[ARG1:.*]]: tensor<4240x160xbf16>)
-func.func @matmul_elementwise(%arg0: tensor<4240x160xf32>, %arg1: tensor<4240x160xbf16>) -> tensor<4240x160xbf16> {
+func.func @matmul_elementwise_truncf(%arg0: tensor<4240x160xf32>, %arg1: tensor<4240x160xbf16>) -> tensor<4240x160xbf16> {
   %0 = linalg.generic {indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, affine_map<(d0, d1) -> (d0, d1)>], iterator_types = ["parallel", "parallel"]} ins(%arg0: tensor<4240x160xf32>) outs(%arg1 : tensor<4240x160xbf16>) {
     ^bb0(%in: f32, %out: bf16):
         %1 = arith.truncf %in : f32 to bf16
@@ -77,3 +77,17 @@ func.func @matmul_elementwise(%arg0: tensor<4240x160xf32>, %arg1: tensor<4240x16
 // CHECK: %[[VEC_OPERAND_0:.*]] = vector.transfer_read %[[ARG0]]{{.*}} vector<4240x160xf32>
 // CHECK: %[[TRUNCF:.*]] = arith.truncf %[[VEC_OPERAND_0]]
 // CHECK: vector.transfer_write %[[TRUNCF]], %[[ARG1]]
+
+// CHECK-LABEL: @matmul_elementwise_trunci
+//  CHECK-SAME: (%[[ARG0:.*]]: tensor<4240x160xi32>, %[[ARG1:.*]]: tensor<4240x160xi8>)
+func.func @matmul_elementwise_trunci(%arg0: tensor<4240x160xi32>, %arg1: tensor<4240x160xi8>) -> tensor<4240x160xi8> {
+  %0 = linalg.generic {indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, affine_map<(d0, d1) -> (d0, d1)>], iterator_types = ["parallel", "parallel"]} ins(%arg0: tensor<4240x160xi32>) outs(%arg1 : tensor<4240x160xi8>) {
+    ^bb0(%in: i32, %out: i8):
+        %1 = arith.trunci %in : i32 to i8
+        linalg.yield %1 : i8
+    } -> tensor<4240x160xi8>
+  return %0 : tensor<4240x160xi8>
+}
+// CHECK: %[[VEC_OPERAND_0:.*]] = vector.transfer_read %[[ARG0]]{{.*}} vector<4240x160xi32>
+// CHECK: %[[TRUNCI:.*]] = arith.trunci %[[VEC_OPERAND_0]]
+// CHECK: vector.transfer_write %[[TRUNCI]], %[[ARG1]]

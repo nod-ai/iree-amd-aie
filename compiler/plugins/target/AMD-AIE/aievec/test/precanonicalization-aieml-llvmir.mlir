@@ -169,6 +169,19 @@ func.func @arith_truncf(%inp: vector<2x3xf32>) -> vector<2x3xbf16> {
 
 // -----
 
+// CHECK-LABEL: @arith_trunci(
+// CHECK-SAME:      %[[INP:.*]]: vector<2x3xi32>)
+func.func @arith_trunci(%inp: vector<2x3xi32>) -> vector<2x3xi8> {
+    // CHECK:     %[[LINEARIZE:.*]] = vector.shape_cast %[[INP]] : vector<2x3xi32> to vector<6xi32>
+    // CHECK:     %[[TRUNCI:.*]] = arith.trunci %[[LINEARIZE]] : vector<6xi32> to vector<6xi8>
+    // CHECK:     %[[DELINEARIZE:.*]] = vector.shape_cast %[[TRUNCI]] : vector<6xi8> to vector<2x3xi8>
+    // CHECK:     return %[[DELINEARIZE]]
+    %0 = arith.trunci %inp : vector<2x3xi32> to vector<2x3xi8>
+    return %0 : vector<2x3xi8>
+}
+
+// -----
+
 // CHECK:       #map = affine_map<()[s0] -> (s0 * 256 + 96)>
 // CHECK-LABEL: @trivial_read_access
 // CHECK-SAME:  (%[[ARG0:.*]]: memref<4x8x4x8xbf16, strided<[256, 32, 8, 1]>>,
