@@ -152,12 +152,12 @@ using PacketFlowMapT = DenseMap<PhysPortAndID, llvm::SetVector<PhysPortAndID>>;
 
 std::tuple<SlaveGroupsT, SlaveMasksT> emitSlaveGroupsAndMasksRoutingConfig(
     ArrayRef<PhysPortAndID> slavePorts, const PacketFlowMapT &packetFlows,
-    ArrayRef<PhysPortAndID> existingSlavePorts,
-    const PacketFlowMapT &existingPacketFlows, uint32_t numMaskBits);
+    ArrayRef<PhysPortAndID> priorSlavePorts,
+    const PacketFlowMapT &priorPacketFlows, uint32_t numMaskBits);
 
 FailureOr<std::tuple<MasterSetsT, SlaveAMSelsT>> emitPacketRoutingConfiguration(
     const AMDAIEDeviceModel &deviceModel, const PacketFlowMapT &packetFlows,
-    const PacketFlowMapT &existingPacketFlows);
+    const PacketFlowMapT &priorPacketFlows);
 
 /// ============================= BEGIN ==================================
 /// ================== stringification utils =============================

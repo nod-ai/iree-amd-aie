@@ -71,7 +71,7 @@ struct SwitchboxConnect {
   std::vector<std::vector<int>> usedCapacity;
   // how many packet streams are actually using this Channel
   std::vector<std::vector<int>> packetFlowCount;
-  // The number of fixed, pre-existing packet streams using each channel
+  // The number of fixed, previously-routed packet streams using each channel
   // before the pathfinder algorithm starts.
   std::vector<std::vector<int>> fixedPacketFlowCount;
   // only sharing the channel with the same packet group id
@@ -331,10 +331,10 @@ bool Router::addFixedCircuitConnection(
   return true;
 }
 
-/// Tracks existing pre-routed packet flows by setting `fixedPacketFlowCount`.
-/// This ensures that the pathfinder algorithm does not reuse the same channel
-/// for a new circuit flow. Reuse for new packet flows is allowed, as packet IDs
-/// will differentiate them.
+/// Tracks previously-routed packet flows by setting
+/// `fixedPacketFlowCount`. This ensures that the pathfinder algorithm does not
+/// reuse the same channel for a new circuit flow. Reuse for new packet flows is
+/// allowed, as packet IDs will differentiate them.
 bool Router::addFixedPacketConnection(const PhysPort &srcPhyPort,
                                       const PhysPort &destPhyPort) {
   SwitchboxConnect &sb =
@@ -348,8 +348,8 @@ bool Router::addFixedPacketConnection(const PhysPort &srcPhyPort,
   // Could not find the source or destination port, something is wrong.
   if (srcPortIdx >= sb.srcPorts.size() || destPortIdx >= sb.dstPorts.size())
     return false;
-  // Increment the fixed packet flow count, to indicate there is an existing,
-  // pre-routed packet stream using this channel.
+  // Increment the fixed packet flow count, to indicate there is a
+  // previously-routed packet stream using this channel.
   sb.fixedPacketFlowCount[srcPortIdx][destPortIdx]++;
   // There are two types of `SwitchboxConnect` in `impl->graph`:
   // 1. intra-switchbox connections (`srcPhyPort.tileLoc ==
@@ -436,17 +436,11 @@ std::map<PathEndPoint, PathEndPoint> Router::dijkstraShortestPaths(
         }
       }
       // connections to neighboring switchboxes
-      std::vector<std::pair<TileLoc, Port>> neighbors = {
-          {{src.tileLoc.col, src.tileLoc.row - 1},
-           {StrmSwPortType::NORTH, src.port.channel}},
-          {{src.tileLoc.col - 1, src.tileLoc.row},
-           {StrmSwPortType::EAST, src.port.channel}},
-          {{src.tileLoc.col, src.tileLoc.row + 1},
-           {StrmSwPortType::SOUTH, src.port.channel}},
-          {{src.tileLoc.col + 1, src.tileLoc.row},
-           {StrmSwPortType::WEST, src.port.channel}}};
-
-      for (const auto &[neighborCoords, neighborPort] : neighbors) {
+      for (const auto &[direction, deltaCoords] :
+           impl->directionToDeltaCoordsMap) {
+        TileLoc neighborCoords = {src.tileLoc.col + deltaCoords.first,
+                                  src.tileLoc.row + deltaCoords.second};
+        Port neighborPort = {direction.second, src.port.channel};
         if (impl->graph.count(std::make_pair(src.tileLoc, neighborCoords)) >
                 0 &&
             src.port.bundle == getConnectingBundle(neighborPort.bundle)) {
@@ -544,7 +538,7 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
       for (size_t i = 0; i < sb.srcPorts.size(); i++) {
         for (size_t j = 0; j < sb.dstPorts.size(); j++) {
           sb.usedCapacity[i][j] = 0;
-          // If there is no fixed, pre-routed packet flow,
+          // If there is no previously-routed packet flow,
           // `fixedPacketFlowCount` will be just 0.
           sb.packetFlowCount[i][j] = sb.fixedPacketFlowCount[i][j];
           sb.packetGroupId[i][j] = -1;
@@ -916,15 +910,15 @@ bool verifyGroupsByMask(PhysPort slavePort,
 
 std::tuple<SlaveGroupsT, SlaveMasksT> emitSlaveGroupsAndMasksRoutingConfig(
     ArrayRef<PhysPortAndID> slavePorts, const PacketFlowMapT &packetFlows,
-    ArrayRef<PhysPortAndID> existingSlavePorts,
-    const PacketFlowMapT &existingPacketFlows, uint32_t numMaskBits) {
+    ArrayRef<PhysPortAndID> priorSlavePorts,
+    const PacketFlowMapT &priorPacketFlows, uint32_t numMaskBits) {
   // Convert packet flow map into a map from src 'port and id's to destination
   // ports, so that multiple flows with different packet IDs, but the same
   // ports, can be merged.
   DenseMap<PhysPortAndID, llvm::SetVector<PhysPort>> physPortAndIDToPhysPort;
-  // Put existing packet flows with the new ones together, with existing ones
-  // first to respect their relative order.
-  PacketFlowMapT allPacketFlows = existingPacketFlows;
+  // Put previously-routed packet flows with the unrouted ones together,
+  // with previously-routed ones first to respect their relative order.
+  PacketFlowMapT allPacketFlows = priorPacketFlows;
   allPacketFlows.insert(packetFlows.begin(), packetFlows.end());
   for (auto &&[src, dsts] : allPacketFlows) {
     SmallVector<PhysPort> physPorts =
@@ -939,10 +933,10 @@ std::tuple<SlaveGroupsT, SlaveMasksT> emitSlaveGroupsAndMasksRoutingConfig(
   // `slaveMasks` maps a slave port and packet ID to a mask value, used for
   // `packet_rule` entries.
   SlaveMasksT slaveMasks;
-  // Put existing slave ports with the new ones together, with existing ones
-  // first to respect their relative order.
-  SmallVector<PhysPortAndID> workList(existingSlavePorts.begin(),
-                                      existingSlavePorts.end());
+  // Put previously-routed slave ports with the unrouted ones together, with
+  // previously-routed ones first to respect their relative order.
+  SmallVector<PhysPortAndID> workList(priorSlavePorts.begin(),
+                                      priorSlavePorts.end());
   workList.append(slavePorts.begin(), slavePorts.end());
   for (PhysPortAndID &slave1 : workList) {
     // Try to find a matching group that can be merged with.
@@ -993,16 +987,16 @@ std::tuple<SlaveGroupsT, SlaveMasksT> emitSlaveGroupsAndMasksRoutingConfig(
 /// configuration data for packet routing along those same switchboxes.
 FailureOr<std::tuple<MasterSetsT, SlaveAMSelsT>> emitPacketRoutingConfiguration(
     const AMDAIEDeviceModel &deviceModel, const PacketFlowMapT &packetFlows,
-    const PacketFlowMapT &existingPacketFlows) {
+    const PacketFlowMapT &priorPacketFlows) {
   // The generator for finding `(arbiter, msel)` pairs for packet flow
   // connections.
   AMSelGenerator amselGenerator;
 
-  // Put existing packet flows with the new ones together, with existing ones
-  // first to respect their relative order.
+  // Put previously-routed packet flows with the unrouted ones together, with
+  // previously-routed ones first to respect their relative order.
   SmallVector<std::pair<PhysPortAndID, llvm::SetVector<PhysPortAndID>>>
-      sortedPacketFlows(existingPacketFlows.begin(), existingPacketFlows.end());
-  size_t existingPacketFlowsSize = existingPacketFlows.size();
+      sortedPacketFlows(priorPacketFlows.begin(), priorPacketFlows.end());
+  size_t priorPacketFlowsSize = priorPacketFlows.size();
   sortedPacketFlows.append(packetFlows.begin(), packetFlows.end());
 
   // Sort for deterministic AMSel allocation, using the source PhysPortAndID as
@@ -1010,11 +1004,11 @@ FailureOr<std::tuple<MasterSetsT, SlaveAMSelsT>> emitPacketRoutingConfiguration(
   auto sortBySrc = [](const auto &lhs, const auto &rhs) {
     return lhs.first < rhs.first;
   };
-  // Existing flows and new flows are sorted separately to maintain their
-  // relative order.
+  // Previously-routed flows and unrouted flows are sorted separately to
+  // maintain their relative order.
   std::sort(sortedPacketFlows.begin(),
-            sortedPacketFlows.begin() + existingPacketFlowsSize, sortBySrc);
-  std::sort(sortedPacketFlows.begin() + existingPacketFlowsSize,
+            sortedPacketFlows.begin() + priorPacketFlowsSize, sortBySrc);
+  std::sort(sortedPacketFlows.begin() + priorPacketFlowsSize,
             sortedPacketFlows.end(), sortBySrc);
 
   // A map from Tile and master selectValue to the ports targeted by that

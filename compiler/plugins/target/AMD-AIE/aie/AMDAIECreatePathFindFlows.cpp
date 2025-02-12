@@ -207,7 +207,8 @@ struct AMDAIERouteFlowsWithPathfinderPass
   void runOnOperation() override;
 };
 
-/// Utility function to get existing pre-routed packet flows from the IR.
+/// Utility function to get previously-routed packet flows from the
+/// IR.
 FailureOr<std::tuple<PacketFlowMapT, SmallVector<PhysPortAndID>>>
 getRoutedPacketFlows(DeviceOp device, AMDAIEDeviceModel &deviceModel) {
   PacketFlowMapT routedPacketFlows;
@@ -297,8 +298,8 @@ getRoutedPacketFlows(DeviceOp device, AMDAIEDeviceModel &deviceModel) {
 LogicalResult runOnPacketFlow(
     DeviceOp device, std::vector<PacketFlowOp> &pktFlowOps,
     const std::map<PathEndPoint, SwitchSettings> &flowSolutions,
-    const PacketFlowMapT &existingPacketFlows,
-    ArrayRef<PhysPortAndID> existingSlavePorts) {
+    const PacketFlowMapT &priorPacketFlows,
+    ArrayRef<PhysPortAndID> priorSlavePorts) {
   OpBuilder builder(device.getContext());
   AMDAIEDeviceModel deviceModel =
       getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
@@ -394,18 +395,19 @@ LogicalResult runOnPacketFlow(
   }
 
   auto maybeRoutingConfiguration = emitPacketRoutingConfiguration(
-      deviceModel, packetFlows, existingPacketFlows);
+      deviceModel, packetFlows, priorPacketFlows);
   if (failed(maybeRoutingConfiguration)) {
     return device.emitOpError()
            << "could not create a valid routing configuration";
   }
   auto [masterSets, slaveAMSels] = maybeRoutingConfiguration.value();
   auto [slaveGroups, slaveMasks] = emitSlaveGroupsAndMasksRoutingConfig(
-      slavePorts, packetFlows, existingSlavePorts, existingPacketFlows,
+      slavePorts, packetFlows, priorSlavePorts, priorPacketFlows,
       deviceModel.getPacketIdMaskWidth());
 
-  // Erase any duplicate packet rules in exising, pre-routed packet flows.
-  std::vector<PacketRulesOp> existingPacketRules;
+  // Erase any duplicate packet rules in exising, previously-routed packet
+  // flows.
+  std::vector<PacketRulesOp> priorPacketRules;
   for (SwitchboxOp switchboxOp : device.getOps<SwitchboxOp>()) {
     TileOp t = xilinx::AIE::getTileOp(*switchboxOp.getOperation());
     TileLoc loc = {t.getCol(), t.getRow()};
@@ -416,11 +418,11 @@ LogicalResult runOnPacketFlow(
                                        packetRulesOp.getSourceChannel()},
                                   PhysPort::Direction::SRC};
         if (slaveGroups.count(sourcePhyPort))
-          existingPacketRules.push_back(packetRulesOp);
+          priorPacketRules.push_back(packetRulesOp);
       }
     }
   }
-  for (PacketRulesOp packetRulesOp : existingPacketRules) packetRulesOp.erase();
+  for (PacketRulesOp packetRulesOp : priorPacketRules) packetRulesOp.erase();
 
   // Realize the routes in MLIR
   for (auto &[tileLoc, tileOp] : tiles) {
@@ -572,7 +574,7 @@ LogicalResult runOnPacketFlow(
 /// structures expected by the router.
 /// 2. Identify unrouted `aie.packet_flow` operations and convert them into data
 /// structures expected by the router.
-/// 3. Load existing, pre-routed circuit/packet flows from the IR. Their
+/// 3. Load previously-routed circuit/packet flows from the IR. Their
 /// configuration is preserved and will not be modified.
 /// 4. Execute the router (`pathfinder.findPaths`).
 /// 5. Feed router results to `runOnCircuitFlow` which will insert `aie.connect`
@@ -652,7 +654,7 @@ void AMDAIERouteFlowsWithPathfinderPass::runOnOperation() {
     packetFlowOps.push_back(pktFlowOp);
   }
 
-  // Identify existing pre-routed circuit flows by looking for `connect`
+  // Identify previously-routed circuit flows by looking for `connect`
   // operations.
   for (SwitchboxOp switchboxOp : device.getOps<SwitchboxOp>()) {
     std::vector<std::tuple<Port, Port>> connects;
@@ -662,7 +664,7 @@ void AMDAIERouteFlowsWithPathfinderPass::runOnOperation() {
       connects.emplace_back(src, dst);
     }
     TileOp t = xilinx::AIE::getTileOp(*switchboxOp.getOperation());
-    // Mark these pre-routed circuit flows as fixed in the pathfinder,
+    // Mark these previously-routed circuit flows as fixed in the pathfinder,
     // ensuring they are not altered or used by any other flow.
     if (!pathfinder.addFixedCircuitConnection(t.getCol(), t.getRow(),
                                               connects)) {
@@ -671,21 +673,20 @@ void AMDAIERouteFlowsWithPathfinderPass::runOnOperation() {
     }
   }
 
-  // Identify existing pre-routed packet flows by looking for `amsel`,
+  // Identify previously-routed packet flows by looking for `amsel`,
   // `packet_rules` and `masterset` operations.
-  PacketFlowMapT existingPacketFlows;
-  SmallVector<PhysPortAndID> existingSlavePorts;
+  PacketFlowMapT priorPacketFlows;
+  SmallVector<PhysPortAndID> priorSlavePorts;
   auto result = getRoutedPacketFlows(device, deviceModel);
   if (failed(result)) {
-    device.emitError("Unable to recover existing packet flows");
+    device.emitError("Unable to recover previously-routed packet flows");
     return signalPassFailure();
   } else {
-    std::tie(existingPacketFlows, existingSlavePorts) = result.value();
+    std::tie(priorPacketFlows, priorSlavePorts) = result.value();
   }
-  // Mark these pre-routed packet flows as fixed in the pathfinder. Their routes
-  // will not be altered, but can be shared with other packet flows.
-  for (const auto &[srcPhysPortAndID, destPhysPortAndIDs] :
-       existingPacketFlows) {
+  // Mark these previously-routed packet flows as fixed in the pathfinder. Their
+  // routes will not be altered, but can be shared with other packet flows.
+  for (const auto &[srcPhysPortAndID, destPhysPortAndIDs] : priorPacketFlows) {
     for (const PhysPortAndID &destPhysPortAndID : destPhysPortAndIDs) {
       if (!pathfinder.addFixedPacketConnection(srcPhysPortAndID.physPort,
                                                destPhysPortAndID.physPort)) {
@@ -715,7 +716,7 @@ void AMDAIERouteFlowsWithPathfinderPass::runOnOperation() {
   // Convert the packet flow solutions into actual IR operations.
   if (routePacket &&
       failed(runOnPacketFlow(device, packetFlowOps, flowSolutions,
-                             existingPacketFlows, existingSlavePorts))) {
+                             priorPacketFlows, priorSlavePorts))) {
     device.emitError("failed to convert packet flows to amsels and rules");
     return signalPassFailure();
   }
