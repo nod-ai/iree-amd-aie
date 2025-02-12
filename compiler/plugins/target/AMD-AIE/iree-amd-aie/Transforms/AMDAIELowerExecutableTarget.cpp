@@ -109,13 +109,12 @@ void AMDAIELowerExecutableTargetPass::runOnOperation() {
       TilingConfig tilingConfig = getTilingConfigForPipeline(funcOp);
       if (useTilePipeline == TilePassPipeline::PackPeelPipeline) {
         addPackPeelBasedPassPipeline(executableLoweringPipeline, tilingConfig,
-                                     pathToUkernels, enableVectorizationPasses,
+                                     pathToUkernels,
                                      TilePassPipeline::PackPeelPipeline);
       } else if (useTilePipeline ==
                  TilePassPipeline::PackPeel4LevelTilingPipeline) {
         addPackPeel4LevelTilingBasedPassPipeline(
             executableLoweringPipeline, tilingConfig, pathToUkernels,
-            enableVectorizationPasses,
             TilePassPipeline::PackPeel4LevelTilingPipeline);
       } else if (useTilePipeline == TilePassPipeline::PadPackPipeline) {
         addPadPackBasedPassPipeline(executableLoweringPipeline, tilingConfig,
@@ -123,7 +122,6 @@ void AMDAIELowerExecutableTargetPass::runOnOperation() {
                                     TilePassPipeline::PadPackPipeline);
       } else if (useTilePipeline == TilePassPipeline::ConvDecomposePipeline) {
         addConvDecomposePassPipeline(executableLoweringPipeline, tilingConfig,
-                                     enableVectorizationPasses,
                                      TilePassPipeline::ConvDecomposePipeline);
       }
       break;

@@ -50,7 +50,6 @@ void buildAMDAIETransformPassPipeline(
 void addPackPeelBasedPassPipeline(OpPassManager &oassManager,
                                   TilingConfig &tilingConfig,
                                   const std::string &pathToUkernels,
-                                  bool enableVectorizationPasses,
                                   TilePassPipeline useTilePipeline);
 
 /// Populates passes needed to lower the IR via a Pack-Peel based approach with
@@ -58,7 +57,6 @@ void addPackPeelBasedPassPipeline(OpPassManager &oassManager,
 void addPackPeel4LevelTilingBasedPassPipeline(OpPassManager &oassManager,
                                               TilingConfig &tilingConfig,
                                               const std::string &pathToUkernels,
-                                              bool enableVectorizationPasses,
                                               TilePassPipeline useTilePipeline);
 
 /// Populates passes needed to lower the IR via a Pad-Pack based approach.
@@ -71,7 +69,6 @@ void addPadPackBasedPassPipeline(OpPassManager &passManager,
 /// Populates passes needed to lower the IR via a Conv-Decompose based approach.
 void addConvDecomposePassPipeline(OpPassManager &passManager,
                                   TilingConfig &tilingConfig,
-                                  bool enableVectorizationPasses,
                                   TilePassPipeline useTilePipeline);
 
 /// Populates passes needed to link HAL executables across AIE targets.
