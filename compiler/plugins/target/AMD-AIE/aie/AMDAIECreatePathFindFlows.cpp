@@ -38,7 +38,8 @@ using xilinx::AIE::TileOp;
 
 namespace mlir::iree_compiler::AMDAIE {
 
-TileOp getOrCreateTile(OpBuilder &builder, DeviceOp &device, int col, int row) {
+static TileOp getOrCreateTile(OpBuilder &builder, DeviceOp &device, int col,
+                              int row) {
   for (auto tile : device.getOps<TileOp>()) {
     if (tile.getCol() == col && tile.getRow() == row) return tile;
   }
@@ -46,8 +47,8 @@ TileOp getOrCreateTile(OpBuilder &builder, DeviceOp &device, int col, int row) {
   return builder.create<TileOp>(builder.getUnknownLoc(), col, row);
 }
 
-SwitchboxOp getOrCreateSwitchbox(OpBuilder &builder, DeviceOp &device, int col,
-                                 int row) {
+static SwitchboxOp getOrCreateSwitchbox(OpBuilder &builder, DeviceOp &device,
+                                        int col, int row) {
   auto tile = getOrCreateTile(builder, device, col, row);
   for (auto i : tile.getResult().getUsers()) {
     if (llvm::isa<SwitchboxOp>(*i)) return llvm::cast<SwitchboxOp>(*i);
@@ -59,8 +60,8 @@ SwitchboxOp getOrCreateSwitchbox(OpBuilder &builder, DeviceOp &device, int col,
   return sbOp;
 }
 
-ShimMuxOp getOrCreateShimMux(OpBuilder &builder, DeviceOp &device, int col,
-                             int row) {
+static ShimMuxOp getOrCreateShimMux(OpBuilder &builder, DeviceOp &device,
+                                    int col, int row) {
   auto tile = getOrCreateTile(builder, device, col, row);
   for (auto i : tile.getResult().getUsers()) {
     if (auto shim = llvm::dyn_cast<ShimMuxOp>(*i)) return shim;
@@ -72,9 +73,10 @@ ShimMuxOp getOrCreateShimMux(OpBuilder &builder, DeviceOp &device, int col,
   return shimMuxOp;
 }
 
-ConnectOp getOrCreateConnect(OpBuilder &builder, Operation *parentOp,
-                             StrmSwPortType srcBundle, int srcChannel,
-                             StrmSwPortType destBundle, int destChannel) {
+static ConnectOp getOrCreateConnect(OpBuilder &builder, Operation *parentOp,
+                                    StrmSwPortType srcBundle, int srcChannel,
+                                    StrmSwPortType destBundle,
+                                    int destChannel) {
   Block &b = parentOp->getRegion(0).front();
   for (auto connect : b.getOps<ConnectOp>()) {
     if (connect.getSourceBundle() == srcBundle &&
@@ -89,8 +91,8 @@ ConnectOp getOrCreateConnect(OpBuilder &builder, Operation *parentOp,
                                    srcChannel, destBundle, destChannel);
 }
 
-AMSelOp getOrCreateAMSel(OpBuilder &builder, SwitchboxOp &swboxOp,
-                         int arbiterID, int msel) {
+static AMSelOp getOrCreateAMSel(OpBuilder &builder, SwitchboxOp &swboxOp,
+                                int arbiterID, int msel) {
   Block &b = swboxOp.getConnections().front();
   OpBuilder::InsertionGuard g(builder);
   builder.setInsertionPoint(b.getTerminator());
@@ -102,9 +104,10 @@ AMSelOp getOrCreateAMSel(OpBuilder &builder, SwitchboxOp &swboxOp,
   return builder.create<AMSelOp>(builder.getUnknownLoc(), arbiterID, msel);
 }
 
-MasterSetOp getOrCreateMasterSet(OpBuilder &builder, SwitchboxOp &swboxOp,
-                                 StrmSwPortType bundle, int channel,
-                                 ArrayRef<Value> amselVals) {
+static MasterSetOp getOrCreateMasterSet(OpBuilder &builder,
+                                        SwitchboxOp &swboxOp,
+                                        StrmSwPortType bundle, int channel,
+                                        ArrayRef<Value> amselVals) {
   Block &b = swboxOp.getConnections().front();
   OpBuilder::InsertionGuard g(builder);
   builder.setInsertionPoint(b.getTerminator());
@@ -120,8 +123,10 @@ MasterSetOp getOrCreateMasterSet(OpBuilder &builder, SwitchboxOp &swboxOp,
                                      amselVals);
 }
 
-PacketRulesOp getOrCreatePacketRules(OpBuilder &builder, SwitchboxOp &swboxOp,
-                                     StrmSwPortType bundle, int channel) {
+static PacketRulesOp getOrCreatePacketRules(OpBuilder &builder,
+                                            SwitchboxOp &swboxOp,
+                                            StrmSwPortType bundle,
+                                            int channel) {
   Block &b = swboxOp.getConnections().front();
   OpBuilder::InsertionGuard g(builder);
   builder.setInsertionPoint(b.getTerminator());
@@ -280,9 +285,9 @@ getRoutedPacketFlows(DeviceOp device, AMDAIEDeviceModel &deviceModel) {
     // Infer the connections between source and destination ports, by matching
     // the amsel.
     for (const auto &[amsel, srcPhysPortAndIDs] : amselToSrcPhysPortAndIDs) {
-      auto &destPhysPorts = amselToDestPhysPorts[amsel];
-      for (const auto &srcPhysPortAndID : srcPhysPortAndIDs) {
-        for (const auto &destPhysPort : destPhysPorts) {
+      SmallVector<PhysPort> &destPhysPorts = amselToDestPhysPorts[amsel];
+      for (const PhysPortAndID &srcPhysPortAndID : srcPhysPortAndIDs) {
+        for (const PhysPort &destPhysPort : destPhysPorts) {
           routedPacketFlows[srcPhysPortAndID].insert(
               {destPhysPort, srcPhysPortAndID.id});
         }
@@ -677,7 +682,8 @@ void AMDAIERouteFlowsWithPathfinderPass::runOnOperation() {
   // `packet_rules` and `masterset` operations.
   PacketFlowMapT priorPacketFlows;
   SmallVector<PhysPortAndID> priorSlavePorts;
-  auto result = getRoutedPacketFlows(device, deviceModel);
+  FailureOr<std::tuple<PacketFlowMapT, SmallVector<PhysPortAndID>>> result =
+      getRoutedPacketFlows(device, deviceModel);
   if (failed(result)) {
     device.emitError("Unable to recover previously-routed packet flows");
     return signalPassFailure();
