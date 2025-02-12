@@ -111,6 +111,7 @@ int main(int argc, char **argv) {
           /*timing=*/false,
           /*tempDir=*/workDir.str().str(),
           /*useChess=*/false,
+          /*useChessForUKernel=*/false,
           /*verbose=*/false,
           /*vitisDir=*/std::nullopt,
           /*targetArch=*/targetArch.value(),

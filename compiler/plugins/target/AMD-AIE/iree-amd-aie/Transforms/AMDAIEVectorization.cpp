@@ -89,7 +89,7 @@ void AMDAIEVectorizationPass::runOnOperation() {
       //               gap between this pass and vector-to-aievec.
       for (Operation &innerOps :
            cast<linalg::GenericOp>(op).getBody()->getOperations()) {
-        if (!isa<arith::TruncFOp, linalg::YieldOp>(innerOps)) {
+        if (!isa<arith::TruncFOp, arith::TruncIOp, linalg::YieldOp>(innerOps)) {
           op->emitRemark() << "not vectorizing linalg elementwise op";
           return;
         }

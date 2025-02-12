@@ -369,6 +369,7 @@ void addPackPeel4LevelTilingBasedPassPipeline(
     AMDAIETileAndFuseOptions tileFuseOptions;
     tileFuseOptions.tilingLevel = 1;
     tileFuseOptions.useSCFFor = false;
+    tileFuseOptions.tileElementwise = false;
     funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
   }
   funcPassManager.addPass(createAMDAIECleanupPass());
