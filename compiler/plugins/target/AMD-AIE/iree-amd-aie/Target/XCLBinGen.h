@@ -17,9 +17,10 @@ mlir::LogicalResult aie2xclbin(
     const std::optional<std::string> &outputNPU, bool emitCtrlPkt,
     const std::string &artifactPath, bool printIRBeforeAll,
     bool printIRAfterAll, bool printIRModuleScope, bool timing,
-    const std::string &tempDir, bool useChess, bool verbose,
-    const std::optional<std::string> &vitisDir, const std::string &targetArch,
-    const std::string &npuVersion, const std::string &peanoDir,
+    const std::string &tempDir, bool useChess, bool useChessForUKernel,
+    bool verbose, const std::optional<std::string> &vitisDir,
+    const std::string &targetArch, const std::string &npuVersion,
+    const std::string &peanoDir,
     const mlir::iree_compiler::AMDAIE::AMDAIEOptions::DeviceHAL deviceHal,
     const std::string &xclBinKernelID, const std::string &xclBinKernelName,
     const std::string &xclBinInstanceName, const std::string &amdAIEInstallDir,
@@ -31,8 +32,9 @@ mlir::LogicalResult emitNpuInstructions(xilinx::AIE::DeviceOp deviceOp,
                                         const std::string &outputNPU);
 
 namespace detail {
+FailureOr<std::vector<std::string>> flagStringToVector(
+    const std::string &flags);
 FailureOr<std::vector<std::string>> makePeanoOptArgs(
-    const std::string &filenameIrIn, const std::string &filenameIrOut,
-    const std::string &additionalPeanoOptFlags);
-}
+    const std::vector<std::string> &additionalPeanoOptFlags);
+}  // namespace detail
 }  // namespace mlir::iree_compiler::AMDAIE

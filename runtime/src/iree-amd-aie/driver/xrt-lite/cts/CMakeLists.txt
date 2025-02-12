@@ -54,6 +54,7 @@ iree_bytecode_module(
     --iree-amd-aie-peano-install-dir=${PEANO_INSTALL_DIR}
     --iree-amd-aie-vitis-install-dir=${VITIS_DIR}
     --iree-amd-aie-enable-chess=$<BOOL:${USE_CHESS}>
+    --iree-amd-aie-enable-chess-for-ukernel=1
     --iree-amdaie-device-hal=xrt-lite
     --iree-hal-memoization=false
     --iree-hal-indirect-command-buffers=false

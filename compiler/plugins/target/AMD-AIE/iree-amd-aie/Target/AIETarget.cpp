@@ -488,6 +488,7 @@ LogicalResult AIETargetBackend::serializeExecutable(
             /*timing=*/options.aie2xclbinTiming,
             /*tempDir=*/entryPointWorkDir.str().str(),
             /*useChess=*/options.useChess,
+            /*useChessForUKernel=*/options.useChessForUKernel,
             /*verbose=*/options.showInvokedCommands,
             /*vitisDir=*/options.vitisInstallDir.empty()
                 ? std::nullopt

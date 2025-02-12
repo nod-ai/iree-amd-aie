@@ -92,6 +92,9 @@ def iree_session(request, pytestconfig, global_cl_args) -> Session:
     )
     tile_pipeline = request.node.callspec.params.get("tile_pipeline", "pad-pack")
     use_chess = request.node.callspec.params.get("use_chess", False)
+    use_chess_for_ukernel = request.node.callspec.params.get(
+        "use_chess_for_ukernel", True
+    )
     enable_packet_flow = request.node.callspec.params.get("enable_packet_flow", False)
     # TODO(max): normalize iree-amdaie/iree-amd-aie in pass strings
     flags = [
@@ -102,6 +105,7 @@ def iree_session(request, pytestconfig, global_cl_args) -> Session:
         f"--iree-amd-aie-peano-install-dir={pytestconfig.option.peano_install_dir}",
         f"--iree-amd-aie-install-dir={pytestconfig.option.iree_install_dir}",
         f"--iree-amd-aie-enable-chess={use_chess}",
+        f"--iree-amd-aie-enable-chess-for-ukernel={use_chess_for_ukernel}",
         f"--iree-amdaie-enable-packet-flow={enable_packet_flow}",
         f"--iree-amdaie-device-hal={pytestconfig.option.device_hal}",
     ]

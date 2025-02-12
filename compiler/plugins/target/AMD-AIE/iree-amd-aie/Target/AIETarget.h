@@ -32,6 +32,9 @@ struct AMDAIEOptions {
   // Use the chess compiler. The default is to use peano.
   bool useChess{false};
 
+  // Use the chess compiler for ukernel. The default is to use chess.
+  bool useChessForUKernel{true};
+
   // Additional flags to run peano's opt with (if peano is the backend compiler
   // selected). These are mostly appended on the end of the default flags, but
   // some flags may replace existing flags if they conflict.
@@ -126,6 +129,11 @@ struct AMDAIEOptions {
     binder.opt<bool>("iree-amd-aie-enable-chess", useChess,
                      llvm::cl::cat(category),
                      llvm::cl::desc("Use the legacy chess compiler"));
+
+    binder.opt<bool>(
+        "iree-amd-aie-enable-chess-for-ukernel", useChessForUKernel,
+        llvm::cl::cat(category),
+        llvm::cl::desc("Use the chess compiler for compiling ukernels"));
 
     binder.opt<std::string>(
         "iree-amdaie-enable-ukernels", enableAMDAIEUkernels,

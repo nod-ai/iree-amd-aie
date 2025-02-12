@@ -14,9 +14,12 @@ using namespace mlir::iree_compiler::AMDAIE;
 TEST(XCLBinGenTest, makePeanoOptArgs) {
   std::string fnIn{"input.ll"};
   std::string fnOut{"output.opt.ll"};
-  std::string additionalFlags{"\"-O2 -O3 -O2 --magic-flag  -O4 -O4\""};
+  std::string additionalFlagsStr{"\"-O2 -O3 -O2 --magic-flag  -O4 -O4\""};
+  mlir::FailureOr<std::vector<std::string>> maybeAdditionalFlags =
+      detail::flagStringToVector(additionalFlagsStr);
+  EXPECT_TRUE(succeeded(maybeAdditionalFlags));
   mlir::FailureOr<std::vector<std::string>> maybeOptArgs =
-      detail::makePeanoOptArgs(fnIn, fnOut, additionalFlags);
+      detail::makePeanoOptArgs(maybeAdditionalFlags.value());
   EXPECT_TRUE(succeeded(maybeOptArgs));
   std::vector<std::string> optArgs = std::move(maybeOptArgs.value());
   // We expect to find 1 -O4 flag, and 0 flags for -On for all other n.
@@ -35,10 +38,10 @@ TEST(XCLBinGenTest, makePeanoOptArgs) {
   // and --magic-flag to be appended at the end.
   EXPECT_EQ(optArgs.back(), "--magic-flag");
 
-  std::string additionalWithoutSemis{"--magic-flag"};
-  mlir::FailureOr<std::vector<std::string>> maybeOptArgs2 =
-      detail::makePeanoOptArgs(fnIn, fnOut, additionalWithoutSemis);
-  EXPECT_FALSE(succeeded(maybeOptArgs2));
+  std::string additionalWithoutSemisStr{"--magic-flag"};
+  mlir::FailureOr<std::vector<std::string>> maybeAdditionalFlagsWithoutSemis =
+      detail::flagStringToVector(additionalWithoutSemisStr);
+  EXPECT_FALSE(succeeded(maybeAdditionalFlagsWithoutSemis));
 }
 
 }  // namespace
