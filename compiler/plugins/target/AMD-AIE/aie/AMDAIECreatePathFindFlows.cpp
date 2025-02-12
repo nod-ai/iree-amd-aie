@@ -38,7 +38,7 @@ using xilinx::AIE::TileOp;
 
 namespace mlir::iree_compiler::AMDAIE {
 
-static TileOp getOrCreateTile(OpBuilder &builder, DeviceOp &device, int col,
+static TileOp getOrCreateTile(OpBuilder &builder, DeviceOp device, int col,
                               int row) {
   for (auto tile : device.getOps<TileOp>()) {
     if (tile.getCol() == col && tile.getRow() == row) return tile;
@@ -47,7 +47,7 @@ static TileOp getOrCreateTile(OpBuilder &builder, DeviceOp &device, int col,
   return builder.create<TileOp>(builder.getUnknownLoc(), col, row);
 }
 
-static SwitchboxOp getOrCreateSwitchbox(OpBuilder &builder, DeviceOp &device,
+static SwitchboxOp getOrCreateSwitchbox(OpBuilder &builder, DeviceOp device,
                                         int col, int row) {
   auto tile = getOrCreateTile(builder, device, col, row);
   for (auto i : tile.getResult().getUsers()) {
@@ -60,7 +60,7 @@ static SwitchboxOp getOrCreateSwitchbox(OpBuilder &builder, DeviceOp &device,
   return sbOp;
 }
 
-static ShimMuxOp getOrCreateShimMux(OpBuilder &builder, DeviceOp &device,
+static ShimMuxOp getOrCreateShimMux(OpBuilder &builder, DeviceOp device,
                                     int col, int row) {
   auto tile = getOrCreateTile(builder, device, col, row);
   for (auto i : tile.getResult().getUsers()) {
@@ -91,7 +91,7 @@ static ConnectOp getOrCreateConnect(OpBuilder &builder, Operation *parentOp,
                                    srcChannel, destBundle, destChannel);
 }
 
-static AMSelOp getOrCreateAMSel(OpBuilder &builder, SwitchboxOp &swboxOp,
+static AMSelOp getOrCreateAMSel(OpBuilder &builder, SwitchboxOp swboxOp,
                                 int arbiterID, int msel) {
   Block &b = swboxOp.getConnections().front();
   OpBuilder::InsertionGuard g(builder);
@@ -104,8 +104,7 @@ static AMSelOp getOrCreateAMSel(OpBuilder &builder, SwitchboxOp &swboxOp,
   return builder.create<AMSelOp>(builder.getUnknownLoc(), arbiterID, msel);
 }
 
-static MasterSetOp getOrCreateMasterSet(OpBuilder &builder,
-                                        SwitchboxOp &swboxOp,
+static MasterSetOp getOrCreateMasterSet(OpBuilder &builder, SwitchboxOp swboxOp,
                                         StrmSwPortType bundle, int channel,
                                         ArrayRef<Value> amselVals) {
   Block &b = swboxOp.getConnections().front();
@@ -124,7 +123,7 @@ static MasterSetOp getOrCreateMasterSet(OpBuilder &builder,
 }
 
 static PacketRulesOp getOrCreatePacketRules(OpBuilder &builder,
-                                            SwitchboxOp &swboxOp,
+                                            SwitchboxOp swboxOp,
                                             StrmSwPortType bundle,
                                             int channel) {
   Block &b = swboxOp.getConnections().front();
@@ -147,7 +146,7 @@ static PacketRulesOp getOrCreatePacketRules(OpBuilder &builder,
 /// Convert the `flowSolutions` returned by the pathfinder into actual
 /// `connect` operations in the IR.
 LogicalResult runOnCircuitFlow(
-    DeviceOp device, std::vector<FlowOp> &flowOps,
+    DeviceOp device, ArrayRef<FlowOp> flowOps,
     const std::map<PathEndPoint, SwitchSettings> &flowSolutions) {
   OpBuilder builder(device.getContext());
   AMDAIEDeviceModel deviceModel =
@@ -301,7 +300,7 @@ getRoutedPacketFlows(DeviceOp device, AMDAIEDeviceModel &deviceModel) {
 /// Convert the `flowSolutions` returned by the pathfinder into actual
 /// `amsel`, `masterSet`, and `packetRules` operations in the IR.
 LogicalResult runOnPacketFlow(
-    DeviceOp device, std::vector<PacketFlowOp> &pktFlowOps,
+    DeviceOp device, ArrayRef<PacketFlowOp> pktFlowOps,
     const std::map<PathEndPoint, SwitchSettings> &flowSolutions,
     const PacketFlowMapT &priorPacketFlows,
     ArrayRef<PhysPortAndID> priorSlavePorts) {
@@ -412,7 +411,7 @@ LogicalResult runOnPacketFlow(
 
   // Erase any duplicate packet rules in exising, previously-routed packet
   // flows.
-  std::vector<PacketRulesOp> priorPacketRules;
+  SmallVector<PacketRulesOp> priorPacketRules;
   for (SwitchboxOp switchboxOp : device.getOps<SwitchboxOp>()) {
     TileOp t = xilinx::AIE::getTileOp(*switchboxOp.getOperation());
     TileLoc loc = {t.getCol(), t.getRow()};
@@ -512,7 +511,7 @@ LogicalResult runOnPacketFlow(
         builder.create<PacketRuleOp>(
             builder.getUnknownLoc(), mask, maskedId, amsel,
             builder.getDenseI32ArrayAttr(
-                std::vector<int>(group.begin(), group.end())));
+                SmallVector<int>(group.begin(), group.end())));
       }
     }
   }
@@ -604,7 +603,7 @@ void AMDAIERouteFlowsWithPathfinderPass::runOnOperation() {
   pathfinder.initialize(deviceModel);
 
   // Add circuit flows to the pathfinder.
-  std::vector<FlowOp> circuitFlowOps;
+  SmallVector<FlowOp> circuitFlowOps;
   for (FlowOp flowOp : device.getOps<FlowOp>()) {
     // Decide whether to route control and/or data flows.
     bool isCtrlFlow = (flowOp.getSourceBundle() == StrmSwPortType::CTRL) ||
@@ -623,7 +622,7 @@ void AMDAIERouteFlowsWithPathfinderPass::runOnOperation() {
   }
 
   // Add packet flows to the pathfinder.
-  std::vector<PacketFlowOp> packetFlowOps;
+  SmallVector<PacketFlowOp> packetFlowOps;
   for (PacketFlowOp pktFlowOp : device.getOps<PacketFlowOp>()) {
     Region &r = pktFlowOp.getPorts();
     Block &b = r.front();
