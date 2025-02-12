@@ -194,11 +194,11 @@ static const std::string _CHESS_INTRINSIC_WRAPPER_CPP{
 static const std::string _MM_NPU1_CC{
 #include "mm_npu1.cc"
 };
-// This is a string that contains kernelS for npu4 for compilation by chess.
+// This is a string that contains npu4 kernels for compilation by chess.
 static const std::string _MM_NPU4_CC{
 #include "mm_npu4.cc"
 };
-// This is a string that contains kernels for npu4 for compilation by peano.
+// This is a string that contains npu4 kernels for compilation by peano.
 static const std::string _MM_NPU4_PEANO_CC{
 #include "mm_npu4_peano.cc"
 };
