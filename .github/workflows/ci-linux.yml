@@ -222,10 +222,10 @@ jobs:
             --peano_dir=$PWD/llvm-aie \
             --vitis_dir=/opt/Xilinx/Vitis/2024.2 \
             --target_device="npu1_4col" \
-            --reset_npu_between_runs -v \
             --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
             --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
-            --tests=Performance > performance_npu1.log
+            --tests=Performance \
+            -v > performance_npu1.log
 
           # Print a summary of the findings.
           python build_tools/ci/cpu_comparison/performance_summarizer.py \
