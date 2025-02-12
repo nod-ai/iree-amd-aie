@@ -1101,7 +1101,9 @@ def AMDAIE_NpuControlPacketOp: AMDAIE_Op<"npu.control_packet"> {
 //===----------------------------------------------------------------------===//
 
 def AMDAIE_ConnectionOp: AMDAIE_Op<"connection",
-    [Pure, CopyOpInterface, AttrSizedOperandSegments]> {
+    [Pure, CopyOpInterface, AttrSizedOperandSegments,
+    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
+]> {
   let summary = "A connection between two logical objectFifos.";
   let description = [{
     Represents a connection between logical objectFifos. This connection can be
@@ -1252,6 +1254,7 @@ def AMDAIE_LogicalObjectFifoAcquire:
 def AMDAIE_LogicalObjectFifoFromBuffersOp
     : AMDAIE_Op<"logicalobjectfifo.from_buffers",
     [DeclareOpInterfaceMethods<LogicalObjFifoOpInterface, ["replaceWithNewTiles"]>,
+     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
      Pure, AttrSizedOperandSegments]> {
   let summary = "Create a logical objectFifo from a set of buffers";
   let description = [{
