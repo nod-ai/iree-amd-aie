@@ -645,12 +645,6 @@ class MatmulTruncf(BaseMatmul):
         input_args = generate_inputs(
             filename, self.get_dir(config), 1, {1: self.lhs, 2: self.rhs}
         )
-        """
-        Currently without function outlining, we run out of program memory.
-        """
-        self.add_aie_compilation_flags(
-            ["--iree-amdaie-enable-function-outlining=balanced"]
-        )
         aie_vs_baseline(
             config=config,
             aie_compilation_flags=self.aie_compilation_flags,
@@ -673,12 +667,13 @@ class MatmulTruncf(BaseMatmul):
 
 class MatmulTrunci(BaseMatmul):
     """
-    A test of the form matmul(A,B) + trunci(C) where A:MxK, B:KxM and C:MxM
+    A test of the form matmul(A,B) + trunci(C) where A:MxK, B:KxN and C:MxN
     """
 
     def __init__(
         self,
         M,
+        N,
         K,
         input_type,
         acc_type,
@@ -688,20 +683,20 @@ class MatmulTrunci(BaseMatmul):
         test_params=None,
     ):
         super().__init__(
-            name=f"matmul_trunci_{M}_{K}_{input_type}_{acc_type}",
+            name=f"matmul_trunci_{M}_{N}_{K}_{input_type}_{acc_type}",
             test_params=test_params,
             M=M,
-            N=M,
+            N=N,
             K=K,
             input_type=input_type,
             acc_type=acc_type,
         )
         self.labels.append("MatmulTrunci")
 
-        # Assertions on shapes: Check that lhs is MxK, rhs is KxM, and expected_out is MxM
+        # Assertions on shapes: Check that lhs is MxK, rhs is KxN, and expected_out is MxN
         assert lhs.shape == (M, K)
-        assert rhs.shape == (K, M)
-        assert expected_out.shape == (M, M)
+        assert rhs.shape == (K, N)
+        assert expected_out.shape == (M, N)
 
         self.lhs = lhs
         self.rhs = rhs
@@ -714,12 +709,6 @@ class MatmulTrunci(BaseMatmul):
         filename = self.get_filename(config)
         input_args = generate_inputs(
             filename, self.get_dir(config), 1, {1: self.lhs, 2: self.rhs}
-        )
-        """
-        Currently without function outlining, we run out of program memory.
-        """
-        self.add_aie_compilation_flags(
-            ["--iree-amdaie-enable-function-outlining=balanced"]
         )
         aie_vs_baseline(
             config=config,
@@ -1527,12 +1516,13 @@ class Tests:
         self.register(
             MatmulTrunci(
                 256,
+                128,
                 32,
                 "i8",
                 "i32",
                 1 * np.ones([256, 32], dtype=np.int8),
-                1 * np.ones([32, 256], dtype=np.int8),
-                32 * np.ones([256, 256], dtype=np.int8),
+                1 * np.ones([32, 128], dtype=np.int8),
+                32 * np.ones([256, 128], dtype=np.int8),
                 test_params=TestParams(
                     tile_pipeline="pack-peel-4-level-tiling",
                     run_on_target=["npu1_4col"],
@@ -1548,12 +1538,13 @@ class Tests:
         self.register(
             MatmulTrunci(
                 256,
+                128,
                 32,
                 "i8",
                 "i32",
                 1 * np.ones([256, 32], dtype=np.int8),
-                1 * np.ones([32, 256], dtype=np.int8),
-                32 * np.ones([256, 256], dtype=np.int8),
+                1 * np.ones([32, 128], dtype=np.int8),
+                32 * np.ones([256, 128], dtype=np.int8),
                 test_params=TestParams(
                     tile_pipeline="pack-peel-4-level-tiling",
                     run_on_target=["npu1_4col"],
@@ -1568,12 +1559,13 @@ class Tests:
         self.register(
             MatmulTrunci(
                 256,
+                128,
                 32,
                 "i8",
                 "i32",
                 1 * np.ones([256, 32], dtype=np.int8),
-                1 * np.ones([32, 256], dtype=np.int8),
-                32 * np.ones([256, 256], dtype=np.int8),
+                1 * np.ones([32, 128], dtype=np.int8),
+                32 * np.ones([256, 128], dtype=np.int8),
                 test_params=TestParams(
                     tile_pipeline="pack-peel-4-level-tiling",
                     run_on_target=["npu4"],
