@@ -126,10 +126,50 @@ void addAMDAIEToAIEPasses(OpPassManager &passManager,
   passManager.addPass(createCanonicalizerPass());
 }
 
+void addPeelAndFusePasses(OpPassManager &funcPassManager) {
+  // Hoist static allocations
+  funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
+  funcPassManager.addPass(createCanonicalizerPass());
+  funcPassManager.addPass(createCSEPass());
+
+  // Peel the first and last iteration. Note: Do not run CSE pass afterwards,
+  // because it may bring problem for bufferization.
+  funcPassManager.addPass(createAMDAIEPeelForLoopPass());
+  funcPassManager.addPass(createCanonicalizerPass());
+
+  // Fuse fill op into the first inner forall loop
+  funcPassManager.addPass(createAMDAIEFuseFillIntoForallPass());
+
+  // Fuse unpack/elementwise consumer ops into the last inner forall loop
+  funcPassManager.addPass(createAMDAIEFuseConsumerIntoLoopPass());
+
+  // Note: canonicalizer pass should not run starting from here until
+  // bufferization to avoid creating redundant allocation and data copy.
+  // TODO (vivian): solve the bufferization problem upstream
+
+  // Fuse pack ops into the last inner forall loop
+  {
+    AMDAIEFuseProducerIntoLoopOptions fuseProducerOptions;
+    fuseProducerOptions.fuseDepth = 1;
+    fuseProducerOptions.useSCFFor = false;
+    fuseProducerOptions.targetElementwise = true;
+    funcPassManager.addPass(
+        createAMDAIEFuseProducerIntoLoopPass(fuseProducerOptions));
+  }
+
+  // Promote the elementwise input to local memory
+  {
+    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
+    bufferizeOptions.memorySpace = 2;
+    bufferizeOptions.bufferizeElementwise = true;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgInput;
+    funcPassManager.addPass(
+        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
+  }
+}
+
 void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
-                                  TilingConfig &tilingConfig,
                                   const std::string &pathToUkernels,
-                                  bool enableVectorizationPasses,
                                   TilePassPipeline useTilePipeline) {
   // First level tiling using scf.forall
   {
@@ -253,45 +293,8 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }
 
-  // Hoist static allocations
-  funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
-  funcPassManager.addPass(createCanonicalizerPass());
-  funcPassManager.addPass(createCSEPass());
-
-  // Peel the first and last iteration. Note: Do not run CSE pass afterwards,
-  // because it may bring problem for bufferization.
-  funcPassManager.addPass(createAMDAIEPeelForLoopPass());
-  funcPassManager.addPass(createCanonicalizerPass());
-
-  // Fuse fill op into the first inner forall loop
-  funcPassManager.addPass(createAMDAIEFuseFillIntoForallPass());
-
-  // Fuse unpack/elementwise consumer ops into the last inner forall loop
-  funcPassManager.addPass(createAMDAIEFuseConsumerIntoLoopPass());
-
-  // Note: canonicalizer pass should not run starting from here until
-  // bufferization to avoid creating redundant allocation and data copy.
-  // TODO (vivian): solve the bufferization problem upstream
-
-  // Fuse pack ops into the last inner forall loop
-  {
-    AMDAIEFuseProducerIntoLoopOptions fuseProducerOptions;
-    fuseProducerOptions.fuseDepth = 1;
-    fuseProducerOptions.useSCFFor = false;
-    fuseProducerOptions.targetElementwise = true;
-    funcPassManager.addPass(
-        createAMDAIEFuseProducerIntoLoopPass(fuseProducerOptions));
-  }
-
-  // Promote the elementwise input to local memory
-  {
-    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
-    bufferizeOptions.memorySpace = 2;
-    bufferizeOptions.bufferizeElementwise = true;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgInput;
-    funcPassManager.addPass(
-        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
-  }
+  // Peel the for loop and fuse ops into the loops
+  addPeelAndFusePasses(funcPassManager);
 
   // Lower to UKernels.
   {
@@ -307,8 +310,7 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
 }
 
 void addPackPeel4LevelTilingBasedPassPipeline(
-    OpPassManager &funcPassManager, TilingConfig &tilingConfig,
-    const std::string &pathToUkernels, bool enableVectorizationPasses,
+    OpPassManager &funcPassManager, const std::string &pathToUkernels,
     TilePassPipeline useTilePipeline) {
   // First level tiling using scf.forall
   {
@@ -454,45 +456,8 @@ void addPackPeel4LevelTilingBasedPassPipeline(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }
 
-  // Hoist static allocations
-  funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
-  funcPassManager.addPass(createCanonicalizerPass());
-  funcPassManager.addPass(createCSEPass());
-
-  // Peel the first and last iteration. Note: Do not run CSE pass afterwards,
-  // because it may bring problem for bufferization.
-  funcPassManager.addPass(createAMDAIEPeelForLoopPass());
-  funcPassManager.addPass(createCanonicalizerPass());
-
-  // Fuse fill op into the first inner forall loop
-  funcPassManager.addPass(createAMDAIEFuseFillIntoForallPass());
-
-  // Fuse unpack/elementwise consumer ops into the last inner forall loop
-  funcPassManager.addPass(createAMDAIEFuseConsumerIntoLoopPass());
-
-  // Note: canonicalizer pass should not run starting from here until
-  // bufferization to avoid creating redundant allocation and data copy.
-  // TODO (vivian): solve the bufferization problem upstream
-
-  // Fuse pack ops into the last inner forall loop
-  {
-    AMDAIEFuseProducerIntoLoopOptions fuseProducerOptions;
-    fuseProducerOptions.fuseDepth = 1;
-    fuseProducerOptions.useSCFFor = false;
-    fuseProducerOptions.targetElementwise = true;
-    funcPassManager.addPass(
-        createAMDAIEFuseProducerIntoLoopPass(fuseProducerOptions));
-  }
-
-  // Promote the elementwise input to local memory
-  {
-    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
-    bufferizeOptions.memorySpace = 2;
-    bufferizeOptions.bufferizeElementwise = true;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgInput;
-    funcPassManager.addPass(
-        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
-  }
+  // Peel the for loop and fuse ops into the loops
+  addPeelAndFusePasses(funcPassManager);
 
   // Lower to UKernels.
   {
@@ -505,13 +470,9 @@ void addPackPeel4LevelTilingBasedPassPipeline(
   // Comprehensive bufferization
   addAMDAIEBufferizePasses(funcPassManager, useTilePipeline);
   funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
-  funcPassManager.addPass(createCanonicalizerPass());
-  funcPassManager.addPass(createCSEPass());
-  funcPassManager.addPass(createCanonicalizerPass());
 }
 
 void addPadPackBasedPassPipeline(OpPassManager &funcPassManager,
-                                 TilingConfig &tilingConfig,
                                  const std::string &pathToUkernels,
                                  bool enableVectorizationPasses,
                                  TilePassPipeline useTilePipeline) {
@@ -623,8 +584,6 @@ void addPadPackBasedPassPipeline(OpPassManager &funcPassManager,
 }
 
 void addConvDecomposePassPipeline(OpPassManager &funcPassManager,
-                                  TilingConfig &tilingConfig,
-                                  bool enableVectorizationPasses,
                                   TilePassPipeline useTilePipeline) {
   auto addCleanups = [&]() {
     funcPassManager.addPass(createAMDAIECleanupPass());

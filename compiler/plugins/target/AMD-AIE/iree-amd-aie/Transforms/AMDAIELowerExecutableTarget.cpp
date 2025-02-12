@@ -8,6 +8,7 @@
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree/compiler/Codegen/Common/Passes.h"
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenAttrs.h"
+#include "iree/compiler/Codegen/Utils/CPUUtils.h"
 #include "iree/compiler/Dialect/HAL/IR/HALDialect.h"
 #include "iree/compiler/Dialect/HAL/IR/HALOps.h"
 #include "iree/compiler/Dialect/LinalgExt/IR/LinalgExtDialect.h"
@@ -22,10 +23,6 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassRegistry.h"
-// TODO(avarma):
-//     We shouldn't add "CPUUtils" - instead it should perhaps just be "Utils"?
-#include "iree/compiler/Codegen/Common/TileSizeSelection.h"
-#include "iree/compiler/Codegen/Utils/CPUUtils.h"
 
 using mlir::iree_compiler::IREE::Codegen::LoweringConfigAttr;
 
@@ -33,11 +30,8 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
-/// Lowers an hal.executable.variant operation to scalar/native-vector
-/// code. Invokes different compilation pipeline to
-/// - first lower to scalar/native-vector code
-/// - then convert to NVVM/ROCDL dialect.
-/// This should be merged with the equivalent pass in LinalgToLLVM. Fo
+/// Lowers an hal.executable.variant operation to scalar/native-vector code.
+/// This should be merged with the equivalent pass in LinalgToLLVM. For
 /// simplicity it is currently a separate pass.
 class AMDAIELowerExecutableTargetPass
     : public impl::AMDAIELowerExecutableTargetBase<
@@ -63,31 +57,6 @@ class AMDAIELowerExecutableTargetPass
 };
 }  // namespace
 
-// TODO(dcaballe): We temporarily need this utility to retrieve a valid
-// lowering config. We should be able to remove this once we have a lowering
-// config attribute per op.
-static FailureOr<LoweringConfigAttr> getRootLoweringConfig(
-    FunctionOpInterface funcOp) {
-  SmallVector<Operation *> computeOps = getComputeOps(funcOp);
-  // Check for self first.
-  FailureOr<Operation *> rootOp = getRootOperation(computeOps);
-  auto rootLoweringConfig =
-      iree_compiler::getLoweringConfig<IREE::Codegen::LoweringConfigAttr>(
-          rootOp.value());
-  if (rootLoweringConfig) {
-    return rootLoweringConfig;
-  }
-
-  return failure();
-}
-
-static TilingConfig getTilingConfigForPipeline(FunctionOpInterface funcOp) {
-  auto maybeLoweringConfig = getRootLoweringConfig(funcOp);
-  assert(succeeded(maybeLoweringConfig) &&
-         "Pipeline requires a lowering config");
-  return {*maybeLoweringConfig};
-}
-
 void AMDAIELowerExecutableTargetPass::runOnOperation() {
   auto funcOp = getOperation();
   auto target = IREE::HAL::ExecutableTargetAttr::lookup(funcOp);
@@ -106,24 +75,20 @@ void AMDAIELowerExecutableTargetPass::runOnOperation() {
     case IREE::Codegen::DispatchLoweringPassPipeline::None:
       return;
     case IREE::Codegen::DispatchLoweringPassPipeline::Custom: {
-      TilingConfig tilingConfig = getTilingConfigForPipeline(funcOp);
       if (useTilePipeline == TilePassPipeline::PackPeelPipeline) {
-        addPackPeelBasedPassPipeline(executableLoweringPipeline, tilingConfig,
-                                     pathToUkernels, enableVectorizationPasses,
+        addPackPeelBasedPassPipeline(executableLoweringPipeline, pathToUkernels,
                                      TilePassPipeline::PackPeelPipeline);
       } else if (useTilePipeline ==
                  TilePassPipeline::PackPeel4LevelTilingPipeline) {
         addPackPeel4LevelTilingBasedPassPipeline(
-            executableLoweringPipeline, tilingConfig, pathToUkernels,
-            enableVectorizationPasses,
+            executableLoweringPipeline, pathToUkernels,
             TilePassPipeline::PackPeel4LevelTilingPipeline);
       } else if (useTilePipeline == TilePassPipeline::PadPackPipeline) {
-        addPadPackBasedPassPipeline(executableLoweringPipeline, tilingConfig,
-                                    pathToUkernels, enableVectorizationPasses,
+        addPadPackBasedPassPipeline(executableLoweringPipeline, pathToUkernels,
+                                    enableVectorizationPasses,
                                     TilePassPipeline::PadPackPipeline);
       } else if (useTilePipeline == TilePassPipeline::ConvDecomposePipeline) {
-        addConvDecomposePassPipeline(executableLoweringPipeline, tilingConfig,
-                                     enableVectorizationPasses,
+        addConvDecomposePassPipeline(executableLoweringPipeline,
                                      TilePassPipeline::ConvDecomposePipeline);
       }
       break;
