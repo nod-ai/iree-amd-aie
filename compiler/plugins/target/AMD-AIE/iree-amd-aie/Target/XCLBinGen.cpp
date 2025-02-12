@@ -519,7 +519,7 @@ static LogicalResult assembleFileUsingPeano(
   args.emplace_back("-o");
   args.emplace_back(outputFile);
   if (verbose) args.emplace_back("-v");
-  if (failed(runTool(peanoDir / "bin" / "clang", args, verbose))) {
+  if (failed(runTool((peanoDir / "bin" / "clang").string(), args, verbose))) {
     llvm::errs() << "Failed to assemble " << outputFile << ".o with peano";
     return failure();
   }
@@ -635,7 +635,6 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
         return failure();
       }
       if (!std::filesystem::exists(cwd / ukernelObjectName)) {
-        llvm::outs() << "useChessForUKernel: " << useChessForUKernel << "\n";
         if (useChessForUKernel) {
           mmObjectFilePath = assembleStringUsingChess(
               /*inputFileStr=*/ukernelFileContent,
