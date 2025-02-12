@@ -309,9 +309,10 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
 }
 
-void addPackPeel4LevelTilingBasedPassPipeline(
-    OpPassManager &funcPassManager, const std::string &pathToUkernels,
-    TilePassPipeline useTilePipeline) {
+void addPackPeel4LevelTilingBasedPassPipeline(OpPassManager &funcPassManager,
+                                              const std::string &pathToUkernels,
+                                              TilePassPipeline useTilePipeline,
+                                              Operation *rootOp) {
   // First level tiling using scf.forall
   {
     AMDAIETileAndFuseOptions tileFuseOptions;
@@ -324,6 +325,7 @@ void addPackPeel4LevelTilingBasedPassPipeline(
   funcPassManager.addPass(createCSEPass());
 
   // First level pack or pad operation depending on the number of input loops.
+  unsigned numInputLoops = cast<linalg::LinalgOp>(rootOp).getNumLoops();
   if (numInputLoops <= 4) {
     // First level packing
     {

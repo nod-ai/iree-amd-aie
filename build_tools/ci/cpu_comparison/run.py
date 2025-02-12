@@ -490,8 +490,8 @@ class Matmul4d(BaseMatmul):
     A test of linalg.generic with 4d inputs and output implementing form:
     C += matmul4d(A,B) where A:MxKxM0xK0, B:NxKxK0xN0, C:NxMxM0xN0
 
-    Note that the order of the input dims for this operation corresponds to
-    the L2 shapes of a standard matmul op after the first level packing.
+    Note that the outer dims for this operation are transposed to make sure
+    successful compilation through LogicalObjectFifo pipeline.
     For comparison purpose, the input values of inner dims M0/N0/K0 are
     fixed as 32/32/64 currently.
     TODO(vivian): Generalize the class and the template.
@@ -505,7 +505,6 @@ class Matmul4d(BaseMatmul):
         input_type,
         acc_type,
         additional_labels=None,
-        n_repeats=1,
         n_kernel_runs=1,
         test_params=None,
     ):
@@ -518,7 +517,6 @@ class Matmul4d(BaseMatmul):
             input_type=input_type,
             acc_type=acc_type,
             function_name="matmul4d",
-            n_repeats=n_repeats,
             n_kernel_runs=n_kernel_runs,
         )
         self.labels.append("Matmul4d")

@@ -460,17 +460,13 @@ static LogicalResult setRootConfigForPackPeel4LevelTilingPipeline(
     return linalgOp.emitOpError("failed to fetch m/n/k dims.");
   }
 
-  // Set attribute for number of input loops.
-  MLIRContext *context = entryPointFn.getContext();
-  unsigned numLoops = linalgOp.getNumLoops();
-  auto loopAttr = NumInputLoopsAttr::get(context, numLoops);
-  setNumInputLoopsAttr(linalgOp, loopAttr);
-
   AMDAIEDeviceModel deviceModel = getDeviceModel(targetDevice);
 
   // ------------------------------------------------------
   // --------------- Set packing config -------------------
   // ------------------------------------------------------
+  MLIRContext *context = entryPointFn.getContext();
+
   bool isBatchMatmul = isa<linalg::BatchMatmulOp>(linalgOp);
   SmallVector<int64_t> innerPermA = setInnerPermA(isMatmulTransposeA(linalgOp));
   SmallVector<int64_t> innerPermB = setInnerPermB(isMatmulTransposeB(linalgOp));
@@ -486,8 +482,11 @@ static LogicalResult setRootConfigForPackPeel4LevelTilingPipeline(
   SmallVector<PackingConfigPackingLevelAttr> packingConfigLevelsVal;
 
   // Pack level => 1.
-  // The first level of packing is not needed if the number of loops is larger
-  // than 4, e.g., linalg.mmt4d operations.
+  // The initial number of loops from the linalg ops determines whether the
+  // first level of packing is needed. If the number of loops is larger
+  // than 4, it means the input is not a standard 2D matmul, then there is no
+  // need to pack operands from 2D to 4D.
+  unsigned numLoops = linalgOp.getNumLoops();
   if (numLoops <= 4) {
     SmallVector<int64_t> packedSizesL0(numLoops, 0);
     packedSizesL0[mDims.back()] = packPeelTiling.m0Pack;

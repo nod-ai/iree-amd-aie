@@ -73,7 +73,7 @@ bool isMatmulInDefChain(Value operand);
 
 /// Utility to identify if `linalgOp` is an elementwise operation with a
 /// matmul-like op upstream in its computation tree.
-bool isMatmulProducerOfElementwise(linalg::LinalgOp linalgOp);
+bool isElementwiseWithMatmulProducer(linalg::LinalgOp linalgOp);
 
 /// Utility to convert a `uint32_t` value into a hex string.
 std::string utohexstr(uint32_t value, size_t width, bool header = true,

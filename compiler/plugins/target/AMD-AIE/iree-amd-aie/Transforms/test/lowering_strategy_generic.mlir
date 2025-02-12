@@ -119,7 +119,7 @@ module {
 
 // -----
 
-// Test generic version of matmul with 4d inputs and output, adding a `num_input_loops` attribute.
+// Test generic version of matmul with 4d inputs and output.
 
 // PACK-PEEL-4-LEVEL{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[8, 8, 0, 0, 0, 0], [4, 4, 0, 0, 0, 0], [0, 0, 0, 0, 1, 0], [1, 1, 0, 0, 0, 0]]>
 // PACK-PEEL-4-LEVEL{LITERAL}: #amdaie.packing_config<packing_config = [{packedSizes = [0, 0, 4, 4, 0, 8], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [1, 0], [0, 1]], outerPerm = [[0, 1, 3, 2], [0, 1, 3, 2], [0, 1, 3, 2]]}]>
@@ -135,7 +135,7 @@ module {
     %5 = tensor.empty() : tensor<128x16x32x32xf32>
     %6 = linalg.fill ins(%cst : f32) outs(%5 : tensor<128x16x32x32xf32>) -> tensor<128x16x32x32xf32>
     //      PACK-PEEL-4-LEVEL:  linalg.generic
-    // PACK-PEEL-4-LEVEL-SAME:  attrs = {lowering_config = #config, num_input_loops = #amdaie.num_input_loops<6>, packing_config = #packingConfig}
+    // PACK-PEEL-4-LEVEL-SAME:  attrs = {lowering_config = #config, packing_config = #packingConfig}
     %7 = linalg.generic {indexing_maps = [affine_map<(d0, d1, d2, d3, d4, d5) -> (d0, d4, d2, d5)>, affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d4, d5, d3)>, affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d0, d2, d3)>], iterator_types = ["parallel", "parallel", "parallel", "parallel", "reduction", "reduction"]} ins(%3, %4 : tensor<16x8x32x64xbf16>, tensor<128x8x64x32xbf16>) outs(%6 : tensor<128x16x32x32xf32>) {
     ^bb0(%in: bf16, %in_0: bf16, %out: f32):
       %8 = arith.extf %in : bf16 to f32

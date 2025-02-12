@@ -17,7 +17,6 @@
 #include "iree-amd-aie/IR/AMDAIEEnums.cpp.inc"
 
 static const char kPackingConfigAttrName[] = "packing_config";
-static const char kNumInputLoopsAttrName[] = "num_input_loops";
 
 namespace mlir::iree_compiler::AMDAIE {
 
@@ -102,18 +101,6 @@ AMDAIE::PackingConfigAttr getPackingConfig(Operation *op) {
 
 void setPackingConfig(Operation *op, AMDAIE::PackingConfigAttr config) {
   op->setAttr(kPackingConfigAttrName, config);
-}
-
-//===----------------------------------------------------------------------===//
-// Helpers for getting/setting `amdaie.num_input_loops` attribute.
-// ===----------------------------------------------------------------------===//
-
-AMDAIE::NumInputLoopsAttr getNumInputLoopsAttr(Operation *op) {
-  return op->getAttrOfType<AMDAIE::NumInputLoopsAttr>(kNumInputLoopsAttrName);
-}
-
-void setNumInputLoopsAttr(Operation *op, AMDAIE::NumInputLoopsAttr config) {
-  op->setAttr(kNumInputLoopsAttrName, config);
 }
 
 }  // namespace mlir::iree_compiler

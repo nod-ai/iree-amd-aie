@@ -36,13 +36,6 @@ AMDAIE::PackingConfigAttr getPackingConfig(Operation *op);
 /// Sets the packing configuration, overwriting existing attribute values.
 void setPackingConfig(Operation *op, AMDAIE::PackingConfigAttr config);
 
-/// Returns the attribute for the number of input loops. It expects that the
-/// attribute is stored using the identifier `num_input_loops`.
-AMDAIE::NumInputLoopsAttr getNumInputLoopsAttr(Operation *op);
-
-/// Sets the number of input loops, overwriting existing attribute values.
-void setNumInputLoopsAttr(Operation *op, AMDAIE::NumInputLoopsAttr config);
-
 }  // namespace mlir::iree_compiler
 
 #endif  // IREE_COMPILER_AMDAIE_DIALECT_ATTRS_H_
