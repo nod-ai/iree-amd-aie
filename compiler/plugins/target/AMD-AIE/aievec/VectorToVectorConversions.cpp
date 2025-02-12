@@ -26,6 +26,8 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Utils/ReshapeOpsUtils.h"
@@ -1247,7 +1249,7 @@ struct CanonicalizeVectorForAIEVecPass
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<affine::AffineDialect, arith::ArithDialect,
                     memref::MemRefDialect, scf::SCFDialect,
-                    vector::VectorDialect>();
+                    vector::VectorDialect, LLVM::LLVMDialect>();
   }
 
   void runOnOperation() override {
@@ -1467,9 +1469,9 @@ struct AlignTransferReadsPass
   }
 
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry
-        .insert<arith::ArithDialect, memref::MemRefDialect,
-                vector::VectorDialect, affine::AffineDialect, AIEVecDialect>();
+    registry.insert<affine::AffineDialect, AIEVecDialect, arith::ArithDialect,
+                    LLVM::LLVMDialect, memref::MemRefDialect,
+                    vector::VectorDialect>();
   }
 
   void runOnOperation() override {
@@ -1511,8 +1513,9 @@ struct DetectNonCanonicalOpsPass
   }
 
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<arith::ArithDialect, memref::MemRefDialect,
-                    vector::VectorDialect, affine::AffineDialect>();
+    registry
+        .insert<affine::AffineDialect, arith::ArithDialect, LLVM::LLVMDialect,
+                memref::MemRefDialect, vector::VectorDialect>();
   }
 
   void runOnOperation() override {
