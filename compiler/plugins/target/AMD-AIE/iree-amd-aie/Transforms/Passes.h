@@ -7,6 +7,7 @@
 #ifndef IREE_AMD_AIE_TRANSFORMS_PASSES_H_
 #define IREE_AMD_AIE_TRANSFORMS_PASSES_H_
 
+#include "iree-amd-aie/IR/AMDAIEAttrs.h"
 #include "iree-amd-aie/Transforms/PassDetail.h"
 #include "iree-amd-aie/aie_runtime/AMDAIEEnums.h"
 #include "iree/compiler/Codegen/Common/TileSizeSelection.h"
@@ -57,6 +58,7 @@ void addPackPeelBasedPassPipeline(OpPassManager &oassManager,
 /// 4 levels of tiling.
 void addPackPeel4LevelTilingBasedPassPipeline(OpPassManager &oassManager,
                                               TilingConfig &tilingConfig,
+                                              NumInputLoopsAttr numLoopsAttr,
                                               const std::string &pathToUkernels,
                                               bool enableVectorizationPasses,
                                               TilePassPipeline useTilePipeline);
