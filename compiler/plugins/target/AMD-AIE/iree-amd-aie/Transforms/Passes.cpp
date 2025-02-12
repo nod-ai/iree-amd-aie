@@ -169,7 +169,6 @@ void addPeelAndFusePasses(OpPassManager &funcPassManager) {
 }
 
 void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
-                                  TilingConfig &tilingConfig,
                                   const std::string &pathToUkernels,
                                   TilePassPipeline useTilePipeline) {
   // First level tiling using scf.forall
@@ -311,8 +310,8 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
 }
 
 void addPackPeel4LevelTilingBasedPassPipeline(
-    OpPassManager &funcPassManager, TilingConfig &tilingConfig,
-    const std::string &pathToUkernels, TilePassPipeline useTilePipeline) {
+    OpPassManager &funcPassManager, const std::string &pathToUkernels,
+    TilePassPipeline useTilePipeline) {
   // First level tiling using scf.forall
   {
     AMDAIETileAndFuseOptions tileFuseOptions;
@@ -474,7 +473,6 @@ void addPackPeel4LevelTilingBasedPassPipeline(
 }
 
 void addPadPackBasedPassPipeline(OpPassManager &funcPassManager,
-                                 TilingConfig &tilingConfig,
                                  const std::string &pathToUkernels,
                                  bool enableVectorizationPasses,
                                  TilePassPipeline useTilePipeline) {
@@ -586,7 +584,6 @@ void addPadPackBasedPassPipeline(OpPassManager &funcPassManager,
 }
 
 void addConvDecomposePassPipeline(OpPassManager &funcPassManager,
-                                  TilingConfig &tilingConfig,
                                   TilePassPipeline useTilePipeline) {
   auto addCleanups = [&]() {
     funcPassManager.addPass(createAMDAIECleanupPass());
