@@ -8,6 +8,25 @@
 #define AMDAIE_AIE_PASSES
 
 include "mlir/Pass/PassBase.td"
+include "AIEOps.td"
+
+def AMDAIERouteFlowsWithPathfinder :
+    Pass<"amdaie-create-pathfinder-flows", "xilinx::AIE::DeviceOp"> {
+  let summary = "Using Dijkstra's pathfinding algorithm to route"
+                "`aie.flow` and `aie.packet_flow` operations through switchboxes";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIERouteFlowsWithPathfinderPass()";
+  let options = [
+    Option<"routeCircuit", "route-circuit", "bool", /*default=*/"true",
+      "Enable `aie.flow` routing.">,
+    Option<"routePacket", "route-packet", "bool", /*default=*/"true",
+      "Enable `aie.packet_flow` routing.">,
+    Option<"routeCtrl", "route-ctrl", "bool", /*default=*/"true",
+      "Enable routing for control flows, i.e., flows where a `CTRL` port is either the source or the destination.">,
+    Option<"routeData", "route-data", "bool", /*default=*/"true",
+       "Enable routing for data flows, i.e., flows where both the source and destination are non-`CTRL` ports.">,
+  ];
+}
+
 
 def AMDAIECoreToStandard :
     Pass<"amdaie-standard-lowering", "ModuleOp"> {

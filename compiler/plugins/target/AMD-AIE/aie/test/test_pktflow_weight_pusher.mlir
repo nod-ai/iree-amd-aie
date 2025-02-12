@@ -210,10 +210,10 @@
 // CHECK:               aie.rule(24, 0, %[[VAL_69]])
 // CHECK:             }
 // CHECK:             aie.packet_rules(EAST : 0) {
-// CHECK:               aie.rule(31, 9, %3)
-// CHECK:               aie.rule(31, 10, %3)
-// CHECK:               aie.rule(27, 11, %3)
-// CHECK:               aie.rule(24, 8, %2)
+// CHECK:               aie.rule(31, 13, %[[VAL_70]])
+// CHECK:               aie.rule(31, 14, %[[VAL_70]])
+// CHECK:               aie.rule(27, 8, %[[VAL_70]])
+// CHECK:               aie.rule(24, 8, %[[VAL_71]])
 // CHECK:             }
 // CHECK:           }
 // CHECK:           %[[TILE_7_5:.*]] = aie.tile(7, 5)

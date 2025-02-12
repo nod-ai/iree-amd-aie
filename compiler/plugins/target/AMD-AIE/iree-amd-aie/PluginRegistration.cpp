@@ -35,7 +35,7 @@ struct AMDAIESession
     registerAMDAIECoreToStandard();
     AMDAIE::registerAMDAIELocalizeLocks();
     AMDAIE::registerAMDAIENormalizeAddressSpaces();
-    AMDAIE::registerAMDAIERoutePathfinderFlows();
+    registerAMDAIERouteFlowsWithPathfinder();
     AMDAIE::registerAMDAIEDmaToNpu();
     AMDAIE::registerAIRConversionPasses();
     AMDAIE::registerAIRTransformPasses();

@@ -13,6 +13,7 @@
 namespace mlir::iree_compiler::AMDAIE {
 
 #define GEN_PASS_DECL
+#define GEN_PASS_DEF_AMDAIEROUTEFLOWSWITHPATHFINDER
 #define GEN_PASS_DEF_AMDAIECORETOSTANDARD
 
 #include "aie/Passes.h.inc"
