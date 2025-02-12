@@ -47,6 +47,7 @@ class TestParams(ABC):
         lower_to_aie_pipeline="objectFifo",
         name_suffix="",
         use_chess=False,
+        use_chess_for_ukernel=True,
         use_ukernel=False,
         run_benchmark=False,
         n_repeats=1,
@@ -59,6 +60,7 @@ class TestParams(ABC):
         self.lower_to_aie_pipeline = lower_to_aie_pipeline
         self.name_suffix = name_suffix
         self.use_chess = use_chess
+        self.use_chess_for_ukernel = use_chess_for_ukernel
         self.use_ukernel = use_ukernel
         self.run_benchmark = run_benchmark
         self.n_repeats = n_repeats
@@ -104,6 +106,7 @@ class BaseTest(ABC):
         tile_pipeline = test_params.tile_pipeline
         lower_to_aie_pipeline = test_params.lower_to_aie_pipeline
         use_chess = test_params.use_chess
+        use_chess_for_ukernel = test_params.use_chess_for_ukernel
         use_ukernel = test_params.use_ukernel
         run_benchmark = test_params.run_benchmark
         n_repeats = test_params.n_repeats
@@ -128,8 +131,17 @@ class BaseTest(ABC):
             self.labels.append("Peano")
 
         if use_ukernel:
-            self.name += "_ukernel"
             self.labels.append("UKernel")
+            if use_chess_for_ukernel:
+                self.name += "_ukernel_chess"
+                self.add_aie_compilation_flags(
+                    [f"--iree-amd-aie-enable-chess-for-ukernel=1"]
+                )
+            else:
+                self.name += "_ukernel_peano"
+                self.add_aie_compilation_flags(
+                    [f"--iree-amd-aie-enable-chess-for-ukernel=0"]
+                )
 
         if run_benchmark:
             self.name += "_benchmark"
@@ -1835,7 +1847,9 @@ class Tests:
                 test_params=TestParams(
                     use_ukernel=True,
                     use_chess=False,
+                    use_chess_for_ukernel=False,
                     run_on_target=["npu4"],
+                    tile_pipeline="pack-peel-4-level-tiling",
                     aie_compilation_flags=[
                         "--iree-amdaie-num-rows=4",
                         "--iree-amdaie-num-cols=8",
