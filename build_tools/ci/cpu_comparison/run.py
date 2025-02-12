@@ -685,7 +685,6 @@ class MatmulTrunci(BaseMatmul):
         lhs,
         rhs,
         expected_out,
-        n_repeats=1,
         test_params=None,
     ):
         super().__init__(
@@ -696,7 +695,6 @@ class MatmulTrunci(BaseMatmul):
             K=K,
             input_type=input_type,
             acc_type=acc_type,
-            n_repeats=n_repeats,
         )
         self.labels.append("MatmulTrunci")
 
