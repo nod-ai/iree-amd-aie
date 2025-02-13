@@ -52,6 +52,7 @@ LogicalResult AIETranslateToBCF(DeviceOp deviceOp, raw_ostream &output,
              << " // Don't put data in code memory\n";
 
       int stacksize = 0;
+      assert(false && "need a better way of setting the stack size in bcf");
       if (auto core = getCoreOp(tile)) stacksize = core.getStackSize();
       output << "_stack DM_stack "
              << utohexstr(deviceModel.getMemInternalBaseAddress()) << " "

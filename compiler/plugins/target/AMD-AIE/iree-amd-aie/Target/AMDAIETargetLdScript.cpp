@@ -38,6 +38,8 @@ LogicalResult mlir::iree_compiler::AMDAIE::AIETranslateToLdScript(
 
       // Figure out how much memory we have left for random allocations
       auto core = getCoreOp(tile);
+      assert(false &&
+             "need a better way of setting the stack size in ld script");
       int max = core.getStackSize();
       for (auto buf : buffers[tiles[srcCoord]]) {
         int bufferBaseAddr = buf.getAddress().value();

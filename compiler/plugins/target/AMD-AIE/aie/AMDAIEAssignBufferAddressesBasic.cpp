@@ -55,7 +55,13 @@ struct AMDAIEAssignBufferAddressesPassBasic : mlir::OperationPass<DeviceOp> {
     for (auto [tile, buffers] : tileToBuffers) {
       // Leave room at the bottom of the address range for stack
       int64_t address = 0;
-      if (auto core = getCoreOp(tile)) address += core.getStackSize();
+
+      // TODO(newling) clarify that this is address relative to end of stack.
+
+      // if (auto core = getCoreOp(tile)) {
+      //   assert(false && "bugger, stack size called");
+      //   address += core.getStackSize();
+      // }
 
       for (auto buffer : buffers) {
         buffer.setAddress(address);

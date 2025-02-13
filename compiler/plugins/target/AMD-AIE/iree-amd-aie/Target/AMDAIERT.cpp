@@ -137,6 +137,7 @@ Lock::Action toLock(LockAction l) {
 
 LogicalResult configureLocksAndBd(Block &block, const TileLoc &tileLoc,
                                   const AMDAIEDeviceModel &deviceModel) {
+  assert(false && "when is this guy called");
   FailureOr<XAie_DmaDesc> dmaTileBd = initDMADesc(deviceModel, tileLoc);
   if (failed(dmaTileBd)) return failure();
   std::optional<int> acqValue, relValue, acqLockId, relLockId;
