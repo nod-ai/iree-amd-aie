@@ -11,7 +11,7 @@
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Target/AMDAIERT.h"
 #include "iree-amd-aie/Transforms/Passes.h"
-#include "iree-amd-aie/aie_runtime/iree_aie_configure.h"
+// #include "iree-amd-aie/aie_runtime/iree_aie_configure.h"
 #include "mlir/IR/AsmState.h"
 
 #define DEBUG_TYPE "iree-amdaie-convert-device-to-control-packets"
@@ -23,7 +23,8 @@ namespace mlir::iree_compiler::AMDAIE {
 namespace {
 LogicalResult convertDeviceToControlPacket(IRRewriter &rewriter,
                                            xilinx::AIE::DeviceOp deviceOp,
-                                           const std::string &pathToElfs) {
+                                           const std::string &pathToElfs,
+                                           int stackSize) {
   AMDAIEDeviceModel deviceModel = getDeviceModel(deviceOp.getDevice());
 
   // Start collecting transations.
@@ -33,7 +34,7 @@ LogicalResult convertDeviceToControlPacket(IRRewriter &rewriter,
                            /*aieSim=*/false))) {
     return failure();
   }
-  if (failed(addInitConfig(deviceModel, deviceOp))) return failure();
+  if (failed(addInitConfig(deviceModel, deviceOp, stackSize))) return failure();
   if (failed(addAllCoreEnable(deviceModel, deviceOp))) return failure();
 
   // Export the transactions to a binary buffer.
@@ -182,7 +183,8 @@ void AMDAIEConvertDeviceToControlPacketsPass::runOnOperation() {
   }
 
   // Start the conversion.
-  if (failed(convertDeviceToControlPacket(rewriter, deviceOps[0], pathToElfs)))
+  if (failed(convertDeviceToControlPacket(rewriter, deviceOps[0], pathToElfs,
+                                          stackSize)))
     return signalPassFailure();
 }
 

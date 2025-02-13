@@ -136,8 +136,8 @@ Lock::Action toLock(LockAction l) {
 }
 
 LogicalResult configureLocksAndBd(Block &block, const TileLoc &tileLoc,
-                                  const AMDAIEDeviceModel &deviceModel) {
-  assert(false && "when is this guy called");
+                                  const AMDAIEDeviceModel &deviceModel,
+                                  int stackSize) {
   FailureOr<XAie_DmaDesc> dmaTileBd = initDMADesc(deviceModel, tileLoc);
   if (failed(dmaTileBd)) return failure();
   std::optional<int> acqValue, relValue, acqLockId, relLockId;
@@ -202,8 +202,13 @@ LogicalResult configureLocksAndBd(Block &block, const TileLoc &tileLoc,
   }
 
   BufferOp bufferOp = cast<BufferOp>(bdOp.getBuffer().getDefiningOp());
-  if (!bufferOp.getAddress())
-    return bufferOp.emitError("buffer must have address assigned");
+  if (!bufferOp.getStackRelativeAddress().has_value()) {
+    return bufferOp.emitOpError(
+        "does not have an address relative to the end of stack assigned, "
+        "required at this point.");
+  }
+  auto addressRelativeToStack = bufferOp.getStackRelativeAddress().value();
+
   // Convert `xilinx::AIE::BDDimLayoutAttr` to
   // `mlir::iree_compiler::AMDAIE::BDDimLayout`.
   std::optional<std::vector<BDDimLayout>> maybeDims;
@@ -232,11 +237,12 @@ LogicalResult configureLocksAndBd(Block &block, const TileLoc &tileLoc,
           ? std::optional<uint8_t>{static_cast<uint8_t>(*bdOp.getNextBdId())}
           : std::nullopt;
   std::optional<BDIterLayout> maybeIter = std::nullopt;
+
   if (failed(configureDMABD(deviceModel, dmaTileBd.value(), tileLoc, validBd,
                             static_cast<uint8_t>(*bdOp.getBdId()), enableNextBd,
                             nextBdId, enablePacket, packetType, packetID,
-                            *bufferOp.getAddress(), getLenInBytes(bdOp),
-                            getOffsetInBytes(bdOp),
+                            stackSize + addressRelativeToStack,
+                            getLenInBytes(bdOp), getOffsetInBytes(bdOp),
                             getBufferElementTypeWidthInBytes(bdOp), maybeDims,
                             maybePadDims, maybeIter))) {
     return failure();
@@ -245,7 +251,7 @@ LogicalResult configureLocksAndBd(Block &block, const TileLoc &tileLoc,
 }
 
 LogicalResult addInitConfig(const AMDAIEDeviceModel &deviceModel,
-                            DeviceOp &device) {
+                            DeviceOp &device, int stackSize) {
   // Reset and unreset all cores.
   for (auto tileOp : device.getOps<TileOp>()) {
     TileLoc tileLoc = {tileOp.getCol(), tileOp.getRow()};
@@ -286,8 +292,9 @@ LogicalResult addInitConfig(const AMDAIEDeviceModel &deviceModel,
     // Handle DMA ops separately.
     for (Block &block : memOp->getRegion(0)) {
       if (block.getOps<DMABDOp>().empty()) continue;
-      if (failed(configureLocksAndBd(block, tileLoc, deviceModel)))
+      if (failed(configureLocksAndBd(block, tileLoc, deviceModel, stackSize))) {
         return failure();
+      }
     }
 
     for (Block &block : memOp->getRegion(0)) {

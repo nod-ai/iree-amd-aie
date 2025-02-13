@@ -94,29 +94,6 @@ static void bufferToStd(ModuleOp module, BufferOp buffer,
   StringRef symName = name(buffer).getValue();
   MemRefType type = llvm::cast<MemRefType>(buffer.getType());
 
-//   auto alignment = [&]() -> IntegerAttr {
-//     auto maybeBufferAddress = buffer.getAddress();
-//     if (!maybeBufferAddress.has_value()) return {};
-//     uint64_t maxAlignment = 64;
-//     // // if (type.getElementType() == rewriter.getF32Type()) maxAlignment = 64;
-//     // if (type.getElementType() == rewriter.getBF16Type() &&
-//     //     type.getNumElements() == 32 * 32) {
-//     //   maxAlignment = 32;
-//     // }
-//     uint32_t address = maybeBufferAddress.value();
-//     // We can choose any alignment we like for address 0.
-//     if (address == 0) return rewriter.getI64IntegerAttr(maxAlignment);
-//     // The highest power of 2 that divides the address.
-//     // Example: address = 20:
-//     //   20 : 0b10100
-//     //  -20 : 0b01100 (negate bits and add 1).
-//     //   &  : 0b00100 ====> 4.
-//     uint32_t alignment = address & -address;
-//     return rewriter.getI64IntegerAttr(
-//         std::min<uint32_t>(alignment, maxAlignment));
-//   }();
-
-
   // Don't emit initialization for cores that don't "own" the buffer (to
   // prevent duplication in the data section of the elf/object file)
   rewriter.create<memref::GlobalOp>(

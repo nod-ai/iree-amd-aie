@@ -125,7 +125,7 @@ def AIE_CoreOp: AIE_Op<"core", [
   ]>, Results<(outs Index)> {
   let arguments = (
     ins Index:$tile,
-    DefaultValuedAttr<I32Attr, "0x400">:$stack_size,
+    // DefaultValuedAttr<I32Attr, "0x400">:$stack_size,
     OptionalAttr<StrAttr>:$link_with,
     OptionalAttr<StrAttr>:$elf_file
   );
@@ -484,7 +484,7 @@ def AIE_BufferOp: AIE_Op<"buffer", [
   let arguments = (
     ins Index:$tile,
     OptionalAttr<StrAttr>:$sym_name,
-    OptionalAttr<I32Attr>:$address,
+    OptionalAttr<I32Attr>:$stack_relative_address,
     OptionalAttr<I32Attr>:$mem_bank
   );
 

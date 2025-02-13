@@ -7,8 +7,6 @@
 #include "AIEDialect.h"
 #include "Passes.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
-#include "llvm/ADT/Twine.h"
-#include "mlir/IR/Attributes.h"
 #include "mlir/Pass/Pass.h"
 
 #define DEBUG_TYPE "amdaie-assign-buffers-basic"
@@ -54,18 +52,10 @@ struct AMDAIEAssignBufferAddressesPassBasic : mlir::OperationPass<DeviceOp> {
         static_cast<AMDAIEDevice>(device.getDevice()));
     for (auto [tile, buffers] : tileToBuffers) {
       // Leave room at the bottom of the address range for stack
-      int64_t address = 0;
-
-      // TODO(newling) clarify that this is address relative to end of stack.
-
-      // if (auto core = getCoreOp(tile)) {
-      //   assert(false && "bugger, stack size called");
-      //   address += core.getStackSize();
-      // }
-
+      int64_t stackRelativeAddress = 0;
       for (auto buffer : buffers) {
-        buffer.setAddress(address);
-        address += getAllocationSize(buffer);
+        buffer.setStackRelativeAddress(stackRelativeAddress);
+        stackRelativeAddress += getAllocationSize(buffer);
       }
 
       int maxDataMemorySize;
@@ -75,10 +65,11 @@ struct AMDAIEAssignBufferAddressesPassBasic : mlir::OperationPass<DeviceOp> {
       else
         maxDataMemorySize =
             deviceModel.getLocalMemorySize(tile.getCol(), tile.getRow());
-      if (address > maxDataMemorySize) {
+      if (stackRelativeAddress > maxDataMemorySize) {
         InFlightDiagnostic error =
             tile.emitOpError("allocated buffers exceeded available memory (")
-            << address << ">" << maxDataMemorySize << ")\n";
+            << stackRelativeAddress << ">" << maxDataMemorySize
+            << ") even before taking into account the stack!\n";
         return signalPassFailure();
       }
     }

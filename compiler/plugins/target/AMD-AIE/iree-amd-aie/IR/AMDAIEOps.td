@@ -223,7 +223,8 @@ def AMDAIE_BufferOp: AMDAIE_Op<"buffer", [
   let summary = "Represents a buffer on an AIE tile.";
   let description = [{
     This operation represents a buffer on an AIE tile. The buffer can have an
-    optional address, indicating the location of the buffer on the tile.
+    optional address, indicating the location of the buffer on the tile relative
+    to the end of the stack.
 
     Example:
 
@@ -235,13 +236,13 @@ def AMDAIE_BufferOp: AMDAIE_Op<"buffer", [
 
   let arguments = (
     ins Index:$tile,
-        OptionalAttr<UI32Attr>:$address
+        OptionalAttr<UI32Attr>:$stack_relative_address
   );
 
   let results = (outs AnyMemRef:$buffer);
 
   let assemblyFormat = [{
-    `(` $tile (`,` $address^)? `)` attr-dict `:` type($buffer)
+    `(` $tile (`,` $stack_relative_address^)? `)` attr-dict `:` type($buffer)
   }];
 }
 

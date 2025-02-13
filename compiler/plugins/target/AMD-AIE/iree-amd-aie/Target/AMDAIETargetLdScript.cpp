@@ -16,7 +16,7 @@ using namespace xilinx::AIE;
 // are accessed from.
 static void writeLDScriptMap(raw_ostream &output, BufferOp buf, int offset) {
   std::string bufName(name(buf).getValue());
-  int bufferBaseAddr = buf.getAddress().value();
+  int bufferBaseAddr = buf.getStackRelativeAddress().value();
   int numBytes = getAllocationSize(buf);
   output << ". = 0x" << llvm::utohexstr(offset + bufferBaseAddr) << ";\n";
   output << bufName << " = .;\n";
@@ -24,7 +24,8 @@ static void writeLDScriptMap(raw_ostream &output, BufferOp buf, int offset) {
 }
 
 LogicalResult mlir::iree_compiler::AMDAIE::AIETranslateToLdScript(
-    DeviceOp deviceOp, raw_ostream &output, int tileCol, int tileRow) {
+    DeviceOp deviceOp, raw_ostream &output, int tileCol, int tileRow,
+    int stackSize) {
   DenseMap<TileLoc, Operation *> tiles;
   DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
 
@@ -37,12 +38,9 @@ LogicalResult mlir::iree_compiler::AMDAIE::AIETranslateToLdScript(
       TileLoc srcCoord = {tile.getCol(), tile.getRow()};
 
       // Figure out how much memory we have left for random allocations
-      auto core = getCoreOp(tile);
-      assert(false &&
-             "need a better way of setting the stack size in ld script");
-      int max = core.getStackSize();
+      int max = stackSize;
       for (auto buf : buffers[tiles[srcCoord]]) {
-        int bufferBaseAddr = buf.getAddress().value();
+        int bufferBaseAddr = buf.getStackRelativeAddress().value() + stackSize;
         int numBytes = getAllocationSize(buf);
         max = std::max(max, bufferBaseAddr + numBytes);
       }
@@ -94,12 +92,13 @@ SECTIONS
      *(.chesstypeannotationtab)
   }
 )THESCRIPT";
+
       auto doBuffer = [&](std::optional<TileLoc> tile, int offset,
                           const std::string &dir) {
         if (tile) {
           if (tiles.count({tile->col, tile->row}))
             for (auto buf : buffers[tiles[{tile->col, tile->row}]])
-              writeLDScriptMap(output, buf, offset);
+              writeLDScriptMap(output, buf, offset + stackSize);
         } else {
           output << "/* No tile with memory exists to the " << dir << ". */\n";
           output << ". = 0x" << llvm::utohexstr(offset) << ";\n";
@@ -115,8 +114,7 @@ SECTIONS
       output << "_sp_start_value_DM_stack = .;\n";
 
       if (auto core = getCoreOp(tile))
-        output << ". += 0x" << llvm::utohexstr(core.getStackSize())
-               << "; /* stack */\n";
+        output << ". += 0x" << llvm::utohexstr(stackSize) << "; /* stack */\n";
       else
         output << "/* no stack allocated */\n";
 

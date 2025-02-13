@@ -31,7 +31,7 @@ LogicalResult addAllCoreEnable(const AMDAIEDeviceModel &deviceModel,
 /// Utility function to reset all cores, initialize hardware locks,
 /// and configure all switchboxes.
 LogicalResult addInitConfig(const AMDAIEDeviceModel &deviceModel,
-                            xilinx::AIE::DeviceOp &device);
+                            xilinx::AIE::DeviceOp &device, int stackSize);
 
 }  // namespace mlir::iree_compiler::AMDAIE
 

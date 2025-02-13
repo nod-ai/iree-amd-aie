@@ -17,7 +17,7 @@ std::string utohexstr(uint32_t u) { return "0x" + llvm::utohexstr(u); }
 namespace mlir::iree_compiler::AMDAIE {
 
 LogicalResult AIETranslateToBCF(DeviceOp deviceOp, raw_ostream &output,
-                                int tileCol, int tileRow) {
+                                int tileCol, int tileRow, int stackSize) {
   DenseMap<TileLoc, Operation *> tiles;
   DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
 
@@ -51,12 +51,9 @@ LogicalResult AIETranslateToBCF(DeviceOp deviceOp, raw_ostream &output,
       output << "_reserved DMb 0x00000 " << initReserved
              << " // Don't put data in code memory\n";
 
-      int stacksize = 0;
-      assert(false && "need a better way of setting the stack size in bcf");
-      if (auto core = getCoreOp(tile)) stacksize = core.getStackSize();
       output << "_stack DM_stack "
              << utohexstr(deviceModel.getMemInternalBaseAddress()) << " "
-             << utohexstr(stacksize) << " // stack for core\n";
+             << utohexstr(stackSize) << " // stack for core\n";
 
       auto doBuffer = [&](std::optional<TileLoc> tile, int offset,
                           const std::string &dir) {
@@ -75,7 +72,9 @@ LogicalResult AIETranslateToBCF(DeviceOp deviceOp, raw_ostream &output,
           if (tiles.count(TileLoc(*tile))) {
             for (auto buf : buffers[tiles[TileLoc(*tile)]]) {
               std::string bufName(name(buf).getValue());
-              int bufferBaseAddr = buf.getAddress().value();
+              int bufferBaseAddr =
+                  buf.getStackRelativeAddress().value() + stackSize;
+
               int numBytes = getAllocationSize(buf);
               output << "_symbol " << bufName << " "
                      << utohexstr(offset + bufferBaseAddr) << " " << numBytes
