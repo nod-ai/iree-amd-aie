@@ -3,6 +3,14 @@ import re
 import os
 
 
+def get_higher_order_element_type(element_type):
+    if element_type[0] in ["i", "f"]:
+        assert element_type[1:].isdigit(), f"support for {element_type} is missing"
+        bit_width = int(element_type[1:])
+        return f"{element_type[0]}{bit_width*2}"
+    assert False, f"support for {element_type} is missing"
+
+
 def generate_matmul_test(output_fn, input_fn, m, n, k, lhs_rhs_type, acc_type, b=0):
     """
     Generate mlir file (output_fn) from the template file (input_fn).
@@ -14,6 +22,8 @@ def generate_matmul_test(output_fn, input_fn, m, n, k, lhs_rhs_type, acc_type, b
     replace["K"] = k
     replace["TYPE1"] = lhs_rhs_type
     replace["TYPE2"] = acc_type
+    # Only used for Matmul+Trunc via scaling.
+    replace["TYPE3"] = get_higher_order_element_type(acc_type)
 
     replace["B"] = b  # This is only used for batch matmul
     acc_is_int = acc_type[0] == "i"

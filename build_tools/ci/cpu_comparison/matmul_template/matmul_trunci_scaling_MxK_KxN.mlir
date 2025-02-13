@@ -1,11 +1,16 @@
 // input ${M}x${K}x${TYPE1}
 // input ${K}x${N}x${TYPE1}
 
+// Matmul + Trunci variant with scaling.
+// In an actual quantized model, truncating from a higher bitwidth to a lower precision bitwidth
+// won't work and we need to scale.
+// Since the output of the Matmul here is an integer cannot be multiplied with a floating point
+// scale factor, we need to represent the scale factor with a multiplier and a divisor instead.
 func.func @matmul_trunci(%arg0: tensor<${M}x${K}x${TYPE1}>, %arg1: tensor<${K}x${N}x${TYPE1}>) -> tensor<${M}x${N}x${TYPE1}>
 {
   %cst = arith.constant ${ZERO} : ${TYPE2}
-  %cst_mul = arith.constant 10 : ${TYPE2}
-  %cst_div = arith.constant 137 : ${TYPE2}
+  %cst_mul = arith.constant 10 : ${TYPE3}
+  %cst_div = arith.constant 137 : ${TYPE3}
   %0 = tensor.empty() : tensor<${M}x${N}x${TYPE2}>
   %i8out = tensor.empty() : tensor<${M}x${N}x${TYPE1}>
   %1 = linalg.fill ins(%cst : ${TYPE2}) outs(%0 : tensor<${M}x${N}x${TYPE2}>) -> tensor<${M}x${N}x${TYPE2}>
@@ -18,10 +23,11 @@ func.func @matmul_trunci(%arg0: tensor<${M}x${K}x${TYPE1}>, %arg1: tensor<${K}x$
                        iterator_types = ["parallel", "parallel"]
                       } ins(%2 : tensor<${M}x${N}x${TYPE2}>) outs(%i8out : tensor<${M}x${N}x${TYPE1}>) {
     ^bb0(%in: ${TYPE2}, %out: ${TYPE1}):
-      %26 = arith.muli %in, %cst_mul : ${TYPE2}
-      %27 = arith.divsi %26, %cst_div : ${TYPE2}
-      %28 = arith.trunci %27 : ${TYPE2} to ${TYPE1}
-      linalg.yield %28 : ${TYPE1}
+      %4 = arith.extsi %in : ${TYPE2} to ${TYPE3}
+      %5 = arith.muli %4, %cst_mul : ${TYPE3}
+      %6 = arith.divsi %5, %cst_div : ${TYPE3}
+      %7 = arith.trunci %6 : ${TYPE3} to ${TYPE1}
+      linalg.yield %7 : ${TYPE1}
     } -> tensor<${M}x${N}x${TYPE1}>
   return %3: tensor<${M}x${N}x${TYPE1}>
 }
