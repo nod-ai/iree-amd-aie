@@ -485,8 +485,8 @@ static LogicalResult setRootConfigForPackPeel4LevelTilingPipeline(
   // Pack level => 1.
   // For 2D matmul-like ops, the first level is to pack operands from 2D to 4D.
   // If the input is a 4D matmul-like op, this level of packing is not needed.
-  bool is2DMatmul = is2DMatmulLikeOp(linalgOp);
-  if (is2DMatmul) {
+  bool is2DMatmulLike = is2DMatmulLikeOp(linalgOp) || isBatchMatmul;
+  if (is2DMatmulLike) {
     SmallVector<int64_t> packedSizesL0(numLoops, 0);
     packedSizesL0[mDims.back()] = packPeelTiling.m0Pack;
     packedSizesL0[nDims.back()] = packPeelTiling.n0Pack;
@@ -516,10 +516,10 @@ static LogicalResult setRootConfigForPackPeel4LevelTilingPipeline(
   // If the first level pack exists (for 2D matmul-like ops), the number of
   // packed dimensions should increase by 3, otherwise keep the original
   // number of loops.
-  unsigned numPackedDims = is2DMatmul ? numLoops + 3 : numLoops;
-  unsigned mIdx = is2DMatmul ? mDims.back() + 3 : mDims.back();
-  unsigned nIdx = is2DMatmul ? nDims.back() + 3 : nDims.back();
-  unsigned kIdx = is2DMatmul ? kDims.back() + 3 : kDims.back();
+  unsigned numPackedDims = is2DMatmulLike ? numLoops + 3 : numLoops;
+  unsigned mIdx = is2DMatmulLike ? mDims.back() + 3 : mDims.back();
+  unsigned nIdx = is2DMatmulLike ? nDims.back() + 3 : nDims.back();
+  unsigned kIdx = is2DMatmulLike ? kDims.back() + 3 : kDims.back();
   SmallVector<int64_t> packedSizesL1(numPackedDims, 0);
   packedSizesL1[mIdx] = packPeelTiling.m1Pack;
   packedSizesL1[nIdx] = packPeelTiling.n1Pack;
@@ -946,9 +946,6 @@ static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
       !isMatmulTransposeB(genericOp))
     return genericOp.emitOpError(
         "Current pipelines are only set for matmul-like ops.");
-
-  assert((is2DMatmulLikeOp(genericOp) || is4DMatmulLikeOp(genericOp)) &&
-         "expected 2D or 4D matmul-like ops");
 
   if (passPipeline == TilePassPipeline::PackPeelPipeline) {
     return setRootConfigForPackPeelPipeline(entryPointFn, genericOp,

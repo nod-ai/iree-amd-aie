@@ -314,8 +314,8 @@ void addPackPeel4LevelTilingBasedPassPipeline(OpPassManager &funcPassManager,
                                               const std::string &pathToUkernels,
                                               TilePassPipeline useTilePipeline,
                                               Operation *rootOp) {
-  // Check if the root op is a 2D matmul-like operation.
-  bool is2DMatmulOp = is2DMatmulLikeOp(cast<linalg::LinalgOp>(rootOp));
+  // Check if the root op is a 4D matmul-like operation.
+  bool is4DMatmulOp = is4DMatmulLikeOp(cast<linalg::LinalgOp>(rootOp));
 
   // First level tiling using scf.forall
   {
@@ -332,7 +332,16 @@ void addPackPeel4LevelTilingBasedPassPipeline(OpPassManager &funcPassManager,
   // For 2D matmul-like ops, pack operation is used to expand operands from 2D
   // to 4D. For 4D matmul-like ops, pad operation is used to keep the original
   // dimensions.
-  if (is2DMatmulOp) {
+  if (is4DMatmulOp) {
+    // First level pad
+    {
+      AMDAIEPadOptions padOptions;
+      padOptions.paddingLevel = 0;
+      funcPassManager.addPass(createAMDAIEPadPass(padOptions));
+    }
+    funcPassManager.addPass(createCanonicalizerPass());
+    funcPassManager.addPass(createCSEPass());
+  } else {
     // First level packing
     {
       AMDAIEPackAndTransposeOptions packOptions;
@@ -341,15 +350,6 @@ void addPackPeel4LevelTilingBasedPassPipeline(OpPassManager &funcPassManager,
     }
     // Propagate pack ops for the elementwise op
     funcPassManager.addPass(createAMDAIEPropagateDataLayoutPass());
-    funcPassManager.addPass(createCanonicalizerPass());
-    funcPassManager.addPass(createCSEPass());
-  } else {
-    // First level pad
-    {
-      AMDAIEPadOptions padOptions;
-      padOptions.paddingLevel = 0;
-      funcPassManager.addPass(createAMDAIEPadPass(padOptions));
-    }
     funcPassManager.addPass(createCanonicalizerPass());
     funcPassManager.addPass(createCSEPass());
   }
@@ -377,7 +377,7 @@ void addPackPeel4LevelTilingBasedPassPipeline(OpPassManager &funcPassManager,
   // Otherwise for 2D matmul-like op, it is the second level.
   {
     AMDAIEPackAndTransposeOptions packOptions;
-    packOptions.packLevel = is2DMatmulOp ? 1 : 0;
+    packOptions.packLevel = is4DMatmulOp ? 0 : 1;
     funcPassManager.addPass(createAMDAIEPackAndTransposePass(packOptions));
   }
 
