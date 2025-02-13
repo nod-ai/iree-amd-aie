@@ -67,6 +67,12 @@ bool isMatmulTransposeA(linalg::LinalgOp linalgOp);
 /// Utility to identify whether a linalg op is a matmul_transpose_b op.
 bool isMatmulTransposeB(linalg::LinalgOp linalgOp);
 
+/// Utility to identify whether a linalg op is a 2D matmul-like op.
+bool is2DMatmulLikeOp(linalg::LinalgOp linalgOp);
+
+/// Utility to identify whether a linalg op is a 4D matmul-like op.
+bool is4DMatmulLikeOp(linalg::LinalgOp linalgOp);
+
 /// Utility to identify if the input operand has matmul-like op in its
 /// def-chain.
 bool isMatmulInDefChain(Value operand);

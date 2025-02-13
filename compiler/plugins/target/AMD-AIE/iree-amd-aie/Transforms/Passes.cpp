@@ -21,6 +21,7 @@
 #include "air/Transform/AffineLoopOptPass.h"
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
 #include "iree-amd-aie/Transforms/Passes.h"
+#include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 #include "iree-dialects/Dialect/LinalgTransform/Passes.h"
 #include "iree/compiler/Codegen/Common/Passes.h"
 #include "iree/compiler/Utils/ToolUtils.h"
@@ -313,6 +314,9 @@ void addPackPeel4LevelTilingBasedPassPipeline(OpPassManager &funcPassManager,
                                               const std::string &pathToUkernels,
                                               TilePassPipeline useTilePipeline,
                                               Operation *rootOp) {
+  // Check if the root op is a 2D matmul-like operation.
+  bool is2DMatmulOp = is2DMatmulLikeOp(cast<linalg::LinalgOp>(rootOp));
+
   // First level tiling using scf.forall
   {
     AMDAIETileAndFuseOptions tileFuseOptions;
@@ -324,9 +328,11 @@ void addPackPeel4LevelTilingBasedPassPipeline(OpPassManager &funcPassManager,
   funcPassManager.addPass(createCanonicalizerPass());
   funcPassManager.addPass(createCSEPass());
 
-  // First level pack or pad operation depending on the number of input loops.
-  unsigned numInputLoops = cast<linalg::LinalgOp>(rootOp).getNumLoops();
-  if (numInputLoops <= 4) {
+  // First level pack or pad operation for data movement.
+  // For 2D matmul-like ops, pack operation is used to expand operands from 2D
+  // to 4D. For 4D matmul-like ops, pad operation is used to keep the original
+  // dimensions.
+  if (is2DMatmulOp) {
     // First level packing
     {
       AMDAIEPackAndTransposeOptions packOptions;
@@ -367,10 +373,11 @@ void addPackPeel4LevelTilingBasedPassPipeline(OpPassManager &funcPassManager,
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }
 
-  // Second level packing
+  // If the input is 4D matmul-like op, this is the first level of packing.
+  // Otherwise for 2D matmul-like op, it is the second level.
   {
     AMDAIEPackAndTransposeOptions packOptions;
-    packOptions.packLevel = numInputLoops <= 4 ? 1 : 0;
+    packOptions.packLevel = is2DMatmulOp ? 1 : 0;
     funcPassManager.addPass(createAMDAIEPackAndTransposePass(packOptions));
   }
 

@@ -466,6 +466,7 @@ static LogicalResult setRootConfigForPackPeel4LevelTilingPipeline(
   // --------------- Set packing config -------------------
   // ------------------------------------------------------
   MLIRContext *context = entryPointFn.getContext();
+  unsigned numLoops = linalgOp.getNumLoops();
 
   bool isBatchMatmul = isa<linalg::BatchMatmulOp>(linalgOp);
   SmallVector<int64_t> innerPermA = setInnerPermA(isMatmulTransposeA(linalgOp));
@@ -482,12 +483,10 @@ static LogicalResult setRootConfigForPackPeel4LevelTilingPipeline(
   SmallVector<PackingConfigPackingLevelAttr> packingConfigLevelsVal;
 
   // Pack level => 1.
-  // The initial number of loops from the linalg ops determines whether the
-  // first level of packing is needed. If the number of loops is larger
-  // than 4, it means the input is not a standard 2D matmul, then there is no
-  // need to pack operands from 2D to 4D.
-  unsigned numLoops = linalgOp.getNumLoops();
-  if (numLoops <= 4) {
+  // For 2D matmul-like ops, the first level is to pack operands from 2D to 4D.
+  // If the input is a 4D matmul-like op, this level of packing is not needed.
+  bool is2DMatmul = is2DMatmulLikeOp(linalgOp);
+  if (is2DMatmul) {
     SmallVector<int64_t> packedSizesL0(numLoops, 0);
     packedSizesL0[mDims.back()] = packPeelTiling.m0Pack;
     packedSizesL0[nDims.back()] = packPeelTiling.n0Pack;
@@ -514,12 +513,13 @@ static LogicalResult setRootConfigForPackPeel4LevelTilingPipeline(
   }
 
   // Pack level => 2.
-  // If the first level pack exists, the number of packed dimensions should
-  // increase by 3, otherwise keep the original input number.
-  unsigned numPackedDims = numLoops <= 4 ? numLoops + 3 : numLoops;
-  unsigned mIdx = numLoops <= 4 ? mDims.back() + 3 : mDims.back();
-  unsigned nIdx = numLoops <= 4 ? nDims.back() + 3 : nDims.back();
-  unsigned kIdx = numLoops <= 4 ? kDims.back() + 3 : kDims.back();
+  // If the first level pack exists (for 2D matmul-like ops), the number of
+  // packed dimensions should increase by 3, otherwise keep the original
+  // number of loops.
+  unsigned numPackedDims = is2DMatmul ? numLoops + 3 : numLoops;
+  unsigned mIdx = is2DMatmul ? mDims.back() + 3 : mDims.back();
+  unsigned nIdx = is2DMatmul ? nDims.back() + 3 : nDims.back();
+  unsigned kIdx = is2DMatmul ? kDims.back() + 3 : kDims.back();
   SmallVector<int64_t> packedSizesL1(numPackedDims, 0);
   packedSizesL1[mIdx] = packPeelTiling.m1Pack;
   packedSizesL1[nIdx] = packPeelTiling.n1Pack;
@@ -572,7 +572,9 @@ static LogicalResult setRootConfigForPackPeel4LevelTilingPipeline(
     assert(!batchDims.empty() && "expected batch dims not empty");
     tileSizeLevel0[batchDims[0]] = 1;
   }
-  if (numLoops > 4) {
+  // For 4D matmul-like ops, only tile the outer dims.
+  // outer_tile_size = total_tile_size / inner_dim_size
+  if (is4DMatmulLikeOp(linalgOp)) {
     m0Tile /= maybeInputDimsAndSizes.value().mSizes.back();
     n0Tile /= maybeInputDimsAndSizes.value().nSizes.back();
   }
@@ -944,6 +946,9 @@ static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
       !isMatmulTransposeB(genericOp))
     return genericOp.emitOpError(
         "Current pipelines are only set for matmul-like ops.");
+
+  assert((is2DMatmulLikeOp(genericOp) || is4DMatmulLikeOp(genericOp)) &&
+         "expected 2D or 4D matmul-like ops");
 
   if (passPipeline == TilePassPipeline::PackPeelPipeline) {
     return setRootConfigForPackPeelPipeline(entryPointFn, genericOp,
