@@ -2197,6 +2197,21 @@ class Tests:
                 "run_on_target": "npu4",
                 "skip_numerics": True,
             },
+            {
+                "M": 512,
+                "N": 4096,
+                "K": 512,
+                "in_dtype": "i8",
+                "out_dtype": "i32",
+                "use_ukernel": True,
+                "peano_opt_level": 3,
+                "outline": "all",
+                "transpose_a": False,
+                "transpose_b": False,
+                "tile_pipeline": "pack-peel-4-level-tiling",
+                "run_on_target": "npu4",
+                "use_chess_for_ukernel": False,
+            },
         ]
 
         # Some bf16 Performance tests:
@@ -2215,6 +2230,11 @@ class Tests:
             )
             in_dtype = test["in_dtype"] if "in_dtype" in test else "bf16"
             out_dtype = test["out_dtype"] if "out_dtype" in test else "f32"
+            use_chess_for_ukernel = (
+                test["use_chess_for_ukernel"]
+                if "use_chess_for_ukernel" in test
+                else True
+            )
 
             outlining_string = "--iree-amdaie-enable-function-outlining=" + outline
 
@@ -2275,6 +2295,7 @@ class Tests:
                             aie_compilation_flags=aie_compilation_flags,
                             name_suffix=name_suffix,
                             n_repeats=2,
+                            use_chess_for_ukernel=use_chess_for_ukernel,
                         ),
                         additional_labels=["PerformanceCorrectness"],
                     )
@@ -2295,6 +2316,7 @@ class Tests:
                         name_suffix=name_suffix,
                         run_benchmark=True,
                         n_repeats=5,
+                        use_chess_for_ukernel=use_chess_for_ukernel,
                     ),
                     additional_labels=["Performance"],
                     n_kernel_runs=100,
