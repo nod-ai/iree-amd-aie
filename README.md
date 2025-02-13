@@ -37,9 +37,11 @@ git \
 The above avoids cloning entire repo histories for submodules, and skips a few, currently, unused,
 submodules that are nested in IREE.
 
-### Dependencies
+## Dependencies
 
-#### For Linux
+### For Linux
+
+#### Driver
 
 Build and install `xdna-driver`, use commit `929e8ab`:
 
@@ -52,6 +54,42 @@ git submodule update --init --recursive
 ```
 
 Follow the instructions to build and install the driver module: [xdna-driver](https://github.com/amd/xdna-driver/tree/929e8ab459cab5915631849b9f1ef9a4982d1c11).
+
+#### LLVM-AIE (Peano)
+
+You will need at least Peano/llvm-aie to be installed in your system to run e2e examples as it's needed for compiling AIE core code. For best performance (but slower compilation times), you will also need Chess.
+
+To install llvm-aie in the current working directory:
+
+```
+bash <path-to-iree-amd-aie>/build_tools/download_peano.sh
+```
+
+Now, you should see a directory named `llvm-aie` in your current working directory.
+
+After building IREE, you can then run e2e tests by passing `--peano_dir=<path-to-llvm-aie>` to tests, see [Testing](#testing).
+
+#### Chess
+
+For best performance and to run all tests, you can install Chess in the following way:
+
+1. Install Vitis™ AIE Essentials from [Ryzen AI Software 1.3 Early Accesss](https://account.amd.com/en/member/ryzenai-sw-ea.html#tabs-a5e122f973-item-4757898120-tab).
+   ``` bash
+      tar -xzvf ryzen_ai_1.3.1-ea-lnx64-20250116.tgz
+      cd ryzen_ai_1.3.1-ea-lnx64-20250116
+      mkdir vitis_aie_essentials
+      mv vitis_aie_essentials*.whl vitis_aie_essentials
+      cd vitis_aie_essentials
+      unzip vitis_aie_essentials*.whl
+   ```
+2. Set up an AI Engine license.
+    1. Get a local license for AI Engine tools from [https://www.xilinx.com/getlicense](https://www.xilinx.com/getlicense).
+    2. Copy your license file (Xilinx.lic) to your preferred location, e.g. `/opt/Xilinx.lic`.
+
+After building IREE, you can then run e2e tests by passing `--vitis_dir=<path-to-vitis-aie-essentials>` to tests, see [Testing](#testing). Note however that you need to export the path to the AI Engine license for successful compilation:
+```
+export XILINXD_LICENSE_FILE=<path-to-Xilinx.lic>
+```
 
 ## Building (along with IREE)
 
