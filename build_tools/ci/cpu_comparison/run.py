@@ -2251,6 +2251,24 @@ class Tests:
                 "tile_pipeline": "pack-peel-4-level-tiling",
                 "run_on_target": "npu4",
             },
+            # matmul4d test where the input M/N/K are outer dim values.
+            # The total input values correspond to a standard matmul
+            # from the above test are M:512, N:4096, K:512.
+            {
+                "M": 16,
+                "N": 128,
+                "K": 8,
+                "in_dtype": "i8",
+                "out_dtype": "i32",
+                "use_ukernel": True,
+                "peano_opt_level": 3,
+                "outline": "all",
+                "transpose_a": False,
+                "transpose_b": False,
+                "matmul4d": True,
+                "tile_pipeline": "pack-peel-4-level-tiling",
+                "run_on_target": "npu4",
+            },
             {
                 "M": 512,
                 "N": 4096,
