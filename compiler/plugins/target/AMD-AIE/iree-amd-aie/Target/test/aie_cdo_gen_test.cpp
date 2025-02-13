@@ -54,7 +54,7 @@ int main(int argc, char **argv) {
                                "iree-aie-cdo-emitter"};
   llvm::setCurrentDebugTypes(debugTypes, 3);
 #endif
-  int stackSize = -1;
+  int stackSize = 0;
   auto status = AIETranslateToCDODirect(deviceOp, workDir, stackSize, false,
                                         false, false);
   std::vector<std::string> diagnostics;

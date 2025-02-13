@@ -3,8 +3,8 @@
 
 // CHECK-LABEL:   aie.device(xcve2302) {
 // CHECK:           %[[TILE_2_1:.*]] = aie.tile(2, 1)
-// CHECK:           %[[IN:.*]] = aie.buffer(%[[TILE_2_1]]) {address = 8192 : i32, sym_name = "in"} : memref<16xi32>
-// CHECK:           %[[OUT:.*]] = aie.buffer(%[[TILE_2_1]]) {address = 1824 : i32, sym_name = "out"} : memref<16xi32>
+// CHECK:           %[[IN:.*]] = aie.buffer(%[[TILE_2_1]]) {stack_relative_address = 8192 : i32, sym_name = "in"} : memref<16xi32>
+// CHECK:           %[[OUT:.*]] = aie.buffer(%[[TILE_2_1]]) {stack_relative_address = 1824 : i32, sym_name = "out"} : memref<16xi32>
 // CHECK:           %[[LOCK_2_1:.*]] = aie.lock(%[[TILE_2_1]], 0) {init = 1 : i8}
 // CHECK:           %[[LOCK_2_1_0:.*]] = aie.lock(%[[TILE_2_1]], 1)
 // CHECK:           %[[LOCK_2_1_1:.*]] = aie.lock(%[[TILE_2_1]], 2) {init = 1 : i8}
@@ -45,8 +45,8 @@
 module @aie_module  {
   aie.device(xcve2302) {
     %t01 = aie.tile(2, 1)
-    %buf01_0 = aie.buffer(%t01) { address = 8192 : i32, sym_name = "in" } : memref<16xi32>
-    %buf01_1 = aie.buffer(%t01) { address = 1824 : i32, sym_name = "out" } : memref<16xi32>
+    %buf01_0 = aie.buffer(%t01) { stack_relative_address = 8192 : i32, sym_name = "in" } : memref<16xi32>
+    %buf01_1 = aie.buffer(%t01) { stack_relative_address = 1824 : i32, sym_name = "out" } : memref<16xi32>
     %l01_0 = aie.lock(%t01, 0) { init = 1 : i8 }
     %l01_1 = aie.lock(%t01, 1)
     %l01_2 = aie.lock(%t01, 2) { init = 1 : i8 }

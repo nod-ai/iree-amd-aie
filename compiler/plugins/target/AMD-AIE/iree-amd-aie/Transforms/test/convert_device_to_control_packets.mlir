@@ -39,7 +39,7 @@
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   aie.device(npu1_4col) {
     %02 = aie.tile(0, 2)
-    %buf = aie.buffer(%02) {address = 0 : i32, sym_name = "buf"} : memref<256xi32>
+    %buf = aie.buffer(%02) {stack_relative_address = 0 : i32, sym_name = "buf"} : memref<256xi32>
     %4 = aie.core(%02)  {
       %0 = arith.constant 0 : i32
       %1 = arith.constant 0 : index
