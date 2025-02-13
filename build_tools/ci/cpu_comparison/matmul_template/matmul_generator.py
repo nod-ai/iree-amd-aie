@@ -23,7 +23,7 @@ def generate_matmul_test(output_fn, input_fn, m, n, k, lhs_rhs_type, acc_type, b
     replace["TYPE1"] = lhs_rhs_type
     replace["TYPE2"] = acc_type
     # Only used for Matmul+Trunc via scaling.
-    replace["TYPE3"] = get_higher_order_element_type(acc_type)
+    replace["TYPE_MUL_RESULT"] = get_higher_order_element_type(acc_type)
 
     replace["B"] = b  # This is only used for batch matmul
     acc_is_int = acc_type[0] == "i"

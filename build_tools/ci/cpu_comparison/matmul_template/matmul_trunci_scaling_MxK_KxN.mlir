@@ -9,8 +9,8 @@
 func.func @matmul_trunci(%arg0: tensor<${M}x${K}x${TYPE1}>, %arg1: tensor<${K}x${N}x${TYPE1}>) -> tensor<${M}x${N}x${TYPE1}>
 {
   %cst = arith.constant ${ZERO} : ${TYPE2}
-  %cst_mul = arith.constant 10 : ${TYPE3}
-  %cst_div = arith.constant 7 : ${TYPE3}
+  %cst_mul = arith.constant 10 : ${TYPE_MUL_RESULT}
+  %cst_div = arith.constant 7 : ${TYPE_MUL_RESULT}
   %0 = tensor.empty() : tensor<${M}x${N}x${TYPE2}>
   %i8out = tensor.empty() : tensor<${M}x${N}x${TYPE1}>
   %1 = linalg.fill ins(%cst : ${TYPE2}) outs(%0 : tensor<${M}x${N}x${TYPE2}>) -> tensor<${M}x${N}x${TYPE2}>
@@ -23,10 +23,10 @@ func.func @matmul_trunci(%arg0: tensor<${M}x${K}x${TYPE1}>, %arg1: tensor<${K}x$
                        iterator_types = ["parallel", "parallel"]
                       } ins(%2 : tensor<${M}x${N}x${TYPE2}>) outs(%i8out : tensor<${M}x${N}x${TYPE1}>) {
     ^bb0(%in: ${TYPE2}, %out: ${TYPE1}):
-      %4 = arith.extsi %in : ${TYPE2} to ${TYPE3}
-      %5 = arith.muli %4, %cst_mul : ${TYPE3}
-      %6 = arith.shrsi %5, %cst_div : ${TYPE3}
-      %7 = arith.trunci %6 : ${TYPE3} to ${TYPE1}
+      %4 = arith.extsi %in : ${TYPE2} to ${TYPE_MUL_RESULT}
+      %5 = arith.muli %4, %cst_mul : ${TYPE_MUL_RESULT}
+      %6 = arith.shrsi %5, %cst_div : ${TYPE_MUL_RESULT}
+      %7 = arith.trunci %6 : ${TYPE_MUL_RESULT} to ${TYPE1}
       linalg.yield %7 : ${TYPE1}
     } -> tensor<${M}x${N}x${TYPE1}>
   return %3: tensor<${M}x${N}x${TYPE1}>
