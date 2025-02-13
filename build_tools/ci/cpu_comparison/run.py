@@ -1605,7 +1605,7 @@ class Tests:
                 "i32",
                 2 * np.ones([256, 128], dtype=np.int8),
                 3 * np.ones([128, 256], dtype=np.int8),
-                56 * np.ones([256, 256], dtype=np.int8),
+                60 * np.ones([256, 256], dtype=np.int8),
                 test_params=TestParams(
                     name_suffix="scaling",
                     tile_pipeline="pack-peel-4-level-tiling",
@@ -1629,7 +1629,7 @@ class Tests:
                 "i32",
                 2 * np.ones([256, 128], dtype=np.int8),
                 3 * np.ones([128, 256], dtype=np.int8),
-                56 * np.ones([256, 256], dtype=np.int8),
+                60 * np.ones([256, 256], dtype=np.int8),
                 test_params=TestParams(
                     tile_pipeline="pack-peel-4-level-tiling",
                     run_on_target=["npu1_4col"],
@@ -1651,7 +1651,7 @@ class Tests:
                 "i32",
                 2 * np.ones([256, 128], dtype=np.int8),
                 3 * np.ones([128, 256], dtype=np.int8),
-                56 * np.ones([256, 256], dtype=np.int8),
+                60 * np.ones([256, 256], dtype=np.int8),
                 test_params=TestParams(
                     tile_pipeline="pack-peel-4-level-tiling",
                     run_on_target=["npu4"],
