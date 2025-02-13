@@ -116,6 +116,7 @@ class BaseTest(ABC):
         self.tile_pipeline = tile_pipeline
         self.lower_to_aie_pipeline = lower_to_aie_pipeline
         self.use_chess = use_chess
+        self.use_chess_for_ukernel = use_chess_for_ukernel
         self.use_ukernel = use_ukernel
         self.run_benchmark = run_benchmark
         self.n_repeats = n_repeats
@@ -171,13 +172,17 @@ class BaseTest(ABC):
         # does not).
         if self.use_chess and not config.vitis_dir:
             return False
-        if self.use_ukernel and not config.vitis_dir:
+        if self.use_chess_for_ukernel and not config.vitis_dir:
             return False
 
         # If use_chess=0, and config has not provided a valid
         # path to peano, then bail: a path to peano must be provided.
         if not self.use_chess and not config.peano_dir:
             raise RuntimeError("Peano path not provided, and use_chess=False")
+        if not self.use_chess_for_ukernel and not config.peano_dir:
+            raise RuntimeError(
+                "Peano path not provided, and use_chess_for_ukernel=False"
+            )
 
         # Call into test-specific code to run the test.
         return self._execute(config)
@@ -300,9 +305,6 @@ class BaseMatmul(BaseTest):
     def vs_cpu(self, config):
         filename = self.get_filename(config)
 
-        if self.use_ukernel and not config.vitis_dir:
-            return False
-
         aie_vs_llvm_cpu(
             config=config,
             aie_compilation_flags=self.aie_compilation_flags,
@@ -317,9 +319,6 @@ class BaseMatmul(BaseTest):
 
     def benchmark(self, config):
         filename = self.get_filename(config)
-
-        if self.use_ukernel and not config.vitis_dir:
-            return False
 
         benchmark_aie(
             config=config,
