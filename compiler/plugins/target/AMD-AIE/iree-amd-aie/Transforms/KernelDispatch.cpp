@@ -468,47 +468,62 @@ static LogicalResult setRootConfigForPackPeel4LevelTilingPipeline(
   MLIRContext *context = entryPointFn.getContext();
   unsigned numLoops = linalgOp.getNumLoops();
 
-  // Pack level => 1.
-  SmallVector<int64_t> packedSizesL0(numLoops, 0);
-  packedSizesL0[mDims.back()] = packPeelTiling.m0Pack;
-  packedSizesL0[nDims.back()] = packPeelTiling.n0Pack;
-  packedSizesL0[kDims.back()] = packPeelTiling.k0Pack;
-
-  // For matmul, transpose B matrix from [K N n k] to [N K k n]
-  // For matmul_transpose_b, we don't have to transpose the B matrix,
-  // since it is already [N K n k]
-  SmallVector<int64_t> transposePackIndices = {0, 1, 2};
-  // There is no corresponding unpack for the specified pack operation
-  // 0 is used when unpack is empty
-  SmallVector<bool> unpackEmpty = {false, false, true};
+  bool isBatchMatmul = isa<linalg::BatchMatmulOp>(linalgOp);
   SmallVector<int64_t> innerPermA = setInnerPermA(isMatmulTransposeA(linalgOp));
   SmallVector<int64_t> innerPermB = setInnerPermB(isMatmulTransposeB(linalgOp));
-  SmallVector<SmallVector<int64_t>> innerPerm = {
-      innerPermA, innerPermB, {0, 1}};
-  bool isBatchMatmul = isa<linalg::BatchMatmulOp>(linalgOp);
   SmallVector<int64_t> outerPermA =
       setOuterPermA(isMatmulTransposeA(linalgOp), isBatchMatmul);
   SmallVector<int64_t> outerPermB =
       setOuterPermB(isMatmulTransposeB(linalgOp), isBatchMatmul);
-  SmallVector<SmallVector<int64_t>> outerPerm = {outerPermA, outerPermB};
-  // Add outer permutation for unpack. NOTE: This currently fails for some
-  // tests in the AIR pipeline.
-  if (isa<linalg::BatchMatmulOp>(linalgOp)) {
-    outerPerm.push_back({0, 2, 1});
-  } else {
-    outerPerm.push_back({1, 0});
+
+  SmallVector<int64_t> transposePackIndices;
+  SmallVector<bool> unpackEmpty;
+  SmallVector<SmallVector<int64_t>> innerPerm;
+  SmallVector<SmallVector<int64_t>> outerPerm;
+  SmallVector<PackingConfigPackingLevelAttr> packingConfigLevelsVal;
+
+  // Pack level => 1.
+  // For 2D matmul-like ops, the first level is to pack operands from 2D to 4D.
+  // If the input is a 4D matmul-like op, this level of packing is not needed.
+  bool is2DMatmulLike = is2DMatmulLikeOp(linalgOp) || isBatchMatmul;
+  if (is2DMatmulLike) {
+    SmallVector<int64_t> packedSizesL0(numLoops, 0);
+    packedSizesL0[mDims.back()] = packPeelTiling.m0Pack;
+    packedSizesL0[nDims.back()] = packPeelTiling.n0Pack;
+    packedSizesL0[kDims.back()] = packPeelTiling.k0Pack;
+
+    transposePackIndices = {0, 1, 2};
+    // There is no corresponding unpack for the specified pack operation
+    // 0 is used when unpack is empty
+    unpackEmpty = {false, false, true};
+    innerPerm = {innerPermA, innerPermB, {0, 1}};
+    outerPerm = {outerPermA, outerPermB};
+    // Add outer permutation for unpack. NOTE: This currently fails for some
+    // tests in the AIR pipeline.
+    if (isBatchMatmul) {
+      outerPerm.push_back({0, 2, 1});
+    } else {
+      outerPerm.push_back({1, 0});
+    }
+
+    auto packingConfigLevel0Attr = getPackingConfigPackingLevelAttr(
+        context, packedSizesL0, transposePackIndices, unpackEmpty, innerPerm,
+        outerPerm);
+    packingConfigLevelsVal.push_back(packingConfigLevel0Attr);
   }
 
-  auto packingConfigLevel0Attr = getPackingConfigPackingLevelAttr(
-      context, packedSizesL0, transposePackIndices, unpackEmpty, innerPerm,
-      outerPerm);
-
   // Pack level => 2.
-  // The number of loops have increased by 3 due to the first level pack.
-  SmallVector<int64_t> packedSizesL1(numLoops + 3, 0);
-  packedSizesL1[mDims.back() + 3] = packPeelTiling.m1Pack;
-  packedSizesL1[nDims.back() + 3] = packPeelTiling.n1Pack;
-  packedSizesL1[kDims.back() + 3] = packPeelTiling.k1Pack;
+  // If the first level pack exists (for 2D matmul-like ops), the number of
+  // packed dimensions should increase by 3, otherwise keep the original
+  // number of loops.
+  unsigned numPackedDims = is2DMatmulLike ? numLoops + 3 : numLoops;
+  unsigned mIdx = is2DMatmulLike ? mDims.back() + 3 : mDims.back();
+  unsigned nIdx = is2DMatmulLike ? nDims.back() + 3 : nDims.back();
+  unsigned kIdx = is2DMatmulLike ? kDims.back() + 3 : kDims.back();
+  SmallVector<int64_t> packedSizesL1(numPackedDims, 0);
+  packedSizesL1[mIdx] = packPeelTiling.m1Pack;
+  packedSizesL1[nIdx] = packPeelTiling.n1Pack;
+  packedSizesL1[kIdx] = packPeelTiling.k1Pack;
 
   // Transpose A matrix from [M K m k m0 k0] to [M K k m m0 k0]
   // Transpose C matrix from [M N m n m0 n0] to [M N n m m0 n0]
@@ -519,7 +534,7 @@ static LogicalResult setRootConfigForPackPeel4LevelTilingPipeline(
   // Only the third pack operation has a corresponding unpack operation
   unpackEmpty = {false, false, true};
   innerPerm = {innerPermA, innerPermB, {0, 1}};
-  if (isa<linalg::BatchMatmulOp>(linalgOp)) {
+  if (isBatchMatmul) {
     outerPerm = {{0, 1, 2, 4, 3}, {0, 1, 2, 4, 3}, {0, 1, 2, 4, 3}};
   } else {
     outerPerm = {{0, 1, 3, 2}, {0, 1, 3, 2}, {0, 1, 3, 2}};
@@ -527,9 +542,8 @@ static LogicalResult setRootConfigForPackPeel4LevelTilingPipeline(
   auto packingConfigLevel1Attr = getPackingConfigPackingLevelAttr(
       context, packedSizesL1, transposePackIndices, unpackEmpty, innerPerm,
       outerPerm);
+  packingConfigLevelsVal.push_back(packingConfigLevel1Attr);
 
-  SmallVector<PackingConfigPackingLevelAttr> packingConfigLevelsVal = {
-      packingConfigLevel0Attr, packingConfigLevel1Attr};
   auto packingConfigLevels =
       PackingConfigPackingLevelsAttr::get(context, packingConfigLevelsVal);
   auto config = PackingConfigAttr::get(context, packingConfigLevels);
@@ -550,14 +564,22 @@ static LogicalResult setRootConfigForPackPeel4LevelTilingPipeline(
   bool fitsInL2 = (l2SizeA + l2SizeB + l2SizeInit) <
                   (deviceModel.getMemTileSizeInBytes() * numCols);
   int64_t scaleL0 = !isBatchMatmul && fitsInL2 ? 2 : 1;
+  int64_t m0Tile = packPeelTiling.M0 * scaleL0;
+  int64_t n0Tile = packPeelTiling.N0 * scaleL0;
 
   SmallVector<int64_t> tileSizeLevel0(numLoops, 0);
-  if (isa<linalg::BatchMatmulOp>(linalgOp)) {
+  if (isBatchMatmul) {
     assert(!batchDims.empty() && "expected batch dims not empty");
     tileSizeLevel0[batchDims[0]] = 1;
   }
-  tileSizeLevel0[mDims[0]] = packPeelTiling.M0 * scaleL0;
-  tileSizeLevel0[nDims[0]] = packPeelTiling.N0 * scaleL0;
+  // For 4D matmul-like ops, only tile the outer dims.
+  // outer_tile_size = total_tile_size / inner_dim_size
+  if (is4DMatmulLikeOp(linalgOp)) {
+    m0Tile /= maybeInputDimsAndSizes.value().mSizes.back();
+    n0Tile /= maybeInputDimsAndSizes.value().nSizes.back();
+  }
+  tileSizeLevel0[mDims[0]] = m0Tile;
+  tileSizeLevel0[nDims[0]] = n0Tile;
 
   SmallVector<int64_t> tileSizeLevel1(numLoops, 0);
   tileSizeLevel1[mDims[0]] = numRows;

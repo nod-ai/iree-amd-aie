@@ -148,14 +148,11 @@ static bool bodyMatcherForMatmulLikeOps(Value yieldVal, Block *body) {
 }
 
 /// Utility to check if the input generic op is a 2D matmul-like op.
-static bool is2DMatmulLikeOp(linalg::LinalgOp linalgOp) {
+bool is2DMatmulLikeOp(linalg::LinalgOp linalgOp) {
   // Check iterator types.
-  SmallVector<utils::IteratorType> matmulIteratorTypes = {
-      utils::IteratorType::parallel, utils::IteratorType::parallel,
-      utils::IteratorType::reduction};
-  SmallVector<utils::IteratorType> opIteratorTypes =
-      linalgOp.getIteratorTypesArray();
-  if (matmulIteratorTypes != opIteratorTypes) return false;
+  unsigned numParallelLoops = linalgOp.getNumParallelLoops();
+  unsigned numReductionLoops = linalgOp.getNumReductionLoops();
+  if (numParallelLoops != 2 || numReductionLoops != 1) return false;
 
   // Check the number of inputs and results from indexing maps.
   ArrayAttr indexingMaps = linalgOp.getIndexingMaps();
@@ -174,15 +171,11 @@ static bool is2DMatmulLikeOp(linalg::LinalgOp linalgOp) {
 }
 
 /// Utility to check if the input generic op is a 4D matmul-like op.
-static bool is4DMatmulLikeOp(linalg::LinalgOp linalgOp) {
+bool is4DMatmulLikeOp(linalg::LinalgOp linalgOp) {
   // Check iterator types.
-  SmallVector<utils::IteratorType> matmulIteratorTypes = {
-      utils::IteratorType::parallel,  utils::IteratorType::parallel,
-      utils::IteratorType::reduction, utils::IteratorType::parallel,
-      utils::IteratorType::parallel,  utils::IteratorType::reduction};
-  SmallVector<utils::IteratorType> opIteratorTypes =
-      linalgOp.getIteratorTypesArray();
-  if (matmulIteratorTypes != opIteratorTypes) return false;
+  unsigned numParallelLoops = linalgOp.getNumParallelLoops();
+  unsigned numReductionLoops = linalgOp.getNumReductionLoops();
+  if (numParallelLoops != 4 || numReductionLoops != 2) return false;
 
   // Check indexing maps.
   ArrayAttr indexingMaps = linalgOp.getIndexingMaps();
@@ -201,17 +194,11 @@ static bool is4DMatmulLikeOp(linalg::LinalgOp linalgOp) {
 }
 
 /// Utility to check if the input generic op is a 6D matmul-like op.
-static bool is6DMatmulLikeOp(linalg::LinalgOp linalgOp) {
+bool is6DMatmulLikeOp(linalg::LinalgOp linalgOp) {
   // Check iterator types.
-  SmallVector<utils::IteratorType> matmulIteratorTypes = {
-      utils::IteratorType::parallel,  utils::IteratorType::parallel,
-      utils::IteratorType::reduction, utils::IteratorType::parallel,
-      utils::IteratorType::parallel,  utils::IteratorType::reduction,
-      utils::IteratorType::parallel,  utils::IteratorType::parallel,
-      utils::IteratorType::reduction};
-  SmallVector<utils::IteratorType> opIteratorTypes =
-      linalgOp.getIteratorTypesArray();
-  if (matmulIteratorTypes != opIteratorTypes) return false;
+  unsigned numParallelLoops = linalgOp.getNumParallelLoops();
+  unsigned numReductionLoops = linalgOp.getNumReductionLoops();
+  if (numParallelLoops != 6 || numReductionLoops != 3) return false;
 
   // Check indexing maps.
   ArrayAttr indexingMaps = linalgOp.getIndexingMaps();
@@ -340,8 +327,9 @@ bool isMatmulInDefChain(Value operand) {
 
 /// Utility to identify if `linalgOp` is an elementwise operation with a
 /// matmul-like op upstream in its computation tree.
-bool isMatmulProducerOfElementwise(linalg::LinalgOp linalgOp) {
-  if (!linalg::isElementwise(linalgOp) || isa<linalg::FillOp>(linalgOp)) {
+bool isElementwiseWithMatmulProducer(linalg::LinalgOp linalgOp) {
+  if (!linalg::isElementwise(linalgOp) ||
+      isa<linalg::FillOp, linalg::CopyOp>(linalgOp)) {
     return false;
   }
   // Check if any of the defining op is a matmul-like op.

@@ -1,6 +1,4 @@
-import sys
 import re
-import os
 
 
 def get_higher_order_element_type(element_type):
@@ -29,6 +27,8 @@ def generate_matmul_test(output_fn, input_fn, m, n, k, lhs_rhs_type, acc_type, b
     acc_is_int = acc_type[0] == "i"
     replace["ZERO"] = 0 if acc_is_int else 0.0
     replace["ADD"] = "arith.addi" if acc_is_int else "arith.addf"
+    replace["MUL"] = "arith.muli" if acc_is_int else "arith.mulf"
+    replace["EXT"] = "arith.extsi" if acc_is_int else "arith.extf"
 
     key_map = map(lambda s: "${" + s + "}", replace.keys())
     key_map_escaped = map(re.escape, key_map)

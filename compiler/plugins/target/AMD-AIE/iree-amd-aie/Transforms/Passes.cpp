@@ -21,6 +21,7 @@
 #include "air/Transform/AffineLoopOptPass.h"
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
 #include "iree-amd-aie/Transforms/Passes.h"
+#include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 #include "iree-dialects/Dialect/LinalgTransform/Passes.h"
 #include "iree/compiler/Codegen/Common/Passes.h"
 #include "iree/compiler/Utils/ToolUtils.h"
@@ -309,9 +310,13 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
 }
 
-void addPackPeel4LevelTilingBasedPassPipeline(
-    OpPassManager &funcPassManager, const std::string &pathToUkernels,
-    TilePassPipeline useTilePipeline) {
+void addPackPeel4LevelTilingBasedPassPipeline(OpPassManager &funcPassManager,
+                                              const std::string &pathToUkernels,
+                                              TilePassPipeline useTilePipeline,
+                                              Operation *rootOp) {
+  // Check if the root op is a 4D matmul-like operation.
+  bool is4DMatmulOp = is4DMatmulLikeOp(cast<linalg::LinalgOp>(rootOp));
+
   // First level tiling using scf.forall
   {
     AMDAIETileAndFuseOptions tileFuseOptions;
@@ -323,17 +328,31 @@ void addPackPeel4LevelTilingBasedPassPipeline(
   funcPassManager.addPass(createCanonicalizerPass());
   funcPassManager.addPass(createCSEPass());
 
-  // First level packing
-  {
-    AMDAIEPackAndTransposeOptions packOptions;
-    packOptions.packLevel = 0;
-    funcPassManager.addPass(createAMDAIEPackAndTransposePass(packOptions));
+  // First level pack or pad operation for data movement.
+  // For 2D matmul-like ops, pack operation is used to expand operands from 2D
+  // to 4D. For 4D matmul-like ops, pad operation is used to keep the original
+  // dimensions.
+  if (is4DMatmulOp) {
+    // First level pad
+    {
+      AMDAIEPadOptions padOptions;
+      padOptions.paddingLevel = 0;
+      funcPassManager.addPass(createAMDAIEPadPass(padOptions));
+    }
+    funcPassManager.addPass(createCanonicalizerPass());
+    funcPassManager.addPass(createCSEPass());
+  } else {
+    // First level packing
+    {
+      AMDAIEPackAndTransposeOptions packOptions;
+      packOptions.packLevel = 0;
+      funcPassManager.addPass(createAMDAIEPackAndTransposePass(packOptions));
+    }
+    // Propagate pack ops for the elementwise op
+    funcPassManager.addPass(createAMDAIEPropagateDataLayoutPass());
+    funcPassManager.addPass(createCanonicalizerPass());
+    funcPassManager.addPass(createCSEPass());
   }
-
-  // Propagate pack ops for the elementwise op
-  funcPassManager.addPass(createAMDAIEPropagateDataLayoutPass());
-  funcPassManager.addPass(createCanonicalizerPass());
-  funcPassManager.addPass(createCSEPass());
 
   // Promote the matmul output to shared memory
   {
@@ -354,10 +373,11 @@ void addPackPeel4LevelTilingBasedPassPipeline(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }
 
-  // Second level packing
+  // If the input is 4D matmul-like op, this is the first level of packing.
+  // Otherwise for 2D matmul-like op, it is the second level.
   {
     AMDAIEPackAndTransposeOptions packOptions;
-    packOptions.packLevel = 1;
+    packOptions.packLevel = is4DMatmulOp ? 0 : 1;
     funcPassManager.addPass(createAMDAIEPackAndTransposePass(packOptions));
   }
 

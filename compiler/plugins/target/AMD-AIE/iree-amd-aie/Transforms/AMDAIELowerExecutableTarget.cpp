@@ -57,6 +57,13 @@ class AMDAIELowerExecutableTargetPass
 };
 }  // namespace
 
+static Operation *getRootOp(FunctionOpInterface funcOp) {
+  SmallVector<Operation *> computeOps = getComputeOps(funcOp);
+  FailureOr<Operation *> rootOp = getRootOperation(computeOps);
+  assert(succeeded(rootOp) && "Pipeline requires a root operation");
+  return rootOp.value();
+}
+
 void AMDAIELowerExecutableTargetPass::runOnOperation() {
   auto funcOp = getOperation();
   auto target = IREE::HAL::ExecutableTargetAttr::lookup(funcOp);
@@ -82,7 +89,7 @@ void AMDAIELowerExecutableTargetPass::runOnOperation() {
                  TilePassPipeline::PackPeel4LevelTilingPipeline) {
         addPackPeel4LevelTilingBasedPassPipeline(
             executableLoweringPipeline, pathToUkernels,
-            TilePassPipeline::PackPeel4LevelTilingPipeline);
+            TilePassPipeline::PackPeel4LevelTilingPipeline, getRootOp(funcOp));
       } else if (useTilePipeline == TilePassPipeline::PadPackPipeline) {
         addPadPackBasedPassPipeline(executableLoweringPipeline, pathToUkernels,
                                     enableVectorizationPasses,
