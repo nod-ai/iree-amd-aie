@@ -1421,12 +1421,16 @@ LogicalResult aie2xclbin(
     return failure();
   }
 
-  auto maybeMaxStackByte = getMaxStackByte(unifiedAsm.string());
-  if (failed(maybeMaxStackByte)) {
-    llvm::errs() << "Failed to get max stack byte\n";
-    return failure();
+  int maxStackByte = 1024;
+  // the peano (not chess) case:
+  if (!useChess) {
+    auto maybeMaxStackByte = getMaxStackByte(unifiedAsm.string());
+    if (failed(maybeMaxStackByte)) {
+      llvm::errs() << "Failed to get max stack byte\n";
+      return failure();
+    }
+    maxStackByte = maybeMaxStackByte.value();
   }
-  auto maxStackByte = maybeMaxStackByte.value();
 
   // Set the stack size to the nearest multiple of 512 above maxStackByte:
   // NOTE: for 256 this doesn't work for one of the batch matmuls with ints.
