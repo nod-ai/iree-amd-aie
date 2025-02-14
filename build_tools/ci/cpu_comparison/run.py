@@ -23,6 +23,7 @@ from input_generator import (
     np_from_binfile,
 )
 
+
 def run_conv_test(config, aie_compilation_flags, filename, n_repeats):
     aie_vs_llvm_cpu(
         config,
