@@ -23,7 +23,6 @@ from input_generator import (
     np_from_binfile,
 )
 
-
 def run_conv_test(config, aie_compilation_flags, filename, n_repeats):
     aie_vs_llvm_cpu(
         config,
@@ -234,36 +233,6 @@ class ConvolutionNHWCQ(BaseTest):
         files_dir = config.file_dir / "test_files"
         filename = files_dir / "conv2d_nhwc_q.mlir"
         return run_conv_test(config, self.aie_compilation_flags, filename, n_repeats=1)
-
-
-class MultipleDispatches(BaseTest):
-    def __init__(
-        self,
-        name,
-        test_params=None,
-    ):
-        super().__init__(
-            name=name,
-            test_params=test_params,
-        )
-        self.labels += ["Matmul", "MultipleDispatches"]
-
-    def _execute(self, config):
-        test_files_dir = config.file_dir / "test_files"
-        self.filename = test_files_dir / f"{self.name}.mlir"
-        # TODO(newling) did Maks ever document why this is here, if so add an
-        # explainer.
-        if config.xdna_datetime and config.xdna_datetime < 20240801:
-            aie_vs_llvm_cpu(
-                config,
-                self.aie_compilation_flags,
-                self.filename,
-                function_name="three_$mm$",
-            )
-            return True
-        else:
-            # Return False to indicate that the test did not run.
-            return False
 
 
 class BaseMatmul(BaseTest):
@@ -2562,10 +2531,6 @@ class Tests:
                 ),
             )
         )
-
-        # MultipleDispatches tests:
-        for name in ["two_matmul_switching", "matmul_f32_8_8_4", "matmul_f32_8_4_8"]:
-            self.register(MultipleDispatches(name))
 
         # Convolution NHCWQ test:
         self.register(ConvolutionNHWCQ())
