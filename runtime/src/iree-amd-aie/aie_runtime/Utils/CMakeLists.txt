@@ -17,6 +17,7 @@ iree_cc_library(
     "LockIdGenerator.h"
   SRCS
     "ChannelBdIdGenerator.cpp"
+    "ChannelGenerator.cpp"
     "LockIdGenerator.cpp"
   DEPS
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
