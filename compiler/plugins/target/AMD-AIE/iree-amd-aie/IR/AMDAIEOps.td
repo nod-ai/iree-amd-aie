@@ -586,6 +586,21 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd", [
   let hasCanonicalizer = 1;
 }
 
+def AMDAIE_NpuDmaPlaceHolderOp : AMDAIE_Op<"npu.dma_placeholder"> {
+  let summary = "Represents a placeholder for a DMA operation.";
+  let description = [{
+    This operation acts as a placeholder user for those `amdaie.connection` operations
+    that represent control flows, to prevent them from being dead-code eliminated.
+    This operation does not have any side effects on control code size.
+  }];
+
+  let arguments = (
+    ins Index:$connection
+  );
+
+  let assemblyFormat = [{ `(` $connection `)` attr-dict }];
+}
+
 def AMDAIE_NpuHalfDmaCpyNdOp
   : AMDAIE_Op<"npu.half_dma_cpy_nd", [AttrSizedOperandSegments, OffsetSizeAndStrideOpInterface]> {
   let summary = "The NPU uController's DMA operation, operating on a single port";

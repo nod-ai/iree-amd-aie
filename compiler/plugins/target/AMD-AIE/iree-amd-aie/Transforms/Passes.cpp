@@ -860,6 +860,8 @@ void addAMDAIEObjectFifoLoweringPasses(
   passManager.addPass(createAMDAIEDmaCSEPass());
 
   passManager.addPass(createAMDAIEGenerateControlOverlayPass());
+  passManager.addPass(createCSEPass());
+  passManager.addPass(createCanonicalizerPass());
 
   passManager.addPass(createAMDAIEAssignChannelsPass());
   passManager.addPass(createCSEPass());

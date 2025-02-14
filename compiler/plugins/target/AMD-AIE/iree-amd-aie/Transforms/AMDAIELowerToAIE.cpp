@@ -565,9 +565,9 @@ LogicalResult AIEDeviceBuilder::bufferToAIE(AMDAIE::BufferOp bufferOp,
   return success();
 }
 
-/// Convert the `amdaie.connection` operation into `aie.flow` ops and DMA
-/// operations. Depending on the location of the source/target of the
-/// connection, different DMA ops are created:
+/// Convert the `amdaie.connection` operation into DMA operations. Depending on
+/// the location of the source/target of the connection, different DMA ops are
+/// created:
 /// 1. Source/target on a Shim tile: iterate through producer/consumer channels
 /// and create corresponding `aie.shim_dma_allocation` ops.
 /// 2. Source/target on MemTile: iterate through producer/consumer channels,
@@ -601,8 +601,16 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
   }
 
   std::optional<AMDAIE::FlowOp> maybeFlowOp = connectionOp.getFlowOp();
-  std::optional<uint8_t> packetId =
-      maybeFlowOp ? maybeFlowOp->getPacketId() : std::nullopt;
+  if (!maybeFlowOp) return connectionOp.emitOpError() << "has no flow op";
+
+  FailureOr<bool> isCtrlFlow = maybeFlowOp->isControlFlow();
+  if (failed(isCtrlFlow))
+    return connectionOp.emitOpError()
+           << "could not determine if flow is control";
+  // No DMA op needed for control flow.
+  if (isCtrlFlow.value()) return success();
+
+  std::optional<uint8_t> packetId = maybeFlowOp->getPacketId();
 
   FailureOr<AMDAIE::NpuCircularDmaCpyNdOp> maybeNpuDmaUserOp =
       connectionOp.getNpuCircularDmaCpyNdUser();
