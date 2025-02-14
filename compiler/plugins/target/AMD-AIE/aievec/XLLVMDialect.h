@@ -14,6 +14,7 @@
 #ifndef AIE_DIALECT_XLLVM_XLLVMDIALECT_H
 #define AIE_DIALECT_XLLVM_XLLVMDIALECT_H
 
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
