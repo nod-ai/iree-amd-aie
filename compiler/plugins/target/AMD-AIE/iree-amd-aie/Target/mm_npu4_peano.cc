@@ -6,15 +6,12 @@
 
 R"peano(
 
-template<typename T, int M, int N, int val>
+template<typename T, int M, int N, int r>
 __attribute__((noinline)) void zero_vectorized(T *__restrict pC, unsigned offsetC)
 {
-  T *__restrict pC1 = pC + offsetC;
-  for (unsigned r = 0; r < M; r += 1) {
-    for (unsigned c = 0; c < N; c += 1) {
-      unsigned o0 = N * r + c;
-      pC1[o0] = T(0);
-    }
+  v16int32 zeros = broadcast_zero_to_v16int32();
+  for (unsigned i = offsetC / r; i < offsetC / r + M * N / r; i++) {
+    pC[i] = zeros;
   }
 }
 
@@ -24,6 +21,15 @@ void matmul_vectorized_i8_i32(const int8 * __restrict pA, unsigned offsetA, cons
   const unsigned size_A = L0_M * L0_K;
   const unsigned size_B = L0_K * L0_N;
   const unsigned size_C = L0_M * L0_N;
+
+  v64int8 A0;
+  v64int8 A1;
+  v64int8 B0;
+  v64int8 B1;
+  v64acc32 acc_C00;
+  v64acc32 acc_C01;
+  v64acc32 acc_C10;
+  v64acc32 acc_C11;
 
   for (unsigned z = 0; z < rowA; z += 2) {
       v64acc32 *__restrict pC0 = (v64acc32 *)(pC + offsetC + (z)*size_C);
@@ -36,34 +42,33 @@ void matmul_vectorized_i8_i32(const int8 * __restrict pA, unsigned offsetA, cons
           const v64int8 *__restrict pB0 = (v64int8 *)(pB + offsetB + (j)*colA*size_B);
           const v64int8 *__restrict pB1 = (v64int8 *)(pB + offsetB + ((j + 1))*colA * size_B);
 
-          v64int8 A0 = *pA0;
+          A0 = *pA0;
           pA0 += rowA;
-          v64int8 A1 = *pA1;
+          A1 = *pA1;
           pA1 += rowA;
 
-          v64int8 B0 = *pB0++;
-          v64int8 B1 = *pB1++;
+          B0 = *pB0++;
+          B1 = *pB1++;
 
-          v64acc32 acc_C00 = *pC0;
-          v64acc32 acc_C01 = *(pC0 + rowA);
+          acc_C00 = *pC0;
+          acc_C01 = *(pC0 + rowA);
 
-          v64acc32 acc_C10 = *pC1;
-          v64acc32 acc_C11 = *(pC1 + rowA);
+          acc_C10 = *pC1;
+          acc_C11 = *(pC1 + rowA);
 
           acc_C00 = mac_8x8_8x8(A0, B0, acc_C00);
           acc_C01 = mac_8x8_8x8(A0, B1, acc_C01);
           acc_C10 = mac_8x8_8x8(A1, B0, acc_C10);
           acc_C11 = mac_8x8_8x8(A1, B1, acc_C11);
 
-          // chess_prepare_for_pipelining chess_loop_range(7, )
           for (unsigned i = 1; i < colA; ++i) {
-              v64int8 A0 = *pA0;
+              A0 = *pA0;
               pA0 += rowA;
-              v64int8 A1 = *pA1;
+              A1 = *pA1;
               pA1 += rowA;
 
-              v64int8 B0 = *pB0++;
-              v64int8 B1 = *pB1++;
+              B0 = *pB0++;
+              B1 = *pB1++;
 
               acc_C00 = mac_8x8_8x8(A0, B0, acc_C00);
               acc_C01 = mac_8x8_8x8(A0, B1, acc_C01);
@@ -116,7 +121,7 @@ extern "C" {
   X(int8, i8, int8, i8, int32, i32, M, N, K, 8, 8, 8)
 
 #define zero_fill_combos(X, M, N)  \
-  X(int32, i32, M, N, 16)
+  X(v16int32, i32, M, N, 16)
 
 #define matmul_vectorized_c_func(lhs_ctype_in, lhs_mlir_type_in,                                                 \
                                  rhs_ctype_in, rhs_mlir_type_in,                                                 \
