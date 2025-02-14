@@ -487,14 +487,17 @@ class MatmulTransposeA(BaseMatmul):
 
 class Matmul4d(BaseMatmul):
     """
-    A test of linalg.generic with 4d inputs and output implementing form:
-    C += matmul4d(A,B) where A:MxKxM0xK0, B:NxKxK0xN0, C:NxMxM0xN0
+    A test of linalg.generic with 4d inputs and output, following the form:
+    C += matmul4d(A,B) where A:M1xK1xM0xK0, B:N1xK1xK0xN0, C:N1xM1xM0xN0
 
-    Note that the outer dims for this operation are transposed to make sure
-    successful compilation through LogicalObjectFifo pipeline.
-    For comparison purpose, the input values of inner dims M0/N0/K0 are
-    fixed as 32/32/64 currently.
-    TODO(vivian): Generalize the class and the template.
+    -- M0/N0/K0 are inner dim sizes, currently fixed at 32/32/64 for comparison purpose.
+
+    -- M1/N1/K1 are outer dim sizes.
+       Note that the outer dims for this operation are transposed to make sure
+       successful compilation through LogicalObjectFifo pipeline.
+
+    -- The input parameters M/N/K are the total size which equals to the product
+       of outer and inner dim sizes.
     """
 
     def __init__(
@@ -504,6 +507,9 @@ class Matmul4d(BaseMatmul):
         K,
         input_type,
         acc_type,
+        M0=32,
+        N0=32,
+        K0=64,
         additional_labels=None,
         n_kernel_runs=1,
         test_params=None,
@@ -519,6 +525,9 @@ class Matmul4d(BaseMatmul):
             function_name="matmul4d",
             n_kernel_runs=n_kernel_runs,
         )
+        self.M0 = M0
+        self.N0 = N0
+        self.K0 = K0
         self.labels.append("Matmul4d")
         if additional_labels:
             self.labels += additional_labels
@@ -530,8 +539,19 @@ class Matmul4d(BaseMatmul):
 
     def _execute(self, config):
         matmul_template_dir = config.file_dir / "matmul_template"
-        template_name = matmul_template_dir / "matmul4d_MxKxM0xK0_NxKxK0xN0.mlir"
-        self.generate(config, template_name)
+        template_name = matmul_template_dir / "matmul4d_M1xK1xM0xK0_N1xK1xK0xN0.mlir"
+        generate_matmul_test(
+            self.get_filename(config),
+            template_name,
+            m=self.M,
+            n=self.N,
+            k=self.K,
+            lhs_rhs_type=self.input_type,
+            acc_type=self.acc_type,
+            m0=self.M0,
+            n0=self.N0,
+            k0=self.K0,
+        )
         if self.run_benchmark:
             return self.benchmark(config)
 
@@ -2249,13 +2269,10 @@ class Tests:
                 "transpose_b": False,
                 "tile_pipeline": "pack-peel-4-level-tiling",
             },
-            # matmul4d test where the input M/N/K are outer dim values.
-            # The total input values correspond to a standard matmul
-            # from the above test are M:512, N:4096, K:512.
             {
-                "M": 16,
-                "N": 128,
-                "K": 8,
+                "M": 512,
+                "N": 4096,
+                "K": 512,
                 "use_ukernel": True,
                 "peano_opt_level": 3,
                 "outline": "balanced",
@@ -2327,13 +2344,10 @@ class Tests:
                 "tile_pipeline": "pack-peel-4-level-tiling",
                 "run_on_target": "npu4",
             },
-            # matmul4d test where the input M/N/K are outer dim values.
-            # The total input values correspond to a standard matmul
-            # from the above test are M:512, N:4096, K:512.
             {
-                "M": 16,
-                "N": 128,
-                "K": 8,
+                "M": 512,
+                "N": 4096,
+                "K": 512,
                 "in_dtype": "i8",
                 "out_dtype": "i32",
                 "use_ukernel": True,
