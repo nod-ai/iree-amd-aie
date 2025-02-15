@@ -16,8 +16,9 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
-/// Initializes the channel generators for the shim tiles, excluding any
-/// channels that are already in use by existing circuit-mode connections.
+/// Initializes channel generators for shim tiles, ensuring that no shim DMA
+/// MM2S channels have been assigned before. This guarantees priority for the
+/// control overlay.
 LogicalResult initializeChannelsGenerators(
     AMDAIE::WorkgroupOp workgroupOp, const AMDAIEDeviceModel &deviceModel,
     const DenseSet<TileOp> &shimTileOps,
@@ -29,40 +30,19 @@ LogicalResult initializeChannelsGenerators(
     shimTileToGeneratorMap[shimTileOp.getResult()] =
         ChannelGenerator(numShimDmaChannels, numShimDmaChannels);
   });
-  // Exclude those channels that are already used by a circuit-mode connection.
-  workgroupOp->walk([&](AMDAIE::ConnectionOp connectionOp) {
-    std::optional<AMDAIE::ConnectionType> connectionType =
-        connectionOp.getConnectionType();
-    bool isPacketFlow = connectionType && connectionType.value() ==
-                                              AMDAIE::ConnectionType::Packet;
-    if (isPacketFlow) return WalkResult::advance();
-    SmallVector<AMDAIE::ChannelOp> sourceChannels;
-    for (Value source : connectionOp.getSourceChannels()) {
-      if (auto channelOp =
-              dyn_cast<AMDAIE::ChannelOp>(source.getDefiningOp())) {
-        sourceChannels.push_back(channelOp);
-      }
-    }
-    for (AMDAIE::ChannelOp channelOp : sourceChannels) {
-      AMDAIE::TileOp tileOp = channelOp.getTileOp();
-      uint8_t channel = channelOp.getValue();
-      StrmSwPortType portType = channelOp.getPortType();
-      AMDAIE::DMAChannelDir direction = channelOp.getDirection();
-      if (shimTileOps.contains(tileOp) && portType == StrmSwPortType::DMA) {
-        // Assign to exclude.
-        if (direction == AMDAIE::DMAChannelDir::MM2S) {
-          shimTileToGeneratorMap[tileOp.getResult()].assignProducerDMAChannel(
-              channel);
-        } else if (direction == AMDAIE::DMAChannelDir::S2MM) {
-          shimTileToGeneratorMap[tileOp.getResult()].assignConsumerDMAChannel(
-              channel);
-        } else {
-          assert(false && "unexpected DMA channel direction");
-        }
-      }
+  // Ensure that shim DMA MM2S channels are not already assigned.
+  WalkResult res = workgroupOp->walk([&](AMDAIE::ChannelOp channelOp) {
+    if (shimTileOps.contains(channelOp.getTileOp()) &&
+        channelOp.getPortType() == StrmSwPortType::DMA &&
+        channelOp.getDirection() == AMDAIE::DMAChannelDir::MM2S) {
+      channelOp.emitOpError()
+          << "shim DMA MM2S channel must remain unassigned before "
+             "control overlay generation.";
+      return WalkResult::interrupt();
     }
     return WalkResult::advance();
   });
+  if (res.wasInterrupted()) return failure();
   return success();
 }
 
@@ -114,11 +94,12 @@ LogicalResult generateControlOverlay(AMDAIE::WorkgroupOp workgroupOp,
     WalkResult res = workgroupOp->walk([&](AMDAIE::TileOp tileOp) {
       uint32_t col = getConstantIndexOrAssert(tileOp.getCol());
       TileOp shimTileOp = columnToShimTile[col];
-      // Get the available channel, but do not assign it. Allow it to be
-      // shared across multiple packet-mode connections as needed.
+      // Get the available DMA channel for the shim tile, and assign it for the
+      // packet flow.
       std::optional<uint8_t> maybeChannel =
           shimTileToGeneratorMap[shimTileOp.getResult()]
-              .getProducerDMAChannel();
+              .getAndAssignProducerDMAChannel(
+                  ChannelAssignmentMode::RoundRobinPacketFlow);
       if (!maybeChannel) {
         shimTileOp.emitOpError() << "no producer DMA channel available";
         return WalkResult::interrupt();
