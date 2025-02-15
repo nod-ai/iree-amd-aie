@@ -171,7 +171,7 @@ class BaseTest(ABC):
         # does not).
         if self.use_chess and not config.vitis_dir:
             return False
-        if self.use_chess_for_ukernel and not config.vitis_dir:
+        if self.use_ukernel and self.use_chess_for_ukernel and not config.vitis_dir:
             return False
 
         # If use_chess=0, and config has not provided a valid
