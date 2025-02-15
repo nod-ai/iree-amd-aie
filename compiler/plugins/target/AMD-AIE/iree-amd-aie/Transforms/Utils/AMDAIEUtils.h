@@ -67,13 +67,19 @@ bool isMatmulTransposeA(linalg::LinalgOp linalgOp);
 /// Utility to identify whether a linalg op is a matmul_transpose_b op.
 bool isMatmulTransposeB(linalg::LinalgOp linalgOp);
 
+/// Utility to identify whether a linalg op is a 2D matmul-like op.
+bool is2DMatmulLikeOp(linalg::LinalgOp linalgOp);
+
+/// Utility to identify whether a linalg op is a 4D matmul-like op.
+bool is4DMatmulLikeOp(linalg::LinalgOp linalgOp);
+
 /// Utility to identify if the input operand has matmul-like op in its
 /// def-chain.
 bool isMatmulInDefChain(Value operand);
 
 /// Utility to identify if `linalgOp` is an elementwise operation with a
 /// matmul-like op upstream in its computation tree.
-bool isMatmulProducerOfElementwise(linalg::LinalgOp linalgOp);
+bool isElementwiseWithMatmulProducer(linalg::LinalgOp linalgOp);
 
 /// Utility to convert a `uint32_t` value into a hex string.
 std::string utohexstr(uint32_t value, size_t width, bool header = true,
