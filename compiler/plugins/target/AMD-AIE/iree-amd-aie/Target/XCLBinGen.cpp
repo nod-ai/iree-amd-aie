@@ -514,6 +514,9 @@ static LogicalResult assembleFileUsingPeano(
   args.insert(args.end(), extraArgs.begin(), extraArgs.end());
   // TODO(jornt): O0 fails with peano, so we use O1 for now.
   args.emplace_back("-O1");
+  // The following flag is needed to prevent peano from inlining memset, which
+  // results in slow scalar code for the vectorized zeroization ukernel.
+  args.emplace_back("-fno-builtin-memset");
   args.emplace_back("-c");
   args.emplace_back(inputFile);
   args.emplace_back("-o");
@@ -628,14 +631,14 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
     Path cwd = std::filesystem::current_path();
     FailureOr<Path> mmObjectFilePath;
     if (ukernel && (ukernel == "mm" || ukernel == "all")) {
-      FailureOr<Path> maybeVitisDir = findVitis(vitisDir, npuVersion);
-      if (failed(maybeVitisDir)) {
-        llvm::errs() << "compiling ukernels currently requires chess (even if "
-                        "you're using peano)";
-        return failure();
-      }
       if (!std::filesystem::exists(cwd / ukernelObjectName)) {
         if (useChessForUKernel) {
+          FailureOr<Path> maybeVitisDir = findVitis(vitisDir, npuVersion);
+          if (failed(maybeVitisDir)) {
+            llvm::errs() << "compiling ukernels with chess requires Vitis to "
+                            "be found";
+            return failure();
+          }
           mmObjectFilePath = assembleStringUsingChess(
               /*inputFileStr=*/ukernelFileContent,
               /*inputFileName=*/ukernelFileName,

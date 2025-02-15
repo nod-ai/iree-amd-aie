@@ -19,7 +19,6 @@ from output_comparer import compare
 from input_generator import (
     generate_inputs,
     verify_determinism,
-    load_input,
     get_output_type,
     np_from_binfile,
 )
@@ -116,6 +115,7 @@ class BaseTest(ABC):
         self.tile_pipeline = tile_pipeline
         self.lower_to_aie_pipeline = lower_to_aie_pipeline
         self.use_chess = use_chess
+        self.use_chess_for_ukernel = use_chess_for_ukernel
         self.use_ukernel = use_ukernel
         self.run_benchmark = run_benchmark
         self.n_repeats = n_repeats
@@ -171,13 +171,17 @@ class BaseTest(ABC):
         # does not).
         if self.use_chess and not config.vitis_dir:
             return False
-        if self.use_ukernel and not config.vitis_dir:
+        if self.use_ukernel and self.use_chess_for_ukernel and not config.vitis_dir:
             return False
 
         # If use_chess=0, and config has not provided a valid
         # path to peano, then bail: a path to peano must be provided.
         if not self.use_chess and not config.peano_dir:
             raise RuntimeError("Peano path not provided, and use_chess=False")
+        if not self.use_chess_for_ukernel and not config.peano_dir:
+            raise RuntimeError(
+                "Peano path not provided, and use_chess_for_ukernel=False"
+            )
 
         # Call into test-specific code to run the test.
         return self._execute(config)
@@ -300,9 +304,6 @@ class BaseMatmul(BaseTest):
     def vs_cpu(self, config):
         filename = self.get_filename(config)
 
-        if self.use_ukernel and not config.vitis_dir:
-            return False
-
         aie_vs_llvm_cpu(
             config=config,
             aie_compilation_flags=self.aie_compilation_flags,
@@ -317,9 +318,6 @@ class BaseMatmul(BaseTest):
 
     def benchmark(self, config):
         filename = self.get_filename(config)
-
-        if self.use_ukernel and not config.vitis_dir:
-            return False
 
         benchmark_aie(
             config=config,
@@ -487,6 +485,59 @@ class MatmulTransposeA(BaseMatmul):
         return self.vs_cpu(config)
 
 
+class Matmul4d(BaseMatmul):
+    """
+    A test of linalg.generic with 4d inputs and output implementing form:
+    C += matmul4d(A,B) where A:MxKxM0xK0, B:NxKxK0xN0, C:NxMxM0xN0
+
+    Note that the outer dims for this operation are transposed to make sure
+    successful compilation through LogicalObjectFifo pipeline.
+    For comparison purpose, the input values of inner dims M0/N0/K0 are
+    fixed as 32/32/64 currently.
+    TODO(vivian): Generalize the class and the template.
+    """
+
+    def __init__(
+        self,
+        M,
+        N,
+        K,
+        input_type,
+        acc_type,
+        additional_labels=None,
+        n_kernel_runs=1,
+        test_params=None,
+    ):
+        super().__init__(
+            name=f"matmul4d_{M}_{N}_{K}_{input_type}_{acc_type}",
+            test_params=test_params,
+            M=M,
+            N=N,
+            K=K,
+            input_type=input_type,
+            acc_type=acc_type,
+            function_name="matmul4d",
+            n_kernel_runs=n_kernel_runs,
+        )
+        self.labels.append("Matmul4d")
+        if additional_labels:
+            self.labels += additional_labels
+        if self.run_benchmark:
+            self.aie_compilation_flags += [
+                "--iree-amdaie-enable-infinite-loop-around-core-block=true"
+            ]
+            self.labels.append("Matmul4dBenchmark")
+
+    def _execute(self, config):
+        matmul_template_dir = config.file_dir / "matmul_template"
+        template_name = matmul_template_dir / "matmul4d_MxKxM0xK0_NxKxK0xN0.mlir"
+        self.generate(config, template_name)
+        if self.run_benchmark:
+            return self.benchmark(config)
+
+        return self.vs_cpu(config)
+
+
 class MatmulThinBias(BaseMatmul):
     """
     A test of the form matmul(A,B) + C where A:MxK, B:KxN, C:N
@@ -503,9 +554,11 @@ class MatmulThinBias(BaseMatmul):
     ):
         super().__init__(
             name=f"matmul_thin_bias_{M}_{N}_{K}_{input_type}_{acc_type}",
-            test_params=test_params
-            if test_params is not None
-            else TestParams(lower_to_aie_pipeline="air"),
+            test_params=(
+                test_params
+                if test_params is not None
+                else TestParams(lower_to_aie_pipeline="air")
+            ),
             M=M,
             N=N,
             K=K,
@@ -544,9 +597,11 @@ class MatmulFullBias(BaseMatmul):
     ):
         super().__init__(
             name=f"matmul_full_bias_{M}_{N}_{K}_{input_type}_{acc_type}",
-            test_params=test_params
-            if test_params is not None
-            else TestParams(lower_to_aie_pipeline="air"),
+            test_params=(
+                test_params
+                if test_params is not None
+                else TestParams(lower_to_aie_pipeline="air")
+            ),
             M=M,
             N=N,
             K=K,
@@ -566,8 +621,7 @@ class MatmulFullBias(BaseMatmul):
                 "--iree-amdaie-num-cols=2",
             ]
         )
-        self.vs_cpu(config)
-        return True
+        return self.vs_cpu(config)
 
 
 class BatchMatmul(BaseMatmul):
@@ -693,6 +747,7 @@ class MatmulTrunci(BaseMatmul):
         rhs,
         expected_out,
         test_params=None,
+        use_scaling=False,
     ):
         super().__init__(
             name=f"matmul_trunci_{M}_{N}_{K}_{input_type}_{acc_type}",
@@ -713,10 +768,13 @@ class MatmulTrunci(BaseMatmul):
         self.lhs = lhs
         self.rhs = rhs
         self.expected_out = expected_out
+        self.use_scaling = use_scaling
 
     def _execute(self, config):
         matmul_template_dir = config.file_dir / "matmul_template"
         template_name = matmul_template_dir / "matmul_trunci_MxK_KxN.mlir"
+        if self.use_scaling:
+            template_name = matmul_template_dir / "matmul_trunci_scaling_MxK_KxN.mlir"
         self.generate(config, template_name)
         filename = self.get_filename(config)
         input_args = generate_inputs(
@@ -1590,6 +1648,78 @@ class Tests:
                 ),
             )
         )
+
+        # Tests Matmul + Trunci with Scaling.
+        # Phoenix : Ukernel + Peano.
+        self.register(
+            MatmulTrunci(
+                256,
+                256,
+                128,
+                "i8",
+                "i32",
+                2 * np.ones([256, 128], dtype=np.int8),
+                3 * np.ones([128, 256], dtype=np.int8),
+                60 * np.ones([256, 256], dtype=np.int8),
+                test_params=TestParams(
+                    name_suffix="scaling",
+                    tile_pipeline="pack-peel-4-level-tiling",
+                    run_on_target=["npu1_4col"],
+                    aie_compilation_flags=[
+                        "--iree-amdaie-num-rows=4",
+                        "--iree-amdaie-num-cols=4",
+                    ],
+                    use_ukernel=True,
+                ),
+                use_scaling=True,
+            )
+        )
+        # Phoenix : Vectorization + Peano.
+        self.register(
+            MatmulTrunci(
+                256,
+                256,
+                128,
+                "i8",
+                "i32",
+                2 * np.ones([256, 128], dtype=np.int8),
+                3 * np.ones([128, 256], dtype=np.int8),
+                60 * np.ones([256, 256], dtype=np.int8),
+                test_params=TestParams(
+                    tile_pipeline="pack-peel-4-level-tiling",
+                    run_on_target=["npu1_4col"],
+                    aie_compilation_flags=[
+                        "--iree-amdaie-num-rows=4",
+                        "--iree-amdaie-num-cols=4",
+                    ],
+                ),
+                use_scaling=True,
+            )
+        )
+        # Strix : Ukernel + Chess.
+        self.register(
+            MatmulTrunci(
+                256,
+                256,
+                128,
+                "i8",
+                "i32",
+                2 * np.ones([256, 128], dtype=np.int8),
+                3 * np.ones([128, 256], dtype=np.int8),
+                60 * np.ones([256, 256], dtype=np.int8),
+                test_params=TestParams(
+                    tile_pipeline="pack-peel-4-level-tiling",
+                    run_on_target=["npu4"],
+                    aie_compilation_flags=[
+                        "--iree-amdaie-num-rows=4",
+                        "--iree-amdaie-num-cols=8",
+                    ],
+                    use_chess=True,
+                    use_ukernel=True,
+                ),
+                use_scaling=True,
+            )
+        )
         # Matmul with truncf test(s):
         for tile_pipeline in ["pack-peel", "pack-peel-4-level-tiling"]:
             self.register(
@@ -2119,6 +2249,21 @@ class Tests:
                 "transpose_b": False,
                 "tile_pipeline": "pack-peel-4-level-tiling",
             },
+            # matmul4d test where the input M/N/K are outer dim values.
+            # The total input values correspond to a standard matmul
+            # from the above test are M:512, N:4096, K:512.
+            {
+                "M": 16,
+                "N": 128,
+                "K": 8,
+                "use_ukernel": True,
+                "peano_opt_level": 3,
+                "outline": "balanced",
+                "transpose_a": False,
+                "transpose_b": False,
+                "matmul4d": True,
+                "tile_pipeline": "pack-peel-4-level-tiling",
+            },
             # Test where the compute is omitted, this should help triangulate
             # how much performance gain can be obtained with better matmul
             # on core vs data movement.
@@ -2182,6 +2327,24 @@ class Tests:
                 "tile_pipeline": "pack-peel-4-level-tiling",
                 "run_on_target": "npu4",
             },
+            # matmul4d test where the input M/N/K are outer dim values.
+            # The total input values correspond to a standard matmul
+            # from the above test are M:512, N:4096, K:512.
+            {
+                "M": 16,
+                "N": 128,
+                "K": 8,
+                "in_dtype": "i8",
+                "out_dtype": "i32",
+                "use_ukernel": True,
+                "peano_opt_level": 3,
+                "outline": "all",
+                "transpose_a": False,
+                "transpose_b": False,
+                "matmul4d": True,
+                "tile_pipeline": "pack-peel-4-level-tiling",
+                "run_on_target": "npu4",
+            },
             {
                 "M": 512,
                 "N": 4096,
@@ -2198,6 +2361,21 @@ class Tests:
                 "run_on_target": "npu4",
                 "skip_numerics": True,
             },
+            {
+                "M": 512,
+                "N": 4096,
+                "K": 512,
+                "in_dtype": "i8",
+                "out_dtype": "i32",
+                "use_ukernel": True,
+                "peano_opt_level": 3,
+                "outline": "all",
+                "transpose_a": False,
+                "transpose_b": False,
+                "tile_pipeline": "pack-peel-4-level-tiling",
+                "run_on_target": "npu4",
+                "use_chess_for_ukernel": False,
+            },
         ]
 
         # Some bf16 Performance tests:
@@ -2211,11 +2389,17 @@ class Tests:
             transpose_a = test["transpose_a"]
             transpose_b = test["transpose_b"]
             tile_pipeline = test["tile_pipeline"]
+            matmul4d = test["matmul4d"] if "matmul4d" in test else False
             run_on_target = (
                 test["run_on_target"] if "run_on_target" in test else "npu1_4col"
             )
             in_dtype = test["in_dtype"] if "in_dtype" in test else "bf16"
             out_dtype = test["out_dtype"] if "out_dtype" in test else "f32"
+            use_chess_for_ukernel = (
+                test["use_chess_for_ukernel"]
+                if "use_chess_for_ukernel" in test
+                else True
+            )
 
             outlining_string = "--iree-amdaie-enable-function-outlining=" + outline
 
@@ -2248,7 +2432,9 @@ class Tests:
                 else:
                     name_suffix += "_outline"
 
-            if (transpose_a, transpose_b) == (False, False):
+            if matmul4d:
+                TestClass = Matmul4d
+            elif (transpose_a, transpose_b) == (False, False):
                 TestClass = Matmul
             elif (transpose_a, transpose_b) == (True, False):
                 TestClass = MatmulTransposeA
@@ -2276,6 +2462,7 @@ class Tests:
                             aie_compilation_flags=aie_compilation_flags,
                             name_suffix=name_suffix,
                             n_repeats=2,
+                            use_chess_for_ukernel=use_chess_for_ukernel,
                         ),
                         additional_labels=["PerformanceCorrectness"],
                     )
@@ -2296,6 +2483,7 @@ class Tests:
                         name_suffix=name_suffix,
                         run_benchmark=True,
                         n_repeats=5,
+                        use_chess_for_ukernel=use_chess_for_ukernel,
                     ),
                     additional_labels=["Performance"],
                     n_kernel_runs=100,

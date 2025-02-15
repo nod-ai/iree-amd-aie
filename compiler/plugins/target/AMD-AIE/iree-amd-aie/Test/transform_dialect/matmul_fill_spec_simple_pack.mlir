@@ -171,7 +171,7 @@ module attributes { transform.with_named_sequence } {
 //       CHECK:        memref.dealloc %{{.*}} : memref<1x1x4x4x8x8xi32, 2>
 //       CHECK:     }
 //       CHECK:     iree_linalg_ext.unpack %{{.*}} outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %{{.*}} : (memref<1x1x4x8x4x8xi32, 2> memref<1x1x32x32xi32, strided<[4096, 4096, 64, 1], offset: ?>, 1>)
-//       CHECK:     memref.dealloc %alloc_7 : memref<1x1x4x8x4x8xi32, 2>
+//       CHECK:     memref.dealloc %{{.*}} : memref<1x1x4x8x4x8xi32, 2>
 //       CHECK:   }
 //       CHECK:   iree_linalg_ext.unpack %{{.*}} inner_dims_pos = [0, 1] inner_tiles = [64, 64] into %{{.*}} : (memref<1x1x64x64xi32, 1> memref<64x64xi32, strided<[2048, 1], offset: ?>, #hal.descriptor_type<storage_buffer>>)
 //       CHECK:   memref.dealloc %{{.*}} : memref<1x1x512x64xi32, 1>

@@ -47,31 +47,25 @@ void buildAMDAIETransformPassPipeline(
     bool replaceOutlinedFunctionsWithEmpty, bool insertLoopAroundCoreBlock);
 
 /// Populates passes needed to lower the IR via a Pack-Peel based approach.
-void addPackPeelBasedPassPipeline(OpPassManager &oassManager,
-                                  TilingConfig &tilingConfig,
+void addPackPeelBasedPassPipeline(OpPassManager &passManager,
                                   const std::string &pathToUkernels,
-                                  bool enableVectorizationPasses,
                                   TilePassPipeline useTilePipeline);
 
 /// Populates passes needed to lower the IR via a Pack-Peel based approach with
 /// 4 levels of tiling.
-void addPackPeel4LevelTilingBasedPassPipeline(OpPassManager &oassManager,
-                                              TilingConfig &tilingConfig,
+void addPackPeel4LevelTilingBasedPassPipeline(OpPassManager &passManager,
                                               const std::string &pathToUkernels,
-                                              bool enableVectorizationPasses,
-                                              TilePassPipeline useTilePipeline);
+                                              TilePassPipeline useTilePipeline,
+                                              Operation *rootOp);
 
 /// Populates passes needed to lower the IR via a Pad-Pack based approach.
 void addPadPackBasedPassPipeline(OpPassManager &passManager,
-                                 TilingConfig &tilingConfig,
                                  const std::string &pathToUkernels,
                                  bool enableVectorizationPasses,
                                  TilePassPipeline useTilePipeline);
 
 /// Populates passes needed to lower the IR via a Conv-Decompose based approach.
 void addConvDecomposePassPipeline(OpPassManager &passManager,
-                                  TilingConfig &tilingConfig,
-                                  bool enableVectorizationPasses,
                                   TilePassPipeline useTilePipeline);
 
 /// Populates passes needed to link HAL executables across AIE targets.
