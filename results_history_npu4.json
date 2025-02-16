@@ -1042,5 +1042,41 @@
         "time_mean_unit": "us"
       }
     ]
+  },
+  {
+    "commit_hash": "fd4db474d18be9b31e83e427fa30fbaf43083e9e",
+    "cpu": "AMD Ryzen AI 9 HX 370 w/ Radeon 890M",
+    "tests": [
+      {
+        "name": "matmul_512_4096_512_i8_i32_O3_npu4_outline_ukernel_chess_benchmark",
+        "time_mean": "1222",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_512_4096_512_i8_i32_O3_npu4_outline_empty_benchmark",
+        "time_mean": "1198",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_512_4096_512_i8_i32_O3_npu4_outline_4_level_tiling_ukernel_chess_benchmark",
+        "time_mean": "812",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul4d_16_128_8_i8_i32_O3_npu4_outline_4_level_tiling_ukernel_chess_benchmark",
+        "time_mean": "496",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_512_4096_512_i8_i32_O3_npu4_outline_empty_4_level_tiling_benchmark",
+        "time_mean": "755",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_512_4096_512_i8_i32_O3_npu4_outline_4_level_tiling_ukernel_peano_benchmark",
+        "time_mean": "769",
+        "time_mean_unit": "us"
+      }
+    ]
   }
 ]
