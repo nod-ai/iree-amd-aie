@@ -67,9 +67,10 @@ LogicalResult generateControlOverlay(AMDAIE::WorkgroupOp workgroupOp,
     if (deviceModel.isShimNOCTile(col, row)) columnToShimTile[col] = tileOp;
   });
 
+  AMDAIE::ControlCodeOp controlCodeOp = workgroupOp.getControlCode();
+  rewriter.setInsertionPoint(controlCodeOp);
   // If the column is occupied, but the shim tile op is not present, then create
   // one.
-  rewriter.setInsertionPoint(workgroupOp.getControlCode());
   for (uint32_t col : occupiedCols) {
     if (!columnToShimTile.count(col)) {
       auto colIndex = rewriter.create<arith::ConstantIndexOp>(
@@ -104,6 +105,8 @@ LogicalResult generateControlOverlay(AMDAIE::WorkgroupOp workgroupOp,
         shimTileOp.emitOpError() << "no producer DMA channel available";
         return WalkResult::interrupt();
       }
+
+      rewriter.setInsertionPoint(controlCodeOp);
       auto sourceChannelOp = rewriter.create<AMDAIE::ChannelOp>(
           rewriter.getUnknownLoc(), shimTileOp, maybeChannel.value(),
           StrmSwPortType::DMA, AMDAIE::DMAChannelDir::MM2S);
@@ -123,13 +126,17 @@ LogicalResult generateControlOverlay(AMDAIE::WorkgroupOp workgroupOp,
               rewriter.getUnknownLoc(), LogicalObjectFifoType::get(elementType),
               ValueRange(tileOp));
 
-      rewriter.create<AMDAIE::ConnectionOp>(
+      auto connectionOp = rewriter.create<AMDAIE::ConnectionOp>(
           rewriter.getUnknownLoc(), targetPlaceholder,
           ValueRange{targetChannelOp}, sourcePlaceholder,
           ValueRange{sourceChannelOp},
           ConnectionTypeAttr::get(rewriter.getContext(),
                                   ConnectionType::Packet),
           /*flow=*/nullptr);
+
+      rewriter.setInsertionPoint(controlCodeOp.getBody()->getTerminator());
+      rewriter.create<AMDAIE::NpuDmaPlaceHolderOp>(rewriter.getUnknownLoc(),
+                                                   connectionOp.getResult());
       return WalkResult::advance();
     });
     if (res.wasInterrupted()) return failure();
@@ -139,6 +146,7 @@ LogicalResult generateControlOverlay(AMDAIE::WorkgroupOp workgroupOp,
   // for sending Task Completion Tokens (TCTs).
   if (routeShimCtrlToTct) {
     for (auto [_, shimTileOp] : columnToShimTile) {
+      rewriter.setInsertionPoint(controlCodeOp);
       auto sourceChannelOp = rewriter.create<AMDAIE::ChannelOp>(
           rewriter.getUnknownLoc(), shimTileOp, 0, StrmSwPortType::CTRL,
           AMDAIE::DMAChannelDir::MM2S);
@@ -160,13 +168,17 @@ LogicalResult generateControlOverlay(AMDAIE::WorkgroupOp workgroupOp,
               rewriter.getUnknownLoc(), LogicalObjectFifoType::get(elementType),
               ValueRange(shimTileOp));
 
-      rewriter.create<AMDAIE::ConnectionOp>(
+      auto connectionOp = rewriter.create<AMDAIE::ConnectionOp>(
           rewriter.getUnknownLoc(), targetPlaceholder,
           ValueRange{targetChannelOp}, sourcePlaceholder,
           ValueRange{sourceChannelOp},
           ConnectionTypeAttr::get(rewriter.getContext(),
                                   ConnectionType::Circuit),
           /*flow=*/nullptr);
+
+      rewriter.setInsertionPoint(controlCodeOp.getBody()->getTerminator());
+      rewriter.create<AMDAIE::NpuDmaPlaceHolderOp>(rewriter.getUnknownLoc(),
+                                                   connectionOp.getResult());
     }
   }
 
