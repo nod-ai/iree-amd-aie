@@ -604,9 +604,10 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
   if (!maybeFlowOp) return connectionOp.emitOpError() << "has no flow op";
 
   FailureOr<bool> isCtrlFlow = maybeFlowOp->isControlFlow();
-  if (failed(isCtrlFlow))
+  if (failed(isCtrlFlow)) {
     return connectionOp.emitOpError()
            << "could not determine if flow is control";
+  }
   // No DMA op needed for control flow.
   if (isCtrlFlow.value()) return success();
 
