@@ -171,7 +171,7 @@ class BaseTest(ABC):
         # does not).
         if self.use_chess and not config.vitis_dir:
             return False
-        if self.use_chess_for_ukernel and not config.vitis_dir:
+        if self.use_ukernel and self.use_chess_for_ukernel and not config.vitis_dir:
             return False
 
         # If use_chess=0, and config has not provided a valid
@@ -751,9 +751,9 @@ class MatmulTruncf(BaseMatmul):
         return True
 
 
-class MatmulTrunci(BaseMatmul):
+class MatmulScaleTrunci(BaseMatmul):
     """
-    A test of the form matmul(A,B) + trunci(C) where A:MxK, B:KxN and C:MxN
+    A test of the form matmul(A,B) + scale(C) + trunci(C) where A:MxK, B:KxN and C:MxN
     """
 
     def __init__(
@@ -767,10 +767,9 @@ class MatmulTrunci(BaseMatmul):
         rhs,
         expected_out,
         test_params=None,
-        use_scaling=False,
     ):
         super().__init__(
-            name=f"matmul_trunci_{M}_{N}_{K}_{input_type}_{acc_type}",
+            name=f"matmul_scale_trunci_{M}_{N}_{K}_{input_type}_{acc_type}",
             test_params=test_params,
             M=M,
             N=N,
@@ -778,7 +777,7 @@ class MatmulTrunci(BaseMatmul):
             input_type=input_type,
             acc_type=acc_type,
         )
-        self.labels.append("MatmulTrunci")
+        self.labels.append("MatmulScaleTrunci")
 
         # Assertions on shapes: Check that lhs is MxK, rhs is KxN, and expected_out is MxN
         assert lhs.shape == (M, K)
@@ -788,13 +787,10 @@ class MatmulTrunci(BaseMatmul):
         self.lhs = lhs
         self.rhs = rhs
         self.expected_out = expected_out
-        self.use_scaling = use_scaling
 
     def _execute(self, config):
         matmul_template_dir = config.file_dir / "matmul_template"
-        template_name = matmul_template_dir / "matmul_trunci_MxK_KxN.mlir"
-        if self.use_scaling:
-            template_name = matmul_template_dir / "matmul_trunci_scaling_MxK_KxN.mlir"
+        template_name = matmul_template_dir / "matmul_trunci_scaling_MxK_KxN.mlir"
         self.generate(config, template_name)
         filename = self.get_filename(config)
         input_args = generate_inputs(
@@ -1601,78 +1597,10 @@ class Tests:
         self.existing_names = []
         self.tests = []
 
-        # Tests Matmul + Trunci.
-        # Phoenix : Ukernel + Peano.
-        self.register(
-            MatmulTrunci(
-                256,
-                128,
-                32,
-                "i8",
-                "i32",
-                1 * np.ones([256, 32], dtype=np.int8),
-                1 * np.ones([32, 128], dtype=np.int8),
-                32 * np.ones([256, 128], dtype=np.int8),
-                test_params=TestParams(
-                    tile_pipeline="pack-peel-4-level-tiling",
-                    run_on_target=["npu1_4col"],
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=4",
-                        "--iree-amdaie-num-cols=4",
-                    ],
-                    use_ukernel=True,
-                ),
-            )
-        )
-        # Phoenix : Vectorization + Peano.
-        self.register(
-            MatmulTrunci(
-                256,
-                128,
-                32,
-                "i8",
-                "i32",
-                1 * np.ones([256, 32], dtype=np.int8),
-                1 * np.ones([32, 128], dtype=np.int8),
-                32 * np.ones([256, 128], dtype=np.int8),
-                test_params=TestParams(
-                    tile_pipeline="pack-peel-4-level-tiling",
-                    run_on_target=["npu1_4col"],
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=4",
-                        "--iree-amdaie-num-cols=4",
-                    ],
-                ),
-            )
-        )
-        # Strix : Ukernel + Chess.
-        self.register(
-            MatmulTrunci(
-                256,
-                128,
-                32,
-                "i8",
-                "i32",
-                1 * np.ones([256, 32], dtype=np.int8),
-                1 * np.ones([32, 128], dtype=np.int8),
-                32 * np.ones([256, 128], dtype=np.int8),
-                test_params=TestParams(
-                    tile_pipeline="pack-peel-4-level-tiling",
-                    run_on_target=["npu4"],
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=4",
-                        "--iree-amdaie-num-cols=8",
-                    ],
-                    use_chess=True,
-                    use_ukernel=True,
-                ),
-            )
-        )
-
         # Tests Matmul + Trunci with Scaling.
         # Phoenix : Ukernel + Peano.
         self.register(
-            MatmulTrunci(
+            MatmulScaleTrunci(
                 256,
                 256,
                 128,
@@ -1691,12 +1619,11 @@ class Tests:
                     ],
                     use_ukernel=True,
                 ),
-                use_scaling=True,
             )
         )
         # Phoenix : Vectorization + Peano.
         self.register(
-            MatmulTrunci(
+            MatmulScaleTrunci(
                 256,
                 256,
                 128,
@@ -1713,12 +1640,11 @@ class Tests:
                         "--iree-amdaie-num-cols=4",
                     ],
                 ),
-                use_scaling=True,
             )
         )
-        # Strix : Ukernel + Chess.
+        # Strix : Ukernel + Peano.
         self.register(
-            MatmulTrunci(
+            MatmulScaleTrunci(
                 256,
                 256,
                 128,
@@ -1734,10 +1660,10 @@ class Tests:
                         "--iree-amdaie-num-rows=4",
                         "--iree-amdaie-num-cols=8",
                     ],
-                    use_chess=True,
+                    use_chess=False,
                     use_ukernel=True,
+                    use_chess_for_ukernel=False,
                 ),
-                use_scaling=True,
             )
         )
         # Matmul with truncf test(s):
@@ -1963,7 +1889,8 @@ class Tests:
                 "f32",
                 test_params=TestParams(
                     use_ukernel=True,
-                    use_chess=True,
+                    use_chess=False,
+                    use_chess_for_ukernel=False,
                     run_on_target=["npu4"],
                 ),
             )
@@ -1978,11 +1905,12 @@ class Tests:
                 test_params=TestParams(
                     name_suffix="npu4_4x8",
                     use_ukernel=True,
+                    use_chess=False,
+                    use_chess_for_ukernel=False,
                     aie_compilation_flags=[
                         "--iree-amdaie-num-rows=4",
                         "--iree-amdaie-num-cols=8",
                     ],
-                    use_chess=True,
                     run_on_target=["npu4"],
                 ),
             )
@@ -2024,7 +1952,8 @@ class Tests:
                         "--iree-amdaie-num-rows=4",
                         "--iree-amdaie-num-cols=8",
                     ],
-                    use_chess=True,
+                    use_chess=False,
+                    use_chess_for_ukernel=False,
                 ),
             )
         )
@@ -2044,7 +1973,8 @@ class Tests:
                         "--iree-amdaie-num-rows=4",
                         "--iree-amdaie-num-cols=8",
                     ],
-                    use_chess=True,
+                    use_chess=False,
+                    use_chess_for_ukernel=False,
                 ),
             )
         )

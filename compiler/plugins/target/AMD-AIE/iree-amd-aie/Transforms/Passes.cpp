@@ -838,6 +838,10 @@ void addAMDAIEObjectFifoLoweringPasses(
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createAMDAIEDmaCSEPass());
 
+  passManager.addPass(createAMDAIEGenerateControlOverlayPass());
+  passManager.addPass(createCSEPass());
+  passManager.addPass(createCanonicalizerPass());
+
   passManager.addPass(createAMDAIEAssignChannelsPass());
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
@@ -859,8 +863,6 @@ void addAMDAIEObjectFifoLoweringPasses(
 
   passManager.addPass(createAMDAIEObjFifoBufferizationPass());
   passManager.addPass(createAMDAIETemporaryAllocBufferizationPass());
-
-  passManager.addPass(createAMDAIEGenerateControlOverlayPass());
 
   passManager.addPass(createAMDAIEConnectionToFlowPass());
   passManager.addPass(createAMDAIEAssignPacketIdsPass());
