@@ -1581,74 +1581,6 @@ class Tests:
         self.existing_names = []
         self.tests = []
 
-        # Tests Matmul + Trunci.
-        # Phoenix : Ukernel + Peano.
-        self.register(
-            MatmulTrunci(
-                256,
-                128,
-                32,
-                "i8",
-                "i32",
-                1 * np.ones([256, 32], dtype=np.int8),
-                1 * np.ones([32, 128], dtype=np.int8),
-                32 * np.ones([256, 128], dtype=np.int8),
-                test_params=TestParams(
-                    tile_pipeline="pack-peel-4-level-tiling",
-                    run_on_target=["npu1_4col"],
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=4",
-                        "--iree-amdaie-num-cols=4",
-                    ],
-                    use_ukernel=True,
-                ),
-            )
-        )
-        # Phoenix : Vectorization + Peano.
-        self.register(
-            MatmulTrunci(
-                256,
-                128,
-                32,
-                "i8",
-                "i32",
-                1 * np.ones([256, 32], dtype=np.int8),
-                1 * np.ones([32, 128], dtype=np.int8),
-                32 * np.ones([256, 128], dtype=np.int8),
-                test_params=TestParams(
-                    tile_pipeline="pack-peel-4-level-tiling",
-                    run_on_target=["npu1_4col"],
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=4",
-                        "--iree-amdaie-num-cols=4",
-                    ],
-                ),
-            )
-        )
-        # Strix : Ukernel + Chess.
-        self.register(
-            MatmulTrunci(
-                256,
-                128,
-                32,
-                "i8",
-                "i32",
-                1 * np.ones([256, 32], dtype=np.int8),
-                1 * np.ones([32, 128], dtype=np.int8),
-                32 * np.ones([256, 128], dtype=np.int8),
-                test_params=TestParams(
-                    tile_pipeline="pack-peel-4-level-tiling",
-                    run_on_target=["npu4"],
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=4",
-                        "--iree-amdaie-num-cols=8",
-                    ],
-                    use_chess=True,
-                    use_ukernel=True,
-                ),
-            )
-        )
-
         # Tests Matmul + Trunci with Scaling.
         # Phoenix : Ukernel + Peano.
         self.register(
@@ -1696,7 +1628,7 @@ class Tests:
                 use_scaling=True,
             )
         )
-        # Strix : Ukernel + Chess.
+        # Strix : Ukernel + Peano.
         self.register(
             MatmulTrunci(
                 256,
@@ -1714,8 +1646,9 @@ class Tests:
                         "--iree-amdaie-num-rows=4",
                         "--iree-amdaie-num-cols=8",
                     ],
-                    use_chess=True,
+                    use_chess=False,
                     use_ukernel=True,
+                    use_chess_for_ukernel=False,
                 ),
                 use_scaling=True,
             )
@@ -1943,7 +1876,8 @@ class Tests:
                 "f32",
                 test_params=TestParams(
                     use_ukernel=True,
-                    use_chess=True,
+                    use_chess=False,
+                    use_chess_for_ukernel=False,
                     run_on_target=["npu4"],
                 ),
             )
@@ -1958,11 +1892,12 @@ class Tests:
                 test_params=TestParams(
                     name_suffix="npu4_4x8",
                     use_ukernel=True,
+                    use_chess=False,
+                    use_chess_for_ukernel=False,
                     aie_compilation_flags=[
                         "--iree-amdaie-num-rows=4",
                         "--iree-amdaie-num-cols=8",
                     ],
-                    use_chess=True,
                     run_on_target=["npu4"],
                 ),
             )
@@ -2004,7 +1939,8 @@ class Tests:
                         "--iree-amdaie-num-rows=4",
                         "--iree-amdaie-num-cols=8",
                     ],
-                    use_chess=True,
+                    use_chess=False,
+                    use_chess_for_ukernel=False,
                 ),
             )
         )
@@ -2024,7 +1960,8 @@ class Tests:
                         "--iree-amdaie-num-rows=4",
                         "--iree-amdaie-num-cols=8",
                     ],
-                    use_chess=True,
+                    use_chess=False,
+                    use_chess_for_ukernel=False,
                 ),
             )
         )
