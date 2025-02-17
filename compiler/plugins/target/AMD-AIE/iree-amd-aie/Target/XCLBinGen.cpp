@@ -514,6 +514,9 @@ static LogicalResult assembleFileUsingPeano(
   args.insert(args.end(), extraArgs.begin(), extraArgs.end());
   // TODO(jornt): O0 fails with peano, so we use O1 for now.
   args.emplace_back("-O1");
+  // The following flag is needed to prevent peano from inlining memset, which
+  // results in slow scalar code for the vectorized zeroization ukernel.
+  args.emplace_back("-fno-builtin-memset");
   args.emplace_back("-c");
   args.emplace_back(inputFile);
   args.emplace_back("-o");
