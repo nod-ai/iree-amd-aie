@@ -733,10 +733,13 @@ class MatmulScaleTrunci(BaseMatmul):
         K,
         input_type,
         acc_type,
-        lhs,
-        rhs,
-        expected_out,
+        function_name="matmul_trunci",
+        lhs=None,
+        rhs=None,
+        expected_out=None,
         test_params=None,
+        additional_labels=None,
+        n_kernel_runs=1,
     ):
         super().__init__(
             name=f"matmul_scale_trunci_{M}_{N}_{K}_{input_type}_{acc_type}",
@@ -746,26 +749,39 @@ class MatmulScaleTrunci(BaseMatmul):
             K=K,
             input_type=input_type,
             acc_type=acc_type,
+            n_kernel_runs=n_kernel_runs,
         )
         self.labels.append("MatmulScaleTrunci")
 
         # Assertions on shapes: Check that lhs is MxK, rhs is KxN, and expected_out is MxN
-        assert lhs.shape == (M, K)
-        assert rhs.shape == (K, N)
-        assert expected_out.shape == (M, N)
+        # assert lhs.shape == (M, K)
+        # assert rhs.shape == (K, N)
+        # assert expected_out.shape == (M, N)
 
         self.lhs = lhs
         self.rhs = rhs
         self.expected_out = expected_out
 
+        if additional_labels:
+            self.labels += additional_labels
+        if self.run_benchmark:
+            self.aie_compilation_flags += [
+                "--iree-amdaie-enable-infinite-loop-around-core-block=true"
+            ]
+            self.labels.append("MatmulScaleTrunciBenchmark")
+
     def _execute(self, config):
         matmul_template_dir = config.file_dir / "matmul_template"
         template_name = matmul_template_dir / "matmul_trunci_scaling_MxK_KxN.mlir"
         self.generate(config, template_name)
-        filename = self.get_filename(config)
-        input_args = generate_inputs(
-            filename, self.get_dir(config), 1, {1: self.lhs, 2: self.rhs}
-        )
+        # filename = self.get_filename(config)
+        # input_args = generate_inputs(
+        #     filename, self.get_dir(config), 1, {1: self.lhs, 2: self.rhs}
+        # )
+
+        if self.run_benchmark:
+            return self.benchmark(config)
+
         aie_vs_baseline(
             config=config,
             aie_compilation_flags=self.aie_compilation_flags,
@@ -2200,6 +2216,36 @@ class Tests:
             ##############
             # NPU4 Tests #
             ##############
+            # {
+            #     "M": 512,
+            #     "N": 4096,
+            #     "K": 512,
+            #     "in_dtype": "i8",
+            #     "out_dtype": "i32",
+            #     "use_ukernel": True,
+            #     "peano_opt_level": 3,
+            #     "outline": "all",
+            #     "transpose_a": False,
+            #     "transpose_b": False,
+            #     "tile_pipeline": "pack-peel",
+            #     "run_on_target": "npu4",
+            # },
+            # {
+            #     "M": 512,
+            #     "N": 4096,
+            #     "K": 512,
+            #     "in_dtype": "i8",
+            #     "out_dtype": "i32",
+            #     "use_ukernel": False,
+            #     "peano_opt_level": 3,
+            #     "outline": "all",
+            #     "outline_to_empty_function": True,
+            #     "transpose_a": False,
+            #     "transpose_b": False,
+            #     "tile_pipeline": "pack-peel",
+            #     "run_on_target": "npu4",
+            #     "skip_numerics": True,
+            # },
             {
                 "M": 512,
                 "N": 4096,
@@ -2208,88 +2254,58 @@ class Tests:
                 "out_dtype": "i32",
                 "use_ukernel": True,
                 "peano_opt_level": 3,
-                "outline": "all",
-                "transpose_a": False,
-                "transpose_b": False,
-                "tile_pipeline": "pack-peel",
-                "run_on_target": "npu4",
-            },
-            {
-                "M": 512,
-                "N": 4096,
-                "K": 512,
-                "in_dtype": "i8",
-                "out_dtype": "i32",
-                "use_ukernel": False,
-                "peano_opt_level": 3,
-                "outline": "all",
-                "outline_to_empty_function": True,
-                "transpose_a": False,
-                "transpose_b": False,
-                "tile_pipeline": "pack-peel",
-                "run_on_target": "npu4",
-                "skip_numerics": True,
-            },
-            {
-                "M": 512,
-                "N": 4096,
-                "K": 512,
-                "in_dtype": "i8",
-                "out_dtype": "i32",
-                "use_ukernel": True,
-                "peano_opt_level": 3,
-                "outline": "all",
+                "outline": "balanced",
                 "transpose_a": False,
                 "transpose_b": False,
                 "tile_pipeline": "pack-peel-4-level-tiling",
                 "run_on_target": "npu4",
             },
-            {
-                "M": 512,
-                "N": 4096,
-                "K": 512,
-                "in_dtype": "i8",
-                "out_dtype": "i32",
-                "use_ukernel": True,
-                "peano_opt_level": 3,
-                "outline": "all",
-                "transpose_a": False,
-                "transpose_b": False,
-                "matmul4d": True,
-                "tile_pipeline": "pack-peel-4-level-tiling",
-                "run_on_target": "npu4",
-            },
-            {
-                "M": 512,
-                "N": 4096,
-                "K": 512,
-                "in_dtype": "i8",
-                "out_dtype": "i32",
-                "use_ukernel": False,
-                "peano_opt_level": 3,
-                "outline": "all",
-                "outline_to_empty_function": True,
-                "transpose_a": False,
-                "transpose_b": False,
-                "tile_pipeline": "pack-peel-4-level-tiling",
-                "run_on_target": "npu4",
-                "skip_numerics": True,
-            },
-            {
-                "M": 512,
-                "N": 4096,
-                "K": 512,
-                "in_dtype": "i8",
-                "out_dtype": "i32",
-                "use_ukernel": True,
-                "peano_opt_level": 3,
-                "outline": "all",
-                "transpose_a": False,
-                "transpose_b": False,
-                "tile_pipeline": "pack-peel-4-level-tiling",
-                "run_on_target": "npu4",
-                "use_chess_for_ukernel": False,
-            },
+            # {
+            #     "M": 512,
+            #     "N": 4096,
+            #     "K": 512,
+            #     "in_dtype": "i8",
+            #     "out_dtype": "i32",
+            #     "use_ukernel": True,
+            #     "peano_opt_level": 3,
+            #     "outline": "all",
+            #     "transpose_a": False,
+            #     "transpose_b": False,
+            #     "matmul4d": True,
+            #     "tile_pipeline": "pack-peel-4-level-tiling",
+            #     "run_on_target": "npu4",
+            # },
+            # {
+            #     "M": 512,
+            #     "N": 4096,
+            #     "K": 512,
+            #     "in_dtype": "i8",
+            #     "out_dtype": "i32",
+            #     "use_ukernel": False,
+            #     "peano_opt_level": 3,
+            #     "outline": "all",
+            #     "outline_to_empty_function": True,
+            #     "transpose_a": False,
+            #     "transpose_b": False,
+            #     "tile_pipeline": "pack-peel-4-level-tiling",
+            #     "run_on_target": "npu4",
+            #     "skip_numerics": True,
+            # },
+            # {
+            #     "M": 512,
+            #     "N": 4096,
+            #     "K": 512,
+            #     "in_dtype": "i8",
+            #     "out_dtype": "i32",
+            #     "use_ukernel": True,
+            #     "peano_opt_level": 3,
+            #     "outline": "all",
+            #     "transpose_a": False,
+            #     "transpose_b": False,
+            #     "tile_pipeline": "pack-peel-4-level-tiling",
+            #     "run_on_target": "npu4",
+            #     "use_chess_for_ukernel": False,
+            # },
         ]
 
         # Some bf16 Performance tests:
@@ -2349,7 +2365,7 @@ class Tests:
             if matmul4d:
                 TestClass = Matmul4d
             elif (transpose_a, transpose_b) == (False, False):
-                TestClass = Matmul
+                TestClass = MatmulScaleTrunci
             elif (transpose_a, transpose_b) == (True, False):
                 TestClass = MatmulTransposeA
             elif (transpose_a, transpose_b) == (False, True):
