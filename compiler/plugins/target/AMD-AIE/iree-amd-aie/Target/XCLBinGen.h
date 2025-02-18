@@ -32,9 +32,17 @@ mlir::LogicalResult emitNpuInstructions(xilinx::AIE::DeviceOp deviceOp,
                                         const std::string &outputNPU);
 
 namespace detail {
+
 FailureOr<std::vector<std::string>> flagStringToVector(
     const std::string &flags);
+
 FailureOr<std::vector<std::string>> makePeanoOptArgs(
     const std::vector<std::string> &additionalPeanoOptFlags);
+
+/// An exception-free version of std::stoi, using C++17's std::from_chars.
+std::optional<int> safeStoi(std::string_view intString);
+
+FailureOr<int> getStackSize(const std::string &aieAssembly);
+
 }  // namespace detail
 }  // namespace mlir::iree_compiler::AMDAIE

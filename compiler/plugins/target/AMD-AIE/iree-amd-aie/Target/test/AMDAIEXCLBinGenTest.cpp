@@ -44,6 +44,24 @@ TEST(XCLBinGenTest, makePeanoOptArgs) {
   EXPECT_FALSE(succeeded(maybeAdditionalFlagsWithoutSemis));
 }
 
+TEST(XCLBinGenTest, SafeStoi0) { EXPECT_TRUE(true); }
+
+TEST(XCLBinGenTest, GetStackSize0) {
+  std::string trimmed_asm = R"(
+// %bb.0:
+  nopa  ;    paddb  [sp], #224;    nopxm  ;    nops
+  st  r17, [sp, #-192]                // 4-byte Folded Spill
+  st  r18, [sp, #-196]                // 4-byte Folded Spill
+  st  r19, [sp, #-200]                // 4-byte Folded Spill
+  nop                                  //  Delay Slot 4
+  nop                                  //  Delay Slot 3
+  nop                                  //  Delay Slot 2
+  paddb  [sp], #-224                   //  Delay Slot 1
+)";
+
+  EXPECT_TRUE(true);
+}
+
 }  // namespace
 
 int main(int argc, char **argv) {

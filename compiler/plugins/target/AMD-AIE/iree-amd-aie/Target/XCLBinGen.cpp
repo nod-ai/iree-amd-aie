@@ -6,6 +6,7 @@
 
 #include "XCLBinGen.h"
 
+#include <algorithm>
 #include <charconv>
 #include <filesystem>
 #include <fstream>
@@ -60,6 +61,156 @@ using Path = std::filesystem::path;
 
 namespace mlir::iree_compiler::AMDAIE {
 namespace detail {
+
+// TODO(newling) this can be simplified, don't need the end-of-string logic.
+std::optional<int> safeStoi(std::string_view intString) {
+  size_t start = intString.find_first_not_of(" \t\n\r\f\v");
+  if (start == std::string::npos) return std::nullopt;
+  int value = 0;
+  const char *d0 = intString.data() + start;
+  const char *d1 = intString.end();
+  auto [ptr, ec] = std::from_chars(d0, d1, value);
+  if (ec == std::errc()) return value;
+  return std::nullopt;
+}
+
+FailureOr<int> getStackSize(const std::string &aieAssembly) {
+  std::istringstream sstream(aieAssembly);
+  std::string l;
+  SmallVector<std::string> funcs;
+  SmallVector<SmallVector<int>> bumps;
+  while (std::getline(sstream, l)) {
+    if (l.find("@function") != std::string::npos) {
+      funcs.push_back(l);
+      bumps.push_back({});
+    }
+    // nopa  ;    paddb  [sp], #224;    nopxm  ;
+    size_t spIndex = l.find("[sp]");
+    if (spIndex == std::string::npos) continue;
+    size_t startIndex = l.rfind(';', spIndex);
+    if (startIndex == std::string::npos) startIndex = 0;
+    size_t paddIndex = l.find("paddb", startIndex);
+    if (paddIndex == std::string::npos) {
+      paddIndex = l.find("padda", startIndex);
+    }
+    if (paddIndex == std::string::npos || paddIndex > spIndex) {
+      llvm::errs() << "Expected 'paddb [sp]' or 'paddb [sp]' in\n" << l << "\n";
+      return failure();
+    }
+    size_t hashIndex = l.find('#', spIndex);
+    if (hashIndex == std::string::npos) {
+      llvm::errs() << "no hash (#) after [sp] in\n" << l << "\n";
+      return failure();
+    }
+    auto maybeNumber = safeStoi(l.substr(hashIndex + 1));
+    if (!maybeNumber.has_value()) {
+      llvm::errs() << "failed to get number from \n"
+                   << l.substr(hashIndex + 1) << "\n";
+      return failure();
+    }
+    bumps.back().push_back(maybeNumber.value());
+  }
+
+  int maxNonCore{0};
+  int maxCore{0};
+  for (uint32_t i = 0; i < funcs.size(); ++i) {
+    if (bumps[i].empty()) continue;
+    auto bump = *std::max_element(bumps[i].begin(), bumps[i].end());
+    if (funcs[i].find("core_") != std::string::npos) {
+      maxCore = std::max(maxCore, bump);
+    } else {
+      maxNonCore = std::max(maxNonCore, bump);
+    }
+  }
+  llvm::errs() << "\n\n\nmax core size is " << maxCore << "\n";
+  llvm::errs() << "max non-core size is " << maxNonCore << "\n";
+  llvm::errs() << "sum of the above is " << maxCore + maxNonCore << "\n";
+  return maxCore + maxNonCore;
+}
+
+FailureOr<int> getStackSizev0(const std::string &aieAssembly) {
+  std::istringstream sstream(aieAssembly);
+
+  // Find all uses of the stack pointer (sp) in the loaded file,
+  // and determine address relative to the stack pointer used.
+  // Keep track of maximum byte accessed relative to the stack pointer.
+  //
+  // Example line:
+  // lda r20, [sp, #-268]  // 4-byte Folded Reload
+
+  int maxStackByte = 0;
+  std::string l;
+  while (std::getline(sstream, l)) {
+    size_t spIndex = l.find("[sp");
+    if (spIndex == std::string::npos) continue;
+
+    // Example line:
+    // paddb [sp], #96; nopxm
+    // This is not an access or write to the stack, this is an increase of the
+    // stack pointer by 96 bytes.
+    // TODO(newling) this actually suggests an easier way to find the stack
+    // size, just track padda and paddb instructions.
+    if (l.find("padd") != std::string::npos) continue;
+
+    // Find the first appearance of '#' in l after "[sp"
+    size_t hashIndex = l.find('#', spIndex);
+    if (hashIndex == std::string::npos) {
+      llvm::errs() << "no hash (#) found in line:\n" << l << "\n";
+      return failure();
+    }
+
+    // find the first appearance of '//' in l:
+    size_t commentIndex = l.find("//", hashIndex);
+    if (commentIndex == std::string::npos) {
+      llvm::errs() << "no comment (//) found in line:\n" << l << "\n";
+      return failure();
+    }
+
+    // Obtain the offset. This is '-268' in the example
+    // lda  r20, [sp, #-268]  // 4-byte Folded Reload
+    size_t closingBraceIndex = l.find(']', hashIndex);
+    if (closingBraceIndex == std::string::npos) {
+      llvm::errs() << "no closing brace (]) found in line:\n" << l << "\n";
+      return failure();
+    }
+    std::string offsetStr =
+        l.substr(hashIndex + 1, closingBraceIndex - hashIndex - 1);
+
+    // Obtain the number of bytes accessed. This is '4' in the example
+    // lda  r20, [sp, #-268]  // 4-byte Folded Reload
+    size_t byteIndex = l.find("-byte", commentIndex);
+    if (byteIndex == std::string::npos) {
+      llvm::errs() << "no <number>-byte found in line:\n" << l << "\n";
+      return failure();
+    }
+    std::string numBytesStr =
+        l.substr(commentIndex + 2, byteIndex - commentIndex - 2);
+
+    auto maybeNumBytes = safeStoi(numBytesStr);
+    if (!maybeNumBytes.has_value()) {
+      llvm::errs() << "failed to extract number of bytes from \"" << numBytesStr
+                   << "\", for line:\n"
+                   << l << "\n";
+      return failure();
+    }
+    auto maybeOffset = safeStoi(offsetStr);
+    if (!maybeOffset.has_value()) {
+      llvm::errs() << "failed to extract offset from \"" << offsetStr
+                   << "\", for line:\n"
+                   << l << "\n";
+      return failure();
+    }
+
+    auto newStackByte = maybeNumBytes.value() + -1 * maybeOffset.value();
+    if (newStackByte > maxStackByte) {
+      maxStackByte = newStackByte;
+      llvm::errs() << "offset: " << maybeOffset.value()
+                   << " and numBytes: " << maybeNumBytes.value()
+                   << " and maxStackByte = " << maxStackByte << "\n";
+    }
+  }
+  return maxStackByte;
+}
 
 FailureOr<std::vector<std::string>> flagStringToVector(
     const std::string &flags) {
@@ -1080,106 +1231,13 @@ void addLowerToLLVMPasses(OpPassManager &pm) {
   pm.addPass(createCSEPass());
 }
 
-std::optional<int> safeStoi(std::string intString) {
-  size_t start = intString.find_first_not_of(" \t\n\r\f\v");
-  if (start == std::string::npos) return std::nullopt;
-  size_t end = intString.find_last_not_of(" \t\n\r\f\v");
-  if (end == std::string::npos) return std::nullopt;
-  intString = intString.substr(start, end - start + 1);
-  int value = 0;
-  char *d0 = intString.data();
-  char *d1 = d0 + intString.size();
-  auto [ptr, ec] = std::from_chars(d0, d1, value);
-  if (ec == std::errc() && ptr == d1) return value;
-  return std::nullopt;
-}
-
 FailureOr<int> getMaxStackByte(const std::string &asmFileName) {
   // Read the contents of the file `asmFileName` into a string
   std::ifstream asmFile(asmFileName);
-  std::string asmFileStr((std::istreambuf_iterator<char>(asmFile)),
-                         std::istreambuf_iterator<char>());
-  std::istringstream sstream(asmFileStr);
+  std::string aieAssembly((std::istreambuf_iterator<char>(asmFile)),
+                          std::istreambuf_iterator<char>());
 
-  // Find all uses of the stack pointer (sp) in the loaded file,
-  // and determine address relative to the stack pointer used.
-  // Keep track of maximum byte accessed relative to the stack pointer.
-  //
-  // Example line:
-  // lda r20, [sp, #-268]  // 4-byte Folded Reload
-
-  int maxStackByte = 0;
-  std::string l;
-  while (std::getline(sstream, l)) {
-    size_t spIndex = l.find("[sp");
-    if (spIndex == std::string::npos) continue;
-
-    // Example line:
-    // paddb [sp], #96; nopxm
-    // This is not an access or write to the stack, this is an increase of the
-    // stack pointer by 96 bytes.
-    // TODO(newling) this actually suggests an easier way to find the stack
-    // size, just track padda and paddb instructions.
-    if (l.find("padd") != std::string::npos) continue;
-
-    // Find the first appearance of '#' in l after "[sp"
-    size_t hashIndex = l.find('#', spIndex);
-    if (hashIndex == std::string::npos) {
-      llvm::errs() << "no hash (#) found in line:\n" << l << "\n";
-      return failure();
-    }
-
-    // find the first appearance of '//' in l:
-    size_t commentIndex = l.find("//", hashIndex);
-    if (commentIndex == std::string::npos) {
-      llvm::errs() << "no comment (//) found in line:\n" << l << "\n";
-      return failure();
-    }
-
-    // Obtain the offset. This is '-268' in the example
-    // lda  r20, [sp, #-268]  // 4-byte Folded Reload
-    size_t closingBraceIndex = l.find(']', hashIndex);
-    if (closingBraceIndex == std::string::npos) {
-      llvm::errs() << "no closing brace (]) found in line:\n" << l << "\n";
-      return failure();
-    }
-    std::string offsetStr =
-        l.substr(hashIndex + 1, closingBraceIndex - hashIndex - 1);
-
-    // Obtain the number of bytes accessed. This is '4' in the example
-    // lda  r20, [sp, #-268]  // 4-byte Folded Reload
-    size_t byteIndex = l.find("-byte", commentIndex);
-    if (byteIndex == std::string::npos) {
-      llvm::errs() << "no <number>-byte found in line:\n" << l << "\n";
-      return failure();
-    }
-    std::string numBytesStr =
-        l.substr(commentIndex + 2, byteIndex - commentIndex - 2);
-
-    auto maybeNumBytes = safeStoi(numBytesStr);
-    if (!maybeNumBytes.has_value()) {
-      llvm::errs() << "failed to extract number of bytes from \"" << numBytesStr
-                   << "\", for line:\n"
-                   << l << "\n";
-      return failure();
-    }
-    auto maybeOffset = safeStoi(offsetStr);
-    if (!maybeOffset.has_value()) {
-      llvm::errs() << "failed to extract offset from \"" << offsetStr
-                   << "\", for line:\n"
-                   << l << "\n";
-      return failure();
-    }
-
-    auto newStackByte = maybeNumBytes.value() + -1 * maybeOffset.value();
-    if (newStackByte > maxStackByte) {
-      maxStackByte = newStackByte;
-      llvm::errs() << "offset: " << maybeOffset.value()
-                   << " and numBytes: " << maybeNumBytes.value()
-                   << " and maxStackByte = " << maxStackByte << "\n";
-    }
-  }
-  return maxStackByte;
+  return mlir::iree_compiler::AMDAIE::detail::getStackSize(aieAssembly);
 }
 
 LogicalResult generateUnifiedObject(
@@ -1423,18 +1481,22 @@ LogicalResult aie2xclbin(
 
   int maxStackByte = 2048;
   // the peano (not chess) case:
-  if (!useChess && !ukernel.has_value()) {
+  if (!useChess) {
     auto maybeMaxStackByte = getMaxStackByte(unifiedAsm.string());
     if (failed(maybeMaxStackByte)) {
       llvm::errs() << "Failed to get max stack byte\n";
       return failure();
     }
-    maxStackByte = maybeMaxStackByte.value();
+    maxStackByte = maybeMaxStackByte.value() + 1;
+    // std::abort();
   }
+  // maxStackByte = 257; pass  (298)
+  // maxStackByte = 129; pass  (160)
+  // maxStackByte = 65; // 96 -> 96.  fail.
 
   // Set the stack size to the nearest multiple of 512 above maxStackByte:
   // NOTE: for 256 this doesn't work for one of the batch matmuls with ints.
-  int stackAlignment = 512;
+  int stackAlignment = 32;
   int stackSize = maxStackByte;
   if (maxStackByte % stackAlignment != 0) {
     stackSize = ((maxStackByte / stackAlignment) + 1) * stackAlignment;
