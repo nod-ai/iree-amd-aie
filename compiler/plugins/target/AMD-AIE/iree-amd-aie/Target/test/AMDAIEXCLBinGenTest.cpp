@@ -61,7 +61,12 @@ TEST(XCLBinGenTest, GetStackSize0) {
  nopa ;  paddb [sp], #224;  nopxm ;  nops
  paddb [sp], #-224                     //  Delay Slot 1
 )";
-    EXPECT_TRUE(detail::getStackSize(asmStr) == 224);
+    auto ubs = detail::getUpperBoundStackSizes(asmStr);
+    EXPECT_TRUE(succeeded(ubs));
+    // auto upperBounds = maybeUpperBounds.value();
+    auto ub = ubs.value().find({0, 2});
+    EXPECT_TRUE(ub != ubs.value().end());
+    EXPECT_TRUE(ub->second == 224);
   }
 
   {
@@ -69,7 +74,13 @@ TEST(XCLBinGenTest, GetStackSize0) {
  .type core_0_2,@function
  nopa ;  paddb [sp], #96;  nopxm ;  nops
 )";
-    EXPECT_TRUE(detail::getStackSize(asmStr) == 96);
+
+    auto ubs = detail::getUpperBoundStackSizes(asmStr);
+    EXPECT_TRUE(succeeded(ubs));
+    // auto upperBounds = maybeUpperBounds.value();
+    auto ub = ubs.value().find({0, 2});
+    EXPECT_TRUE(ub != ubs.value().end());
+    EXPECT_TRUE(ub->second == 96);
   }
 
   {
@@ -82,7 +93,26 @@ TEST(XCLBinGenTest, GetStackSize0) {
  .type core_0_3,@function
  nopa ;  padda [sp], #224;  nopxm ;  nops
 )";
-    EXPECT_TRUE(detail::getStackSize(asmStr) == 224 + 20);
+
+    auto maybeUpperBounds = detail::getUpperBoundStackSizes(asmStr);
+    EXPECT_TRUE(succeeded(maybeUpperBounds));
+    auto upperBounds = maybeUpperBounds.value();
+    {
+      auto ub = upperBounds.find({0, 2});
+      EXPECT_TRUE(ub != upperBounds.end());
+      EXPECT_TRUE(ub->second == 224 + 20);
+    }
+
+    {
+      auto ub = upperBounds.find({5, 5});
+      EXPECT_TRUE(ub == upperBounds.end());
+    }
+
+    {
+      auto ub = upperBounds.find({0, 3});
+      EXPECT_TRUE(ub != upperBounds.end());
+      EXPECT_TRUE(ub->second == 224 + 20);
+    }
   }
 }
 

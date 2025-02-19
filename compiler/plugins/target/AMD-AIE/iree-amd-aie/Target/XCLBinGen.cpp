@@ -15,6 +15,7 @@
 #include <sstream>
 
 #include "AMDAIETargets.h"
+#include "aie/AIEDialect.h"
 #include "aie/Passes.h"
 #include "air/Conversion/AIRToAIEPass.h"
 #include "iree-amd-aie/Transforms/Passes.h"
@@ -81,9 +82,10 @@ std::optional<int> safeStoi(std::string_view intString) {
 //  function body, includes loads/stores to stack like: 'st  r17, [sp, #-192]'
 //  paddb [sp], #-224;
 //
-// .type function_bar,@function
+// .type   core_0_2,@function
 //  paddb [sp], #92;
 //  function body, includes loads/stores to stack like: 'st  r17, [sp, #-44]'
+//  jl  #function_foo
 //  paddb [sp], #-92;
 // '''
 //
@@ -91,18 +93,20 @@ std::optional<int> safeStoi(std::string_view intString) {
 // use a stack of size 92.
 //
 // We assume that function call structure is as follows:
-// functions with names core_0_0, core_0_1, core_0_2, etc. call into
-// functions with names like generic_matmul_0_outlined. These latter
-// functions do no make any function calls.
+// functions with names core_0_0, core_0_1, core_0_2, etc. might call into
+// functions with names like function_foo (see the `jl` instuction above).
+// These latter functions do no make any function calls.
 //
-// With the above assumption, the maximum stack size is
-//
-// stack_size = max_{core functions} (stack allocation) +
-//              max_{non-core functions} (stack allocation)
+// With the above assumption, an upper bound on the stack size of a core is
+// core stack allocation + max_{non-core functions} (stack allocation)
 //
 // Note: this is a temporary lighweight solution while we wait for a
 // better solution in peano: https://github.com/Xilinx/llvm-aie/issues/350
-FailureOr<int> getStackSize(const std::string &aieAssembly) {
+
+FailureOr<llvm::DenseMap<std::pair<int, int>, int>> getUpperBoundStackSizes(
+    const std::string &aieAssembly) {
+  llvm::DenseMap<std::pair<int, int>, int> coreStackSizes;
+
   std::istringstream sstream(aieAssembly);
   std::string line;
 
@@ -149,11 +153,7 @@ FailureOr<int> getStackSize(const std::string &aieAssembly) {
   // Determine how much the stack pointer is incremented based on the 'padd'
   // operations extracted above.
   int maxNonCore{0};
-  int maxCore{0};
   for (uint32_t i = 0; i < funcs.size(); ++i) {
-    // A function that doesn't use the stack pointer can be ignored.
-    if (bumps[i].empty()) continue;
-
     // We ignore functions which are not either
     // 1) sp += x; ...; return
     // 2) sp += x; ...; sp -= x; return
@@ -165,13 +165,30 @@ FailureOr<int> getStackSize(const std::string &aieAssembly) {
       llvm::errs() << "expected sp increments to cancel out\n";
       return failure();
     }
-    if (funcs[i].find("core_") != std::string::npos) {
-      maxCore = std::max(maxCore, bumps[i][0]);
+
+    auto bump = bumps[i].empty() ? 0 : bumps[i][0];
+    auto coreIndex = funcs[i].find("core_");
+    if (coreIndex == std::string::npos) {
+      // A function that doesn't use the stack pointer can be ignored.
+      maxNonCore = std::max(maxNonCore, bump);
     } else {
-      maxNonCore = std::max(maxNonCore, bumps[i][0]);
+      auto colIndex = funcs[i].find("_", coreIndex);
+      auto rowIndex = funcs[i].find("_", colIndex + 1);
+      auto col = safeStoi(funcs[i].substr(colIndex + 1));
+      auto row = safeStoi(funcs[i].substr(rowIndex + 1));
+      if (!col.has_value() || !row.has_value()) {
+        llvm::errs() << "failed to get col or row from " << funcs[i] << "\n";
+        return failure();
+      }
+      coreStackSizes.insert({{col.value(), row.value()}, bump});
     }
   }
-  return maxCore + maxNonCore;
+
+  for (auto &[_, value] : coreStackSizes) {
+    value += maxNonCore;
+  }
+
+  return coreStackSizes;
 }
 
 FailureOr<std::vector<std::string>> flagStringToVector(
@@ -1192,12 +1209,14 @@ void addLowerToLLVMPasses(OpPassManager &pm) {
   pm.addPass(createCSEPass());
 }
 
-FailureOr<int> getStackSizeFromFile(const std::string &asmFileName) {
+FailureOr<llvm::DenseMap<std::pair<int, int>, int>>
+getUpperBoundStackSizesFromFile(const std::string &asmFileName) {
   // Read the contents of the file `asmFileName` into a string
   std::ifstream asmFile(asmFileName);
   std::string aieAssembly((std::istreambuf_iterator<char>(asmFile)),
                           std::istreambuf_iterator<char>());
-  return mlir::iree_compiler::AMDAIE::detail::getStackSize(aieAssembly);
+  return mlir::iree_compiler::AMDAIE::detail::getUpperBoundStackSizes(
+      aieAssembly);
 }
 
 LogicalResult generateUnifiedObject(
@@ -1330,25 +1349,33 @@ LogicalResult generateUnifiedObject(
 
     // Stack size check.
     {
-      FailureOr<int> fromAsm = getStackSizeFromFile(outputAsmFile);
-      if (failed(fromAsm)) {
+      FailureOr<llvm::DenseMap<std::pair<int, int>, int>> maybeUpperBounds =
+          getUpperBoundStackSizesFromFile(outputAsmFile);
+      if (failed(maybeUpperBounds)) {
         llvm::errs() << "Failed to get stack size from assembly file\n";
         return failure();
       }
-      llvm::DenseSet<int> stackSizes;
-      deviceOp->walk([&](AIE::CoreOp coreOp) {
-        stackSizes.insert(coreOp.getStackSize());
-      });
-      if (stackSizes.size() != 1) {
-        llvm::errs() << "Expected a unique assigned stack size\n";
-        return failure();
-      }
-      if (fromAsm.value() > *stackSizes.begin()) {
-        llvm::errs() << "The stack size inferred from the assembly file is "
-                     << fromAsm.value() << " bytes. The assigned stack size is "
-                     << *stackSizes.begin()
-                     << " bytes, which is insufficient. ";
-        return failure();
+      auto upperBounds = std::move(maybeUpperBounds.value());
+
+      SmallVector<AIE::CoreOp> coreOps;
+      deviceOp->walk([&](AIE::CoreOp coreOp) { coreOps.push_back(coreOp); });
+      for (auto coreOp : coreOps) {
+        int col = coreOp.getTileOp().getCol();
+        int row = coreOp.getTileOp().getRow();
+        auto stackUpperBound = upperBounds.find({col, row});
+        if (stackUpperBound == upperBounds.end()) {
+          llvm::errs() << "The stack size for core (" << col << ", " << row
+                       << ") is not found in the assembly file. ";
+          return failure();
+        }
+        auto stackSize = coreOp.getStackSize();
+        if (stackSize > stackUpperBound->second) {
+          llvm::errs() << "The stack size inferred from the assembly file is "
+                       << stackUpperBound->second
+                       << " bytes. The assigned stack size is " << stackSize
+                       << " bytes, which is insufficient. ";
+          return failure();
+        }
       }
     }
   }
