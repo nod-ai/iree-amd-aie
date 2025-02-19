@@ -89,12 +89,9 @@ FailureOr<int> getStackSize(const std::string &aieAssembly) {
     if (spIndex == std::string::npos) continue;
     size_t startIndex = l.rfind(';', spIndex);
     if (startIndex == std::string::npos) startIndex = 0;
-    size_t paddIndex = l.find("paddb", startIndex);
-    if (paddIndex == std::string::npos) {
-      paddIndex = l.find("padda", startIndex);
-    }
+    size_t paddIndex = l.find("padd", startIndex);
     if (paddIndex == std::string::npos || paddIndex > spIndex) {
-      llvm::errs() << "Expected 'paddb [sp]' or 'paddb [sp]' in\n" << l << "\n";
+      llvm::errs() << "Expected 'padd(*)[sp]' in\n" << l << "\n";
       return failure();
     }
     size_t hashIndex = l.find('#', spIndex);
