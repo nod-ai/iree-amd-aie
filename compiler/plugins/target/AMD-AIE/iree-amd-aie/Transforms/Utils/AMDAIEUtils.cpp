@@ -397,4 +397,47 @@ int detail::findLargestFactor(int num, int max, int multiple) {
   return factor ? factor : detail::findLargestFactor(num, max);
 }
 
+bool sinkInto(Region &region, IRRewriter &rewriter,
+              std::function<bool(Operation *)> shouldSink) {
+  Operation *parentOfRegion = region.getParentOp();
+  assert(parentOfRegion && "Region has no parent operation");
+  if (region.getBlocks().empty()) return false;
+  bool regionChanged = false;
+  for (Block &block : region.getBlocks()) {
+    // Collect all ops in the block.
+    SmallVector<Operation *> ops;
+    SmallVector<Operation *> nextIterationOps;
+    block.walk([&](Operation *op) { ops.push_back(op); });
+    while (!ops.empty()) {
+      for (Operation *op : ops) {
+        for (Value operand : op->getOperands()) {
+          if (!operand || !operand.getDefiningOp()) continue;
+          Operation *dependencyOp = operand.getDefiningOp();
+          // Skip if the dependency is already in the core.
+          if (parentOfRegion->isAncestor(dependencyOp)) continue;
+          if (!shouldSink(dependencyOp)) continue;
+          rewriter.setInsertionPointToStart(&block);
+          Operation *sunkOp = rewriter.clone(*dependencyOp);
+          nextIterationOps.push_back(sunkOp);
+          // Replace uses of the dependency op inside the block. Specifically,
+          // if `use` is in `block` then replace its operand with `sunkOp`.
+          auto isInBlock = [&block](OpOperand &use) {
+            auto op = use.getOwner();
+            while (op) {
+              if (op->getBlock() == &block) return true;
+              op = op->getParentOp();
+            }
+            return false;
+          };
+          dependencyOp->replaceUsesWithIf(sunkOp, isInBlock);
+          regionChanged = true;
+        }
+      }
+      std::swap(ops, nextIterationOps);
+      nextIterationOps.clear();
+    }
+  }
+  return regionChanged;
+}
+
 }  // namespace mlir::iree_compiler::AMDAIE
