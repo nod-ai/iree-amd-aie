@@ -128,6 +128,7 @@ FailureOr<int> getStackSize(const std::string &aieAssembly) {
   return maxCore + maxNonCore;
 }
 
+// Old version, defunct.
 FailureOr<int> getStackSizev0(const std::string &aieAssembly) {
   std::istringstream sstream(aieAssembly);
 
@@ -1496,15 +1497,13 @@ LogicalResult aie2xclbin(
 
   // Set the stack size to the nearest multiple of 512 above maxStackByte:
   // NOTE: for 256 this doesn't work for one of the batch matmuls with ints.
-  int stackAlignment = 32;
+  int stackAlignment = 256;
   int stackSize = maxStackByte;
   if (maxStackByte % stackAlignment != 0) {
     stackSize = ((maxStackByte / stackAlignment) + 1) * stackAlignment;
   }
 
   // (maxStackByte + stackAlignment - 1) & ~(stackAlignment - 1);
-
-  llvm::errs() << "stack size determined to be " << stackSize << "\n";
 
   if (failed(generateCoreElfFiles(deviceOp, unifiedObj.string(), tempDirPath,
                                   useChess, useChessForUKernel, vitisDirPath,
