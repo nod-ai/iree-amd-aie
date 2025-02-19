@@ -67,7 +67,7 @@ std::optional<int> safeStoi(std::string_view intString) {
   if (start == std::string::npos) return std::nullopt;
   int value = 0;
   const char *d0 = intString.data() + start;
-  const char *d1 = intString.end();
+  const char *d1 = intString.data() + intString.size();
   auto [ptr, ec] = std::from_chars(d0, d1, value);
   if (ec == std::errc()) return value;
   return std::nullopt;
@@ -119,13 +119,9 @@ FailureOr<int> getStackSize(const std::string &aieAssembly) {
     if (spIndex == std::string::npos) continue;
     size_t startIndex = line.rfind(';', spIndex);
     if (startIndex == std::string::npos) startIndex = 0;
-    size_t paddIndex = line.find("paddb", startIndex);
-    if (paddIndex == std::string::npos) {
-      paddIndex = line.find("padda", startIndex);
-    }
+    size_t paddIndex = line.find("padd", startIndex);
     if (paddIndex == std::string::npos || paddIndex > spIndex) {
-      llvm::errs() << "Expected 'paddb [sp]' or 'paddb [sp]' in\n"
-                   << line << "\n";
+      llvm::errs() << "Expected 'padd(*) [sp]' in\n" << line << "\n";
       return failure();
     }
     size_t hashIndex = line.find('#', spIndex);
@@ -1190,12 +1186,11 @@ void addLowerToLLVMPasses(OpPassManager &pm) {
   pm.addPass(createCSEPass());
 }
 
-FailureOr<int> getMaxStackByte(const std::string &asmFileName) {
+FailureOr<int> getStackSizeFromFile(const std::string &asmFileName) {
   // Read the contents of the file `asmFileName` into a string
   std::ifstream asmFile(asmFileName);
   std::string aieAssembly((std::istreambuf_iterator<char>(asmFile)),
                           std::istreambuf_iterator<char>());
-
   return mlir::iree_compiler::AMDAIE::detail::getStackSize(aieAssembly);
 }
 
@@ -1324,6 +1319,18 @@ LogicalResult generateUnifiedObject(
 
     if (failed(runTool(peanoLLCBin.string(), llcAsmArguments, verbose))) {
       llvm::errs() << "Failed to assemble ll with peano (no .s created)\n";
+      return failure();
+    }
+
+    // get the stack size:
+    FailureOr<int> fromAsm = getStackSizeFromFile(outputAsmFile);
+    if (failed(fromAsm)) {
+      llvm::errs() << "Failed to get stack size from assembly file\n";
+      return failure();
+    }
+    if (fromAsm.value() > 1024) {
+      llvm::errs() << "Stack size (" << fromAsm.value()
+                   << ") is too large, currently hard-wired to 1K";
       return failure();
     }
   }
