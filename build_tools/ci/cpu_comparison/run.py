@@ -2404,23 +2404,6 @@ class Tests:
                 )
             )
 
-        # ukernel test for AIR pad-pack pipeline
-        self.register(
-            Matmul(
-                256,
-                256,
-                256,
-                "bf16",
-                "f32",
-                test_params=TestParams(
-                    name_suffix="air_pad_pack",
-                    use_ukernel=True,
-                    lower_to_aie_pipeline="air",
-                    tile_pipeline="pad-pack",
-                ),
-            )
-        )
-
         # M, K, N (copies from run_matmul_tests.sh)
         bf16_ukernel_shapes_medium = [
             [256, 256, 256],

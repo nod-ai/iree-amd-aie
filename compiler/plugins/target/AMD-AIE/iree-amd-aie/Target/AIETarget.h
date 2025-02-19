@@ -168,9 +168,6 @@ struct AMDAIEOptions {
                        "Use the pack-peel based lowering strategy with 4 "
                        "levels of tiling for "
                        "matmul-like ops"),
-            clEnumValN(
-                TilePassPipeline::PadPackPipeline, "pad-pack",
-                "Use the pad-pack based lowering strategy for matmul-like ops"),
             clEnumValN(TilePassPipeline::ConvDecomposePipeline,
                        "conv-decompose",
                        "Use the conv-decompose based lowering strategy for "

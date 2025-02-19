@@ -492,117 +492,6 @@ void addPackPeel4LevelTilingBasedPassPipeline(OpPassManager &funcPassManager,
   funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
 }
 
-void addPadPackBasedPassPipeline(OpPassManager &funcPassManager,
-                                 const std::string &pathToUkernels,
-                                 bool enableVectorizationPasses,
-                                 TilePassPipeline useTilePipeline) {
-  // First level tiling using scf.forall
-  {
-    AMDAIETileAndFuseOptions tileFuseOptions;
-    tileFuseOptions.hardwareMapping = HardwareMapping::Block;
-    tileFuseOptions.tilingLevel = 0;
-    tileFuseOptions.useSCFFor = false;
-    funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
-  }
-  funcPassManager.addPass(createAMDAIECleanupPass());
-  funcPassManager.addPass(createCanonicalizerPass());
-  funcPassManager.addPass(createCSEPass());
-
-  // Pad the linalg operation
-  {
-    AMDAIEPadOptions padOptions;
-    padOptions.paddingLevel = 0;
-    funcPassManager.addPass(createAMDAIEPadPass(padOptions));
-  }
-
-  // Promote the input and result to shared memory
-  {
-    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
-    bufferizeOptions.memorySpace = 1;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgInputOutput;
-    funcPassManager.addPass(
-        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
-  }
-
-  // Tile linalg.copy ops using scf.for
-  {
-    AMDAIETileOptions tileOptions;
-    tileOptions.tilingLevel = 1;
-    funcPassManager.addPass(createAMDAIETilePass(tileOptions));
-  }
-  funcPassManager.addPass(createAMDAIECleanupPass());
-  funcPassManager.addPass(createCanonicalizerPass());
-  funcPassManager.addPass(createCSEPass());
-
-  // Second level tiling using scf.forall
-  {
-    AMDAIETileAndFuseOptions tileFuseOptions;
-    tileFuseOptions.hardwareMapping = HardwareMapping::Core;
-    tileFuseOptions.tilingLevel = 2;
-    tileFuseOptions.useSCFFor = false;
-    funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
-  }
-  funcPassManager.addPass(createAMDAIECleanupPass());
-  funcPassManager.addPass(createCanonicalizerPass());
-  funcPassManager.addPass(createCSEPass());
-
-  // Pack the linalg operation
-  {
-    AMDAIEPackAndTransposeOptions packOptions;
-    packOptions.packLevel = 0;
-    funcPassManager.addPass(createAMDAIEPackAndTransposePass(packOptions));
-  }
-
-  // Only promote the result to local memory
-  {
-    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
-    bufferizeOptions.memorySpace = 2;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgOutput;
-    funcPassManager.addPass(
-        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
-  }
-
-  // Tile the reduction dimension using scf.for
-  {
-    AMDAIETileAndFuseOptions tileFuseOptions;
-    tileFuseOptions.tilingLevel = 3;
-    tileFuseOptions.useSCFFor = true;
-    funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
-  }
-  funcPassManager.addPass(createAMDAIECleanupPass());
-  funcPassManager.addPass(createCanonicalizerPass());
-  funcPassManager.addPass(createCSEPass());
-
-  // Fuse pack ops into for loop
-  funcPassManager.addPass(createAMDAIEFuseProducerIntoLoopPass());
-  funcPassManager.addPass(createAMDAIECleanupPass());
-  funcPassManager.addPass(createCanonicalizerPass());
-  funcPassManager.addPass(createCSEPass());
-
-  // Promote the inputs to local memory
-  {
-    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
-    bufferizeOptions.memorySpace = 2;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgInput;
-    funcPassManager.addPass(
-        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
-  }
-
-  // Lower to UKernels
-  {
-    AMDAIELowerToUKernelsOptions options;
-    // windows
-    options.pathToUkernels = escapeCommandLineComponent(pathToUkernels);
-    funcPassManager.addPass(createAMDAIELowerToUKernelsPass(options));
-  }
-  // Vectorization passes
-  appendVectorizationToPipeline(funcPassManager, enableVectorizationPasses);
-  funcPassManager.addPass(createCanonicalizerPass());
-
-  // Comprehensive bufferization
-  addAMDAIEBufferizePasses(funcPassManager, useTilePipeline);
-}
-
 void addConvDecomposePassPipeline(OpPassManager &funcPassManager,
                                   TilePassPipeline useTilePipeline) {
   auto addCleanups = [&]() {
@@ -1087,9 +976,6 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
     if (useTilePipeline == TilePassPipeline::PackPeelPipeline ||
         useTilePipeline == TilePassPipeline::PackPeel4LevelTilingPipeline) {
       const static llvm::SmallVector<unsigned> tile_sizes = {2, 2};
-      options.clTileSizes = tile_sizes;
-    } else if (useTilePipeline == TilePassPipeline::PadPackPipeline) {
-      const static llvm::SmallVector<unsigned> tile_sizes = {4, 4};
       options.clTileSizes = tile_sizes;
     }
     passManager.addNestedPass<func::FuncOp>(

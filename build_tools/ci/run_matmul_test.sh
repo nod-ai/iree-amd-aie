@@ -161,7 +161,7 @@ function run_matmul_test() {
 
   # Options with defaults
   # =====================
-  local lower_to_aie_pipeline="air"
+  local lower_to_aie_pipeline="objectFifo"
 
   # name_prefix: A prefix for the name of the test. The full test name will be
   # extended with m,n,k if they are unique.
@@ -175,7 +175,7 @@ function run_matmul_test() {
 
   local amd_aie_install_path="${IREE_INSTALL_DIR}"
 
-  local tile_pipeline="pad-pack"
+  local tile_pipeline="pack-peel"
 
   # By default, the m,n,k provided are used, and there are no dynamic tensor
   # dimensions.
@@ -506,7 +506,7 @@ run_matmul_test \
     --peano_install_path "${PEANO}" \
     --amd_aie_install_path "${IREE_INSTALL_DIR}" \
     --lower_to_aie_pipeline "air" \
-    --tile_pipeline "pad-pack" \
+    --tile_pipeline "pack-peel" \
     --m "64" \
     --n "64" \
     --k "64" \
@@ -516,31 +516,6 @@ run_matmul_test \
     --do_transpose_rhs "0" \
     --max_elements_to_check "0" \
     --num_repeat_runs "2"
-
-
-# Example of a run with a group of 2+ matmuls. Currently this test is passed
-# the flag '--num_repeat_runs 0" as there is currently an issue with the runtime if
-# multiple matmuls are run in the same test. TODO(newling/nmeshram): Document
-# this issue.
-run_matmul_test \
-    --name_prefix "multiple_matmuls" \
-    --lower_to_aie_pipeline "air" \
-    --tile_pipeline "pad-pack" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --m "512,8,16" \
-    --n "512,32,16" \
-    --k "256,16,8" \
-    --num_repeat_runs "0"
-
-run_matmul_test \
-  --name_prefix "transpose_i8_i32" \
-  --lower_to_aie_pipeline "air" \
-  --tile_pipeline "pad-pack" \
-  --lhs_rhs_type "i8" \
-  --acc_type "i32" \
-  --m "16" --n "32" --k "64" \
-  --do_transpose_rhs "1"
 
 run_matmul_test \
     --name_prefix "packPeel_i32" \
