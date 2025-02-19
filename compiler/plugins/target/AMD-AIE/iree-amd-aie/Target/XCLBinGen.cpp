@@ -166,16 +166,16 @@ FailureOr<llvm::DenseMap<std::pair<int, int>, int>> getUpperBoundStackSizes(
       return failure();
     }
 
-    auto bump = bumps[i].empty() ? 0 : bumps[i][0];
-    auto coreIndex = funcs[i].find("core_");
+    int bump = bumps[i].empty() ? 0 : bumps[i][0];
+    size_t coreIndex = funcs[i].find("core_");
     if (coreIndex == std::string::npos) {
       // A function that doesn't use the stack pointer can be ignored.
       maxNonCore = std::max(maxNonCore, bump);
     } else {
-      auto colIndex = funcs[i].find("_", coreIndex);
-      auto rowIndex = funcs[i].find("_", colIndex + 1);
-      auto col = safeStoi(funcs[i].substr(colIndex + 1));
-      auto row = safeStoi(funcs[i].substr(rowIndex + 1));
+      size_t colIndex = funcs[i].find("_", coreIndex);
+      size_t rowIndex = funcs[i].find("_", colIndex + 1);
+      std::optional<int> col = safeStoi(funcs[i].substr(colIndex + 1));
+      std::optional<int> row = safeStoi(funcs[i].substr(rowIndex + 1));
       if (!col.has_value() || !row.has_value()) {
         llvm::errs() << "failed to get col or row from " << funcs[i] << "\n";
         return failure();
@@ -1362,18 +1362,18 @@ LogicalResult generateUnifiedObject(
       for (auto coreOp : coreOps) {
         int col = coreOp.getTileOp().getCol();
         int row = coreOp.getTileOp().getRow();
-        auto stackUpperBound = upperBounds.find({col, row});
-        if (stackUpperBound == upperBounds.end()) {
+        auto iter = upperBounds.find({col, row});
+        if (iter == upperBounds.end()) {
           llvm::errs() << "The stack size for core (" << col << ", " << row
                        << ") is not found in the assembly file. ";
           return failure();
         }
         auto stackSize = coreOp.getStackSize();
-        if (stackSize > stackUpperBound->second) {
-          llvm::errs() << "The stack size inferred from the assembly file is "
-                       << stackUpperBound->second
-                       << " bytes. The assigned stack size is " << stackSize
-                       << " bytes, which is insufficient. ";
+        if (stackSize < iter->second) {
+          llvm::errs() << "An uppoer bound of the stack size, inferred from "
+                          "the assembly file is, "
+                       << iter->second << " bytes. The assigned stack size is "
+                       << stackSize << " bytes, which is insufficient. ";
           return failure();
         }
       }

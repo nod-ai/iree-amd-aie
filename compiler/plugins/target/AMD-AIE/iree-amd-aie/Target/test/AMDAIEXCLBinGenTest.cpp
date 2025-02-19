@@ -61,7 +61,8 @@ TEST(XCLBinGenTest, GetStackSize0) {
  nopa ;  paddb [sp], #224;  nopxm ;  nops
  paddb [sp], #-224                     //  Delay Slot 1
 )";
-    auto ubs = detail::getUpperBoundStackSizes(asmStr);
+    mlir::FailureOr<llvm::DenseMap<std::pair<int, int>, int>> ubs =
+        detail::getUpperBoundStackSizes(asmStr);
     EXPECT_TRUE(succeeded(ubs));
     // auto upperBounds = maybeUpperBounds.value();
     auto ub = ubs.value().find({0, 2});
@@ -75,7 +76,8 @@ TEST(XCLBinGenTest, GetStackSize0) {
  nopa ;  paddb [sp], #96;  nopxm ;  nops
 )";
 
-    auto ubs = detail::getUpperBoundStackSizes(asmStr);
+    mlir::FailureOr<llvm::DenseMap<std::pair<int, int>, int>> ubs =
+        detail::getUpperBoundStackSizes(asmStr);
     EXPECT_TRUE(succeeded(ubs));
     // auto upperBounds = maybeUpperBounds.value();
     auto ub = ubs.value().find({0, 2});
@@ -94,7 +96,8 @@ TEST(XCLBinGenTest, GetStackSize0) {
  nopa ;  padda [sp], #224;  nopxm ;  nops
 )";
 
-    auto maybeUpperBounds = detail::getUpperBoundStackSizes(asmStr);
+    mlir::FailureOr<llvm::DenseMap<std::pair<int, int>, int>> maybeUpperBounds =
+        detail::getUpperBoundStackSizes(asmStr);
     EXPECT_TRUE(succeeded(maybeUpperBounds));
     auto upperBounds = maybeUpperBounds.value();
     {
