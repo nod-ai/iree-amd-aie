@@ -62,6 +62,7 @@ using Path = std::filesystem::path;
 namespace mlir::iree_compiler::AMDAIE {
 namespace detail {
 
+// Extract an integer from a string, if possible.
 std::optional<int> safeStoi(std::string_view intString) {
   size_t start = intString.find_first_not_of(" \t\n\r\f\v");
   if (start == std::string::npos) return std::nullopt;
@@ -73,29 +74,31 @@ std::optional<int> safeStoi(std::string_view intString) {
   return std::nullopt;
 }
 
-// The VLIW assembly strings are of the form
+// The assembly code for the AIE is of the form (intermediate lines omited):
 // '''
-// .type function_name,@function
+// .type function_foo,@function
 //  paddb [sp], #224;
 //  function body, includes loads/stores to stack like: 'st  r17, [sp, #-192]'
 //  paddb [sp], #-224;
 //
-// .type another_function_name,@function
-//  same pattern as above.
+// .type function_bar,@function
+//  paddb [sp], #92;
+//  function body, includes loads/stores to stack like: 'st  r17, [sp, #-44]'
+//  paddb [sp], #-92;
 // '''
 //
-// The function names are things like
-// 'generic_matmul_0_outlined' etc.
-// 'core_0_2', 'core_3_4' etc.
+// Where above function_foo will use a stack of size 224, and function_bar will
+// use a stack of size 92.
 //
-// The 'core' functions call into the other functions. So the stack pointer
-// (sp) might be incremented twice successively: once in the core, then
-// once in the other function.
+// We assume that function call structure is as possible:
+// functions with names core_0_0, core_0_1, core_0_2, etc. call into
+// functions with names like generic_matmul_0_outlined. These latter
+// functions do no make any function calls.
 //
-// Assuming that non-core functions don't make function calls, and there is
-// no recursion etc, the most that sp is incremented by is
-// max_{tile cores}(paddb amount) +
-// max_{non-core functions}(paddb amount).
+// With the above assumption, the maximum stack size is
+//
+// stack_size = max_{core functions} (stack allocation) +
+//              max_{non-core functions} (stack allocation)
 //
 // Note: this is a temporary lighweight solution while we wait for a
 // better solution in peano: https://github.com/Xilinx/llvm-aie/issues/350
@@ -107,8 +110,9 @@ FailureOr<int> getStackSize(const std::string &aieAssembly) {
   SmallVector<std::string> funcs;
 
   // Derived from lines containing substrings like 'paddb [sp], #224;'
-  // There is one vector per function.
+  // There is one vector of ints per function.
   SmallVector<SmallVector<int>> bumps;
+
   while (std::getline(sstream, line)) {
     if (line.find("@function") != std::string::npos) {
       funcs.push_back(line);
@@ -119,6 +123,8 @@ FailureOr<int> getStackSize(const std::string &aieAssembly) {
     if (spIndex == std::string::npos) continue;
     size_t startIndex = line.rfind(';', spIndex);
     if (startIndex == std::string::npos) startIndex = 0;
+
+    // I've seen padda, paddb, and one other on strix.
     size_t paddIndex = line.find("padd", startIndex);
     if (paddIndex == std::string::npos || paddIndex > spIndex) {
       llvm::errs() << "Expected 'padd(*) [sp]' in\n" << line << "\n";
@@ -140,17 +146,17 @@ FailureOr<int> getStackSize(const std::string &aieAssembly) {
     bumps.back().push_back(maybeNumber.value());
   }
 
-  // Determine how much the stack pointer is incremented based on the 'padd's
-  // extracted above.
+  // Determine how much the stack pointer is incremented based on the 'padd'
+  // operations extracted above.
   int maxNonCore{0};
   int maxCore{0};
   for (uint32_t i = 0; i < funcs.size(); ++i) {
-    // A function that doesn't use the stack pointer:
+    // A function that doesn't use the stack pointer can be ignored.
     if (bumps[i].empty()) continue;
 
     // We ignore functions which are not either
-    // 1) sp += x;
-    // 2) sp += x; sp -= x;
+    // 1) sp += x; ...; return
+    // 2) sp += x; ...; sp -= x; return
     if (bumps[i].size() > 2) {
       llvm::errs() << "expected no more than 2 sp increments/decrements\n";
       return failure();
@@ -1322,16 +1328,28 @@ LogicalResult generateUnifiedObject(
       return failure();
     }
 
-    // get the stack size:
-    FailureOr<int> fromAsm = getStackSizeFromFile(outputAsmFile);
-    if (failed(fromAsm)) {
-      llvm::errs() << "Failed to get stack size from assembly file\n";
-      return failure();
-    }
-    if (fromAsm.value() > 1024) {
-      llvm::errs() << "Stack size (" << fromAsm.value()
-                   << ") is too large, currently hard-wired to 1K";
-      return failure();
+    // Stack size check.
+    {
+      FailureOr<int> fromAsm = getStackSizeFromFile(outputAsmFile);
+      if (failed(fromAsm)) {
+        llvm::errs() << "Failed to get stack size from assembly file\n";
+        return failure();
+      }
+      llvm::DenseSet<int> stackSizes;
+      deviceOp->walk([&](AIE::CoreOp coreOp) {
+        stackSizes.insert(coreOp.getStackSize());
+      });
+      if (stackSizes.size() != 1) {
+        llvm::errs() << "Expected a unique assigned stack size\n";
+        return failure();
+      }
+      if (fromAsm.value() > *stackSizes.begin()) {
+        llvm::errs() << "The stack size inferred from the assembly file is "
+                     << fromAsm.value() << " bytes. The assigned stack size is "
+                     << *stackSizes.begin()
+                     << " bytes, which is insufficient. ";
+        return failure();
+      }
     }
   }
 
