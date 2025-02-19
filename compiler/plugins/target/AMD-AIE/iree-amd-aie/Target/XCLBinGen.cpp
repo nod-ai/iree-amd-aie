@@ -137,8 +137,8 @@ FailureOr<int> getStackSize(const std::string &aieAssembly) {
     }
 
     // For example, extract 224 from 'paddb [sp], #224;'
-    auto hashSubstr = line.substr(hashIndex + 1);
-    auto maybeNumber = safeStoi(hashSubstr);
+    std::string hashSubstr = line.substr(hashIndex + 1);
+    std::optional<int> maybeNumber = safeStoi(hashSubstr);
     if (!maybeNumber.has_value()) {
       llvm::errs() << "failed to get number from \n" << hashSubstr << "\n";
       return failure();
@@ -249,7 +249,7 @@ FailureOr<std::vector<std::string>> makePeanoOptArgs(
   // Append the additional flags, unless they conflict with an existing flag,
   // in which case replace the existing flag.
   args.reserve(args.size() + additionalFlags.size());
-  for (const auto &flag : additionalFlags) {
+  for (const std::string &flag : additionalFlags) {
     auto iter = std::find_if(args.begin(), args.end(),
                              std::bind(isContention, _1, flag));
     if (iter == args.end()) {
@@ -349,7 +349,7 @@ FailureOr<Path> findVitis(std::optional<Path> &vitisDir,
   if (!vitisDir) {
     const char *envVitis = ::getenv("VITIS");
     if (!envVitis) {
-      if (auto vpp = sys::findProgramByName("v++")) {
+      if (ErrorOr<std::string> vpp = sys::findProgramByName("v++")) {
         SmallString<64> realVpp;
         std::error_code err = sys::fs::real_path(vpp.get(), realVpp);
         if (!err) {
@@ -543,7 +543,7 @@ LogicalResult runTool(
   {
     std::string prefix{"tmpRunTool"};
     std::string suffix{"Logging"};
-    auto errorCode =
+    std::error_code errorCode =
         llvm::sys::fs::createTemporaryFile(prefix, suffix, temporaryPath);
     if (errorCode) {
       llvm::errs() << "Failed to create temporary file: " << errorCode.message()
