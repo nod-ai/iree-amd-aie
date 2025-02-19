@@ -90,7 +90,7 @@ std::optional<int> safeStoi(std::string_view intString) {
 // Where above function_foo will use a stack of size 224, and function_bar will
 // use a stack of size 92.
 //
-// We assume that function call structure is as possible:
+// We assume that function call structure is as follows:
 // functions with names core_0_0, core_0_1, core_0_2, etc. call into
 // functions with names like generic_matmul_0_outlined. These latter
 // functions do no make any function calls.
@@ -698,7 +698,7 @@ static auto assembleStringUsingPeano =
     std::bind(assembleStringUsing, assembleFileUsingPeano, _1, _2, _3, _4, _5,
               _6, _7, _8, _9);
 
-// Generate the elf files for the core. Return the stack size of success.
+// Generate the elf files for the core.
 LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
                                    const std::string &objFile, Path &tempDir,
                                    bool useChess, bool useChessForUKernel,

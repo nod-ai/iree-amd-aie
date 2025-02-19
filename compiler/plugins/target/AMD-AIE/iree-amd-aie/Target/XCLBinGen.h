@@ -42,6 +42,9 @@ FailureOr<std::vector<std::string>> makePeanoOptArgs(
 /// An exception-free version of std::stoi, using C++17's std::from_chars.
 std::optional<int> safeStoi(std::string_view intString);
 
+/// Get the stack size by analysing AIE assembly code. This function is not
+/// guaranteed to work for all AIE assembly code, and should be used with
+/// caution.
 FailureOr<int> getStackSize(const std::string &aieAssembly);
 
 }  // namespace detail
