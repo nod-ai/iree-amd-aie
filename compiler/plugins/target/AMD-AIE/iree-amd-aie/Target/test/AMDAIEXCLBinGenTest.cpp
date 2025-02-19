@@ -44,6 +44,48 @@ TEST(XCLBinGenTest, makePeanoOptArgs) {
   EXPECT_FALSE(succeeded(maybeAdditionalFlagsWithoutSemis));
 }
 
+TEST(XCLBinGenTest, SafeStoi0) {
+  // Basically this function
+  // (1) strips leading whitespace, then
+  // (2) finds the largest valid integer in the string.
+  EXPECT_TRUE(detail::safeStoi("   123; 4.123") == 123);
+  EXPECT_TRUE(detail::safeStoi("   -3; ") == -3);
+}
+
+TEST(XCLBinGenTest, GetStackSize0) {
+  // Intermediate lines of assembly omitted for brevity.
+  {
+    std::string asmStr = R"(
+ .type generic_matmul_0_outlined,@function
+ .type core_0_2,@function
+ nopa ;  paddb [sp], #224;  nopxm ;  nops
+ paddb [sp], #-224                     //  Delay Slot 1
+)";
+    EXPECT_TRUE(detail::getStackSize(asmStr) == 224);
+  }
+
+  {
+    std::string asmStr = R"(
+ .type core_0_2,@function
+ nopa ;  paddb [sp], #96;  nopxm ;  nops
+)";
+    EXPECT_TRUE(detail::getStackSize(asmStr) == 96);
+  }
+
+  {
+    std::string asmStr = R"(
+ .type generic_matmul_0_outlined,@function
+ nopa ;  padda [sp], #20;  nopxm ;  nops
+ padda [sp], #-20                     //  Delay Slot 1
+ .type core_0_2,@function
+ nopa ;  padda [sp], #224;  nopxm ;  nops
+ .type core_0_3,@function
+ nopa ;  padda [sp], #224;  nopxm ;  nops
+)";
+    EXPECT_TRUE(detail::getStackSize(asmStr) == 224 + 20);
+  }
+}
+
 }  // namespace
 
 int main(int argc, char **argv) {

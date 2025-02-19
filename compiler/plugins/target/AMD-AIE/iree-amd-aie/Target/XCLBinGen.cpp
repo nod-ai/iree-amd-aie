@@ -6,6 +6,8 @@
 
 #include "XCLBinGen.h"
 
+#include <algorithm>
+#include <charconv>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -59,6 +61,116 @@ using Path = std::filesystem::path;
 
 namespace mlir::iree_compiler::AMDAIE {
 namespace detail {
+
+std::optional<int> safeStoi(std::string_view intString) {
+  size_t start = intString.find_first_not_of(" \t\n\r\f\v");
+  if (start == std::string::npos) return std::nullopt;
+  int value = 0;
+  const char *d0 = intString.data() + start;
+  const char *d1 = intString.end();
+  auto [ptr, ec] = std::from_chars(d0, d1, value);
+  if (ec == std::errc()) return value;
+  return std::nullopt;
+}
+
+// The VLIW assembly strings are of the form
+// '''
+// .type function_name,@function
+//  paddb [sp], #224;
+//  function body, includes loads/stores to stack like: 'st  r17, [sp, #-192]'
+//  paddb [sp], #-224;
+//
+// .type another_function_name,@function
+//  same pattern as above.
+// '''
+//
+// The function names are things like
+// 'generic_matmul_0_outlined' etc.
+// 'core_0_2', 'core_3_4' etc.
+//
+// The 'core' functions call into the other functions. So the stack pointer
+// (sp) might be incremented twice successively: once in the core, then
+// once in the other function.
+//
+// Assuming that non-core functions don't make function calls, and there is
+// no recursion etc, the most that sp is incremented by is
+// max_{tile cores}(paddb amount) +
+// max_{non-core functions}(paddb amount).
+//
+// Note: this is a temporary lighweight solution while we wait for a
+// better solution in peano: https://github.com/Xilinx/llvm-aie/issues/350
+FailureOr<int> getStackSize(const std::string &aieAssembly) {
+  std::istringstream sstream(aieAssembly);
+  std::string line;
+
+  // Lines like '.type function_name,@function'
+  SmallVector<std::string> funcs;
+
+  // Derived from lines containing substrings like 'paddb [sp], #224;'
+  // There is one vector per function.
+  SmallVector<SmallVector<int>> bumps;
+  while (std::getline(sstream, line)) {
+    if (line.find("@function") != std::string::npos) {
+      funcs.push_back(line);
+      bumps.push_back({});
+      continue;
+    }
+    size_t spIndex = line.find("[sp]");
+    if (spIndex == std::string::npos) continue;
+    size_t startIndex = line.rfind(';', spIndex);
+    if (startIndex == std::string::npos) startIndex = 0;
+    size_t paddIndex = line.find("paddb", startIndex);
+    if (paddIndex == std::string::npos) {
+      paddIndex = line.find("padda", startIndex);
+    }
+    if (paddIndex == std::string::npos || paddIndex > spIndex) {
+      llvm::errs() << "Expected 'paddb [sp]' or 'paddb [sp]' in\n"
+                   << line << "\n";
+      return failure();
+    }
+    size_t hashIndex = line.find('#', spIndex);
+    if (hashIndex == std::string::npos) {
+      llvm::errs() << "no hash (#) after [sp] in\n" << line << "\n";
+      return failure();
+    }
+
+    // For example, extract 224 from 'paddb [sp], #224;'
+    auto hashSubstr = line.substr(hashIndex + 1);
+    auto maybeNumber = safeStoi(hashSubstr);
+    if (!maybeNumber.has_value()) {
+      llvm::errs() << "failed to get number from \n" << hashSubstr << "\n";
+      return failure();
+    }
+    bumps.back().push_back(maybeNumber.value());
+  }
+
+  // Determine how much the stack pointer is incremented based on the 'padd's
+  // extracted above.
+  int maxNonCore{0};
+  int maxCore{0};
+  for (uint32_t i = 0; i < funcs.size(); ++i) {
+    // A function that doesn't use the stack pointer:
+    if (bumps[i].empty()) continue;
+
+    // We ignore functions which are not either
+    // 1) sp += x;
+    // 2) sp += x; sp -= x;
+    if (bumps[i].size() > 2) {
+      llvm::errs() << "expected no more than 2 sp increments/decrements\n";
+      return failure();
+    }
+    if (bumps[i].size() == 2 && bumps[i][0] + bumps[i][1] != 0) {
+      llvm::errs() << "expected sp increments to cancel out\n";
+      return failure();
+    }
+    if (funcs[i].find("core_") != std::string::npos) {
+      maxCore = std::max(maxCore, bumps[i][0]);
+    } else {
+      maxNonCore = std::max(maxNonCore, bumps[i][0]);
+    }
+  }
+  return maxCore + maxNonCore;
+}
 
 FailureOr<std::vector<std::string>> flagStringToVector(
     const std::string &flags) {
@@ -584,7 +696,7 @@ static auto assembleStringUsingPeano =
     std::bind(assembleStringUsing, assembleFileUsingPeano, _1, _2, _3, _4, _5,
               _6, _7, _8, _9);
 
-// Generate the elf files for the core
+// Generate the elf files for the core. Return the stack size of success.
 LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
                                    const std::string &objFile, Path &tempDir,
                                    bool useChess, bool useChessForUKernel,
@@ -1078,8 +1190,18 @@ void addLowerToLLVMPasses(OpPassManager &pm) {
   pm.addPass(createCSEPass());
 }
 
+FailureOr<int> getMaxStackByte(const std::string &asmFileName) {
+  // Read the contents of the file `asmFileName` into a string
+  std::ifstream asmFile(asmFileName);
+  std::string aieAssembly((std::istreambuf_iterator<char>(asmFile)),
+                          std::istreambuf_iterator<char>());
+
+  return mlir::iree_compiler::AMDAIE::detail::getStackSize(aieAssembly);
+}
+
 LogicalResult generateUnifiedObject(
-    MLIRContext *context, AIE::DeviceOp deviceOp, const std::string &outputFile,
+    MLIRContext *context, AIE::DeviceOp deviceOp,
+    const std::string &outputObjFile, const std::string &outputAsmFile,
     bool printIRBeforeAll, bool printIRAfterAll, bool printIRModuleScope,
     bool timing, bool useChess, bool verbose, Path &tempDir,
     std::optional<Path> vitisDir, const std::string &targetArch, Path &peanoDir,
@@ -1130,7 +1252,7 @@ LogicalResult generateUnifiedObject(
     FailureOr<Path> chessIntrinsicsObjFile = assembleStringUsingChess(
         /*inputFileStr=*/inputLLStr,
         /*inputFileName=*/"input.ll",
-        /*outputFileName=*/outputFile,
+        /*outputFileName=*/outputObjFile,
         /*outputDir=*/tempDir,
         /*extraArgs*/ std::vector<std::string>{},
         /*workDir=*/tempDir,
@@ -1183,13 +1305,25 @@ LogicalResult generateUnifiedObject(
       return failure();
     }
 
-    if (failed(runTool(
-            peanoLLCBin.string(),
-            {OptLLVMIRFile, "-O2", "--march=" + StringRef(targetArch).lower(),
-             "--function-sections", "--filetype=obj", "-o",
-             std::string(outputFile)},
-            verbose))) {
-      llvm::errs() << "Failed to assemble ll with peano\n";
+    std::vector<std::string> llcBaseArguments{
+        OptLLVMIRFile, "-O2", "--march=" + StringRef(targetArch).lower(),
+        "--function-sections"};
+
+    std::vector<std::string> llcObjArguments = llcBaseArguments;
+    llcObjArguments.insert(llcObjArguments.end(),
+                           {"--filetype=obj", "-o", outputObjFile});
+
+    std::vector<std::string> llcAsmArguments = llcBaseArguments;
+    llcAsmArguments.insert(llcAsmArguments.end(),
+                           {"--filetype=asm", "-o", outputAsmFile});
+
+    if (failed(runTool(peanoLLCBin.string(), llcObjArguments, verbose))) {
+      llvm::errs() << "Failed to assemble ll with peano (no .o created)\n";
+      return failure();
+    }
+
+    if (failed(runTool(peanoLLCBin.string(), llcAsmArguments, verbose))) {
+      llvm::errs() << "Failed to assemble ll with peano (no .s created)\n";
       return failure();
     }
   }
@@ -1294,11 +1428,12 @@ LogicalResult aie2xclbin(
   if (vitisDirPath) vitisDirPath->make_preferred();
 
   Path unifiedObj = tempDirPath / "input.o";
+  Path unifiedAsm = tempDirPath / "input.s";
   if (failed(generateUnifiedObject(
-          ctx, deviceOp, unifiedObj.string(), printIRBeforeAll, printIRAfterAll,
-          printIRModuleScope, timing, useChess, verbose, tempDirPath,
-          vitisDirPath, targetArch, peanoDirPath, npuVersion,
-          additionalPeanoOptFlags))) {
+          ctx, deviceOp, unifiedObj.string(), unifiedAsm.string(),
+          printIRBeforeAll, printIRAfterAll, printIRModuleScope, timing,
+          useChess, verbose, tempDirPath, vitisDirPath, targetArch,
+          peanoDirPath, npuVersion, additionalPeanoOptFlags))) {
     llvm::errs() << "Failed to generate unified object\n";
     return failure();
   }
