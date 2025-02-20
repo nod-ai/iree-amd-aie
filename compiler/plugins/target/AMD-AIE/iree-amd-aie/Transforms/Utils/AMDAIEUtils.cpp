@@ -16,7 +16,8 @@
 namespace mlir::iree_compiler::AMDAIE {
 
 std::string getConstantIntValuesString(ArrayRef<OpFoldResult> ofrs) {
-  auto maybeValues = mlir::getConstantIntValues(ofrs);
+  std::optional<SmallVector<int64_t>> maybeValues =
+      mlir::getConstantIntValues(ofrs);
   if (maybeValues.has_value())
     return getArrayString<int64_t>(maybeValues.value());
   return "[not all constant integers]";
@@ -26,7 +27,7 @@ template <typename T>
 std::optional<T> getConfigAttr(IREE::HAL::ExecutableTargetAttr targetAttr,
                                StringRef name) {
   if (!targetAttr) return std::nullopt;
-  auto config = targetAttr.getConfiguration();
+  DictionaryAttr config = targetAttr.getConfiguration();
   if (!config) return std::nullopt;
   std::optional<T> attr = config.getAs<T>(name);
   return attr;
@@ -41,7 +42,8 @@ std::optional<AMDAIEDevice> getConfigAMDAIEDevice(
 }
 
 std::optional<AMDAIEDevice> getConfigAMDAIEDevice(Operation *op) {
-  auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(op);
+  IREE::HAL::ExecutableTargetAttr targetAttr =
+      IREE::HAL::ExecutableTargetAttr::lookup(op);
   if (!targetAttr) return std::nullopt;
   return getConfigAMDAIEDevice(targetAttr);
 }
@@ -116,7 +118,7 @@ static mlir::AffineExpr getAffineMapDim(ArrayAttr indexingMaps,
 static BlockArgument checkOptionalExtOps(Value val) {
   BlockArgument blockArg;
   if (!(blockArg = dyn_cast<BlockArgument>(val))) {
-    auto defOp = val.getDefiningOp();
+    Operation *defOp = val.getDefiningOp();
     if (!dyn_cast_if_present<arith::ExtFOp>(defOp) &&
         !dyn_cast_if_present<arith::ExtSIOp>(defOp) &&
         !dyn_cast_if_present<arith::ExtUIOp>(defOp)) {
@@ -422,7 +424,7 @@ bool sinkInto(Region &region, IRRewriter &rewriter,
           // Replace uses of the dependency op inside the block. Specifically,
           // if `use` is in `block` then replace its operand with `sunkOp`.
           auto isInBlock = [&block](OpOperand &use) {
-            auto op = use.getOwner();
+            Operation *op = use.getOwner();
             while (op) {
               if (op->getBlock() == &block) return true;
               op = op->getParentOp();
