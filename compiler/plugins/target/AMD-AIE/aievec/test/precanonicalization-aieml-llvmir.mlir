@@ -208,6 +208,8 @@ func.func @arith_truncf(%inp: vector<2x3xf32>) -> vector<2x3xbf16> {
 
 // CHECK-LABEL: @arith_trunci(
 // CHECK-SAME:      %[[INP:.*]]: vector<2x3xi32>)
+#executable_target_ = #hal.executable.target<"", "", {target_device = "npu1_4col"}>
+module attributes {hal.executable.target = #executable_target_} {
 func.func @arith_trunci(%inp: vector<2x3xi32>) -> vector<2x3xi8> {
     // CHECK:     %[[LINEARIZE:.*]] = vector.shape_cast %[[INP]] : vector<2x3xi32> to vector<6xi32>
     // CHECK:     %[[TRUNCI:.*]] = arith.trunci %[[LINEARIZE]] : vector<6xi32> to vector<6xi8>
@@ -215,6 +217,7 @@ func.func @arith_trunci(%inp: vector<2x3xi32>) -> vector<2x3xi8> {
     // CHECK:     return %[[DELINEARIZE]]
     %0 = arith.trunci %inp : vector<2x3xi32> to vector<2x3xi8>
     return %0 : vector<2x3xi8>
+}
 }
 
 // -----
