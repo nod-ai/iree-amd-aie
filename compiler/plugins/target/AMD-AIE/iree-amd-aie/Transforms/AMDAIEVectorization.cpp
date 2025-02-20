@@ -65,7 +65,7 @@ void AMDAIEVectorizationPass::runOnOperation() {
   // Collect all operations which must be vectorized.
   SmallVector<Operation *> candidates;
   funcOp.walk([&](Operation *op) {
-    // Only vectorize linalg ops (for now) (return WalkResult::
+    // Only vectorize linalg ops (for now)
     if (!isa<linalg::LinalgOp>(op)) return WalkResult::advance();
 
     // iree-amd-aie's current tiling pipelines use linalg.copy ops to move data
@@ -81,11 +81,7 @@ void AMDAIEVectorizationPass::runOnOperation() {
     // https://github.com/nod-ai/iree-amd-aie/issues/594 for more info.
     if (auto genericOp = dyn_cast<linalg::GenericOp>(op)) {
       if (isElementwise(genericOp)) {
-        // if (!isa<linalg::FillOp>(op) &&
-        // isElementwise(cast<linalg::LinalgOp>(op))) { auto genericOp =
-        // dyn_cast<linalg::GenericOp>(op); if (genericOp) {
         for (Operation &innerOps : genericOp.getBody()->getOperations()) {
-          // cast<linalg::GenericOp>(op).getBody()->getOperations()) {
           if (!isa<arith::TruncFOp, arith::TruncIOp, linalg::YieldOp>(
                   innerOps)) {
             op->emitRemark() << "not vectorizing linalg elementwise op";
