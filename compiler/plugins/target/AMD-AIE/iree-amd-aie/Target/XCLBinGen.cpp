@@ -6,6 +6,8 @@
 
 #include "XCLBinGen.h"
 
+#include <algorithm>
+#include <charconv>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -13,6 +15,7 @@
 #include <sstream>
 
 #include "AMDAIETargets.h"
+#include "aie/AIEDialect.h"
 #include "aie/Passes.h"
 #include "air/Conversion/AIRToAIEPass.h"
 #include "iree-amd-aie/Transforms/Passes.h"
@@ -59,6 +62,134 @@ using Path = std::filesystem::path;
 
 namespace mlir::iree_compiler::AMDAIE {
 namespace detail {
+
+// Extract an integer from a string, if possible.
+std::optional<int> safeStoi(std::string_view intString) {
+  size_t start = intString.find_first_not_of(" \t\n\r\f\v");
+  if (start == std::string::npos) return std::nullopt;
+  int value = 0;
+  const char *d0 = intString.data() + start;
+  const char *d1 = intString.data() + intString.size();
+  auto [ptr, ec] = std::from_chars(d0, d1, value);
+  if (ec == std::errc()) return value;
+  return std::nullopt;
+}
+
+// The assembly code for the AIE is of the form (intermediate lines omited):
+// '''
+// .type function_foo,@function
+//  paddb [sp], #224;
+//  function body, includes loads/stores to stack like: 'st  r17, [sp, #-192]'
+//  paddb [sp], #-224;
+//
+// .type   core_0_2,@function
+//  paddb [sp], #92;
+//  function body, includes loads/stores to stack like: 'st  r17, [sp, #-44]'
+//  jl  #function_foo
+//  paddb [sp], #-92;
+// '''
+//
+// Where above function_foo will use a stack of size 224, and function_bar will
+// use a stack of size 92.
+//
+// We assume that function call structure is as follows:
+// functions with names core_0_0, core_0_1, core_0_2, etc. might call into
+// functions with names like function_foo (see the `jl` instuction above).
+// These latter functions do no make any function calls.
+//
+// With the above assumption, an upper bound on the stack size of a core is
+// core stack allocation + max_{non-core functions} (stack allocation)
+//
+// Note: this is a temporary lighweight solution while we wait for a
+// better solution in peano: https://github.com/Xilinx/llvm-aie/issues/350
+
+FailureOr<llvm::DenseMap<std::pair<int, int>, int>> getUpperBoundStackSizes(
+    const std::string &aieAssembly) {
+  llvm::DenseMap<std::pair<int, int>, int> coreStackSizes;
+
+  std::istringstream sstream(aieAssembly);
+  std::string line;
+
+  // Lines like '.type function_name,@function'
+  SmallVector<std::string> funcs;
+
+  // Derived from lines containing substrings like 'paddb [sp], #224;'
+  // There is one vector of ints per function.
+  SmallVector<SmallVector<int>> bumps;
+
+  while (std::getline(sstream, line)) {
+    if (line.find("@function") != std::string::npos) {
+      funcs.push_back(line);
+      bumps.push_back({});
+      continue;
+    }
+    size_t spIndex = line.find("[sp]");
+    if (spIndex == std::string::npos) continue;
+    size_t startIndex = line.rfind(';', spIndex);
+    if (startIndex == std::string::npos) startIndex = 0;
+
+    // I've seen padda, paddb, and one other on strix.
+    size_t paddIndex = line.find("padd", startIndex);
+    if (paddIndex == std::string::npos || paddIndex > spIndex) {
+      llvm::errs() << "Expected 'padd(*) [sp]' in\n" << line << "\n";
+      return failure();
+    }
+    size_t hashIndex = line.find('#', spIndex);
+    if (hashIndex == std::string::npos) {
+      llvm::errs() << "no hash (#) after [sp] in\n" << line << "\n";
+      return failure();
+    }
+
+    // For example, extract 224 from 'paddb [sp], #224;'
+    std::string hashSubstr = line.substr(hashIndex + 1);
+    std::optional<int> maybeNumber = safeStoi(hashSubstr);
+    if (!maybeNumber.has_value()) {
+      llvm::errs() << "failed to get number from \n" << hashSubstr << "\n";
+      return failure();
+    }
+    bumps.back().push_back(maybeNumber.value());
+  }
+
+  // Determine how much the stack pointer is incremented based on the 'padd'
+  // operations extracted above.
+  int maxNonCore{0};
+  for (uint32_t i = 0; i < funcs.size(); ++i) {
+    // We ignore functions which are not either
+    // 1) sp += x; ...; return
+    // 2) sp += x; ...; sp -= x; return
+    if (bumps[i].size() > 2) {
+      llvm::errs() << "expected no more than 2 sp increments/decrements\n";
+      return failure();
+    }
+    if (bumps[i].size() == 2 && bumps[i][0] + bumps[i][1] != 0) {
+      llvm::errs() << "expected sp increments to cancel out\n";
+      return failure();
+    }
+
+    int bump = bumps[i].empty() ? 0 : bumps[i][0];
+    size_t coreIndex = funcs[i].find("core_");
+    if (coreIndex == std::string::npos) {
+      // A function that doesn't use the stack pointer can be ignored.
+      maxNonCore = std::max(maxNonCore, bump);
+    } else {
+      size_t colIndex = funcs[i].find("_", coreIndex);
+      size_t rowIndex = funcs[i].find("_", colIndex + 1);
+      std::optional<int> col = safeStoi(funcs[i].substr(colIndex + 1));
+      std::optional<int> row = safeStoi(funcs[i].substr(rowIndex + 1));
+      if (!col.has_value() || !row.has_value()) {
+        llvm::errs() << "failed to get col or row from " << funcs[i] << "\n";
+        return failure();
+      }
+      coreStackSizes.insert({{col.value(), row.value()}, bump});
+    }
+  }
+
+  for (auto &[_, value] : coreStackSizes) {
+    value += maxNonCore;
+  }
+
+  return coreStackSizes;
+}
 
 FailureOr<std::vector<std::string>> flagStringToVector(
     const std::string &flags) {
@@ -135,7 +266,7 @@ FailureOr<std::vector<std::string>> makePeanoOptArgs(
   // Append the additional flags, unless they conflict with an existing flag,
   // in which case replace the existing flag.
   args.reserve(args.size() + additionalFlags.size());
-  for (const auto &flag : additionalFlags) {
+  for (const std::string &flag : additionalFlags) {
     auto iter = std::find_if(args.begin(), args.end(),
                              std::bind(isContention, _1, flag));
     if (iter == args.end()) {
@@ -235,7 +366,7 @@ FailureOr<Path> findVitis(std::optional<Path> &vitisDir,
   if (!vitisDir) {
     const char *envVitis = ::getenv("VITIS");
     if (!envVitis) {
-      if (auto vpp = sys::findProgramByName("v++")) {
+      if (ErrorOr<std::string> vpp = sys::findProgramByName("v++")) {
         SmallString<64> realVpp;
         std::error_code err = sys::fs::real_path(vpp.get(), realVpp);
         if (!err) {
@@ -429,7 +560,7 @@ LogicalResult runTool(
   {
     std::string prefix{"tmpRunTool"};
     std::string suffix{"Logging"};
-    auto errorCode =
+    std::error_code errorCode =
         llvm::sys::fs::createTemporaryFile(prefix, suffix, temporaryPath);
     if (errorCode) {
       llvm::errs() << "Failed to create temporary file: " << errorCode.message()
@@ -584,7 +715,7 @@ static auto assembleStringUsingPeano =
     std::bind(assembleStringUsing, assembleFileUsingPeano, _1, _2, _3, _4, _5,
               _6, _7, _8, _9);
 
-// Generate the elf files for the core
+// Generate the elf files for the core.
 LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
                                    const std::string &objFile, Path &tempDir,
                                    bool useChess, bool useChessForUKernel,
@@ -1078,8 +1209,19 @@ void addLowerToLLVMPasses(OpPassManager &pm) {
   pm.addPass(createCSEPass());
 }
 
+FailureOr<llvm::DenseMap<std::pair<int, int>, int>>
+getUpperBoundStackSizesFromFile(const std::string &asmFileName) {
+  // Read the contents of the file `asmFileName` into a string
+  std::ifstream asmFile(asmFileName);
+  std::string aieAssembly((std::istreambuf_iterator<char>(asmFile)),
+                          std::istreambuf_iterator<char>());
+  return mlir::iree_compiler::AMDAIE::detail::getUpperBoundStackSizes(
+      aieAssembly);
+}
+
 LogicalResult generateUnifiedObject(
-    MLIRContext *context, AIE::DeviceOp deviceOp, const std::string &outputFile,
+    MLIRContext *context, AIE::DeviceOp deviceOp,
+    const std::string &outputObjFile, const std::string &outputAsmFile,
     bool printIRBeforeAll, bool printIRAfterAll, bool printIRModuleScope,
     bool timing, bool useChess, bool verbose, Path &tempDir,
     std::optional<Path> vitisDir, const std::string &targetArch, Path &peanoDir,
@@ -1130,7 +1272,7 @@ LogicalResult generateUnifiedObject(
     FailureOr<Path> chessIntrinsicsObjFile = assembleStringUsingChess(
         /*inputFileStr=*/inputLLStr,
         /*inputFileName=*/"input.ll",
-        /*outputFileName=*/outputFile,
+        /*outputFileName=*/outputObjFile,
         /*outputDir=*/tempDir,
         /*extraArgs*/ std::vector<std::string>{},
         /*workDir=*/tempDir,
@@ -1183,14 +1325,58 @@ LogicalResult generateUnifiedObject(
       return failure();
     }
 
-    if (failed(runTool(
-            peanoLLCBin.string(),
-            {OptLLVMIRFile, "-O2", "--march=" + StringRef(targetArch).lower(),
-             "--function-sections", "--filetype=obj", "-o",
-             std::string(outputFile)},
-            verbose))) {
-      llvm::errs() << "Failed to assemble ll with peano\n";
+    std::vector<std::string> llcBaseArguments{
+        OptLLVMIRFile, "-O2", "--march=" + StringRef(targetArch).lower(),
+        "--function-sections"};
+
+    std::vector<std::string> llcObjArguments = llcBaseArguments;
+    llcObjArguments.insert(llcObjArguments.end(),
+                           {"--filetype=obj", "-o", outputObjFile});
+
+    std::vector<std::string> llcAsmArguments = llcBaseArguments;
+    llcAsmArguments.insert(llcAsmArguments.end(),
+                           {"--filetype=asm", "-o", outputAsmFile});
+
+    if (failed(runTool(peanoLLCBin.string(), llcObjArguments, verbose))) {
+      llvm::errs() << "Failed to assemble ll with peano (no .o created)\n";
       return failure();
+    }
+
+    if (failed(runTool(peanoLLCBin.string(), llcAsmArguments, verbose))) {
+      llvm::errs() << "Failed to assemble ll with peano (no .s created)\n";
+      return failure();
+    }
+
+    // Stack size check.
+    {
+      FailureOr<llvm::DenseMap<std::pair<int, int>, int>> maybeUpperBounds =
+          getUpperBoundStackSizesFromFile(outputAsmFile);
+      if (failed(maybeUpperBounds)) {
+        llvm::errs() << "Failed to get stack size from assembly file\n";
+        return failure();
+      }
+      auto upperBounds = std::move(maybeUpperBounds.value());
+
+      SmallVector<AIE::CoreOp> coreOps;
+      deviceOp->walk([&](AIE::CoreOp coreOp) { coreOps.push_back(coreOp); });
+      for (auto coreOp : coreOps) {
+        int col = coreOp.getTileOp().getCol();
+        int row = coreOp.getTileOp().getRow();
+        auto iter = upperBounds.find({col, row});
+        if (iter == upperBounds.end()) {
+          llvm::errs() << "The stack size for core (" << col << ", " << row
+                       << ") is not found in the assembly file. ";
+          return failure();
+        }
+        auto stackSize = coreOp.getStackSize();
+        if (stackSize < iter->second) {
+          llvm::errs() << "An uppoer bound of the stack size, inferred from "
+                          "the assembly file is, "
+                       << iter->second << " bytes. The assigned stack size is "
+                       << stackSize << " bytes, which is insufficient. ";
+          return failure();
+        }
+      }
     }
   }
 
@@ -1294,11 +1480,12 @@ LogicalResult aie2xclbin(
   if (vitisDirPath) vitisDirPath->make_preferred();
 
   Path unifiedObj = tempDirPath / "input.o";
+  Path unifiedAsm = tempDirPath / "input.s";
   if (failed(generateUnifiedObject(
-          ctx, deviceOp, unifiedObj.string(), printIRBeforeAll, printIRAfterAll,
-          printIRModuleScope, timing, useChess, verbose, tempDirPath,
-          vitisDirPath, targetArch, peanoDirPath, npuVersion,
-          additionalPeanoOptFlags))) {
+          ctx, deviceOp, unifiedObj.string(), unifiedAsm.string(),
+          printIRBeforeAll, printIRAfterAll, printIRModuleScope, timing,
+          useChess, verbose, tempDirPath, vitisDirPath, targetArch,
+          peanoDirPath, npuVersion, additionalPeanoOptFlags))) {
     llvm::errs() << "Failed to generate unified object\n";
     return failure();
   }
