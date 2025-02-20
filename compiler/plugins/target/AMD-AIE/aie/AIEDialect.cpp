@@ -558,8 +558,11 @@ LogicalResult DMABDOp::verify() {
 
   if (deviceModel.isMemTile(parentTileOp.getCol(), parentTileOp.getRow()) ||
       deviceModel.isCoreTile(parentTileOp.getCol(), parentTileOp.getRow())) {
-    if (auto baseAddr = buffer.getAddress(); baseAddr.has_value()) {
-      int offsetInBytes = *baseAddr + getOffsetInBytes(*this);
+    std::optional<uint32_t> maybeStackRelativeAddress =
+        buffer.getStackRelativeAddress();
+    if (maybeStackRelativeAddress.has_value()) {
+      uint32_t baseAddr = maybeStackRelativeAddress.value();
+      int offsetInBytes = baseAddr + getOffsetInBytes(*this);
       if (offsetInBytes % 4) {
         return emitOpError(
                    "bd address must be 4 byte (32b) aligned; got "

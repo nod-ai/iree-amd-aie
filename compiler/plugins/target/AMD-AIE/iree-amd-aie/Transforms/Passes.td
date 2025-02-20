@@ -206,6 +206,7 @@ def AMDAIEConvertDeviceToControlPackets: Pass<"iree-amdaie-convert-device-to-con
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEConvertDeviceToControlPacketsPass()";
   let options = [
     Option<"pathToElfs", "path-to-elfs", "std::string", /*default=*/"", "Path to ELF files.">,
+    Option<"stackSize", "stack-size", "int", /*default=*/"-1", "Size of the stack in bytes.">,
   ];
 }
 

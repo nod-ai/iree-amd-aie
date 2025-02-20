@@ -19,12 +19,12 @@ aie.device(npu1_4col) {
   %lock_0_2_5 = aie.lock(%tile_0_2, 2) {init = 0 : i8}
   %lock_0_2_6 = aie.lock(%tile_0_2, 1) {init = 1 : i8}
   %lock_0_2_7 = aie.lock(%tile_0_2, 0) {init = 0 : i8}
-  %buf5 = aie.buffer(%tile_0_1) {address = 0 : i32, mem_bank = 0 : i32, sym_name = "buf5"} : memref<64x64xi8>
-  %buf4 = aie.buffer(%tile_1_1) {address = 0 : i32, mem_bank = 0 : i32, sym_name = "buf4"} : memref<64x64xi8>
-  %buf3 = aie.buffer(%tile_2_1) {address = 0 : i32, mem_bank = 0 : i32, sym_name = "buf3"} : memref<64x64xi32>
-  %buf2 = aie.buffer(%tile_0_2) {address = 1024 : i32, mem_bank = 0 : i32, sym_name = "buf2"} : memref<8x16x4x8xi8>
-  %buf1 = aie.buffer(%tile_0_2) {address = 5120 : i32, mem_bank = 0 : i32, sym_name = "buf1"} : memref<8x8x8x8xi8>
-  %buf0 = aie.buffer(%tile_0_2) {address = 9216 : i32, mem_bank = 0 : i32, sym_name = "buf0"} : memref<8x16x4x8xi32>
+  %buf5 = aie.buffer(%tile_0_1) {stack_relative_address = 0 : i32, mem_bank = 0 : i32, sym_name = "buf5"} : memref<64x64xi8>
+  %buf4 = aie.buffer(%tile_1_1) {stack_relative_address = 0 : i32, mem_bank = 0 : i32, sym_name = "buf4"} : memref<64x64xi8>
+  %buf3 = aie.buffer(%tile_2_1) {stack_relative_address = 0 : i32, mem_bank = 0 : i32, sym_name = "buf3"} : memref<64x64xi32>
+  %buf2 = aie.buffer(%tile_0_2) {stack_relative_address = 1024 : i32, mem_bank = 0 : i32, sym_name = "buf2"} : memref<8x16x4x8xi8>
+  %buf1 = aie.buffer(%tile_0_2) {stack_relative_address = 5120 : i32, mem_bank = 0 : i32, sym_name = "buf1"} : memref<8x8x8x8xi8>
+  %buf0 = aie.buffer(%tile_0_2) {stack_relative_address = 9216 : i32, mem_bank = 0 : i32, sym_name = "buf0"} : memref<8x16x4x8xi32>
   %mem_0_2 = aie.mem(%tile_0_2) {
     %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb5, repeat_count = 1)
   ^bb1:  // 2 preds: ^bb0, ^bb1

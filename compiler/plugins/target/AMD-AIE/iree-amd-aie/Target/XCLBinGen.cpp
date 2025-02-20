@@ -6,6 +6,8 @@
 
 #include "XCLBinGen.h"
 
+#include <algorithm>
+#include <charconv>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -59,6 +61,154 @@ using Path = std::filesystem::path;
 
 namespace mlir::iree_compiler::AMDAIE {
 namespace detail {
+
+// TODO(newling) this can be simplified, don't need the end-of-string logic.
+std::optional<int> safeStoi(std::string_view intString) {
+  size_t start = intString.find_first_not_of(" \t\n\r\f\v");
+  if (start == std::string::npos) return std::nullopt;
+  int value = 0;
+  const char *d0 = intString.data() + start;
+  const char *d1 = intString.end();
+  auto [ptr, ec] = std::from_chars(d0, d1, value);
+  if (ec == std::errc()) return value;
+  return std::nullopt;
+}
+
+FailureOr<int> getStackSize(const std::string &aieAssembly) {
+  std::istringstream sstream(aieAssembly);
+  std::string l;
+  SmallVector<std::string> funcs;
+  SmallVector<SmallVector<int>> bumps;
+  while (std::getline(sstream, l)) {
+    if (l.find("@function") != std::string::npos) {
+      funcs.push_back(l);
+      bumps.push_back({});
+    }
+    // nopa  ;    paddb  [sp], #224;    nopxm  ;
+    size_t spIndex = l.find("[sp]");
+    if (spIndex == std::string::npos) continue;
+    size_t startIndex = l.rfind(';', spIndex);
+    if (startIndex == std::string::npos) startIndex = 0;
+    size_t paddIndex = l.find("padd", startIndex);
+    if (paddIndex == std::string::npos || paddIndex > spIndex) {
+      llvm::errs() << "Expected 'padd(*)[sp]' in\n" << l << "\n";
+      return failure();
+    }
+    size_t hashIndex = l.find('#', spIndex);
+    if (hashIndex == std::string::npos) {
+      llvm::errs() << "no hash (#) after [sp] in\n" << l << "\n";
+      return failure();
+    }
+    auto maybeNumber = safeStoi(l.substr(hashIndex + 1));
+    if (!maybeNumber.has_value()) {
+      llvm::errs() << "failed to get number from \n"
+                   << l.substr(hashIndex + 1) << "\n";
+      return failure();
+    }
+    bumps.back().push_back(maybeNumber.value());
+  }
+
+  int maxNonCore{0};
+  int maxCore{0};
+  for (uint32_t i = 0; i < funcs.size(); ++i) {
+    if (bumps[i].empty()) continue;
+    auto bump = *std::max_element(bumps[i].begin(), bumps[i].end());
+    if (funcs[i].find("core_") != std::string::npos) {
+      maxCore = std::max(maxCore, bump);
+    } else {
+      maxNonCore = std::max(maxNonCore, bump);
+    }
+  }
+  llvm::errs() << "\n\n\nmax core size is " << maxCore << "\n";
+  llvm::errs() << "max non-core size is " << maxNonCore << "\n";
+  llvm::errs() << "sum of the above is " << maxCore + maxNonCore << "\n";
+  return maxCore + maxNonCore;
+}
+
+// Old version, defunct.
+FailureOr<int> getStackSizev0(const std::string &aieAssembly) {
+  std::istringstream sstream(aieAssembly);
+
+  // Find all uses of the stack pointer (sp) in the loaded file,
+  // and determine address relative to the stack pointer used.
+  // Keep track of maximum byte accessed relative to the stack pointer.
+  //
+  // Example line:
+  // lda r20, [sp, #-268]  // 4-byte Folded Reload
+
+  int maxStackByte = 0;
+  std::string l;
+  while (std::getline(sstream, l)) {
+    size_t spIndex = l.find("[sp");
+    if (spIndex == std::string::npos) continue;
+
+    // Example line:
+    // paddb [sp], #96; nopxm
+    // This is not an access or write to the stack, this is an increase of the
+    // stack pointer by 96 bytes.
+    // TODO(newling) this actually suggests an easier way to find the stack
+    // size, just track padda and paddb instructions.
+    if (l.find("padd") != std::string::npos) continue;
+
+    // Find the first appearance of '#' in l after "[sp"
+    size_t hashIndex = l.find('#', spIndex);
+    if (hashIndex == std::string::npos) {
+      llvm::errs() << "no hash (#) found in line:\n" << l << "\n";
+      return failure();
+    }
+
+    // find the first appearance of '//' in l:
+    size_t commentIndex = l.find("//", hashIndex);
+    if (commentIndex == std::string::npos) {
+      llvm::errs() << "no comment (//) found in line:\n" << l << "\n";
+      return failure();
+    }
+
+    // Obtain the offset. This is '-268' in the example
+    // lda  r20, [sp, #-268]  // 4-byte Folded Reload
+    size_t closingBraceIndex = l.find(']', hashIndex);
+    if (closingBraceIndex == std::string::npos) {
+      llvm::errs() << "no closing brace (]) found in line:\n" << l << "\n";
+      return failure();
+    }
+    std::string offsetStr =
+        l.substr(hashIndex + 1, closingBraceIndex - hashIndex - 1);
+
+    // Obtain the number of bytes accessed. This is '4' in the example
+    // lda  r20, [sp, #-268]  // 4-byte Folded Reload
+    size_t byteIndex = l.find("-byte", commentIndex);
+    if (byteIndex == std::string::npos) {
+      llvm::errs() << "no <number>-byte found in line:\n" << l << "\n";
+      return failure();
+    }
+    std::string numBytesStr =
+        l.substr(commentIndex + 2, byteIndex - commentIndex - 2);
+
+    auto maybeNumBytes = safeStoi(numBytesStr);
+    if (!maybeNumBytes.has_value()) {
+      llvm::errs() << "failed to extract number of bytes from \"" << numBytesStr
+                   << "\", for line:\n"
+                   << l << "\n";
+      return failure();
+    }
+    auto maybeOffset = safeStoi(offsetStr);
+    if (!maybeOffset.has_value()) {
+      llvm::errs() << "failed to extract offset from \"" << offsetStr
+                   << "\", for line:\n"
+                   << l << "\n";
+      return failure();
+    }
+
+    auto newStackByte = maybeNumBytes.value() + -1 * maybeOffset.value();
+    if (newStackByte > maxStackByte) {
+      maxStackByte = newStackByte;
+      llvm::errs() << "offset: " << maybeOffset.value()
+                   << " and numBytes: " << maybeNumBytes.value()
+                   << " and maxStackByte = " << maxStackByte << "\n";
+    }
+  }
+  return maxStackByte;
+}
 
 FailureOr<std::vector<std::string>> flagStringToVector(
     const std::string &flags) {
@@ -584,14 +734,15 @@ static auto assembleStringUsingPeano =
     std::bind(assembleStringUsing, assembleFileUsingPeano, _1, _2, _3, _4, _5,
               _6, _7, _8, _9);
 
-// Generate the elf files for the core
+// Generate the elf files for the core. Return the stack size of success.
 LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
                                    const std::string &objFile, Path &tempDir,
                                    bool useChess, bool useChessForUKernel,
                                    std::optional<Path> vitisDir,
                                    const std::string &targetArch, bool verbose,
                                    Path peanoDir, const std::string &npuVersion,
-                                   const std::optional<std::string> &ukernel) {
+                                   const std::optional<std::string> &ukernel,
+                                   int stackSize) {
   auto tileOps = deviceOp.getOps<AIE::TileOp>();
   std::string errorMessage;
 
@@ -698,7 +849,7 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
         }
 
         if (failed(mlir::iree_compiler::AMDAIE::AIETranslateToBCF(
-                deviceOp, bcfOutput->os(), col, row))) {
+                deviceOp, bcfOutput->os(), col, row, stackSize))) {
           llvm::errs() << "Failed to generate BCF";
           return failure();
         }
@@ -732,7 +883,7 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
           return failure();
         }
         if (failed(mlir::iree_compiler::AMDAIE::AIETranslateToLdScript(
-                deviceOp, ldscriptOutput->os(), col, row))) {
+                deviceOp, ldscriptOutput->os(), col, row, stackSize))) {
           return failure();
         }
         ldscriptOutput->keep();
@@ -763,11 +914,11 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
 }
 
 LogicalResult generateCDO(MLIRContext *context, AIE::DeviceOp deviceOp,
-                          const Path &tempDir) {
+                          const Path &tempDir, int stackSize) {
   auto copy = cast<ModuleOp>(deviceOp.getParentOp()->clone());
   deviceOp = *copy.getOps<AIE::DeviceOp>().begin();
   if (failed(mlir::iree_compiler::AMDAIE::AIETranslateToCDODirect(
-          deviceOp, tempDir.string()))) {
+          deviceOp, tempDir.string(), stackSize))) {
     llvm::errs() << "failed to emit CDO";
     return failure();
   }
@@ -1078,8 +1229,18 @@ void addLowerToLLVMPasses(OpPassManager &pm) {
   pm.addPass(createCSEPass());
 }
 
+FailureOr<int> getMaxStackByte(const std::string &asmFileName) {
+  // Read the contents of the file `asmFileName` into a string
+  std::ifstream asmFile(asmFileName);
+  std::string aieAssembly((std::istreambuf_iterator<char>(asmFile)),
+                          std::istreambuf_iterator<char>());
+
+  return mlir::iree_compiler::AMDAIE::detail::getStackSize(aieAssembly);
+}
+
 LogicalResult generateUnifiedObject(
-    MLIRContext *context, AIE::DeviceOp deviceOp, const std::string &outputFile,
+    MLIRContext *context, AIE::DeviceOp deviceOp,
+    const std::string &outputObjFile, const std::string &outputAsmFile,
     bool printIRBeforeAll, bool printIRAfterAll, bool printIRModuleScope,
     bool timing, bool useChess, bool verbose, Path &tempDir,
     std::optional<Path> vitisDir, const std::string &targetArch, Path &peanoDir,
@@ -1130,7 +1291,7 @@ LogicalResult generateUnifiedObject(
     FailureOr<Path> chessIntrinsicsObjFile = assembleStringUsingChess(
         /*inputFileStr=*/inputLLStr,
         /*inputFileName=*/"input.ll",
-        /*outputFileName=*/outputFile,
+        /*outputFileName=*/outputObjFile,
         /*outputDir=*/tempDir,
         /*extraArgs*/ std::vector<std::string>{},
         /*workDir=*/tempDir,
@@ -1183,13 +1344,25 @@ LogicalResult generateUnifiedObject(
       return failure();
     }
 
-    if (failed(runTool(
-            peanoLLCBin.string(),
-            {OptLLVMIRFile, "-O2", "--march=" + StringRef(targetArch).lower(),
-             "--function-sections", "--filetype=obj", "-o",
-             std::string(outputFile)},
-            verbose))) {
-      llvm::errs() << "Failed to assemble ll with peano\n";
+    std::vector<std::string> llcBaseArguments{
+        OptLLVMIRFile, "-O2", "--march=" + StringRef(targetArch).lower(),
+        "--function-sections"};
+
+    std::vector<std::string> llcObjArguments = llcBaseArguments;
+    llcObjArguments.insert(llcObjArguments.end(),
+                           {"--filetype=obj", "-o", outputObjFile});
+
+    std::vector<std::string> llcAsmArguments = llcBaseArguments;
+    llcAsmArguments.insert(llcAsmArguments.end(),
+                           {"--filetype=asm", "-o", outputAsmFile});
+
+    if (failed(runTool(peanoLLCBin.string(), llcObjArguments, verbose))) {
+      llvm::errs() << "Failed to assemble ll with peano (no .o created)\n";
+      return failure();
+    }
+
+    if (failed(runTool(peanoLLCBin.string(), llcAsmArguments, verbose))) {
+      llvm::errs() << "Failed to assemble ll with peano (no .s created)\n";
       return failure();
     }
   }
@@ -1294,22 +1467,50 @@ LogicalResult aie2xclbin(
   if (vitisDirPath) vitisDirPath->make_preferred();
 
   Path unifiedObj = tempDirPath / "input.o";
+  Path unifiedAsm = tempDirPath / "input.s";
   if (failed(generateUnifiedObject(
-          ctx, deviceOp, unifiedObj.string(), printIRBeforeAll, printIRAfterAll,
-          printIRModuleScope, timing, useChess, verbose, tempDirPath,
-          vitisDirPath, targetArch, peanoDirPath, npuVersion,
-          additionalPeanoOptFlags))) {
+          ctx, deviceOp, unifiedObj.string(), unifiedAsm.string(),
+          printIRBeforeAll, printIRAfterAll, printIRModuleScope, timing,
+          useChess, verbose, tempDirPath, vitisDirPath, targetArch,
+          peanoDirPath, npuVersion, additionalPeanoOptFlags))) {
     llvm::errs() << "Failed to generate unified object\n";
     return failure();
   }
 
+  int maxStackByte = 2048;
+  // the peano (not chess) case:
+  if (!useChess) {
+    auto maybeMaxStackByte = getMaxStackByte(unifiedAsm.string());
+    if (failed(maybeMaxStackByte)) {
+      llvm::errs() << "Failed to get max stack byte\n";
+      return failure();
+    }
+    maxStackByte = maybeMaxStackByte.value() + 1;
+    // std::abort();
+  }
+  // maxStackByte = 257; pass  (298)
+  // maxStackByte = 129; pass  (160)
+  // maxStackByte = 65; // 96 -> 96.  fail.
+
+  // Set the stack size to the nearest multiple of 512 above maxStackByte:
+  // NOTE: for 256 this doesn't work for one of the batch matmuls with ints.
+  int stackAlignment = 256;
+  int stackSize = maxStackByte;
+  if (maxStackByte % stackAlignment != 0) {
+    stackSize = ((maxStackByte / stackAlignment) + 1) * stackAlignment;
+  }
+
+  // (maxStackByte + stackAlignment - 1) & ~(stackAlignment - 1);
+
   if (failed(generateCoreElfFiles(deviceOp, unifiedObj.string(), tempDirPath,
                                   useChess, useChessForUKernel, vitisDirPath,
                                   targetArch, verbose, peanoDir, npuVersion,
-                                  ukernel))) {
+                                  ukernel, stackSize))) {
     llvm::errs() << "Failed to generate core ELF file(s)\n";
     return failure();
   }
+
+  assert(stackSize >= 0);
 
   if (emitCtrlPkt && failed(generateControlPackets(
                          ctx, deviceOp, tempDirPath, printIRBeforeAll,
@@ -1318,7 +1519,7 @@ LogicalResult aie2xclbin(
     return failure();
   }
 
-  if (failed(generateCDO(ctx, deviceOp, tempDirPath))) {
+  if (failed(generateCDO(ctx, deviceOp, tempDirPath, stackSize))) {
     llvm::errs() << "Failed to generate CDO\n";
     return failure();
   }

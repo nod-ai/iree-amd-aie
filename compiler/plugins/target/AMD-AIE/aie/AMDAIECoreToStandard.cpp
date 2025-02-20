@@ -94,6 +94,7 @@ static void bufferToStd(ModuleOp module, BufferOp buffer,
   rewriter.setInsertionPointToStart(module.getBody());
   StringRef symName = name(buffer).getValue();
   MemRefType type = llvm::cast<MemRefType>(buffer.getType());
+
   // Don't emit initialization for cores that don't "own" the buffer (to
   // prevent duplication in the data section of the elf/object file)
   rewriter.create<memref::GlobalOp>(

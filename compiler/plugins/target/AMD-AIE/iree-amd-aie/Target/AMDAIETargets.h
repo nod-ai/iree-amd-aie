@@ -19,16 +19,17 @@ std::vector<uint32_t> AIETranslateToNPU(mlir::ModuleOp);
 
 mlir::LogicalResult AIETranslateToLdScript(xilinx::AIE::DeviceOp,
                                            llvm::raw_ostream &output,
-                                           int tileCol, int tileRow);
+                                           int tileCol, int tileRow,
+                                           int stackSize);
 
 mlir::LogicalResult AIETranslateToBCF(xilinx::AIE::DeviceOp,
                                       llvm::raw_ostream &output, int tileCol,
-                                      int tileRow);
+                                      int tileRow, int stackSize);
 
 mlir::LogicalResult AIETranslateToCDODirect(
-    xilinx::AIE::DeviceOp, llvm::StringRef workDirPath, bool bigEndian = false,
-    bool emitUnified = false, bool cdoDebug = false, bool aieSim = false,
-    bool enableCores = true);
+    xilinx::AIE::DeviceOp, llvm::StringRef workDirPath, int stackSize,
+    bool bigEndian = false, bool emitUnified = false, bool cdoDebug = false,
+    bool aieSim = false, bool enableCores = true);
 }  // namespace mlir::iree_compiler::AMDAIE
 
 #endif

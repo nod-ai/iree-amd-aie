@@ -558,7 +558,7 @@ LogicalResult AIEDeviceBuilder::bufferToAIE(AMDAIE::BufferOp bufferOp,
   auto aieBufferOp = rewriter.create<AIE::BufferOp>(
       bufferOp.getLoc(), elemType, tile,
       rewriter.getStringAttr("buff_" + std::to_string(bufferId++)),
-      /*address*/ bufferOp.getAddressAttr(),
+      /*relative address*/ bufferOp.getStackRelativeAddressAttr(),
       /*mem_bank*/ nullptr);
   mapper.map(bufferOp.getResult(), aieBufferOp.getResult());
   mapper.map(bufferOp.getOperation(), aieBufferOp.getOperation());
