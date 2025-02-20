@@ -6,6 +6,7 @@
 
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "mlir/Dialect/Affine/LoopUtils.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
 #include "mlir/Dialect/Linalg/Transforms/Hoisting.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
@@ -64,18 +65,13 @@ void AMDAIEVectorizationPass::runOnOperation() {
   // Collect all operations which must be vectorized.
   SmallVector<Operation *> candidates;
   funcOp.walk([&](Operation *op) {
-    // Only vectorize linalg ops (for now)
-    if (!isa<linalg::LinalgOp>(op)) return;
+    // Only vectorize linalg ops (for now) (return WalkResult::
+    if (!isa<linalg::LinalgOp>(op)) return WalkResult::advance();
 
     // iree-amd-aie's current tiling pipelines use linalg.copy ops to move data
     // between memory spaces. These copy ops should not be vectorized to
     // vector.transfer_read/transfer_write ops.
-    if (isa<linalg::CopyOp>(op)) return;
-
-    // Temporarily disabling linalg::FillOp vectorization. Current compilation
-    // pipeline crashes in DMAToChannelPass: 'error: operand #0 does not
-    // dominate this use'. TODO(newling) follow-up on this.
-    if (isa<linalg::FillOp>(op)) return;
+    if (isa<linalg::CopyOp>(op)) return WalkResult::advance();
 
     // For quantized ops elementwise ops are vectorized to ops that operate on
     // extremely large vectors, e.g., things like arith.addi %60, %63 :
@@ -83,23 +79,28 @@ void AMDAIEVectorizationPass::runOnOperation() {
     // such that the ops are split to narrower ops but this is (currently) and
     // edge case so just disable. See
     // https://github.com/nod-ai/iree-amd-aie/issues/594 for more info.
-    if (isElementwise(cast<linalg::LinalgOp>(op))) {
-      // TODO(avarma): Currently switching vectorization on only for
-      //               arith.truncf. Improve this later by trying to bridge the
-      //               gap between this pass and vector-to-aievec.
-      for (Operation &innerOps :
-           cast<linalg::GenericOp>(op).getBody()->getOperations()) {
-        if (!isa<arith::TruncFOp, arith::TruncIOp, linalg::YieldOp>(innerOps)) {
-          op->emitRemark() << "not vectorizing linalg elementwise op";
-          return;
+    if (auto genericOp = dyn_cast<linalg::GenericOp>(op)) {
+      if (isElementwise(genericOp)) {
+        // if (!isa<linalg::FillOp>(op) &&
+        // isElementwise(cast<linalg::LinalgOp>(op))) { auto genericOp =
+        // dyn_cast<linalg::GenericOp>(op); if (genericOp) {
+        for (Operation &innerOps : genericOp.getBody()->getOperations()) {
+          // cast<linalg::GenericOp>(op).getBody()->getOperations()) {
+          if (!isa<arith::TruncFOp, arith::TruncIOp, linalg::YieldOp>(
+                  innerOps)) {
+            op->emitRemark() << "not vectorizing linalg elementwise op";
+            return WalkResult::advance();
+          }
         }
       }
     }
 
     // AIE architecture has no vector instructions for 32/64-bit types.
-    if (!hasOperandWithSmallElementType(op)) return;
+    if (!isa<linalg::FillOp>(op) && !hasOperandWithSmallElementType(op))
+      return WalkResult::advance();
 
     candidates.push_back(op);
+    return WalkResult::advance();
   });
 
   for (Operation *op : candidates) {

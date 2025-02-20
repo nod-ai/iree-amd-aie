@@ -7,6 +7,7 @@ set(_mlir_files
   test-shuffle.mlir
   test-srs.mlir
   test-ups.mlir
+  canonicalize_transfer_write_for_load.mlir
 )
 
 iree_lit_test_suite(
