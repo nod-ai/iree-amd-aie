@@ -2,6 +2,9 @@
 
 // CHECK-LABEL: @scalar_extsi_to_broadcast_swap(
 // CHECK-SAME: %[[SIN:.*]]: i8
+
+#executable_target_ = #hal.executable.target<"", "", {target_device = "npu1_4col"}>
+module attributes {hal.executable.target = #executable_target_} {
 func.func @scalar_extsi_to_broadcast_swap(%s: i8) -> vector<32xi32> {
     // CHECK: %[[SPLAT:.*]] = vector.splat %[[SIN]] : vector<32xi8>
     // CHECK: %[[EXT:.*]] = arith.extsi %[[SPLAT]] : vector<32xi8> to vector<32xi32>
@@ -9,11 +12,15 @@ func.func @scalar_extsi_to_broadcast_swap(%s: i8) -> vector<32xi32> {
     %1 = vector.broadcast %0 : i32 to vector<32xi32>
     return %1 : vector<32xi32>
 }
+}
 
 // -----
 
 // CHECK-LABEL: @scalar_extsi_to_shape_cast_swap(
 // CHECK-SAME: %[[SIN:.*]]: vector<16x2xi8>
+
+#executable_target_ = #hal.executable.target<"", "", {target_device = "npu1_4col"}>
+module attributes {hal.executable.target = #executable_target_} {
 func.func @scalar_extsi_to_shape_cast_swap(%s: vector<16x2xi8>) -> vector<32xi32> {
     // CHECK: %[[SHAPE_CAST:.*]] = vector.shape_cast %[[SIN:.*]] : vector<16x2xi8> to vector<32xi8>
     // CHECK: %[[EXT:.*]] = arith.extsi %[[SHAPE_CAST]] : vector<32xi8> to vector<32xi32>
@@ -21,12 +28,16 @@ func.func @scalar_extsi_to_shape_cast_swap(%s: vector<16x2xi8>) -> vector<32xi32
     %1 = vector.shape_cast %0 : vector<16x2xi32> to vector<32xi32>
     return %1 : vector<32xi32>
 }
+}
 
 
 // -----
 
 // CHECK-LABEL: @extsi_to_broadcast_swap(
 // CHECK-SAME: %[[VIN:.*]]: vector<8xi8>
+
+#executable_target_ = #hal.executable.target<"", "", {target_device = "npu1_4col"}>
+module attributes {hal.executable.target = #executable_target_} {
 func.func @extsi_to_broadcast_swap(%v: vector<8xi8>) -> vector<4x8xi32> {
     // CHECK: %[[ZV:.*]] = ub.poison : vector<4x8xi8>
     // CHECK: %[[I0:.*]] = vector.insert %[[VIN]], %[[ZV]] [0] : vector<8xi8> into vector<4x8xi8>
@@ -38,11 +49,15 @@ func.func @extsi_to_broadcast_swap(%v: vector<8xi8>) -> vector<4x8xi32> {
     %1 = vector.broadcast %0 : vector<8xi32> to vector<4x8xi32>
     return %1 : vector<4x8xi32>
 }
+}
 
 // -----
 
 // CHECK-LABEL: @broadcast_to_insert(
 // CHECK-SAME: %[[V:.*]]: vector<8xbf16>
+
+#executable_target_ = #hal.executable.target<"", "", {target_device = "npu1_4col"}>
+module attributes {hal.executable.target = #executable_target_} {
 func.func @broadcast_to_insert(%v: vector<8xbf16>) -> vector<1x4x8xbf16> {
     // CHECK: %[[ZV:.*]] = ub.poison : vector<4x8xbf16>
     // CHECK: %[[I0:.*]] = vector.insert %[[V]], %[[ZV]] [0] : vector<8xbf16> into vector<4x8xbf16>
@@ -53,6 +68,7 @@ func.func @broadcast_to_insert(%v: vector<8xbf16>) -> vector<1x4x8xbf16> {
     // CHECK: return %[[BC]] : vector<1x4x8xbf16>
     %0 = vector.broadcast %v : vector<8xbf16> to vector<1x4x8xbf16>
     return %0 : vector<1x4x8xbf16>
+}
 }
 
 // -----
@@ -65,12 +81,15 @@ func.func @broadcast_to_insert(%v: vector<8xbf16>) -> vector<1x4x8xbf16> {
 // CHECK: vector.shape_cast
 // CHECK-SAME: vector<32xi8> to vector<4x8xi8>
 #map = affine_map<(d0, d1, d2, d3) -> (d1, d3)>
+#executable_target_ = #hal.executable.target<"", "", {target_device = "npu1_4col"}>
+module attributes {hal.executable.target = #executable_target_} {
 func.func @contiguous_read_with_unit_extent_dim() -> vector<4x8xi8> {
     %c0_i8 = arith.constant 0 : i8
     %c0 = arith.constant 0 : index
     %alloc = memref.alloc() : memref<2x4x1x8xi8>
     %0 = vector.transfer_read %alloc[%c0, %c0, %c0, %c0], %c0_i8 {in_bounds = [true, true], permutation_map = #map} : memref<2x4x1x8xi8>, vector<4x8xi8>
     return %0 : vector<4x8xi8>
+}
 }
 
 // -----
@@ -81,12 +100,15 @@ func.func @contiguous_read_with_unit_extent_dim() -> vector<4x8xi8> {
 // CHECK: transfer_read{{.*}} memref<2x4x2x8xi8>
 // CHECK: return
 #map = affine_map<(d0, d1, d2, d3) -> (d1, d3)>
+#executable_target_ = #hal.executable.target<"", "", {target_device = "npu1_4col"}>
+module attributes {hal.executable.target = #executable_target_} {
 func.func @noncontiguous_read_cannot_collapse() -> vector<4x8xi8> {
     %c0_i8 = arith.constant 0 : i8
     %c0 = arith.constant 0 : index
     %alloc = memref.alloc() : memref<2x4x2x8xi8>
     %0 = vector.transfer_read %alloc[%c0, %c0, %c0, %c0], %c0_i8 {in_bounds = [true, true], permutation_map = #map} : memref<2x4x2x8xi8>, vector<4x8xi8>
     return %0 : vector<4x8xi8>
+}
 }
 
 // -----
@@ -97,12 +119,15 @@ func.func @noncontiguous_read_cannot_collapse() -> vector<4x8xi8> {
 // CHECK: return
 
 #map = affine_map<(d0, d1) -> (d1, d0)>
+#executable_target_ = #hal.executable.target<"", "", {target_device = "npu1_4col"}>
+module attributes {hal.executable.target = #executable_target_} {
 func.func @permutation_read_cannot_collapse() -> vector<8x8xi8> {
     %c0_i8 = arith.constant 0 : i8
     %c0 = arith.constant 0 : index
     %alloc = memref.alloc() : memref<8x8xi8>
     %0 = vector.transfer_read %alloc[%c0, %c0], %c0_i8 {in_bounds = [true, true], permutation_map = #map} : memref<8x8xi8>, vector<8x8xi8>
     return %0 : vector<8x8xi8>
+}
 }
 
 // -----
@@ -113,11 +138,14 @@ func.func @permutation_read_cannot_collapse() -> vector<8x8xi8> {
 // CHECK: vector.transfer_write
 // CHECK: return
 #map = affine_map<(d0, d1, d2, d3) -> (d1, d3)>
+#executable_target_ = #hal.executable.target<"", "", {target_device = "npu1_4col"}>
+module attributes {hal.executable.target = #executable_target_} {
 func.func @contiguous_write_with_unit_extent_dim(%v: vector<4x8xi8>) {
     %c0 = arith.constant 0 : index
     %alloc = memref.alloc() : memref<2x4x1x8xi8>
     vector.transfer_write %v, %alloc[%c0, %c0, %c0, %c0] {permutation_map = #map} : vector<4x8xi8>, memref<2x4x1x8xi8>
     return
+}
 }
 
 // -----
@@ -133,12 +161,15 @@ func.func @contiguous_write_with_unit_extent_dim(%v: vector<4x8xi8>) {
 // CHECK: return
 
 #map = affine_map<(d0, d1, d2, d3, d4) -> (d1, d3)>
+#executable_target_ = #hal.executable.target<"", "", {target_device = "npu1_4col"}>
+module attributes {hal.executable.target = #executable_target_} {
 func.func @contiguous_write_with_unit_extent_dim_2(%v: vector<4x8xi8>) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %alloc = memref.alloc() : memref<2x6x1x8x1xi8>
     vector.transfer_write %v, %alloc[%c0, %c1, %c0, %c0, %c0] {permutation_map = #map} : vector<4x8xi8>, memref<2x6x1x8x1xi8>
     return
+}
 }
 
 // -----
@@ -147,17 +178,22 @@ func.func @contiguous_write_with_unit_extent_dim_2(%v: vector<4x8xi8>) {
 // CHECK-NOT: memref.collapse_shape
 // CHECK-NOT: vector.shape_cast
 // CHECK: return
+#executable_target_ = #hal.executable.target<"", "", {target_device = "npu1_4col"}>
+module attributes {hal.executable.target = #executable_target_} {
 func.func @noncontiguous_write(%v: vector<4x8xi8>) {
     %c0 = arith.constant 0 : index
     %alloc = memref.alloc() : memref<4x10xi8>
     vector.transfer_write %v, %alloc[%c0, %c0] : vector<4x8xi8>, memref<4x10xi8>
     return
 }
+}
 
 // -----
 
 // CHECK-LABEL: @arith_truncf(
 // CHECK-SAME:      %[[INP:.*]]: vector<2x3xf32>)
+#executable_target_ = #hal.executable.target<"", "", {target_device = "npu1_4col"}>
+module attributes {hal.executable.target = #executable_target_} {
 func.func @arith_truncf(%inp: vector<2x3xf32>) -> vector<2x3xbf16> {
     // CHECK:     %[[LINEARIZE:.*]] = vector.shape_cast %[[INP]] : vector<2x3xf32> to vector<6xf32>
     // CHECK:     %[[TRUNCF:.*]] = arith.truncf %[[LINEARIZE]] : vector<6xf32> to vector<6xbf16>
@@ -165,6 +201,7 @@ func.func @arith_truncf(%inp: vector<2x3xf32>) -> vector<2x3xbf16> {
     // CHECK:     return %[[DELINEARIZE]]
     %0 = arith.truncf %inp : vector<2x3xf32> to vector<2x3xbf16>
     return %0 : vector<2x3xbf16>
+}
 }
 
 // -----
@@ -194,12 +231,15 @@ func.func @arith_trunci(%inp: vector<2x3xi32>) -> vector<2x3xi8> {
 // CHECK:         %[[SHAPE_CAST:.*]] = vector.shape_cast %[[READ]]
 // CHECK-SAME:        vector<32xbf16> to vector<1x1x4x8xbf16>
 // CHECK:         return %[[SHAPE_CAST]]
+#executable_target_ = #hal.executable.target<"", "", {target_device = "npu1_4col"}>
+module attributes {hal.executable.target = #executable_target_} {
 func.func @trivial_read_access(%arg0: memref<4x8x4x8xbf16, strided<[256, 32, 8, 1]>>, %in: index) -> vector<1x1x4x8xbf16> {
     %c0 = arith.constant 0 : index
     %cst = arith.constant 0.000000e+00 : bf16
     %subview = memref.subview %arg0[%in, 3, 0, 0] [1, 1, 4, 8] [1, 1, 1, 1] : memref<4x8x4x8xbf16, strided<[256, 32, 8, 1]>> to memref<1x1x4x8xbf16, strided<[256, 32, 8, 1], offset: ?>>
     %read = vector.transfer_read %subview[%c0, %c0, %c0, %c0], %cst {in_bounds = [true, true, true, true]} : memref<1x1x4x8xbf16, strided<[256, 32, 8, 1], offset: ?>>, vector<1x1x4x8xbf16>
     return %read : vector<1x1x4x8xbf16>
+}
 }
 
 // -----
@@ -213,12 +253,15 @@ func.func @trivial_read_access(%arg0: memref<4x8x4x8xbf16, strided<[256, 32, 8, 
 // CHECK:         %[[SHAPE_CAST:.*]] = vector.shape_cast %[[READ]]
 // CHECK-SAME:        vector<8xbf16> to vector<1x1x8xbf16>
 // CHECK:         return %[[SHAPE_CAST]]
+#executable_target_ = #hal.executable.target<"", "", {target_device = "npu1_4col"}>
+module attributes {hal.executable.target = #executable_target_} {
 func.func @trivial_read_access_rank_reduced(%arg0: memref<4x8x1x8xbf16, strided<[64, 8, 8, 1]>>) -> vector<1x1x8xbf16> {
     %c0 = arith.constant 0 : index
     %cst = arith.constant 0.000000e+00 : bf16
     %subview = memref.subview %arg0[2, 3, 0, 0] [1, 1, 1, 8] [1, 1, 1, 1] : memref<4x8x1x8xbf16, strided<[64, 8, 8, 1]>> to memref<1x1x8xbf16, strided<[8, 8, 1], offset: 152>>
     %read = vector.transfer_read %subview[%c0, %c0, %c0], %cst {in_bounds = [true, true, true]} : memref<1x1x8xbf16, strided<[8, 8, 1], offset: 152>>, vector<1x1x8xbf16>
     return %read : vector<1x1x8xbf16>
+}
 }
 
 // -----
@@ -233,10 +276,13 @@ func.func @trivial_read_access_rank_reduced(%arg0: memref<4x8x1x8xbf16, strided<
 // CHECK-SAME:          : vector<1x1x4x4xf32> to vector<16xf32>
 // CHECK:           vector.transfer_write %[[SHAPE_CAST]], %[[COLLAPSE_SHAPE]]
 // CHECK:           return
+#executable_target_ = #hal.executable.target<"", "", {target_device = "npu1_4col"}>
+module attributes {hal.executable.target = #executable_target_} {
 func.func @trivial_write_access(%arg0: memref<8x8x4x4xf32, strided<[128, 16, 4, 1]>>, %arg1: vector<1x1x4x4xf32>) {
     %c0 = arith.constant 0 : index
     %cst = arith.constant 0.000000e+00 : bf16
     %subview = memref.subview %arg0[2, 3, 0, 0] [1, 1, 4, 4] [1, 1, 1, 1] : memref<8x8x4x4xf32, strided<[128, 16, 4, 1]>> to memref<1x1x4x4xf32, strided<[128, 16, 4, 1], offset: 304>>
     vector.transfer_write %arg1, %subview[%c0, %c0, %c0, %c0] {in_bounds = [true, true, true, true]} : vector<1x1x4x4xf32>, memref<1x1x4x4xf32, strided<[128, 16, 4, 1], offset: 304>>
     return
+}
 }
