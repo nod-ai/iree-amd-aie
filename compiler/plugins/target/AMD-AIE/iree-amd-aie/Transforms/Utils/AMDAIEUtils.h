@@ -116,6 +116,20 @@ std::string getArrayString(ArrayRef<T> vs) {
 /// "[not constant integers]".
 std::string getConstantIntValuesString(ArrayRef<OpFoldResult> opFoldResults);
 
+/// Consider all operations in the region, recursively. If the operation
+/// has an operand that is not in the region, and the `shouldSink` function
+/// returns true for that operand's producer, then replace all uses of the
+/// operand inside the region with a clone of the operand in the block.
+///
+/// If `shouldSink` returns true for all operations, then this function will
+/// make the region isolated from above.  So this function essentially makes
+/// the region isolated from above with respect to the set of operation types
+/// defined by `shouldSink`.
+///
+/// \return true if the region was changed.
+bool sinkInto(Region &, IRRewriter &,
+              std::function<bool(Operation *)> shouldSink);
+
 }  // namespace mlir::iree_compiler::AMDAIE
 
 #endif
