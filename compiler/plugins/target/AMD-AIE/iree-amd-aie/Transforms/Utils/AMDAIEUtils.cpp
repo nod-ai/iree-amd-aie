@@ -16,7 +16,8 @@
 namespace mlir::iree_compiler::AMDAIE {
 
 std::string getConstantIntValuesString(ArrayRef<OpFoldResult> ofrs) {
-  auto maybeValues = mlir::getConstantIntValues(ofrs);
+  std::optional<SmallVector<int64_t>> maybeValues =
+      mlir::getConstantIntValues(ofrs);
   if (maybeValues.has_value())
     return getArrayString<int64_t>(maybeValues.value());
   return "[not all constant integers]";
@@ -26,7 +27,7 @@ template <typename T>
 std::optional<T> getConfigAttr(IREE::HAL::ExecutableTargetAttr targetAttr,
                                StringRef name) {
   if (!targetAttr) return std::nullopt;
-  auto config = targetAttr.getConfiguration();
+  DictionaryAttr config = targetAttr.getConfiguration();
   if (!config) return std::nullopt;
   std::optional<T> attr = config.getAs<T>(name);
   return attr;
@@ -41,7 +42,8 @@ std::optional<AMDAIEDevice> getConfigAMDAIEDevice(
 }
 
 std::optional<AMDAIEDevice> getConfigAMDAIEDevice(Operation *op) {
-  auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(op);
+  IREE::HAL::ExecutableTargetAttr targetAttr =
+      IREE::HAL::ExecutableTargetAttr::lookup(op);
   if (!targetAttr) return std::nullopt;
   return getConfigAMDAIEDevice(targetAttr);
 }
@@ -116,7 +118,7 @@ static mlir::AffineExpr getAffineMapDim(ArrayAttr indexingMaps,
 static BlockArgument checkOptionalExtOps(Value val) {
   BlockArgument blockArg;
   if (!(blockArg = dyn_cast<BlockArgument>(val))) {
-    auto defOp = val.getDefiningOp();
+    Operation *defOp = val.getDefiningOp();
     if (!dyn_cast_if_present<arith::ExtFOp>(defOp) &&
         !dyn_cast_if_present<arith::ExtSIOp>(defOp) &&
         !dyn_cast_if_present<arith::ExtUIOp>(defOp)) {
@@ -395,6 +397,49 @@ int detail::findLargestFactor(int num, int max, int multiple) {
   // if we could not find the desired factor then we give up and call the code
   // that doesnt require the multiple constrain.
   return factor ? factor : detail::findLargestFactor(num, max);
+}
+
+bool sinkInto(Region &region, IRRewriter &rewriter,
+              std::function<bool(Operation *)> shouldSink) {
+  Operation *parentOfRegion = region.getParentOp();
+  assert(parentOfRegion && "Region has no parent operation");
+  if (region.getBlocks().empty()) return false;
+  bool regionChanged = false;
+  for (Block &block : region.getBlocks()) {
+    // Collect all ops in the block.
+    SmallVector<Operation *> ops;
+    SmallVector<Operation *> nextIterationOps;
+    block.walk([&](Operation *op) { ops.push_back(op); });
+    while (!ops.empty()) {
+      for (Operation *op : ops) {
+        for (Value operand : op->getOperands()) {
+          if (!operand || !operand.getDefiningOp()) continue;
+          Operation *dependencyOp = operand.getDefiningOp();
+          // Skip if the dependency is already in the core.
+          if (parentOfRegion->isAncestor(dependencyOp)) continue;
+          if (!shouldSink(dependencyOp)) continue;
+          rewriter.setInsertionPointToStart(&block);
+          Operation *sunkOp = rewriter.clone(*dependencyOp);
+          nextIterationOps.push_back(sunkOp);
+          // Replace uses of the dependency op inside the block. Specifically,
+          // if `use` is in `block` then replace its operand with `sunkOp`.
+          auto isInBlock = [&block](OpOperand &use) {
+            Operation *op = use.getOwner();
+            while (op) {
+              if (op->getBlock() == &block) return true;
+              op = op->getParentOp();
+            }
+            return false;
+          };
+          dependencyOp->replaceUsesWithIf(sunkOp, isInBlock);
+          regionChanged = true;
+        }
+      }
+      std::swap(ops, nextIterationOps);
+      nextIterationOps.clear();
+    }
+  }
+  return regionChanged;
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE

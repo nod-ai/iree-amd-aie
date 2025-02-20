@@ -87,6 +87,8 @@ iree_cc_library(
     MLIRMemRefDialect
     MLIRIR
     MLIREmitCDialect
+    iree::compiler::Dialect::HAL::IR
+    iree::compiler::Dialect::HAL::IR::HALDialect
 )
 
 ###############################################################################
