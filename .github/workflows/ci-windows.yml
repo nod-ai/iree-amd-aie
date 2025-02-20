@@ -171,7 +171,7 @@ jobs:
         run: |
           python -m venv .venv
           .\.venv\Scripts\Activate.ps1
-          pip install -r tests\requirements.txt
+          pip install pyyaml pytest numpy
 
       - name: E2E correctness matmul test
         shell: bash

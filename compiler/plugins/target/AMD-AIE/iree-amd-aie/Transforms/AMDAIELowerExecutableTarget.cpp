@@ -90,10 +90,6 @@ void AMDAIELowerExecutableTargetPass::runOnOperation() {
         addPackPeel4LevelTilingBasedPassPipeline(
             executableLoweringPipeline, pathToUkernels,
             TilePassPipeline::PackPeel4LevelTilingPipeline, getRootOp(funcOp));
-      } else if (useTilePipeline == TilePassPipeline::PadPackPipeline) {
-        addPadPackBasedPassPipeline(executableLoweringPipeline, pathToUkernels,
-                                    enableVectorizationPasses,
-                                    TilePassPipeline::PadPackPipeline);
       } else if (useTilePipeline == TilePassPipeline::ConvDecomposePipeline) {
         addConvDecomposePassPipeline(executableLoweringPipeline,
                                      TilePassPipeline::ConvDecomposePipeline);

@@ -58,12 +58,6 @@ void addPackPeel4LevelTilingBasedPassPipeline(OpPassManager &passManager,
                                               TilePassPipeline useTilePipeline,
                                               Operation *rootOp);
 
-/// Populates passes needed to lower the IR via a Pad-Pack based approach.
-void addPadPackBasedPassPipeline(OpPassManager &passManager,
-                                 const std::string &pathToUkernels,
-                                 bool enableVectorizationPasses,
-                                 TilePassPipeline useTilePipeline);
-
 /// Populates passes needed to lower the IR via a Conv-Decompose based approach.
 void addConvDecomposePassPipeline(OpPassManager &passManager,
                                   TilePassPipeline useTilePipeline);
