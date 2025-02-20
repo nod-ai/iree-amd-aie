@@ -46,14 +46,11 @@ func.func @matmul_m4_n4_k8_f32_f32(%arg0: tensor<4x8xf32>, %arg1: tensor<8x4xf32
 
 // Test that the currently 'black listed' linalg operations are not vectorized:
 //  - linalg.copy
-//  - linalg.fill
-// CHECK-LABEL: func @fillAndCopy
-func.func @fillAndCopy() -> tensor<8xbf16> {
+// CHECK-LABEL: func @copy
+func.func @copy() -> tensor<8xbf16> {
   // CHECK-NOT: vector
   // Fill a tensor with a constant value:
-  %cst = arith.constant 3.140000e+00 : bf16
-  %0 = tensor.empty() : tensor<8xbf16>
-  %1 = linalg.fill ins(%cst : bf16) outs(%0 : tensor<8xbf16>) -> tensor<8xbf16>
+  %1 = tensor.empty() : tensor<8xbf16>
 
   // Copy from the filled tensor to another tensor:
   %2 = tensor.empty() : tensor<8xbf16>
@@ -77,6 +74,20 @@ func.func @matmul_elementwise_truncf(%arg0: tensor<4240x160xf32>, %arg1: tensor<
 // CHECK: %[[VEC_OPERAND_0:.*]] = vector.transfer_read %[[ARG0]]{{.*}} vector<4240x160xf32>
 // CHECK: %[[TRUNCF:.*]] = arith.truncf %[[VEC_OPERAND_0]]
 // CHECK: vector.transfer_write %[[TRUNCF]], %[[ARG1]]
+
+// CHECK-LABEL: @fill
+func.func @fill() -> tensor<8xbf16> {
+  // CHECK-DAG: [[CSTPI:%.*]] = arith.constant {{.*}} : vector<8xbf16>
+  // CHECK-DAG: [[C0:%.*]] = arith.constant 0 : index
+  %cst = arith.constant 3.14 : bf16
+  // CHECK-DAG: [[EMPTY:%.*]] = tensor.empty() : tensor<8xbf16>
+  %0 = tensor.empty() : tensor<8xbf16>
+  // CHECK: vector.transfer_write
+  // CHECK-SAME: {in_bounds = [true]} : vector<8xbf16>, tensor<8xbf16>
+  %1 = linalg.fill ins(%cst : bf16) outs(%0 : tensor<8xbf16>) -> tensor<8xbf16>
+  return %1 : tensor<8xbf16>
+}
+
 
 // CHECK-LABEL: @matmul_elementwise_trunci
 //  CHECK-SAME: (%[[ARG0:.*]]: tensor<4240x160xi32>, %[[ARG1:.*]]: tensor<4240x160xi8>)
