@@ -27,15 +27,15 @@ module attributes {hal.executable.target = #executable_target_} {
   }
 }
 // CHECK-LABEL: func.func @test_divisible()
-// CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
-// CHECK-DAG: %[[C32:.*]] = arith.constant 32 : index
-// CHECK-DAG: %[[C256:.*]] = arith.constant 256 : index
-// CHECK-DAG: %[[CST:.*]] = arith.constant dense<0> : vector<32xi32>
-// CHECK-DAG: %[[ALLOC:.*]] = memref.alloc() : memref<256xi32>
-// CHECK: scf.for %arg0 = %[[C0]] to %[[C256]] step %[[C32]] {
-// CHECK-NEXT: vector.transfer_write %[[CST]], %[[ALLOC]][%arg0] {in_bounds = [true]} : vector<32xi32>, memref<256xi32>
-// CHECK-NEXT: }
-// CHECK-NEXT: return
+// CHECK-DAG:    %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:    %[[C32:.*]] = arith.constant 32 : index
+// CHECK-DAG:    %[[C256:.*]] = arith.constant 256 : index
+// CHECK-DAG:    %[[CST:.*]] = arith.constant dense<0> : vector<32xi32>
+// CHECK-DAG:    %[[ALLOC:.*]] = memref.alloc() : memref<256xi32>
+// CHECK:        scf.for %arg0 = %[[C0]] to %[[C256]] step %[[C32]] {
+// CHECK-NEXT:    vector.transfer_write %[[CST]], %[[ALLOC]][%arg0] {in_bounds = [true]} : vector<32xi32>, memref<256xi32>
+// CHECK-NEXT:   }
+// CHECK-NEXT:   return
 
 
 // -----
@@ -53,17 +53,17 @@ module attributes {hal.executable.target = #executable_target_} {
   }
 }
 // CHECK-LABEL: func.func @test_non_divisible()
-// CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
-// CHECK-DAG: %[[C32:.*]] = arith.constant 32 : index
-// CHECK-DAG: %[[C224:.*]] = arith.constant 224 : index
-// CHECK-DAG: %[[CST_31:.*]] = arith.constant dense<0> : vector<31xi32>
-// CHECK-DAG: %[[CST_32:.*]] = arith.constant dense<0> : vector<32xi32>
-// CHECK-DAG: %[[ALLOC:.*]] = memref.alloc() : memref<255xi32>
-// CHECK: scf.for %arg0 = %[[C0]] to %[[C224]] step %[[C32]] {
-// CHECK-NEXT: vector.transfer_write %[[CST_32]], %[[ALLOC]][%arg0] {in_bounds = [true]} : vector<32xi32>, memref<255xi32>
-// CHECK-NEXT: }
-// CHECK-NEXT: vector.transfer_write %[[CST_31]], %[[ALLOC]][%[[C224]]] {in_bounds = [true]} : vector<31xi32>, memref<255xi32>
-// CHECK-NEXT: return
+// CHECK-DAG:    %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:    %[[C32:.*]] = arith.constant 32 : index
+// CHECK-DAG:    %[[C224:.*]] = arith.constant 224 : index
+// CHECK-DAG:    %[[CST_31:.*]] = arith.constant dense<0> : vector<31xi32>
+// CHECK-DAG:    %[[CST_32:.*]] = arith.constant dense<0> : vector<32xi32>
+// CHECK-DAG:    %[[ALLOC:.*]] = memref.alloc() : memref<255xi32>
+// CHECK:        scf.for %arg0 = %[[C0]] to %[[C224]] step %[[C32]] {
+// CHECK-NEXT:    vector.transfer_write %[[CST_32]], %[[ALLOC]][%arg0] {in_bounds = [true]} : vector<32xi32>, memref<255xi32>
+// CHECK-NEXT:   }
+// CHECK-NEXT:   vector.transfer_write %[[CST_31]], %[[ALLOC]][%[[C224]]] {in_bounds = [true]} : vector<31xi32>, memref<255xi32>
+// CHECK-NEXT:   return
 
 
 // -----
@@ -80,11 +80,11 @@ module attributes {hal.executable.target = #executable_target_} {
   }
 }
 // CHECK-LABEL: func.func @test_small_non_divisible()
-// CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
-// CHECK-DAG: %[[ALLOC:.*]] = memref.alloc() : memref<5xi32>
-// CHECK-DAG: %[[CST:.*]] = arith.constant dense<0> : vector<5xi32>
-// CHECK: vector.transfer_write %[[CST]], %[[ALLOC]][%[[C0]]] {in_bounds = [true]} : vector<5xi32>, memref<5xi32>
-// CHECK: return
+// CHECK-DAG:    %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:    %[[ALLOC:.*]] = memref.alloc() : memref<5xi32>
+// CHECK-DAG:    %[[CST:.*]] = arith.constant dense<0> : vector<5xi32>
+// CHECK:        vector.transfer_write %[[CST]], %[[ALLOC]][%[[C0]]] {in_bounds = [true]} : vector<5xi32>, memref<5xi32>
+// CHECK:        return
 
 
 // -----
@@ -102,16 +102,16 @@ module attributes {hal.executable.target = #executable_target_} {
   }
 }
 // CHECK-LABEL: func.func @test_non_zero_and_offset()
-// CHECK-DAG: %[[C7:.*]] = arith.constant 7 : index
-// CHECK-DAG: %[[C32:.*]] = arith.constant 32 : index
-// CHECK-DAG: %[[C103:.*]] = arith.constant 103 : index
-// CHECK-DAG: %[[CST_4:.*]] = arith.constant dense<1> : vector<4xi32>
-// CHECK-DAG: %[[CST_32:.*]] = arith.constant dense<1> : vector<32xi32>
-// CHECK-DAG: %[[ALLOC:.*]] = memref.alloc() : memref<256xi32>
-// CHECK: scf.for %arg0 = %[[C7]] to %[[C103]] step %[[C32]] {
-// CHECK-NEXT: vector.transfer_write %[[CST_32]], %[[ALLOC]][%arg0] {in_bounds = [true]} : vector<32xi32>, memref<256xi32>
-// CHECK-NEXT: }
-// CHECK-NEXT: vector.transfer_write %[[CST_4]], %[[ALLOC]][%[[C103]]] {in_bounds = [true]} : vector<4xi32>, memref<256xi32>
+// CHECK-DAG:    %[[C7:.*]] = arith.constant 7 : index
+// CHECK-DAG:    %[[C32:.*]] = arith.constant 32 : index
+// CHECK-DAG:    %[[C103:.*]] = arith.constant 103 : index
+// CHECK-DAG:    %[[CST_4:.*]] = arith.constant dense<1> : vector<4xi32>
+// CHECK-DAG:    %[[CST_32:.*]] = arith.constant dense<1> : vector<32xi32>
+// CHECK-DAG:    %[[ALLOC:.*]] = memref.alloc() : memref<256xi32>
+// CHECK:        scf.for %arg0 = %[[C7]] to %[[C103]] step %[[C32]] {
+// CHECK-NEXT:    vector.transfer_write %[[CST_32]], %[[ALLOC]][%arg0] {in_bounds = [true]} : vector<32xi32>, memref<256xi32>
+// CHECK-NEXT:   }
+// CHECK-NEXT:   vector.transfer_write %[[CST_4]], %[[ALLOC]][%[[C103]]] {in_bounds = [true]} : vector<4xi32>, memref<256xi32>
 
 
 // -----
@@ -128,15 +128,15 @@ module attributes {hal.executable.target = #executable_target_} {
   }
 }
 // CHECK-LABEL: func.func @test_backtrack_to_constant()
-// CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
-// CHECK-DAG: %[[C32:.*]] = arith.constant 32 : index
-// CHECK-DAG: %[[C256:.*]] = arith.constant 256 : index
-// CHECK-DAG: %[[CST_32:.*]] = arith.constant dense<0> : vector<32xi32>
-// CHECK-DAG: %[[ALLOC:.*]] = memref.alloc() : memref<256xi32>
-// CHECK: scf.for %arg0 = %[[C0]] to %[[C256]] step %[[C32]] {
-// CHECK-NEXT: vector.transfer_write %[[CST_32]], %[[ALLOC]][%arg0] {in_bounds = [true]} : vector<32xi32>, memref<256xi32>
-// CHECK-NEXT: }
-// CHECK-NEXT: return
+// CHECK-DAG:    %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:    %[[C32:.*]] = arith.constant 32 : index
+// CHECK-DAG:    %[[C256:.*]] = arith.constant 256 : index
+// CHECK-DAG:    %[[CST_32:.*]] = arith.constant dense<0> : vector<32xi32>
+// CHECK-DAG:    %[[ALLOC:.*]] = memref.alloc() : memref<256xi32>
+// CHECK:        scf.for %arg0 = %[[C0]] to %[[C256]] step %[[C32]] {
+// CHECK-NEXT:    vector.transfer_write %[[CST_32]], %[[ALLOC]][%arg0] {in_bounds = [true]} : vector<32xi32>, memref<256xi32>
+// CHECK-NEXT:   }
+// CHECK-NEXT:   return
 
 
 // -----
@@ -153,6 +153,6 @@ module attributes {hal.executable.target = #executable_target_} {
   }
 }
 // CHECK-LABEL: func.func @test_memref_shape_folding()
-// CHECK: %[[ALLOC:.*]] = memref.alloc() : memref<256xi32>
-// CHECK: %[[USE:.*]] = memref.subview %[[ALLOC]][0] [64] [1] : memref<256xi32> to memref<64xi32>
-// CHECK: return %[[USE]]
+// CHECK:        %[[ALLOC:.*]] = memref.alloc() : memref<256xi32>
+// CHECK:        %[[USE:.*]] = memref.subview %[[ALLOC]][0] [64] [1] : memref<256xi32> to memref<64xi32>
+// CHECK:        return %[[USE]]

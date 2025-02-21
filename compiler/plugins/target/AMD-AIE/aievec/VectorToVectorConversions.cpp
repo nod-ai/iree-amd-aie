@@ -397,7 +397,7 @@ struct CanonicalizeTrivialReadAccessSubviewOpPattern
 ///
 /// Note: the closest thing to this that I can find upstream is
 /// `populateVectorUnrollPatterns` but that isn't quite what we want.
-/// Itunrolls the loop (this pass doesn't) and creates ops to extract
+/// It unrolls the loop (this pass doesn't) and creates ops to extract
 /// and insert strided slices that are not needed when the vector is a splat
 /// value.
 
@@ -416,20 +416,21 @@ struct SerializeSplatTransferReadWithTargetLoadSize
     Value writeDestination = writeOp.getSource();
     MemRefType writeDestinationType =
         dyn_cast<MemRefType>(writeDestination.getType());
+
+    assert(writeDestinationType && "transfer_write must write to memref");
+    if (!writeDestinationType.hasStaticShape()) {
+      return rewriter.notifyMatchFailure(writeOp, "source has dynamic shape");
+    }
     {
-      assert(writeDestinationType && "transfer_write must write to memref");
-      if (!writeDestinationType.hasStaticShape()) {
-        return rewriter.notifyMatchFailure(writeOp, "source has dynamic shape");
-      }
       MemRefLayoutAttrInterface layout = writeDestinationType.getLayout();
       if (layout && !layout.isIdentity()) {
         return rewriter.notifyMatchFailure(writeOp,
                                            "source has non-identity layout");
       }
     }
-    // This pass only succeeds when the memref that is written to a rank-1.
-    // There is already a pattern for flattening memrefs that should
-    // be included with this pattern in a pattern set.
+    // This pass only succeeds when the memref that is written to is rank-1.
+    // There is already a pattern for flattening memrefs that takes care of
+    // rank-n (n>1) memrefs.
     if (writeDestinationType.getRank() != 1) {
       return rewriter.notifyMatchFailure(writeOp, "memref isn't rank-1");
     }
@@ -500,7 +501,7 @@ struct SerializeSplatTransferReadWithTargetLoadSize
 
     // Mae a transfer_write that writes to the original memref destination,
     // but with an adjusted number of elements and an adjusted offset index.
-    auto makeTransferWrite = [&](uint32_t n, Value offset) {
+    auto createTransferWrite = [&](uint32_t n, Value offset) {
       VectorType type = VectorType::get({n}, elementType);
       DenseElementsAttr attr = DenseElementsAttr::get(type, splat);
       auto newConstantOp = rewriter.create<arith::ConstantOp>(
@@ -547,12 +548,12 @@ struct SerializeSplatTransferReadWithTargetLoadSize
 
     // Create transfer_write inside loop body.
     rewriter.setInsertionPointToStart(loopOp.getBody());
-    makeTransferWrite(elementsPerWrite, loopOp.getInductionVar());
+    createTransferWrite(elementsPerWrite, loopOp.getInductionVar());
 
     // If there are tail elements, create a transfer_write for them.
     if (nbTailElements > 0) {
       rewriter.setInsertionPointAfter(loopOp);
-      makeTransferWrite(nbTailElements, cEnd);
+      createTransferWrite(nbTailElements, cEnd);
     }
 
     // erase the original transfer_write
@@ -577,7 +578,7 @@ struct FoldReinterpretCastFollowedByCollapseShapePattern
     auto reinterpretOp = dyn_cast_if_present<memref::ReinterpretCastOp>(
         collapseOp.getOperand().getDefiningOp());
     if (!reinterpretOp) return failure();
-    auto reinterpretInputType = reinterpretOp.getSource().getType();
+    BaseMemRefType reinterpretInputType = reinterpretOp.getSource().getType();
     if (reinterpretInputType != collapseOp.getType()) return failure();
     rewriter.replaceOp(collapseOp, reinterpretOp.getSource());
     return success();

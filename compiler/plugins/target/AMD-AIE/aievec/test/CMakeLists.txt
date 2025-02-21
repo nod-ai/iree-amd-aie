@@ -1,5 +1,6 @@
 set(_mlir_files
   align-transfer-reads.mlir
+  canonicalize_transfer_write_for_load.mlir
   fold-ops.mlir
   matmul.mlir
   precanonicalization-aieml-llvmir.mlir
@@ -7,7 +8,6 @@ set(_mlir_files
   test-shuffle.mlir
   test-srs.mlir
   test-ups.mlir
-  canonicalize_transfer_write_for_load.mlir
 )
 
 iree_lit_test_suite(
