@@ -141,6 +141,8 @@ def compare(npy_baseline, npy_aie, rtol, atol, max_discrepancies_to_show=50):
         )
 
     are_close = np.allclose(npy_baseline, npy_aie, rtol=rtol, atol=atol)
+    print(npy_baseline)
+    print(npy_aie)
     if are_close:
         return ""
 

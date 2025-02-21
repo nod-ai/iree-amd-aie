@@ -9,7 +9,9 @@ def get_higher_order_element_type(element_type):
     assert False, f"support for {element_type} is missing"
 
 
-def generate_matmul_test(output_fn, input_fn, m, n, k, lhs_rhs_type, acc_type, b=0):
+def generate_matmul_test(
+    output_fn, input_fn, m, n, k, lhs_rhs_type, acc_type, b=0, constant_bias=0
+):
     """
     Generate mlir file (output_fn) from the template file (input_fn).
     """
@@ -29,6 +31,7 @@ def generate_matmul_test(output_fn, input_fn, m, n, k, lhs_rhs_type, acc_type, b
     replace["ADD"] = "arith.addi" if acc_is_int else "arith.addf"
     replace["MUL"] = "arith.muli" if acc_is_int else "arith.mulf"
     replace["EXT"] = "arith.extsi" if acc_is_int else "arith.extf"
+    replace["CONSTANT"] = constant_bias
 
     key_map = map(lambda s: "${" + s + "}", replace.keys())
     key_map_escaped = map(re.escape, key_map)

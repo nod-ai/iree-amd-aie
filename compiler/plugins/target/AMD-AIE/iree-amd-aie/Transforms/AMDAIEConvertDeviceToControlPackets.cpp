@@ -56,6 +56,15 @@ LogicalResult convertDeviceToControlPacket(IRRewriter &rewriter,
   // Create amdaie.workgroup, and insert the control packet operations
   // into its associated control code block.
   auto workgroupOp = rewriter.create<AMDAIE::WorkgroupOp>(funcOp.getLoc());
+  rewriter.setInsertionPointToStart(workgroupOp.getBody());
+  for (xilinx::AIE::TileOp tileOp : deviceOp.getOps<xilinx::AIE::TileOp>()) {
+    auto colIndex = rewriter.create<arith::ConstantIndexOp>(
+        rewriter.getUnknownLoc(), tileOp.getCol());
+    auto rowIndex = rewriter.create<arith::ConstantIndexOp>(
+        rewriter.getUnknownLoc(), tileOp.getRow());
+    rewriter.create<AMDAIE::TileOp>(rewriter.getUnknownLoc(), colIndex,
+                                    rowIndex);
+  }
   Block *controlCodeBlock = workgroupOp.getControlCode().getBody();
   rewriter.setInsertionPointToStart(controlCodeBlock);
 

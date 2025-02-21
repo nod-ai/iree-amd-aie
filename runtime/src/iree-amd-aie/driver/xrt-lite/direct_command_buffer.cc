@@ -6,12 +6,15 @@
 
 #include "iree-amd-aie/driver/xrt-lite/direct_command_buffer.h"
 
+#include <fstream>
+
 #include "iree-amd-aie/driver/xrt-lite/buffer.h"
 #include "iree-amd-aie/driver/xrt-lite/executable.h"
 #include "iree-amd-aie/driver/xrt-lite/shim/linux/kmq/hwq.h"
 #include "iree-amd-aie/driver/xrt-lite/shim/linux/kmq/kernel.h"
 #include "iree-amd-aie/driver/xrt-lite/util.h"
 #include "iree/hal/utils/resource_set.h"
+#include "llvm/Support/raw_ostream.h"
 
 struct iree_hal_xrt_lite_direct_command_buffer {
   iree_hal_command_buffer_t base;
@@ -164,6 +167,58 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_dispatch(
       z0, iree_hal_resource_set_insert(command_buffer->resource_set, 1,
                                        &executable));
 
+  std::string line;
+  std::ifstream ctrlpktInstrFile(static_cast<std::string>(
+      "/home/host/iree-amd-aie/test_aie_vs_cpu/"
+      "matmul_const_bias_ctrlpkt_8_8_8_i8_i32_2/ctrlpkt_instructions.txt"));
+  std::vector<uint32_t> ctrlpktInstr;
+  while (std::getline(ctrlpktInstrFile, line)) {
+    std::istringstream iss(line);
+    uint32_t a;
+    iss >> std::hex >> a;
+    ctrlpktInstr.push_back(a);
+  }
+
+  std::ifstream ctrlpktSeqFile(static_cast<std::string>(
+      "/home/host/iree-amd-aie/test_aie_vs_cpu/"
+      "matmul_const_bias_ctrlpkt_8_8_8_i8_i32_2/ctrlpkt_sequence.txt"));
+  std::vector<uint32_t> ctrlpktSeq;
+  while (std::getline(ctrlpktSeqFile, line)) {
+    std::istringstream iss(line);
+    uint32_t a;
+    iss >> std::hex >> a;
+    ctrlpktSeq.push_back(a);
+  }
+
+  std::ifstream newAsmInstrFile(static_cast<std::string>(
+      "/home/host/iree-amd-aie/test_aie_vs_cpu/"
+      "matmul_const_bias_ctrlpkt_8_8_8_i8_i32_2/"
+      "matmul_constant_bias_dispatch_0_matmul_8x8_0.npu.txt"));
+  std::vector<uint32_t> new_asm_inst;
+  while (std::getline(newAsmInstrFile, line)) {
+    std::istringstream iss(line);
+    uint32_t a;
+    iss >> std::hex >> a;
+    new_asm_inst.push_back(a);
+  }
+
+  auto bo_ctrlpktInstr = command_buffer->device->shim_device->alloc_bo(
+      ctrlpktInstr.size() * sizeof(uint32_t), XCL_BO_FLAGS_CACHEABLE);
+  auto bo_ctrlpktSeq = command_buffer->device->shim_device->alloc_bo(
+      ctrlpktSeq.size() * sizeof(uint32_t), XRT_BO_FLAGS_HOST_ONLY);
+  auto bo_newAsmInstr = command_buffer->device->shim_device->alloc_bo(
+      new_asm_inst.size() * sizeof(uint32_t), XCL_BO_FLAGS_CACHEABLE);
+  memcpy(bo_ctrlpktInstr->map(), ctrlpktInstr.data(),
+         ctrlpktInstr.size() * sizeof(uint32_t));
+  memcpy(bo_ctrlpktSeq->map(), ctrlpktSeq.data(),
+         ctrlpktSeq.size() * sizeof(uint32_t));
+  memcpy(bo_newAsmInstr->map(), new_asm_inst.data(),
+         new_asm_inst.size() * sizeof(uint32_t));
+  bo_ctrlpktInstr->sync(shim_xdna::direction::host2device);
+  bo_ctrlpktSeq->sync(shim_xdna::direction::host2device);
+  bo_newAsmInstr->sync(shim_xdna::direction::host2device);
+
+  // Run the kernel.
   size_t ctrl_code_size = kernel_params.asm_inst.size() * sizeof(uint32_t);
   auto bo_ctrl_code = command_buffer->device->shim_device->alloc_bo(
       ctrl_code_size, XCL_BO_FLAGS_CACHEABLE);
@@ -196,6 +251,50 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_dispatch(
     ebuf.m_cmd_pkt->state = ERT_CMD_STATE_NEW;
     hwq->issue_command(ebuf.get_exec_buf_bo());
     hwq->wait_command(ebuf.get_exec_buf_bo(), 0);
+  }
+
+  for (iree_host_size_t j = 0; j < bindings.count; ++j) {
+    shim_xdna::bo* bo = iree_hal_xrt_lite_buffer_handle(
+        iree_hal_buffer_allocated_buffer(bindings.values[j].buffer));
+    // TODO(max): this should be happening automatically via a call to some
+    // buffer API that performs the sync (maybe invalidate_range)
+    bo->sync(shim_xdna::direction::device2host);
+  }
+
+  // Reconfiguratoin.
+  shim_xdna::kernel ebuf2(command_buffer->device->shim_device->get_pdev(),
+                          ERT_START_CU);
+
+  ebuf2.set_cu_idx(cu_idx);
+  ebuf2.add_arg_64(opcode);
+  ebuf2.add_arg_bo(*bo_ctrlpktInstr);
+  ebuf2.add_arg_32(ctrlpktInstr.size());
+
+  ebuf2.add_arg_bo(*bo_ctrlpktSeq);
+
+  ebuf2.m_cmd_pkt->state = ERT_CMD_STATE_NEW;
+  hwq->issue_command(ebuf2.get_exec_buf_bo());
+  hwq->wait_command(ebuf2.get_exec_buf_bo(), 0);
+
+  // Run the new kernel.
+  shim_xdna::kernel ebuf3(command_buffer->device->shim_device->get_pdev(),
+                          ERT_START_CU);
+
+  ebuf3.set_cu_idx(cu_idx);
+  ebuf3.add_arg_64(opcode);
+  ebuf3.add_arg_bo(*bo_newAsmInstr);
+  ebuf3.add_arg_32(new_asm_inst.size());
+
+  for (iree_host_size_t j = 0; j < bindings.count; ++j) {
+    shim_xdna::bo* bo = iree_hal_xrt_lite_buffer_handle(
+        iree_hal_buffer_allocated_buffer(bindings.values[j].buffer));
+    ebuf3.add_arg_bo(*bo);
+  }
+
+  for (int i = 0; i < kernel_params.n_kernel_runs; i++) {
+    ebuf3.m_cmd_pkt->state = ERT_CMD_STATE_NEW;
+    hwq->issue_command(ebuf3.get_exec_buf_bo());
+    hwq->wait_command(ebuf3.get_exec_buf_bo(), 0);
   }
 
   for (iree_host_size_t j = 0; j < bindings.count; ++j) {

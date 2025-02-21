@@ -26,6 +26,7 @@ typedef struct iree_hal_xrt_kernel_params_t {
   xrt::kernel kernel;
   // Instruction buffer argument to the kernel.
   xrt::bo instr;
+  xrt::device device;
   // Number of assembly instructions argument to the kernel
   uint32_t num_instr;  // number of instructions
   IREE_TRACE(iree_string_view_t kernel_name;)

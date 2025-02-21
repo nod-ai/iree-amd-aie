@@ -142,6 +142,7 @@ def generate_and_write_input(bin_fn, nb_elements, element_type, input_number, se
         dtype = get_numpy_type(element_type)
         tensor = rng.integers(lower_bound, upper_bound, nb_elements).astype(dtype)
         data = tensor.tobytes()
+        print(tensor.reshape(8, 8))
 
     with open(bin_fn, "wb") as file:
         file.write(data)

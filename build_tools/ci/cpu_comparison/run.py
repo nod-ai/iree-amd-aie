@@ -624,6 +624,78 @@ class MatmulFullBias(BaseMatmul):
         return self.vs_cpu(config)
 
 
+class MatmulConstBiasCtrlpkt(BaseMatmul):
+    """
+    A test of the form matmul(A,B) where A:MxK, B:KxN
+    """
+
+    def __init__(
+        self,
+        M,
+        N,
+        K,
+        input_type,
+        acc_type,
+        additional_labels=None,
+        n_kernel_runs=1,
+        test_params=None,
+    ):
+        super().__init__(
+            name=f"matmul_const_bias_ctrlpkt_{M}_{N}_{K}_{input_type}_{acc_type}",
+            test_params=test_params,
+            M=M,
+            N=N,
+            K=K,
+            input_type=input_type,
+            acc_type=acc_type,
+            n_kernel_runs=n_kernel_runs,
+        )
+        self.labels.append("MatmulConstBiasCtrlPacket")
+        self.aie_compilation_flags += [
+            "--iree-amdaie-num-rows=1",
+            "--iree-amdaie-num-cols=1",
+            "--iree-amdaie-enable-packet-flow=true",
+            "--iree-amdaie-emit-control-packet=true",
+        ]
+
+        if additional_labels:
+            self.labels += additional_labels
+        if self.run_benchmark:
+            self.aie_compilation_flags += [
+                "--iree-amdaie-enable-infinite-loop-around-core-block=true"
+            ]
+            self.labels.append("MatmulConstBiasCtrlPacketBenchmark")
+
+    def _execute(self, config):
+        matmul_template_dir = config.file_dir / "matmul_template"
+        template_name = matmul_template_dir / "matmul_constant_bias_MxK_KxN.mlir"
+        name_copy = self.name
+
+        self.name = name_copy + "_1"
+        self.generate(config, template_name, constant_bias=1)
+        self.vs_cpu(config)
+
+        # self.name = name_copy + "_2"
+        # self.generate(config, template_name, constant_bias=2)
+        # self.vs_cpu(config)
+
+        assert self.run_benchmark == False, "Benchmarking not supported for this test"
+
+        return True
+
+    def generate(self, config, template_name, constant_bias):
+        generate_matmul_test(
+            self.get_filename(config),
+            template_name,
+            self.M,
+            self.N,
+            self.K,
+            self.input_type,
+            self.acc_type,
+            constant_bias=constant_bias,
+        )
+
+
 class BatchMatmul(BaseMatmul):
     """
     A test of the form batch_matmul(A,B) where A:BxMxK, B:BxKxN
@@ -950,6 +1022,7 @@ def generate_aie_vmfb(
         "--iree-hal-memoization=false",
         "--iree-hal-indirect-command-buffers=false",
         "--mlir-elide-resource-strings-if-larger=10",
+        "--mlir-disable-threading",
     ]
 
     if config.verbose:
@@ -2492,6 +2565,9 @@ class Tests:
                 ),
             )
         )
+
+        # control packet test
+        self.register(MatmulConstBiasCtrlpkt(8, 8, 8, "i8", "i32"))
 
         # MultipleDispatches tests:
         for name in ["two_matmul_switching", "matmul_f32_8_8_4", "matmul_f32_8_4_8"]:

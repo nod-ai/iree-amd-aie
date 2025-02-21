@@ -692,7 +692,8 @@ void buildAMDAIETransformPassPipeline(
     bool enableVectorizationPasses, const std::string &pathToUkernels,
     bool enablePacketFlow, bool enableCoalescingLoops,
     bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
-    bool replaceOutlinedFunctionsWithEmpty, bool insertLoopAroundCoreBlock) {
+    bool replaceOutlinedFunctionsWithEmpty, bool insertLoopAroundCoreBlock,
+    bool emitCtrlPkt) {
   OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
   {
     FunctionLikeNest funcPassManager(modulePassManager);
@@ -724,7 +725,8 @@ void buildAMDAIETransformPassPipeline(
         modulePassManager, enablePacketFlow, useTilePipeline,
         enableVectorizationPasses, enableCoalescingLoops,
         enableCollapsingUnitDims, enableFunctionOutlining,
-        replaceOutlinedFunctionsWithEmpty, insertLoopAroundCoreBlock, numCols);
+        replaceOutlinedFunctionsWithEmpty, insertLoopAroundCoreBlock, numCols,
+        emitCtrlPkt);
   } else if (useLowerToAIEPipeline == LowerToAIEPassPipeline::AIR) {
     addMLIRAIRLoweringPasses(modulePassManager, device, useTilePipeline,
                              matmulElementwiseFusion,
@@ -750,7 +752,7 @@ void addAMDAIEObjectFifoLoweringPasses(
     bool enableCoalescingLoops, bool enableCollapsingUnitDims,
     OutliningStrategy enableFunctionOutlining,
     bool replaceOutlinedFunctionsWithEmpty, bool insertLoopAroundCoreBlock,
-    uint32_t numCols) {
+    uint32_t numCols, bool emitCtrlPkt) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
 
@@ -838,9 +840,13 @@ void addAMDAIEObjectFifoLoweringPasses(
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createAMDAIEDmaCSEPass());
 
-  passManager.addPass(createAMDAIEGenerateControlOverlayPass());
-  passManager.addPass(createCSEPass());
-  passManager.addPass(createCanonicalizerPass());
+  {
+    AMDAIEGenerateControlOverlayOptions options;
+    options.routeShimToTileCtrl = emitCtrlPkt;
+    passManager.addPass(createAMDAIEGenerateControlOverlayPass(options));
+    passManager.addPass(createCSEPass());
+    passManager.addPass(createCanonicalizerPass());
+  }
 
   passManager.addPass(createAMDAIEAssignChannelsPass());
   passManager.addPass(createCSEPass());

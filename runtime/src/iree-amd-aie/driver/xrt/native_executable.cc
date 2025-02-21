@@ -192,6 +192,8 @@ iree_status_t iree_hal_xrt_native_executable_create(
     xrt::device device(xrtDeviceToXclDevice(device_hdl));
     IREE_ASSERT(device, "failed to find device");
 
+    params->device = device;
+
     try {
       device.register_xclbin(xclbin);
     } catch (std::exception& e) {

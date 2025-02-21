@@ -6,9 +6,14 @@
 
 #include "iree-amd-aie/driver/xrt/direct_command_buffer.h"
 
+#include <fstream>
+#include <sstream>
+
+#include "experimental/xrt_kernel.h"
 #include "iree-amd-aie/driver/xrt/native_executable.h"
 #include "iree-amd-aie/driver/xrt/xrt_buffer.h"
 #include "iree/hal/utils/resource_set.h"
+#include "llvm/Support/raw_ostream.h"
 
 // The max number of bindings per descriptor set allowed in the XRT HAL
 // implementation.
@@ -316,6 +321,42 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
   iree_hal_xrt_direct_command_buffer_t* command_buffer =
       iree_hal_xrt_direct_command_buffer_cast(base_command_buffer);
   IREE_TRACE_ZONE_BEGIN(z0);
+
+  std::string line;
+  std::ifstream ctrlpktInstrFile(static_cast<std::string>(
+      "/home/host/iree-amd-aie/test_aie_vs_cpu/"
+      "matmul_const_bias_ctrlpkt_8_8_8_i8_i32_2/ctrlpkt_instructions.txt"));
+  std::vector<uint32_t> ctrlpktInstr;
+  while (std::getline(ctrlpktInstrFile, line)) {
+    std::istringstream iss(line);
+    uint32_t a;
+    iss >> std::hex >> a;
+    ctrlpktInstr.push_back(a);
+  }
+
+  std::ifstream ctrlpktSeqFile(static_cast<std::string>(
+      "/home/host/iree-amd-aie/test_aie_vs_cpu/"
+      "matmul_const_bias_ctrlpkt_8_8_8_i8_i32_2/ctrlpkt_sequence.txt"));
+  std::vector<uint32_t> ctrlpktSeq;
+  while (std::getline(ctrlpktSeqFile, line)) {
+    std::istringstream iss(line);
+    uint32_t a;
+    iss >> std::hex >> a;
+    ctrlpktSeq.push_back(a);
+  }
+
+  std::ifstream newAsmInstrFile(static_cast<std::string>(
+      "/home/host/iree-amd-aie/test_aie_vs_cpu/"
+      "matmul_const_bias_ctrlpkt_8_8_8_i8_i32_2/"
+      "matmul_constant_bias_dispatch_0_matmul_8x8_0.npu.txt"));
+  std::vector<uint32_t> new_asm_inst;
+  while (std::getline(newAsmInstrFile, line)) {
+    std::istringstream iss(line);
+    uint32_t a;
+    iss >> std::hex >> a;
+    new_asm_inst.push_back(a);
+  }
+
   // Lookup kernel parameters used for side-channeling additional launch
   // information from the compiler.
   iree_hal_xrt_kernel_params_t kernel_params;
@@ -327,15 +368,36 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
       z0, iree_hal_resource_set_insert(command_buffer->resource_set, 1,
                                        &executable));
 
+  auto bo_ctrlpktInstr =
+      xrt::bo(kernel_params.device, ctrlpktInstr.size() * sizeof(uint32_t),
+              XCL_BO_FLAGS_CACHEABLE, kernel_params.kernel.group_id(1));
+  auto bo_ctrlpktSeq =
+      xrt::bo(kernel_params.device, ctrlpktSeq.size() * sizeof(uint32_t),
+              XRT_BO_FLAGS_HOST_ONLY, kernel_params.kernel.group_id(3));
+  auto bo_newAsmInstr =
+      xrt::bo(kernel_params.device, new_asm_inst.size() * sizeof(uint32_t),
+              XCL_BO_FLAGS_CACHEABLE, kernel_params.kernel.group_id(1));
+  memcpy(bo_ctrlpktInstr.map(), ctrlpktInstr.data(),
+         ctrlpktInstr.size() * sizeof(uint32_t));
+  memcpy(bo_ctrlpktSeq.map(), ctrlpktSeq.data(),
+         ctrlpktSeq.size() * sizeof(uint32_t));
+  memcpy(bo_newAsmInstr.map(), new_asm_inst.data(),
+         new_asm_inst.size() * sizeof(uint32_t));
+  bo_ctrlpktInstr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  bo_ctrlpktSeq.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  bo_newAsmInstr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+
+  xrt::runlist runlist = xrt::runlist(kernel_params.context);
+
   xrt::run run = xrt::run(kernel_params.kernel);
-  // Index to push arguments on the kernel.
+  //  Index to push arguments on the kernel.
   iree_host_size_t arg_index = 0;
-  // First argument is the opcode.
+  //  First argument is the opcode.
   unsigned int opcode = 3;
   run.set_arg(arg_index++, opcode);
-  // Second argument is the LX6 instructions.
+  //  Second argument is the LX6 instructions.
   run.set_arg(arg_index++, kernel_params.instr);
-  // Third argument is the number of LX6 instructions.
+  //  Third argument is the number of LX6 instructions.
   run.set_arg(arg_index++, kernel_params.num_instr);
 
   // Copy descriptors from all sets to the end of the current segment for later
@@ -357,9 +419,32 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
     run.set_arg(arg_index + j, arg_buffer);
   }
 
-  run.start();
+  xrt::run run2 = xrt::run(kernel_params.kernel);
+  run2.set_arg(0, opcode);
+  run2.set_arg(1, bo_ctrlpktInstr);
+  run2.set_arg(2, ctrlpktInstr.size());
+  run2.set_arg(3, bo_ctrlpktSeq);
+  run2.set_arg(4, 0);
+  run2.set_arg(5, 0);
+  run2.set_arg(6, 0);
+  run2.set_arg(7, 0);
+
+  xrt::run run3 = xrt::run(kernel_params.kernel);
+  run3.set_arg(0, opcode);
+  run3.set_arg(1, bo_newAsmInstr);
+  run3.set_arg(2, new_asm_inst.size());
+  run3.set_arg(3, bos[0]);
+  run3.set_arg(4, bos[1]);
+  run3.set_arg(5, bos[2]);
+  run3.set_arg(6, 0);
+  run3.set_arg(7, 0);
+
+  // runlist.add(run);
+  runlist.add(run2);
+  runlist.add(run3);
+  runlist.execute();
   try {
-    run.wait2();
+    runlist.wait();
   } catch (const std::exception& e) {
     IREE_TRACE_ZONE_END(z0);
     return iree_make_status(IREE_STATUS_UNKNOWN, e.what());

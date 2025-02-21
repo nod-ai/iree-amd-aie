@@ -32,8 +32,7 @@ struct HalfDmaCpyNdToNpuConverter final
   /// is specific to Shim BDs for now.
   FailureOr<AMDAIE::NpuPushToQueueOp> insertWriteBdOps(
       AMDAIE::NpuHalfDmaCpyNdOp op, ConversionPatternRewriter &rewriter,
-      AMDAIE::AMDAIETileType tileType,
-      AMDAIE::LogicalObjectFifoFromMemrefOp logicalObjFifo,
+      AMDAIE::AMDAIETileType tileType, Operation *logicalObjFifoOp,
       AMDAIE::BdIdOp bdIdOp, AMDAIE::ChannelOp channelOp, int64_t bufferLength,
       int64_t bufferOffset, int32_t enablePacket, int32_t packetId,
       int32_t packetType, SmallVector<OpFoldResult> sizes,
@@ -42,15 +41,30 @@ struct HalfDmaCpyNdToNpuConverter final
         tileType, AMDAIE::AMDAIEDmaProp::NumAddrDim);
     uint8_t numAddrDim =
         numIntraAddrDim + deviceModel.deviceConfig.dmaNbInterDims;
-    auto subspanOp = dyn_cast_if_present<IREE::HAL::InterfaceBindingSubspanOp>(
-        logicalObjFifo.getMemref().getDefiningOp());
-    if (!subspanOp) {
-      return logicalObjFifo.emitOpError()
-             << "must operate on an `hal.interface.binding.subspan`";
+    int64_t argIdx;
+    int64_t elemWidthInBits;
+    uint8_t memSpace;
+    if (auto logicalObjFifo =
+            dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+                logicalObjFifoOp);
+        logicalObjFifo) {
+      auto subspanOp =
+          dyn_cast_if_present<IREE::HAL::InterfaceBindingSubspanOp>(
+              logicalObjFifo.getMemref().getDefiningOp());
+      if (!subspanOp) {
+        return logicalObjFifo.emitOpError()
+               << "must operate on an `hal.interface.binding.subspan`";
+      }
+      argIdx = subspanOp.getBinding().getZExtValue();
+      MemRefType memrefType = logicalObjFifo.getMemrefType();
+      elemWidthInBits = memrefType.getElementTypeBitWidth();
+      memSpace = logicalObjFifo.getMemorySpaceAsUInt();
+    } else {
+      argIdx = 0;
+      elemWidthInBits = 32;
+      memSpace = 0;
     }
-    int64_t argIdx = subspanOp.getBinding().getZExtValue();
-    MemRefType memrefType = logicalObjFifo.getMemrefType();
-    int64_t elemWidthInBits = memrefType.getElementTypeBitWidth();
+
     std::optional<AMDAIE::DMAChannelDir> maybeDmaDirection =
         channelOp.getDirection();
     if (!maybeDmaDirection) {
@@ -70,7 +84,6 @@ struct HalfDmaCpyNdToNpuConverter final
         strides.size(), getAsIndexOpFoldResult(rewriter.getContext(), 0));
     (void)foldUnitDims(rewriter.getContext(), offsets, sizes, strides);
 
-    uint8_t memSpace = logicalObjFifo.getMemorySpaceAsUInt();
     DmaDimConfig dmaDimConfig(deviceModel, memSpace);
     SmallVector<int64_t> maxSizes = dmaDimConfig.getMaxSizes(offsets.size());
     SmallVector<OpFoldResult> linearOffsets, linearSizes, linearStrides;
@@ -205,13 +218,11 @@ struct HalfDmaCpyNdToNpuConverter final
       rewriter.eraseOp(op);
       return success();
     }
-    auto logicalObjFifo =
-        dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-            op.getInput().getDefiningOp());
-    if (!logicalObjFifo) {
-      return op.emitOpError() << "expected input to be an "
-                                 "`amdaie.logicalobjectfifo.from_memref`";
-    }
+    auto logicalObjFifo = op.getInput().getDefiningOp();
+    // if (!logicalObjFifo) {
+    //   return op.emitOpError() << "expected input to be an "
+    //                              "`amdaie.logicalobjectfifo.from_memref`";
+    // }
     std::optional<AMDAIE::BdIdOp> maybeBdIdOp = op.getBdIdOp();
     if (!maybeBdIdOp) {
       return op.emitOpError() << "must have a BD ID op to lower to "
