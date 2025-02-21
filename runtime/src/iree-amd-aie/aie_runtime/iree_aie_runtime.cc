@@ -343,8 +343,10 @@ FailureOr<uint32_t> AMDAIEDeviceModel::getCtrlPktHeader(
                     (address << ctrlPktHeaderFormat.addressShift);
   // Mask to keep the lower 31 bits (bits 30:0).
   uint32_t lower31Bits = header & 0x7FFFFFFF;
-  // Compute the odd parity bit (1 if the count of 1's is odd, 0 if even).
-  uint32_t parity = llvm::popcount(lower31Bits) % 2;
+  // Compute the odd parity bit. It is set to 1 if the number of 1's in
+  // lower31Bits is even, ensuring the total count (including this bit) becomes
+  // odd. Otherwise, it is set to 0.
+  uint32_t parity = (llvm::popcount(lower31Bits) + 1) % 2;
   // Set the parity bit in the most significant bit (bit 31).
   return (parity << 31) | lower31Bits;
 }
