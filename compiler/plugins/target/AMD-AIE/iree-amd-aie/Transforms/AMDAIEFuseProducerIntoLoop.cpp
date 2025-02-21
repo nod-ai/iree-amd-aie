@@ -21,7 +21,7 @@ namespace {
 
 /// A utility function specific to this pass which, given a value `operand`,
 /// traverses the def-chain till it finds a tensor.extract_slice. Currently,
-/// the two producer ops that are allowed in the def-chain are tensor.pack and
+/// the two producer ops that are allowed in the def-chain are linalg.pack and
 /// linalg.copy ops. The 2 cases where it successfully finds and returns an
 /// extract_slice (SLICE) are:
 ///
@@ -39,7 +39,7 @@ namespace {
 static FailureOr<tensor::ExtractSliceOp> getTensorExtractSliceDefiningOp(
     Value operand) {
   // Roll back through all the pack or copy ops immediately preceding `operand`.
-  while (isa_and_present<tensor::PackOp, linalg::CopyOp>(
+  while (isa_and_present<linalg::PackOp, linalg::CopyOp>(
       operand.getDefiningOp())) {
     operand = operand.getDefiningOp()->getOperand(0);
   }
@@ -49,7 +49,7 @@ static FailureOr<tensor::ExtractSliceOp> getTensorExtractSliceDefiningOp(
   if (!sliceOp) return failure();
 
   // Case 1 outlined above.
-  if (isa_and_present<tensor::PackOp, linalg::CopyOp>(
+  if (isa_and_present<linalg::PackOp, linalg::CopyOp>(
           sliceOp.getSource().getDefiningOp())) {
     return sliceOp;
   }
@@ -60,7 +60,7 @@ static FailureOr<tensor::ExtractSliceOp> getTensorExtractSliceDefiningOp(
     LoopLikeOpInterface loop = dyn_cast<LoopLikeOpInterface>(parent);
     if (!loop) return failure();
     Operation *operandParent = loop.getTiedLoopInit(blkArg)->getOwner();
-    if (isa_and_present<tensor::PackOp, linalg::CopyOp>(operandParent))
+    if (isa_and_present<linalg::PackOp, linalg::CopyOp>(operandParent))
       return sliceOp;
   }
 
@@ -110,7 +110,7 @@ void AMDAIEFuseProducerIntoLoopPass::runOnOperation() {
   LoopLikeOpInterface loops = cast<LoopLikeOpInterface>(scfLoopOp);
 
   // Based on the `fuseDepth`, we would greedily fuse the producers of a linalg
-  // computation op. Currently, we are limiting the producers to tensor.pack or
+  // computation op. Currently, we are limiting the producers to linalg.pack or
   // linalg.copy ops.
   for (unsigned depth = 1; depth <= fuseDepth; depth++) {
     // Search the last compute op in the loop and its producer slices.
@@ -153,7 +153,7 @@ void AMDAIEFuseProducerIntoLoopPass::runOnOperation() {
 
       // Case where operand of a generic op is a pack/copy op which is in a
       // different block than the generic's block.
-      else if (isa_and_present<tensor::PackOp, linalg::CopyOp>(
+      else if (isa_and_present<linalg::PackOp, linalg::CopyOp>(
                    operand.getDefiningOp())) {
         Operation *parent = operand.getDefiningOp();
         Block *genericBlock = genericOp->getBlock();
