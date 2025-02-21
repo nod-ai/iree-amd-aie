@@ -6,6 +6,7 @@
 
 #include "XCLBinGen.h"
 
+#include <charconv>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -75,6 +76,107 @@ FailureOr<std::vector<std::string>> flagStringToVector(
   std::istringstream iss(flags.substr(1, flags.size() - 2));
   return std::vector<std::string>{std::istream_iterator<std::string>{iss},
                                   std::istream_iterator<std::string>{}};
+}
+
+// Extract an integer from a string, if possible.
+std::optional<int> safeStoi(std::string_view intString) {
+  size_t start = intString.find_first_not_of(" \t\n\r\f\v");
+  if (start == std::string::npos) return std::nullopt;
+  int value = 0;
+  const char *d0 = intString.data() + start;
+  const char *d1 = intString.data() + intString.size();
+  auto [ptr, ec] = std::from_chars(d0, d1, value);
+  if (ec == std::errc()) return value;
+  return std::nullopt;
+}
+
+// We assume that input string is of the form:
+//
+// ```
+// Stack Sizes:
+//      Size     Functions
+//        32     some_func
+//        64     some_other_func
+//       288     core_3_5
+//       288     core_2_5
+//       288     core_1_5
+//       288     core_0_5
+//       288     core_3_4
+//       288     core_3_3
+//       288     core_2_3
+//       288     core_3_2
+//       288     core_1_2
+//       288     core_0_2
+// ```
+//
+// In terms of how we estimate stack sizes, we assume that function call
+// structure is as follows: functions with names core_0_0, core_0_1, core_0_2,
+// et cetera are the entry point functions. These functions call into the
+// other functions like some_func and some_other_func, but never in a
+// nested manner. With these assumptions, an upper bound on the total stack size
+// of a core is the maximum sum of it's stack size, and another function's stack
+// size.
+FailureOr<llvm::DenseMap<std::pair<uint32_t, uint32_t>, uint32_t>>
+getUpperBoundStackSizes(const std::string &readElfOutput) {
+  llvm::DenseMap<std::pair<uint32_t, uint32_t>, uint32_t> coreStackSizes;
+
+  // Split input on whitespace. For the example above, tokens becomes
+  // ['Functions', '32', 'some_func', '64', 'some_other', 288, 'core_3_5', ...]
+  SmallVector<std::string> tokens;
+  size_t index0 = readElfOutput.find("Functions");
+  std::istringstream stackSizesStream(readElfOutput.substr(index0));
+  std::copy(std::istream_iterator<std::string>(stackSizesStream),
+            std::istream_iterator<std::string>(), std::back_inserter(tokens));
+
+  uint32_t maxNonCoreStackSize = 0;
+  for (uint32_t i = 1; i < tokens.size(); i += 2) {
+    std::string_view stackSizeStr = tokens[i];
+    std::string_view functionName = tokens[i + 1];
+
+    std::optional<int> maybeSize = safeStoi(stackSizeStr);
+    if (!maybeSize) {
+      llvm::errs() << "Failed to convert stack size (" << stackSizeStr
+                   << ") to integer.\n";
+      return failure();
+    }
+    uint32_t size = maybeSize.value();
+    size_t coreIndex = functionName.find("core_");
+
+    // If the function is not a core function, in the example above either
+    // 'some_func' or 'some_other_func', then we track the maximum stack size
+    // for these.
+    if (coreIndex == std::string::npos) {
+      maxNonCoreStackSize = std::max<uint32_t>(maxNonCoreStackSize, size);
+      continue;
+    }
+
+    // The case where the function is a core function.
+    size_t colIndex = functionName.find("_", coreIndex) + 1;
+    std::optional<int> col = safeStoi(functionName.substr(colIndex));
+    if (!col.has_value()) {
+      llvm::errs() << "Failed to extract column from " << functionName << "\n";
+      return failure();
+    }
+
+    size_t rowIndex = functionName.find("_", colIndex) + 1;
+    std::optional<int> row = safeStoi(functionName.substr(rowIndex));
+    if (!row.has_value()) {
+      llvm::errs() << "Failed to extract row from " << functionName << "\n";
+      return failure();
+    }
+
+    coreStackSizes.insert({{col.value(), row.value()}, size});
+  }
+
+  // Add the maximum non-core stack size to all core stack sizes. The
+  // logic here is that each core calls into all the non-core functions
+  // (without nesting calls), and so the maximum stack for the core is
+  // the maximum non-core stack size plus the core stack.
+  for (auto &[_, size] : coreStackSizes) {
+    size += maxNonCoreStackSize;
+  }
+
+  return coreStackSizes;
 }
 
 // Peano's `opt` program optimizes llvm-ir (.ll files). We run it with a system
@@ -400,11 +502,11 @@ bool hasEnding(std::string const &fullString, std::string const &ending) {
 }
 
 LogicalResult runTool(
-    const std::string &program_, const std::vector<std::string> &args,
-    bool verbose, std::optional<std::vector<std::string>> env = std::nullopt) {
-  std::string program = program_;
+    std::string program, ArrayRef<std::string> args, bool verbose,
+    std::optional<std::vector<std::string>> env = std::nullopt,
+    std::optional<std::string> userProvidedLogFilename = std::nullopt) {
 #if defined(_WIN32)
-  if (!hasEnding(program_, ".exe")) program = program_ + ".exe";
+  if (!hasEnding(program, ".exe")) program = program + ".exe";
 #endif  // _WIN32
   if (verbose) {
     llvm::outs() << "\nRun: ";
@@ -421,16 +523,23 @@ LogicalResult runTool(
     return failure();
   }
 
-  // Run the program, piping any output to a temporary file (we only want to
-  // print to terminal if verbose is true).
+  // Run the program, piping any output to a file.
   SmallVector<StringRef, 8> pArgs = {program};
   pArgs.append(args.begin(), args.end());
-  SmallVector<char> temporaryPath;
-  {
+  SmallVector<char> logPath;
+  if (userProvidedLogFilename.has_value()) {
+    std::string lfn = userProvidedLogFilename.value();
+    logPath.append(lfn.begin(), lfn.end());
+    if (!std::filesystem::exists(lfn)) {
+      std::ofstream ofs(lfn);
+      ofs.close();
+    }
+
+  } else {
     std::string prefix{"tmpRunTool"};
     std::string suffix{"Logging"};
     auto errorCode =
-        llvm::sys::fs::createTemporaryFile(prefix, suffix, temporaryPath);
+        llvm::sys::fs::createTemporaryFile(prefix, suffix, logPath);
     if (errorCode) {
       llvm::errs() << "Failed to create temporary file: " << errorCode.message()
                    << "\n";
@@ -444,12 +553,11 @@ LogicalResult runTool(
   // Explicit type but this never actually constructs an ArrayRef
   std::optional<ArrayRef<StringRef>> envSmallVec = std::nullopt;
 #else
-  std::string temporaryPathStr =
-      std::string(temporaryPath.begin(), temporaryPath.size());
-  StringRef temporaryPathRef(temporaryPathStr);
+  std::string logPathStr = std::string(logPath.begin(), logPath.size());
+  StringRef logPathRef(logPathStr);
   llvm::SmallVector<llvm::StringRef> envSmallVec;
   if (env) envSmallVec.append(env->begin(), env->end());
-  auto tp = std::optional<StringRef>(temporaryPathRef);
+  auto tp = std::optional<StringRef>(logPathRef);
   redirects = {tp, tp, tp};
 #endif
 
@@ -464,7 +572,7 @@ LogicalResult runTool(
 
 #ifndef _WIN32
   auto maybeOutputFromFile = [&]() -> std::optional<std::string> {
-    std::ifstream t(temporaryPathRef.str());
+    std::ifstream t(logPathRef.str());
     std::stringstream buffer;
     if (t.is_open() && t.good()) {
       buffer << t.rdbuf();
@@ -474,7 +582,7 @@ LogicalResult runTool(
   }();
 
   if (!maybeOutputFromFile) {
-    llvm::errs() << "Failed to open temporary file " << temporaryPathRef.str()
+    llvm::errs() << "Failed to open temporary file " << logPathRef.str()
                  << "\n";
   }
   const std::string &outputFromFile = maybeOutputFromFile.value();
@@ -501,7 +609,6 @@ LogicalResult runTool(
 #endif
     return failure();
   }
-
   return success();
 }
 
@@ -746,7 +853,14 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
       }
       flags.emplace_back("--target=" + targetLower + "-none-unknown-elf");
       flags.emplace_back("-Wl,--gc-sections");
-      flags.emplace_back("-Wl,--orphan-handling=error");
+
+      // Decision to use 'warn' for orphan sections: currently if the preceding
+      // call to llc has the flag --stack-size-section, an orphan section
+      // is created containing the stack sizes. The linker needs to know how to
+      // handle this: options are 'place' or 'warn' or 'error'. 'place' would
+      // result in larger binaries. The flag '--exclude-secion' should work
+      // but doesn't appear to supported with peano.
+      flags.emplace_back("-Wl,--orphan-handling=warn");
       flags.emplace_back("-Wl,-T," + ldscriptPath.string());
       flags.emplace_back("-o");
       flags.emplace_back(elfFile.string());
@@ -1078,6 +1192,55 @@ void addLowerToLLVMPasses(OpPassManager &pm) {
   pm.addPass(createCSEPass());
 }
 
+LogicalResult checkStackSize(const std::string &outputFile, bool verbose,
+                             Path peanoReadElfBin, AIE::DeviceOp deviceOp) {
+  std::string stackSizesFile = outputFile + ".stacksizes";
+  std::vector<std::string> args{outputFile, "--stack-sizes"};
+  if (failed(runTool(peanoReadElfBin.string(), args, verbose, std::nullopt,
+                     stackSizesFile))) {
+    llvm::errs() << "Failed to get stack sizes with peano\n";
+    return failure();
+  }
+
+  // Read the contents of the file stackSizesFile.
+  std::ifstream stackSizesFileStream(stackSizesFile);
+  std::stringstream stackSizesBuffer;
+  stackSizesBuffer << stackSizesFileStream.rdbuf();
+  std::string stackSizes = stackSizesBuffer.str();
+  FailureOr<llvm::DenseMap<std::pair<uint32_t, uint32_t>, uint32_t>>
+      maybeUpperBounds =
+          mlir::iree_compiler::AMDAIE::detail::getUpperBoundStackSizes(
+              stackSizes);
+  if (failed(maybeUpperBounds)) {
+    llvm::errs() << "Failed to get upper bounds of stack sizes\n";
+    return failure();
+  }
+  llvm::DenseMap<std::pair<uint32_t, uint32_t>, uint32_t> upperBounds =
+      std::move(maybeUpperBounds.value());
+
+  SmallVector<AIE::CoreOp> coreOps;
+  deviceOp->walk([&](AIE::CoreOp coreOp) { coreOps.push_back(coreOp); });
+  for (auto coreOp : coreOps) {
+    int col = coreOp.getTileOp().getCol();
+    int row = coreOp.getTileOp().getRow();
+    auto iter = upperBounds.find({col, row});
+    if (iter == upperBounds.end()) {
+      llvm::errs() << "The stack size for core (" << col << ", " << row
+                   << ") has no upper bound. ";
+      return failure();
+    }
+    auto stackSize = coreOp.getStackSize();
+    if (stackSize < iter->second) {
+      llvm::errs() << "An upper bound of the stack size, inferred from "
+                      "dumper stack size file, is"
+                   << iter->second << " bytes. The assigned stack size is "
+                   << stackSize << " bytes, which is insufficient. ";
+      return failure();
+    }
+  }
+  return success();
+}
+
 LogicalResult generateUnifiedObject(
     MLIRContext *context, AIE::DeviceOp deviceOp, const std::string &outputFile,
     bool printIRBeforeAll, bool printIRAfterAll, bool printIRModuleScope,
@@ -1150,6 +1313,7 @@ LogicalResult generateUnifiedObject(
     }
     Path peanoOptBin = peanoDir / "bin" / "opt";
     Path peanoLLCBin = peanoDir / "bin" / "llc";
+    Path peanoReadElfBin = peanoDir / "bin" / "llvm-readelf";
 
     std::string OptLLVMIRFile = (tempDir / "input.opt.ll").string();
 
@@ -1183,15 +1347,28 @@ LogicalResult generateUnifiedObject(
       return failure();
     }
 
-    if (failed(runTool(
-            peanoLLCBin.string(),
-            {OptLLVMIRFile, "-O2", "--march=" + StringRef(targetArch).lower(),
-             "--function-sections", "--filetype=obj", "-o",
-             std::string(outputFile)},
-            verbose))) {
+    std::vector<std::string> llcArgs{OptLLVMIRFile,
+                                     "-O2",
+                                     "--march=" + StringRef(targetArch).lower(),
+                                     "--function-sections",
+                                     "--filetype=obj",
+                                     "-o",
+                                     outputFile,
+                                     "--stack-size-section"};
+
+    if (failed(runTool(peanoLLCBin.string(), llcArgs, verbose))) {
       llvm::errs() << "Failed to assemble ll with peano\n";
       return failure();
     }
+
+    // If this is not windows, we can do this check. On windows checkTool
+    // doesn't pipe logging in the way thay's needed for this to work.
+#ifndef _WIN32
+    if (failed(
+            checkStackSize(outputFile, verbose, peanoReadElfBin, deviceOp))) {
+      return failure();
+    }
+#endif
   }
 
   moduleOpCopy->erase();
