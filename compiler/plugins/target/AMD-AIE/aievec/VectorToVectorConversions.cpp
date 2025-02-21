@@ -493,7 +493,7 @@ struct SerializeSplatTransferReadWithTargetLoadSize
                                          "source is smaller than write size");
     }
 
-    // Mae a transfer_write that writes to the original memref destination,
+    // Create a transfer_write that writes to the original memref destination,
     // but with an adjusted number of elements and an adjusted offset index.
     auto createTransferWrite = [&](uint32_t n, Value offset) {
       VectorType type = VectorType::get({n}, elementType);
