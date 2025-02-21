@@ -76,7 +76,7 @@ static FailureOr<SmallVector<Value>> getPackOrCopyOperands(
     uint32_t currentLevel{0};
     Operation *currentOp = input.value().getDefiningOp();
     while (currentLevel < depthLevel && currentOp != nullptr) {
-      if (dyn_cast<tensor::PackOp>(currentOp)) {
+      if (dyn_cast<linalg::PackOp>(currentOp)) {
         currentLevel++;
         if (currentLevel == depthLevel) break;
       } else if (dyn_cast<linalg::CopyOp>(currentOp)) {
