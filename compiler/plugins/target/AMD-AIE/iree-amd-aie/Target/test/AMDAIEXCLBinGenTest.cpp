@@ -44,6 +44,82 @@ TEST(XCLBinGenTest, makePeanoOptArgs) {
   EXPECT_FALSE(succeeded(maybeAdditionalFlagsWithoutSemis));
 }
 
+TEST(XCLBinGenTest, SafeStoi0) {
+  // Basically this function
+  // (1) strips leading whitespace, then
+  // (2) finds the largest valid integer in the string.
+  EXPECT_TRUE(detail::safeStoi("   123; 4.123") == 123);
+  EXPECT_TRUE(detail::safeStoi("   -3; ") == -3);
+}
+
+TEST(XCLBinGenTest, GetStackSize0) {
+  // Intermediate lines of assembly omitted for brevity.
+  {
+    std::string asmStr = R"(
+ Stack Sizes:
+      Size     Functions
+       224     core_0_2
+       200     core_11_12
+)";
+    mlir::FailureOr<llvm::DenseMap<std::pair<uint32_t, uint32_t>, uint32_t>>
+        ubs = detail::getUpperBoundStackSizes(asmStr);
+    EXPECT_TRUE(succeeded(ubs));
+    auto ub = ubs.value().find({0, 2});
+    EXPECT_TRUE(ub != ubs.value().end());
+    EXPECT_TRUE(ub->second == 224);
+  }
+
+  {
+    std::string asmStr = R"(
+ Stack Sizes:
+      Size     Functions
+       100     some_func
+        48     core_0_2
+       200     core_11_12
+)";
+
+    mlir::FailureOr<llvm::DenseMap<std::pair<uint32_t, uint32_t>, uint32_t>>
+        ubs = detail::getUpperBoundStackSizes(asmStr);
+    EXPECT_TRUE(succeeded(ubs));
+    auto ub = ubs.value().find({0, 2});
+    EXPECT_TRUE(ub != ubs.value().end());
+    EXPECT_TRUE(ub->second == 100 + 48);
+  }
+
+  {
+    std::string asmStr = R"(
+ Stack Sizes:
+      Size     Functions
+       100     some_func
+       224     some_other_func
+        20     core_0_2
+        20     core_0_3
+       200     core_11_12
+)";
+
+    mlir::FailureOr<llvm::DenseMap<std::pair<uint32_t, uint32_t>, uint32_t>>
+        maybeUpperBounds = detail::getUpperBoundStackSizes(asmStr);
+    EXPECT_TRUE(succeeded(maybeUpperBounds));
+    auto upperBounds = maybeUpperBounds.value();
+    {
+      auto ub = upperBounds.find({0, 2});
+      EXPECT_TRUE(ub != upperBounds.end());
+      EXPECT_TRUE(ub->second == 224 + 20);
+    }
+
+    {
+      auto ub = upperBounds.find({5, 5});
+      EXPECT_TRUE(ub == upperBounds.end());
+    }
+
+    {
+      auto ub = upperBounds.find({0, 3});
+      EXPECT_TRUE(ub != upperBounds.end());
+      EXPECT_TRUE(ub->second == 224 + 20);
+    }
+  }
+}
+
 }  // namespace
 
 int main(int argc, char **argv) {
