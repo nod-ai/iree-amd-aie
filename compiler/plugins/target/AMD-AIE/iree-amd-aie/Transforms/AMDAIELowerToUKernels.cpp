@@ -119,23 +119,32 @@ static std::tuple<int, int, int, int> getTilingInfo(ShapedType shapedType) {
 /// Matches a linalg.generic operation which is basically a tiled matmul and
 /// converts it into a iree_codegen.ukernel."iree_amdaie_uk_matmul" operation,
 /// that is later lowered into a call to the microkernel.
-static FailureOr<IREE::Codegen::UKernelOpInterface> matchDAGForUKernel(
-    RewriterBase &rewriter, linalg::LinalgOp op, std::string ukernelName,
-    std::string pathToUkernels) {
+static FailureOr<IREE::Codegen::UKernelOpInterface> matchMatmulDAGForUKernel(
+    RewriterBase &rewriter, Operation *op, const std::string &ukernelName,
+    const std::string &pathToUkernels) {
+  auto linalgOp = dyn_cast<linalg::LinalgOp>(op);
+  if (!linalgOp) {
+    return rewriter.notifyMatchFailure(op, "is not a linalg operation");
+  }
+  if (!isMatmul(linalgOp)) {
+    return rewriter.notifyMatchFailure(op, "is not a matmul-like operation");
+  }
   auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(op);
   if (!hasUkernel(targetAttr, ukernelName)) {
-    return failure();
+    return rewriter.notifyMatchFailure(
+        op, "no ukernel found with name: " + ukernelName);
   }
 
   FailureOr<std::string> maybeUkernelObjectName =
       fetchUkernelObjectName(targetAttr);
   if (failed(maybeUkernelObjectName)) {
-    return failure();
+    return rewriter.notifyMatchFailure(
+        op, "no ukernel object name found for the target");
   }
 
-  Value lhs = op.getDpsInputOperand(0)->get();
-  Value rhs = op.getDpsInputOperand(1)->get();
-  Value out = op.getDpsInitOperand(0)->get();
+  Value lhs = linalgOp.getDpsInputOperand(0)->get();
+  Value rhs = linalgOp.getDpsInputOperand(1)->get();
+  Value out = linalgOp.getDpsInitOperand(0)->get();
   auto lhsType = llvm::cast<ShapedType>(lhs.getType());
   auto rhsType = llvm::cast<ShapedType>(rhs.getType());
   auto outType = llvm::cast<ShapedType>(out.getType());
@@ -154,13 +163,12 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchDAGForUKernel(
       std::to_string(N) + "x" + std::to_string(K) + "_" + std::to_string(r) +
       "x" + std::to_string(s) + "x" + std::to_string(t);
 
-  Location loc = op.getLoc();
-
-  auto fn =
+  FnNameAndDefAttrs fn =
       getFnNameAndDefAttrs(rewriter, ukernelName, inputOutputElemTypeAndSize,
                            pathToUkernels, *maybeUkernelObjectName);
 
   // Create UKernel for AMD-AIE.
+  Location loc = linalgOp.getLoc();
   auto genericMicroKernelOp = rewriter.create<IREE::Codegen::UKernelGenericOp>(
       loc, outType, fn.name, ValueRange{lhs, rhs}, out, ValueRange{},
       /*fn_def_attrs=*/rewriter.getDictionaryAttr(fn.defAttrs),
@@ -170,26 +178,32 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchDAGForUKernel(
       genericMicroKernelOp.getOperation());
 }
 
-static FailureOr<IREE::Codegen::UKernelOpInterface> matchDAGForUKernel(
-    RewriterBase &rewriter, linalg::FillOp op, std::string ukernelName,
-    std::string pathToUkernels) {
+static FailureOr<IREE::Codegen::UKernelOpInterface> matchFillDAGForUKernel(
+    RewriterBase &rewriter, Operation *op, const std::string &ukernelName,
+    const std::string &pathToUkernels) {
+  auto fillOp = dyn_cast<linalg::FillOp>(op);
+  if (!fillOp) {
+    return rewriter.notifyMatchFailure(op, "is not a fill operation");
+  }
   auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(op);
   if (!hasUkernel(targetAttr, ukernelName)) {
-    return failure();
+    return rewriter.notifyMatchFailure(
+        op, "no ukernel found with name: " + ukernelName);
   }
 
   FailureOr<std::string> maybeUkernelObjectName =
       fetchUkernelObjectName(targetAttr);
   if (failed(maybeUkernelObjectName)) {
-    return failure();
+    return rewriter.notifyMatchFailure(
+        op, "no ukernel object name found for the target");
   }
 
-  Value input = op.getDpsInputOperand(0)->get();
+  Value input = fillOp.getDpsInputOperand(0)->get();
   if (!(matchPattern(input, m_Zero()) ||
         matchPattern(input, m_AnyZeroFloat()))) {
-    return rewriter.notifyMatchFailure(op, "not a zero filling operation");
+    return rewriter.notifyMatchFailure(op, "not a zero fill operation");
   }
-  Value output = op.getDpsInitOperand(0)->get();
+  Value output = fillOp.getDpsInitOperand(0)->get();
   auto outType = llvm::cast<ShapedType>(output.getType());
   Type outElemType = outType.getElementType();
 
@@ -200,12 +214,12 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchDAGForUKernel(
   std::string elemTypeAndSize = typeToString(outElemType) + "_" +
                                 std::to_string(M) + "x" + std::to_string(N);
 
-  Location loc = op.getLoc();
-
-  auto fn = getFnNameAndDefAttrs(rewriter, ukernelName, elemTypeAndSize,
-                                 pathToUkernels, *maybeUkernelObjectName);
+  FnNameAndDefAttrs fn =
+      getFnNameAndDefAttrs(rewriter, ukernelName, elemTypeAndSize,
+                           pathToUkernels, *maybeUkernelObjectName);
 
   // Create UKernel for AMD-AIE.
+  Location loc = fillOp.getLoc();
   auto genericMicroKernelOp = rewriter.create<IREE::Codegen::UKernelGenericOp>(
       loc, outType, fn.name, ValueRange{}, output, ValueRange{},
       /*fn_def_attrs=*/rewriter.getDictionaryAttr(fn.defAttrs),
@@ -216,13 +230,20 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchDAGForUKernel(
 }
 
 using TargetPredicate = std::function<bool(IREE::HAL::ExecutableTargetAttr)>;
+using MatchAndReplaceFunction =
+    std::function<FailureOr<IREE::Codegen::UKernelOpInterface>(
+        RewriterBase &, Operation *, const std::string &, const std::string &)>;
 
 template <typename OpType>
 struct LowerToUKernelPattern : OpRewritePattern<OpType> {
   LowerToUKernelPattern(MLIRContext *context, TargetPredicate targetPredicate,
-                        std::string pathToUkernels)
+                        MatchAndReplaceFunction matchAndReplace,
+                        const std::string &ukernelName,
+                        const std::string &pathToUkernels)
       : OpRewritePattern<OpType>(context),
         targetPredicate(targetPredicate),
+        matchAndReplace(matchAndReplace),
+        ukernelName(ukernelName),
         pathToUkernels(pathToUkernels) {}
 
   LogicalResult matchAndRewrite(OpType op,
@@ -232,14 +253,8 @@ struct LowerToUKernelPattern : OpRewritePattern<OpType> {
       return failure();
     }
 
-    FailureOr<IREE::Codegen::UKernelOpInterface> ukernelOp;
-    if (isMatmul(op)) {
-      ukernelOp = matchDAGForUKernel(rewriter, op, "matmul", pathToUkernels);
-    } else if (isa<linalg::FillOp>(op)) {
-      ukernelOp = matchDAGForUKernel(rewriter, op, "zero", pathToUkernels);
-    } else {
-      return failure();
-    }
+    FailureOr<IREE::Codegen::UKernelOpInterface> ukernelOp =
+        matchAndReplace(rewriter, op, ukernelName, pathToUkernels);
     if (failed(ukernelOp)) {
       return rewriter.notifyMatchFailure(
           op, "failed to find microkernel op to replace with");
@@ -249,10 +264,15 @@ struct LowerToUKernelPattern : OpRewritePattern<OpType> {
   }
 
   TargetPredicate targetPredicate;
+  MatchAndReplaceFunction matchAndReplace;
+  std::string ukernelName;
   std::string pathToUkernels;
 };
 
 }  // namespace
+
+static constexpr char kMatmulUKernelName[] = "matmul";
+static constexpr char kFillUKernelName[] = "zero";
 
 void AMDAIELowerToUKernelsPass::runOnOperation() {
   MLIRContext *context = &getContext();
@@ -270,12 +290,15 @@ void AMDAIELowerToUKernelsPass::runOnOperation() {
   // performance, and that consideration overrides the benefit of fusions for
   // these ops.
   auto allTargets = [](auto target) { return true; };
-  patterns.insert<LowerToUKernelPattern<linalg::GenericOp>>(context, allTargets,
-                                                            pathToUkernels);
-  patterns.insert<LowerToUKernelPattern<linalg::MatmulOp>>(context, allTargets,
-                                                           pathToUkernels);
-  patterns.insert<LowerToUKernelPattern<linalg::FillOp>>(context, allTargets,
-                                                         pathToUkernels);
+  patterns.insert<LowerToUKernelPattern<linalg::GenericOp>>(
+      context, allTargets, matchMatmulDAGForUKernel, kMatmulUKernelName,
+      pathToUkernels);
+  patterns.insert<LowerToUKernelPattern<linalg::MatmulOp>>(
+      context, allTargets, matchMatmulDAGForUKernel, kMatmulUKernelName,
+      pathToUkernels);
+  patterns.insert<LowerToUKernelPattern<linalg::FillOp>>(
+      context, allTargets, matchFillDAGForUKernel, kFillUKernelName,
+      pathToUkernels);
   if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
     return signalPassFailure();
   }
