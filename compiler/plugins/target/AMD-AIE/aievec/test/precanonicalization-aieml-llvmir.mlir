@@ -279,8 +279,6 @@ func.func @trivial_read_access_rank_reduced(%arg0: memref<4x8x1x8xbf16, strided<
 // CHECK-SAME:          : vector<1x1x4x4xf32> to vector<16xf32>
 // CHECK:           vector.transfer_write %[[SHAPE_CAST]], %[[COLLAPSE_SHAPE]]
 // CHECK:           return
-#executable_target_ = #hal.executable.target<"", "", {target_device = "npu1_4col"}>
-module attributes {hal.executable.target = #executable_target_} {
 func.func @trivial_write_access(%arg0: memref<8x8x4x4xf32, strided<[128, 16, 4, 1]>>, %arg1: vector<1x1x4x4xf32>) {
     %c0 = arith.constant 0 : index
     %cst = arith.constant 0.000000e+00 : bf16
@@ -288,6 +286,19 @@ func.func @trivial_write_access(%arg0: memref<8x8x4x4xf32, strided<[128, 16, 4, 
     vector.transfer_write %arg1, %subview[%c0, %c0, %c0, %c0] {in_bounds = [true, true, true, true]} : vector<1x1x4x4xf32>, memref<1x1x4x4xf32, strided<[128, 16, 4, 1], offset: 304>>
     return
 }
+
+// -----
+
+
+// CHECK-LABEL: @splatConstantReshape
+// CHECK-SAME:  () -> vector<32xi64>
+// CHECK:       %[[CST:.*]] = arith.constant dense<7> : vector<32xi64>
+// CHECK:       return %[[CST]]
+
+func.func @splatConstantReshape() -> vector<32xi64> {
+  %cst = arith.constant dense<7> : vector<4x8xi64>
+  %flat = vector.shape_cast %cst : vector<4x8xi64> to vector<32xi64>
+  return %flat : vector<32xi64>
 }
 
 // -----
@@ -310,23 +321,20 @@ func.func @trivial_write_access(%arg0: memref<8x8x4x4xf32, strided<[128, 16, 4, 
 // CHECK:         vector.transfer_write %[[TRUNC]], %[[ALLOC_1]][%[[C0]]]
 // CHECK:         return
 // CHECK:       }
-#executable_target_ = #hal.executable.target<"", "", {target_device = "npu1_4col"}>
-module attributes {hal.executable.target = #executable_target_} {
-  func.func @multiflatten() {
-    %cst = arith.constant dense<7> : vector<4x8xi64>
-    %cst_0 = arith.constant dense<10> : vector<4x8xi64>
-    %c0_i32 = arith.constant 0 : i32
-    %c0 = arith.constant 0 : index
-    %alloc = memref.alloc() : memref<1024xi32>
-    %alloc_1 = memref.alloc() : memref<1024xi8>
-    %0 = vector.transfer_read %alloc[%c0], %c0_i32 {in_bounds = [true]} : memref<1024xi32>, vector<32xi32>
-    %1 = vector.shape_cast %0 : vector<32xi32> to vector<4x8xi32>
-    %2 = arith.extsi %1 : vector<4x8xi32> to vector<4x8xi64>
-    %3 = arith.muli %2, %cst_0 : vector<4x8xi64>
-    %4 = arith.shrsi %3, %cst : vector<4x8xi64>
-    %5 = vector.shape_cast %4 : vector<4x8xi64> to vector<32xi64>
-    %6 = arith.trunci %5 : vector<32xi64> to vector<32xi8>
-    vector.transfer_write %6, %alloc_1[%c0] {in_bounds = [true]} : vector<32xi8>, memref<1024xi8>
-    return
-  }
+func.func @multiflatten() {
+  %cst = arith.constant dense<7> : vector<4x8xi64>
+  %cst_0 = arith.constant dense<10> : vector<4x8xi64>
+  %c0_i32 = arith.constant 0 : i32
+  %c0 = arith.constant 0 : index
+  %alloc = memref.alloc() : memref<1024xi32>
+  %alloc_1 = memref.alloc() : memref<1024xi8>
+  %0 = vector.transfer_read %alloc[%c0], %c0_i32 {in_bounds = [true]} : memref<1024xi32>, vector<32xi32>
+  %1 = vector.shape_cast %0 : vector<32xi32> to vector<4x8xi32>
+  %2 = arith.extsi %1 : vector<4x8xi32> to vector<4x8xi64>
+  %3 = arith.muli %2, %cst_0 : vector<4x8xi64>
+  %4 = arith.shrsi %3, %cst : vector<4x8xi64>
+  %5 = vector.shape_cast %4 : vector<4x8xi64> to vector<32xi64>
+  %6 = arith.trunci %5 : vector<32xi64> to vector<32xi8>
+  vector.transfer_write %6, %alloc_1[%c0] {in_bounds = [true]} : vector<32xi8>, memref<1024xi8>
+  return
 }

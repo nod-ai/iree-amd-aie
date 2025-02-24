@@ -1006,14 +1006,14 @@ struct ToMinorIdentityTransferReadPattern
 
 /// Pattern to linearize/flatten the operands of operations of type `TOp`.
 ///
-/// This pattern matches if all operands (multiple operands are permitted) and
-/// the result have the same shape, and are not rank-1. In this case all
-/// the operands are flattened to rank-1 with a vector.shape_cast.
+/// This pattern matches if all operands and the result have the same shape, and
+/// are not rank-1. In this case all the operands are flattened to rank-1 with a
+/// vector.shape_cast.
 ///
 /// One example where this is required is for arith.truncf, because later
 /// aievec.srs in AIEVecToLLVM is expected to have 1-D source and target.
 ///
-/// Example of what this pattern achieves (When TOp is arith::TruncFOp) :-
+/// Example of what this pattern achieves (when TOp is arith::TruncFOp) :-
 /// INPUT
 ///     %0 = arith.truncf %inp : vector<2x3xf32> to vector<2x3xbf16>
 /// OUTPUT
@@ -1027,8 +1027,7 @@ struct FlattenOpPattern : public OpRewritePattern<TOp> {
 
   LogicalResult matchAndRewrite(TOp op,
                                 PatternRewriter &rewriter) const override {
-    // Obtain the flattend output type, or bail if the output is already
-    // rank-1.
+    // Obtain the flattend output type, or fail if already rank-1.
     if (op->getNumResults() != 1) {
       return rewriter.notifyMatchFailure(op, "not a single result");
     }
@@ -1045,19 +1044,18 @@ struct FlattenOpPattern : public OpRewritePattern<TOp> {
     int64_t nElms = outType.getNumElements();
     VectorType newOutType = VectorType::get({nElms}, outElmType);
 
-    // Obtain the flattened input types, or bail if the shapes do not all
-    // match.
+    // Obtain flattened input types, or fail if shapes do not all same.
     SmallVector<VectorType> newInTypes;
     for (Value input : op->getOperands()) {
-      auto inType = dyn_cast<VectorType>(input.getType());
-      if (!inType) {
+      auto type = dyn_cast<VectorType>(input.getType());
+      if (!type) {
         return rewriter.notifyMatchFailure(op, "input not vector");
       }
-      if (inType.getShape() != shape) {
+      if (type.getShape() != shape) {
         return rewriter.notifyMatchFailure(op,
-                                           "inputs and output shapes differ");
+                                           "input and output shapes differ");
       }
-      Type inElmType = inType.getElementType();
+      Type inElmType = type.getElementType();
       newInTypes.push_back(VectorType::get({nElms}, inElmType));
     }
 
@@ -1065,14 +1063,14 @@ struct FlattenOpPattern : public OpRewritePattern<TOp> {
     SmallVector<Value> newInputs;
     for (auto enumInput : llvm::enumerate(op->getOperands())) {
       Value input = enumInput.value();
-      Type newInType = newInTypes[enumInput.index()];
+      Type type = newInTypes[enumInput.index()];
       auto parent =
           dyn_cast_if_present<vector::ShapeCastOp>(input.getDefiningOp());
-      if (parent && parent.getOperand().getType() == newInType) {
+      if (parent && parent.getOperand().getType() == type) {
         newInputs.push_back(parent.getOperand());
       } else {
         newInputs.push_back(rewriter.createOrFold<vector::ShapeCastOp>(
-            op.getLoc(), newInType, input));
+            op.getLoc(), type, input));
       }
     }
 
@@ -1086,7 +1084,7 @@ struct FlattenOpPattern : public OpRewritePattern<TOp> {
 };
 
 /// A pattern to fold a `vector.shape_cast` following a splat constant
-/// materialization, with a direct splat constant of the new shape. Example.
+/// materialization, with a direct splat constant of the new shape. Example
 /// INPUT
 ///    %cst = arith.constant dense<7> : vector<4x8xi64>
 ///    %0 = vector.shape_cast %cst : vector<4x8xi64> to vector<32xi64>
@@ -1101,11 +1099,11 @@ struct ShapeCastSplatPattern : public OpRewritePattern<arith::ConstantOp> {
                                 PatternRewriter &rewriter) const override {
     // Check if the constant is a splat value.
     TypedAttr constantValue = cstOp.getValueAttr();
-    SplatElementsAttr splatAttr = dyn_cast<SplatElementsAttr>(constantValue);
-    if (!splatAttr || !splatAttr.isSplat()) {
+    SplatElementsAttr attr = dyn_cast<SplatElementsAttr>(constantValue);
+    if (!attr || !attr.isSplat()) {
       return rewriter.notifyMatchFailure(cstOp, "constant isn't a splat");
     }
-    Attribute splat = splatAttr.getSplatValue<Attribute>();
+    Attribute splat = attr.getSplatValue<Attribute>();
 
     // Replace all uses of shape_casts of the splat value with direct splat
     // constants of the new shape.
