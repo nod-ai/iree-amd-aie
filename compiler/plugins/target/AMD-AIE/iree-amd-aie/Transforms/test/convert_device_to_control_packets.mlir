@@ -6,6 +6,9 @@
 // CHECK-NEXT: module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb}
 // CHECK-NEXT:   func.func @reconfigure() {
 // CHECK-NEXT:     amdaie.workgroup {
+// CHECK-NEXT:       %[[C0:.*]] = arith.constant 0 : index
+// CHECK-NEXT:       %[[C2:.*]] = arith.constant 2 : index
+// CHECK-NEXT:       %[[TILE_0_2:.*]] = amdaie.tile(%[[C0]], %[[C2]])
 // CHECK-NEXT:       amdaie.controlcode {
 
 // Generated from `XAie_CoreDisable`.

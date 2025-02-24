@@ -92,7 +92,12 @@ LogicalResult generateControlOverlay(AMDAIE::WorkgroupOp workgroupOp,
             workgroupOp, deviceModel, shimTileOps, shimTileToGeneratorMap))) {
       return failure();
     }
-    WalkResult res = workgroupOp->walk([&](AMDAIE::TileOp tileOp) {
+    SmallVector<TileOp> tileOps;
+    workgroupOp->walk([&](TileOp tileOp) { tileOps.push_back(tileOp); });
+    // Sort for deterministic output IR.
+    llvm::sort(tileOps.begin(), tileOps.end(),
+               AMDAIE::TileOp::tileValueColumnAndRowComparator);
+    for (TileOp tileOp : tileOps) {
       uint32_t col = getConstantIndexOrAssert(tileOp.getCol());
       TileOp shimTileOp = columnToShimTile[col];
       // Get the available DMA channel for the shim tile, and assign it for the
@@ -101,10 +106,8 @@ LogicalResult generateControlOverlay(AMDAIE::WorkgroupOp workgroupOp,
           shimTileToGeneratorMap[shimTileOp.getResult()]
               .getAndAssignProducerDMAChannel(
                   ChannelAssignmentMode::RoundRobinPacketFlow);
-      if (!maybeChannel) {
-        shimTileOp.emitOpError() << "no producer DMA channel available";
-        return WalkResult::interrupt();
-      }
+      if (!maybeChannel)
+        return shimTileOp.emitOpError() << "no producer DMA channel available";
 
       rewriter.setInsertionPoint(controlCodeOp);
       auto sourceChannelOp = rewriter.create<AMDAIE::ChannelOp>(
@@ -137,9 +140,7 @@ LogicalResult generateControlOverlay(AMDAIE::WorkgroupOp workgroupOp,
       rewriter.setInsertionPoint(controlCodeOp.getBody()->getTerminator());
       rewriter.create<AMDAIE::NpuDmaPlaceHolderOp>(rewriter.getUnknownLoc(),
                                                    connectionOp.getResult());
-      return WalkResult::advance();
-    });
-    if (res.wasInterrupted()) return failure();
+    }
   }
 
   // Create a circuit-mode connection from the shim CTRL to the shim SOUTH 0,

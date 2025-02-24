@@ -23,8 +23,11 @@ struct HalfDmaCpyNdToNpuConverter final
   using OpConversionPattern::OpConversionPattern;
 
   HalfDmaCpyNdToNpuConverter(MLIRContext *context,
-                             const AMDAIE::AMDAIEDeviceModel &deviceModel)
-      : OpConversionPattern(context), deviceModel(std::move(deviceModel)) {
+                             const AMDAIE::AMDAIEDeviceModel &deviceModel,
+                             bool lowerCtrlpktDma)
+      : OpConversionPattern(context),
+        deviceModel(std::move(deviceModel)),
+        lowerCtrlpktDma(lowerCtrlpktDma) {
     minStrideBitWidth = deviceModel.getMinStrideBitWidth();
   }
 
@@ -32,25 +35,49 @@ struct HalfDmaCpyNdToNpuConverter final
   /// is specific to Shim BDs for now.
   FailureOr<AMDAIE::NpuPushToQueueOp> insertWriteBdOps(
       AMDAIE::NpuHalfDmaCpyNdOp op, ConversionPatternRewriter &rewriter,
-      AMDAIE::AMDAIETileType tileType,
-      AMDAIE::LogicalObjectFifoFromMemrefOp logicalObjFifo,
-      AMDAIE::BdIdOp bdIdOp, AMDAIE::ChannelOp channelOp, int64_t bufferLength,
-      int64_t bufferOffset, int32_t enablePacket, int32_t packetId,
-      int32_t packetType, SmallVector<OpFoldResult> sizes,
+      AMDAIE::AMDAIETileType tileType, AMDAIE::BdIdOp bdIdOp,
+      AMDAIE::ChannelOp channelOp, int64_t bufferLength, int64_t bufferOffset,
+      int32_t enablePacket, int32_t packetId, int32_t packetType,
+      SmallVector<OpFoldResult> sizes,
       SmallVector<OpFoldResult> strides) const {
     uint8_t numIntraAddrDim = deviceModel.getDmaProp<uint8_t>(
         tileType, AMDAIE::AMDAIEDmaProp::NumAddrDim);
     uint8_t numAddrDim =
         numIntraAddrDim + deviceModel.deviceConfig.dmaNbInterDims;
-    auto subspanOp = dyn_cast_if_present<IREE::HAL::InterfaceBindingSubspanOp>(
-        logicalObjFifo.getMemref().getDefiningOp());
-    if (!subspanOp) {
-      return logicalObjFifo.emitOpError()
-             << "must operate on an `hal.interface.binding.subspan`";
+
+    int64_t argIdx;
+    int64_t elemWidthInBits;
+    uint8_t memSpace;
+    if (lowerCtrlpktDma) {
+      // Control packet DMAs require special handling.
+      // The `argIdx` must match the driver and is assumed to be 0.
+      // The `elemWidthInBits` is fixed at 32 for control packet data.
+      // The `memSpace` is set to 0, indicating storage in global memory.
+      argIdx = 0;
+      elemWidthInBits = 32;
+      memSpace = 0;
+    } else {
+      // Normal DMAs.
+      auto logicalObjFifo =
+          dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+              op.getInput().getDefiningOp());
+      if (!logicalObjFifo) {
+        return op.emitOpError() << "expected input to be an "
+                                   "`amdaie.logicalobjectfifo.from_memref`";
+      }
+      auto subspanOp =
+          dyn_cast_if_present<IREE::HAL::InterfaceBindingSubspanOp>(
+              logicalObjFifo.getMemref().getDefiningOp());
+      if (!subspanOp) {
+        return logicalObjFifo.emitOpError()
+               << "must operate on an `hal.interface.binding.subspan`";
+      }
+      argIdx = subspanOp.getBinding().getZExtValue();
+      MemRefType memrefType = logicalObjFifo.getMemrefType();
+      elemWidthInBits = memrefType.getElementTypeBitWidth();
+      memSpace = logicalObjFifo.getMemorySpaceAsUInt();
     }
-    int64_t argIdx = subspanOp.getBinding().getZExtValue();
-    MemRefType memrefType = logicalObjFifo.getMemrefType();
-    int64_t elemWidthInBits = memrefType.getElementTypeBitWidth();
+
     std::optional<AMDAIE::DMAChannelDir> maybeDmaDirection =
         channelOp.getDirection();
     if (!maybeDmaDirection) {
@@ -70,7 +97,6 @@ struct HalfDmaCpyNdToNpuConverter final
         strides.size(), getAsIndexOpFoldResult(rewriter.getContext(), 0));
     (void)foldUnitDims(rewriter.getContext(), offsets, sizes, strides);
 
-    uint8_t memSpace = logicalObjFifo.getMemorySpaceAsUInt();
     DmaDimConfig dmaDimConfig(deviceModel, memSpace);
     SmallVector<int64_t> maxSizes = dmaDimConfig.getMaxSizes(offsets.size());
     SmallVector<OpFoldResult> linearOffsets, linearSizes, linearStrides;
@@ -205,13 +231,6 @@ struct HalfDmaCpyNdToNpuConverter final
       rewriter.eraseOp(op);
       return success();
     }
-    auto logicalObjFifo =
-        dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-            op.getInput().getDefiningOp());
-    if (!logicalObjFifo) {
-      return op.emitOpError() << "expected input to be an "
-                                 "`amdaie.logicalobjectfifo.from_memref`";
-    }
     std::optional<AMDAIE::BdIdOp> maybeBdIdOp = op.getBdIdOp();
     if (!maybeBdIdOp) {
       return op.emitOpError() << "must have a BD ID op to lower to "
@@ -229,10 +248,9 @@ struct HalfDmaCpyNdToNpuConverter final
     SmallVector<OpFoldResult> sizes = op.getMixedSizes();
     SmallVector<OpFoldResult> strides = op.getMixedStrides();
     FailureOr<AMDAIE::NpuPushToQueueOp> npuPushToQueueOp = insertWriteBdOps(
-        op, rewriter, AMDAIE::AMDAIETileType::SHIMNOC, logicalObjFifo,
-        maybeBdIdOp.value(), maybeChannelOp.value(), maybeSize.value(),
-        maybeOffset.value(), enablePacket, packetId, packetType, sizes,
-        strides);
+        op, rewriter, AMDAIE::AMDAIETileType::SHIMNOC, maybeBdIdOp.value(),
+        maybeChannelOp.value(), maybeSize.value(), maybeOffset.value(),
+        enablePacket, packetId, packetType, sizes, strides);
     if (failed(npuPushToQueueOp)) return failure();
     rewriter.replaceOp(op, *npuPushToQueueOp);
 
@@ -256,6 +274,7 @@ struct HalfDmaCpyNdToNpuConverter final
  private:
   const AMDAIE::AMDAIEDeviceModel &deviceModel;
   uint8_t minStrideBitWidth;
+  bool lowerCtrlpktDma;
 };
 
 struct DmaWaitToTctSyncConverter final
@@ -319,6 +338,9 @@ class AMDAIEControlCodeLoweringPass
     : public impl::AMDAIEControlCodeLoweringBase<
           AMDAIEControlCodeLoweringPass> {
  public:
+  AMDAIEControlCodeLoweringPass(const AMDAIEControlCodeLoweringOptions &options)
+      : AMDAIEControlCodeLoweringBase(options) {}
+
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<AMDAIEDialect>();
   }
@@ -348,7 +370,8 @@ void AMDAIEControlCodeLoweringPass::runOnOperation() {
     ConversionTarget conversionTarget(*context);
     conversionTarget.addLegalDialect<AMDAIEDialect>();
     conversionTarget.addIllegalOp<AMDAIE::NpuHalfDmaCpyNdOp>();
-    patterns.insert<HalfDmaCpyNdToNpuConverter>(context, deviceModel);
+    patterns.insert<HalfDmaCpyNdToNpuConverter>(context, deviceModel,
+                                                lowerCtrlpktDma);
 
     if (failed(applyPartialConversion(parentOp, conversionTarget,
                                       std::move(patterns)))) {
@@ -374,8 +397,9 @@ void AMDAIEControlCodeLoweringPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<Pass> createAMDAIEControlCodeLoweringPass() {
-  return std::make_unique<AMDAIEControlCodeLoweringPass>();
+std::unique_ptr<Pass> createAMDAIEControlCodeLoweringPass(
+    AMDAIEControlCodeLoweringOptions options) {
+  return std::make_unique<AMDAIEControlCodeLoweringPass>(options);
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE

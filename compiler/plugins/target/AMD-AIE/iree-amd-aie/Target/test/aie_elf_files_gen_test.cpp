@@ -8,6 +8,9 @@
 
 #include "aie/AIEDialect.h"
 #include "aie/AIEXDialect.h"
+#include "aievec/AIEVecDialect.h"
+#include "aievec/Passes.h"
+#include "aievec/XLLVMDialect.h"
 #include "iree-amd-aie/Target/XCLBinGen.h"
 #include "iree/compiler/Dialect/HAL/IR/HALDialect.h"
 #include "llvm/Support/FileSystem.h"
@@ -31,6 +34,8 @@ void registerDialects(DialectRegistry &registry) {
   registry.insert<memref::MemRefDialect>();
   registry.insert<LLVM::LLVMDialect>();
   registry.insert<iree_compiler::IREE::HAL::HALDialect>();
+  registry.insert<iree_compiler::aievec::xllvm::XLLVMDialect>();
+  registry.insert<iree_compiler::aievec::AIEVecDialect>();
 }
 
 // The following code parses an MLIR file containing a `xilinx.aie.device` op,
@@ -38,7 +43,7 @@ void registerDialects(DialectRegistry &registry) {
 // working directory.
 //
 // Usage:
-//   aie_elf_files_gen_test <input_file> <working_directory>
+//   aie_elf_files_gen_test <input_file> <working_directory> <emit_ctrlpkt>
 //
 // It is used as a helper for testing the `AMDAIEConvertDeviceToControlPackets`
 // pass.
@@ -52,11 +57,14 @@ int main(int argc, char **argv) {
                  << ecode.message() << "\n";
     return 1;
   }
+  bool emitCtrlPkt = false;
+  if (argc > 3 && std::string(argv[3]) == "true") emitCtrlPkt = true;
 
   DialectRegistry registry;
   registerDialects(registry);
   registerBuiltinDialectTranslation(registry);
   registerLLVMDialectTranslation(registry);
+  mlir::iree_compiler::aievec::registerXLLVMDialectTranslation(registry);
   MLIRContext context(registry);
 
   // Parse the input MLIR file.
@@ -98,12 +106,19 @@ int main(int argc, char **argv) {
   }
   std::string peanoDirStr = peanoDir;
 
+  auto targetAttr =
+      mlir::iree_compiler::IREE::HAL::ExecutableTargetAttr::lookup(moduleOp);
+  if (!targetAttr) {
+    llvm::errs() << "Error: HAL target attribute not found\n";
+    return 1;
+  }
+
   // Use `aie2xclbin` to generate the elf files.
   if (failed(aie2xclbin(
           /*ctx=*/&context,
           /*deviceOp=*/deviceOp,
           /*outputNPU=*/std::nullopt,
-          /*emitCtrlPkt=*/false,
+          /*emitCtrlPkt=*/emitCtrlPkt,
           /*artifactPath=*/artifactPath.str().str(),
           /*printIRBeforeAll=*/false,
           /*printIRAfterAll=*/false,
@@ -124,7 +139,8 @@ int main(int argc, char **argv) {
           /*amdAIEInstallDir=*/"",
           /*InputXCLBin=*/std::nullopt,
           /*ukernel=*/std::nullopt,
-          /*additionalPeanoOptFlags=*/""))) {
+          /*additionalPeanoOptFlags=*/"",
+          /*targetAttr=*/targetAttr))) {
     llvm::errs() << "Error: failed to generate xclbin\n";
     return 1;
   }
