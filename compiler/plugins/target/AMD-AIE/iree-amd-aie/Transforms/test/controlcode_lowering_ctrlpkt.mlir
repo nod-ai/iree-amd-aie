@@ -34,10 +34,10 @@ module attributes {hal.executable.target = #executable_target_amdaie_pdi_fb} {
 // CHECK:  amdaie.npu.address_patch {arg_idx = 0 : ui32, bd_id = 0 : ui32, col = 0 : ui32, offset = 0 : ui32}
         %11 = amdaie.npu.half_dma_cpy_nd async %8(%0 [0, 0, 0, 0] [1, 1, 1, 2] [0, 0, 0, 1] bd_id = %bd_id channel = %channel) : !amdaie.logicalobjectfifo<memref<?xi32>>
         amdaie.npu.dma_wait(%11 : !amdaie.async_token)
-// CHECK:  amdaie.npu.address_patch {arg_idx = 0 : ui32, bd_id = 0 : ui32, col = 0 : ui32, offset = 1776 : ui32}        
+// CHECK:  amdaie.npu.address_patch {arg_idx = 0 : ui32, bd_id = 0 : ui32, col = 0 : ui32, offset = 1776 : ui32}
         %107 = amdaie.npu.half_dma_cpy_nd async %5(%0 [0, 0, 0, 444] [1, 1, 1, 2] [0, 0, 0, 1] bd_id = %bd_id channel = %channel_1) : !amdaie.logicalobjectfifo<memref<?xi32>>
         amdaie.npu.dma_wait(%107 : !amdaie.async_token)
-// CHECK:  amdaie.npu.address_patch {arg_idx = 0 : ui32, bd_id = 0 : ui32, col = 0 : ui32, offset = 2968 : ui32} 
+// CHECK:  amdaie.npu.address_patch {arg_idx = 0 : ui32, bd_id = 0 : ui32, col = 0 : ui32, offset = 2968 : ui32}
         %208 = amdaie.npu.half_dma_cpy_nd async %2(%0 [0, 0, 0, 742] [1, 1, 1, 2] [0, 0, 0, 1] bd_id = %bd_id channel = %channel) : !amdaie.logicalobjectfifo<memref<?xi32>>
         amdaie.npu.dma_wait(%208 : !amdaie.async_token)
         amdaie.end
