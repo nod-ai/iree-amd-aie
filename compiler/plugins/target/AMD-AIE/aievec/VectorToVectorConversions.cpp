@@ -1481,8 +1481,7 @@ FailureOr<Value> getAlignedTransferRead(
     // aligned, and we just couldn't prove it.
     readOp.emitWarning() << "`transfer_read` doesn't have a vector with "
                          << shiftOperandBits / 2 << " or " << shiftOperandBits
-                         << " bits."
-                         << "This case is not currently handled.";
+                         << " bits." << "This case is not currently handled.";
     return readOp.getVector();
   }
 
