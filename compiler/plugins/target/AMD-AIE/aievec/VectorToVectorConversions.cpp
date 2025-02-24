@@ -1027,7 +1027,6 @@ struct FlattenOpPattern : public OpRewritePattern<TOp> {
 
   LogicalResult matchAndRewrite(TOp op,
                                 PatternRewriter &rewriter) const override {
-    // Obtain the flattend output type, or fail if already rank-1.
     if (op->getNumResults() != 1) {
       return rewriter.notifyMatchFailure(op, "not a single result");
     }
@@ -1036,6 +1035,7 @@ struct FlattenOpPattern : public OpRewritePattern<TOp> {
     if (!outType) {
       return rewriter.notifyMatchFailure(op, "output not vector");
     }
+    // Obtain the flattened output type, or fail if already rank-1.
     ArrayRef<int64_t> shape = outType.getShape();
     if (outType.getRank() == 1) {
       return rewriter.notifyMatchFailure(op, "already rank-1");
@@ -1481,7 +1481,8 @@ FailureOr<Value> getAlignedTransferRead(
     // aligned, and we just couldn't prove it.
     readOp.emitWarning() << "`transfer_read` doesn't have a vector with "
                          << shiftOperandBits / 2 << " or " << shiftOperandBits
-                         << " bits." << "This case is not currently handled.";
+                         << " bits."
+                         << "This case is not currently handled.";
     return readOp.getVector();
   }
 
