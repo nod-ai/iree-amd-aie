@@ -1004,50 +1004,124 @@ struct ToMinorIdentityTransferReadPattern
   }
 };
 
-// clang-format off
-/// Pattern to linearize arith.truncf because later aievec.srs in AIEVecToLLVM is
-/// expected to have 1-D source and target.
-/// Refer: https://github.com/nod-ai/iree-amd-aie/blob/main/compiler/plugins/target/AMD-AIE/aievec/AIEVecToLLVM.cpp#L73-L74
+/// Pattern to linearize/flatten the operands of operations of type `TOp`.
 ///
-/// Example of what this pattern achieves :-
+/// This pattern matches if all operands and the result have the same shape, and
+/// are not rank-1. In this case all the operands are flattened to rank-1 with a
+/// vector.shape_cast.
+///
+/// One example where this is required is for arith.truncf, because later
+/// aievec.srs in AIEVecToLLVM is expected to have 1-D source and target.
+///
+/// Example of what this pattern achieves (when TOp is arith::TruncFOp) :-
 /// INPUT
 ///     %0 = arith.truncf %inp : vector<2x3xf32> to vector<2x3xbf16>
 /// OUTPUT
 ///     %0 = vector.shape_cast %inp : vector<2x3xf32> to vector<6xf32>
 ///     %1 = arith.truncf %0 : vector<6xf32> to vector<6xbf16>
 ///     %2 = vector.shape_cast %1 : vector<6xbf16> to vector<2x3xbf16>
-// clang-format on
-template <typename TruncOpTy>
-struct FlattenArithTruncOpPattern : public OpRewritePattern<TruncOpTy> {
-  using OpRewritePattern<TruncOpTy>::OpRewritePattern;
+///
+template <typename TOp>
+struct FlattenOpPattern : public OpRewritePattern<TOp> {
+  using OpRewritePattern<TOp>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(TruncOpTy op,
+  LogicalResult matchAndRewrite(TOp op,
                                 PatternRewriter &rewriter) const override {
-    // Get old shape type.
-    auto oldShapedType = dyn_cast<VectorType>(op.getType());
-    if (!oldShapedType) return failure();
-    // Bail out if it's already linearized.
-    if (oldShapedType.getRank() == 1) return failure();
-    // Linearize the shape.
-    int64_t linearizedSize = oldShapedType.getNumElements();
-    // Fetch input.
-    Value origInputOfTruncFOp = op.getIn();
-    // Form linearized vector shape type for input and output.
-    VectorType newVectorTypeForInput = VectorType::get(
-        {linearizedSize},
-        cast<ShapedType>(origInputOfTruncFOp.getType()).getElementType());
-    VectorType newVectorTypeForOutput =
-        VectorType::get({linearizedSize}, oldShapedType.getElementType());
-    // Shape cast the original input to linearized shape type.
-    Value newInputVector = rewriter.create<vector::ShapeCastOp>(
-        op.getLoc(), newVectorTypeForInput, origInputOfTruncFOp);
-    // Create new base operation with the linearized input/output.
-    Value newTruncFOp = rewriter.create<TruncOpTy>(
-        op.getLoc(), newVectorTypeForOutput, newInputVector);
-    // Delinearize the output back to the original type.
-    rewriter.replaceOpWithNewOp<vector::ShapeCastOp>(op, op.getType(),
-                                                     newTruncFOp);
+    if (op->getNumResults() != 1) {
+      return rewriter.notifyMatchFailure(op, "not a single result");
+    }
+    Value result = op->getResult(0);
+    auto outType = dyn_cast<VectorType>(result.getType());
+    if (!outType) {
+      return rewriter.notifyMatchFailure(op, "output not vector");
+    }
+    // Obtain the flattened output type, or fail if already rank-1.
+    ArrayRef<int64_t> shape = outType.getShape();
+    if (outType.getRank() == 1) {
+      return rewriter.notifyMatchFailure(op, "already rank-1");
+    }
+    Type outElmType = outType.getElementType();
+    int64_t nElms = outType.getNumElements();
+    VectorType newOutType = VectorType::get({nElms}, outElmType);
+
+    // Obtain flattened input types, or fail if shapes do not all same.
+    SmallVector<VectorType> newInTypes;
+    for (Value input : op->getOperands()) {
+      auto type = dyn_cast<VectorType>(input.getType());
+      if (!type) {
+        return rewriter.notifyMatchFailure(op, "input not vector");
+      }
+      if (type.getShape() != shape) {
+        return rewriter.notifyMatchFailure(op,
+                                           "input and output shapes differ");
+      }
+      Type inElmType = type.getElementType();
+      newInTypes.push_back(VectorType::get({nElms}, inElmType));
+    }
+
+    // Create flattened inputs.
+    SmallVector<Value> newInputs;
+    for (auto enumInput : llvm::enumerate(op->getOperands())) {
+      Value input = enumInput.value();
+      Type type = newInTypes[enumInput.index()];
+      auto parent =
+          dyn_cast_if_present<vector::ShapeCastOp>(input.getDefiningOp());
+      if (parent && parent.getOperand().getType() == type) {
+        newInputs.push_back(parent.getOperand());
+      } else {
+        newInputs.push_back(rewriter.createOrFold<vector::ShapeCastOp>(
+            op.getLoc(), type, input));
+      }
+    }
+
+    // Create a new op with the flattened inputs, and then reshape the result
+    // back to the original rank.
+    Value newOp =
+        rewriter.createOrFold<TOp>(op.getLoc(), newOutType, newInputs);
+    rewriter.replaceOpWithNewOp<vector::ShapeCastOp>(op, outType, newOp);
     return success();
+  }
+};
+
+/// A pattern to fold a `vector.shape_cast` following a splat constant
+/// materialization, with a direct splat constant of the new shape. Example
+/// INPUT
+///    %cst = arith.constant dense<7> : vector<4x8xi64>
+///    %0 = vector.shape_cast %cst : vector<4x8xi64> to vector<32xi64>
+///    %use = some.use %0
+/// OUTPUT
+///    %cst = arith.constant dense<7> : vector<32xi64>
+///    %use = some.use %cst
+struct ShapeCastSplatPattern : public OpRewritePattern<arith::ConstantOp> {
+  using OpRewritePattern<arith::ConstantOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(arith::ConstantOp cstOp,
+                                PatternRewriter &rewriter) const override {
+    // Check if the constant is a splat value.
+    TypedAttr constantValue = cstOp.getValueAttr();
+    SplatElementsAttr attr = dyn_cast<SplatElementsAttr>(constantValue);
+    if (!attr || !attr.isSplat()) {
+      return rewriter.notifyMatchFailure(cstOp, "constant isn't a splat");
+    }
+    Attribute splat = attr.getSplatValue<Attribute>();
+
+    // Replace all uses of shape_casts of the splat value with direct splat
+    // constants of the new shape.
+    Location loc = cstOp.getLoc();
+    bool changed{false};
+    rewriter.setInsertionPoint(cstOp);
+    for (Operation *user : cstOp->getUsers()) {
+      auto cast = dyn_cast<vector::ShapeCastOp>(user);
+      if (!cast) continue;
+      VectorType type = cast.getResult().getType();
+      DenseElementsAttr attr = DenseElementsAttr::get(type, splat);
+      auto newOp = rewriter.create<arith::ConstantOp>(loc, type, attr);
+      rewriter.replaceAllUsesWith(cast, newOp.getResult());
+      changed = true;
+    }
+
+    if (changed) return success();
+    return rewriter.notifyMatchFailure(cstOp, "no users are vector.shape_cast");
   }
 };
 
@@ -1280,12 +1354,14 @@ struct CanonicalizeVectorForAIEVecPass
 
     {
       RewritePatternSet patterns(context);
-      patterns.add<ExtractTransposeFromContractionOp,
-                   FlattenArithTruncOpPattern<arith::TruncFOp>,
-                   FlattenArithTruncOpPattern<arith::TruncIOp>,
-                   ToMinorIdentityTransferReadPattern,
-                   ToMinorIdentityTransferWritePattern,
-                   ConvertLeadingUnitDimInsertToReshapePattern>(context);
+      patterns.add<
+          ExtractTransposeFromContractionOp, FlattenOpPattern<arith::TruncFOp>,
+          FlattenOpPattern<arith::TruncIOp>, FlattenOpPattern<arith::MulIOp>,
+          FlattenOpPattern<arith::ShRSIOp>, FlattenOpPattern<arith::ExtSIOp>,
+          FlattenOpPattern<arith::ExtUIOp>, FlattenOpPattern<arith::ExtFOp>,
+          ShapeCastSplatPattern, ToMinorIdentityTransferReadPattern,
+          ToMinorIdentityTransferWritePattern,
+          ConvertLeadingUnitDimInsertToReshapePattern>(context);
       patterns.add<ConvertSplatTransferReadToBroadcastPattern>(context);
       patterns
           .add<copied_from_mlir::FlattenContiguousRowMajorTransferReadPattern,
