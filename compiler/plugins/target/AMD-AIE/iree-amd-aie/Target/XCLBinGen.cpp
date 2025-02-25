@@ -16,6 +16,7 @@
 #include "AMDAIETargets.h"
 #include "aie/Passes.h"
 #include "air/Conversion/AIRToAIEPass.h"
+#include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-dialects/Dialect/LinalgTransform/Passes.h"
 #include "iree/compiler/Utils/ToolUtils.h"
@@ -1377,10 +1378,12 @@ LogicalResult generateUnifiedObject(
   return success();
 }
 
-/// Assume the ELF files have already been generated and are stored in the
-/// `tempDirPath`. This function converts `xilinx::aie::device` to
-/// `amdaie.npu.control_packets` by calling the
-/// `AMDAIEConvertDeviceToControlPacketsPass`.
+}  // namespace
+
+namespace mlir::iree_compiler::AMDAIE {
+
+/// Pipeline to generate control packets from `xilinx::aie::device`, and dump
+/// them into files.
 LogicalResult generateControlPackets(MLIRContext *context,
                                      AIE::DeviceOp deviceOp,
                                      const Path &tempDirPath,
@@ -1392,54 +1395,103 @@ LogicalResult generateControlPackets(MLIRContext *context,
   PassManager pm(context, ModuleOp::getOperationName());
   applyConfigToPassManager(pm, printIRBeforeAll, printIRAfterAll,
                            printIRModuleScope, timing);
-  mlir::iree_compiler::AMDAIE::AMDAIEConvertDeviceToControlPacketsOptions
-      options;
-  options.pathToElfs = tempDirPath.string();
-  pm.addPass(mlir::iree_compiler::AMDAIE::
-                 createAMDAIEConvertDeviceToControlPacketsPass(options));
-  pm.addPass(
-      mlir::iree_compiler::AMDAIE::createAMDAIESplitControlPacketDataPass());
-  return pm.run(deviceOp->getParentOp());
+  // Assuming the ELF files have already been generated and are stored in
+  // `tempDirPath`, use aie-rt to generate control packets.
+  {
+    AMDAIEConvertDeviceToControlPacketsOptions options;
+    options.pathToElfs = tempDirPath.string();
+    pm.addPass(createAMDAIEConvertDeviceToControlPacketsPass(options));
+  }
+  // TODO (zhewen): avoid regeneration?
+  // Regenerate the overlay for sending control packets.
+  {
+    AMDAIEGenerateControlOverlayOptions options;
+    options.routeShimToTileCtrl = true;
+    pm.addPass(createAMDAIEGenerateControlOverlayPass(options));
+    pm.addPass(createCSEPass());
+    pm.addPass(createCanonicalizerPass());
+  }
+  // TODO (zhewen): avoid regeneration?
+  // Regenerate the flows and packet ids.
+  pm.addPass(createAMDAIEConnectionToFlowPass());
+  pm.addPass(createAMDAIEAssignPacketIdsPass());
+  // Extract the DMA instructions and the DMA data from the control packets.
+  pm.addPass(createAMDAIESplitControlPacketDataPass());
+  pm.addPass(createAMDAIEControlPacketToHalfDmaCpyNdPass());
+  pm.addPass(createCSEPass());
+  pm.addPass(createCanonicalizerPass());
+  // Lower the DMA instructions for sending control packets.
+  {
+    AMDAIEControlCodeLoweringOptions options;
+    options.lowerCtrlpktDma = true;
+    pm.addPass(createAMDAIEControlCodeLoweringPass(options));
+  }
+  pm.addPass(createAMDAIEControlCodeToTransactionPass());
+
+  // Run the pipeline.
+  auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(deviceOp);
+  ModuleOp moduleOpCopy = cast<ModuleOp>(deviceOp->getParentOp()).clone();
+  moduleOpCopy->setAttr("hal.executable.target", targetAttr);
+  if (failed(pm.run(moduleOpCopy))) {
+    llvm::errs() << "Failed to lower to control packets \n";
+    return failure();
+  }
+
+  SmallVector<AMDAIE::WorkgroupOp> workgroupOps;
+  moduleOpCopy.walk([&](AMDAIE::WorkgroupOp workgroupOp) {
+    workgroupOps.push_back(workgroupOp);
+  });
+  if (workgroupOps.size() != 1) {
+    llvm::errs() << "Expected exactly one workgroup op, found "
+                 << workgroupOps.size() << "\n";
+    return failure();
+  }
+  // Dump the control packets sequence (i.e., the data inside the control
+  // packets) to a file.
+  Path ctrlPktSequence = tempDirPath / "ctrlpkt_sequence.txt";
+  if (failed(emitDenseArrayAttrToFile(workgroupOps[0], "ctrlpkt_sequence",
+                                      ctrlPktSequence.string()))) {
+    llvm::errs() << "Failed to emit control packets sequence \n";
+    return failure();
+  }
+  // Dump the control packets DMA instructions to a file.
+  Path ctrlPktInstructions = tempDirPath / "ctrlpkt_instructions.txt";
+  if (failed(emitDenseArrayAttrToFile(workgroupOps[0], "npu_instructions",
+                                      ctrlPktInstructions.string()))) {
+    llvm::errs() << "Failed to emit control packets instructions \n";
+    return failure();
+  }
+  return success();
 }
 
-}  // namespace
-
-namespace mlir::iree_compiler::AMDAIE {
-LogicalResult emitNpuInstructions(AIE::DeviceOp deviceOp,
-                                  const std::string &outputNPU) {
-  MLIRContext *ctx = deviceOp.getContext();
-  mlir::Attribute maybeNpuInstructions = deviceOp->getAttr("npu_instructions");
-  if (!maybeNpuInstructions) {
-    return emitError(UnknownLoc::get(ctx),
-                     "Expected npu_instructions attribute on aie.device");
-  }
-
-  DenseUI32ResourceElementsAttr npuInstructions =
-      dyn_cast<DenseUI32ResourceElementsAttr>(maybeNpuInstructions);
-  if (!npuInstructions) {
-    return emitError(
-        UnknownLoc::get(ctx),
-        "Failed to cast npu_instructions to DenseUI32ResourceElementsAttr");
-  }
-
+LogicalResult emitDenseArrayAttrToFile(Operation *op, StringRef attrName,
+                                       StringRef fileName) {
+  // Get the attribute from the operation.
+  auto maybeAttr = op->getAttrOfType<DenseUI32ResourceElementsAttr>(attrName);
+  if (!maybeAttr)
+    return op->emitError() << "Failed to get attribute " << attrName << "\n";
+  // Get the array ref from the attribute.
   std::optional<ArrayRef<uint32_t>> maybeArrayRef =
-      npuInstructions.tryGetAsArrayRef();
-  assert(maybeArrayRef &&
-         "Failed getting values for npu_instructions in tryGetAsArrayRef");
+      maybeAttr.tryGetAsArrayRef();
+  if (!maybeArrayRef) {
+    return op->emitError() << "Failed to get values for " << attrName
+                           << " in tryGetAsArrayRef \n";
+  }
+  // Open the output file.
   std::string errorMessage;
   std::unique_ptr<llvm::ToolOutputFile> output =
-      openOutputFile(outputNPU, &errorMessage);
+      openOutputFile(fileName, &errorMessage);
   if (!output) {
-    llvm::errs() << "Failed to open npu_instructions.txt for writing because: "
-                 << errorMessage << "\n";
+    llvm::errs() << "Failed to open " << fileName
+                 << " for writing because: " << errorMessage << "\n";
     return failure();
   }
   output->keep();
-
+  // Write the values to the output file.
   for (int i = 0; i < maybeArrayRef->size() - 1; ++i) {
     output->os() << llvm::format("%08X\n", maybeArrayRef->operator[](i));
   }
-  // don't emit empty line at the end
+  // Don't emit empty line at the end.
   output->os() << llvm::format("%08X", maybeArrayRef->back());
 
   return success();
@@ -1461,7 +1513,8 @@ LogicalResult aie2xclbin(
     const std::optional<std::string> &ukernel,
     const std::string &additionalPeanoOptFlags) {
   if (outputNPU.has_value() &&
-      failed(emitNpuInstructions(deviceOp, outputNPU.value()))) {
+      failed(emitDenseArrayAttrToFile(deviceOp, "npu_instructions",
+                                      outputNPU.value()))) {
     return failure();
   }
 

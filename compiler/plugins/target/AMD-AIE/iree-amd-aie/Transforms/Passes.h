@@ -21,7 +21,7 @@ void addAMDAIEObjectFifoLoweringPasses(
     bool enableCoalescingLoops, bool enableCollapsingUnitDims,
     OutliningStrategy enableFunctionOutlining,
     bool replaceOutlinedFunctionsWithEmpty, bool insertLoopAroundCoreBlock,
-    uint32_t numCols);
+    uint32_t numCols, bool emitCtrlPkt);
 
 /// Add passes to lower from MLIR-AIR through AIE. This is
 /// currently the default passes used for lowering after IREEs tiling.
@@ -44,7 +44,8 @@ void buildAMDAIETransformPassPipeline(
     bool enableVectorizationPasses, const std::string &pathToUkernels,
     bool enablePacketFlow, bool enableCoalescingLoops,
     bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
-    bool replaceOutlinedFunctionsWithEmpty, bool insertLoopAroundCoreBlock);
+    bool replaceOutlinedFunctionsWithEmpty, bool insertLoopAroundCoreBlock,
+    bool emitCtrlPkt);
 
 /// Populates passes needed to lower the IR via a Pack-Peel based approach.
 void addPackPeelBasedPassPipeline(OpPassManager &passManager,
@@ -121,7 +122,8 @@ std::unique_ptr<Pass> createAMDAIEControlCodeLoopUnrollPass();
 
 /// Pass to convert control code HalfDmaCpyNd into NPU WriteBd, AddressPatch,
 /// PushToQueue operations.
-std::unique_ptr<Pass> createAMDAIEControlCodeLoweringPass();
+std::unique_ptr<Pass> createAMDAIEControlCodeLoweringPass(
+    AMDAIEControlCodeLoweringOptions options = {});
 
 /// Pass to convert control code into a transaction binary.
 std::unique_ptr<Pass> createAMDAIEControlCodeToTransactionPass(

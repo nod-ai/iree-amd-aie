@@ -28,6 +28,7 @@ iree_lit_test_suite(
     "controlcode_forall_to_for.mlir"
     "controlcode_loop_unrolling.mlir"
     "controlcode_lowering.mlir"
+    "controlcode_lowering_ctrlpkt.mlir"
     "controlcode_to_transaction.mlir"
     "control_packet_to_half_dma_cpy_nd.mlir"
     "convert_core_forall_to_for.mlir"
