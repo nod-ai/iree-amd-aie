@@ -45,19 +45,16 @@ struct HalfDmaCpyNdToNpuConverter final
     uint8_t numAddrDim =
         numIntraAddrDim + deviceModel.deviceConfig.dmaNbInterDims;
 
-    int64_t argIdx;
-    int64_t elemWidthInBits;
-    uint8_t memSpace;
-    if (lowerCtrlpktDma) {
-      // Control packet DMAs require special handling.
-      // The `argIdx` must match the driver and is assumed to be 0.
-      // The `elemWidthInBits` is fixed at 32 for control packet data.
-      // The `memSpace` is set to 0, indicating storage in global memory.
-      argIdx = 0;
-      elemWidthInBits = 32;
-      memSpace = 0;
-    } else {
-      // Normal DMAs.
+    // Default values, used for control packet DMAs only.
+    // The `argIdx` must match the driver and is assumed to be 0.
+    // The `elemWidthInBits` is fixed at 32 for control packet data.
+    // The `memSpace` is set to 0, indicating storage in global memory.
+    int64_t argIdx = 0;
+    int64_t elemWidthInBits = 32;
+    uint8_t memSpace = 0;
+    if (!lowerCtrlpktDma) {
+      // Normal DMAs, update `argIdx`, `elemWidthInBits`, and `memSpace` based
+      // on the memref.
       auto logicalObjFifo =
           dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
               op.getInput().getDefiningOp());
