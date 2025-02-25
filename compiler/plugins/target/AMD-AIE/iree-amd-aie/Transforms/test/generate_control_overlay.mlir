@@ -102,3 +102,70 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
     return
   }
 }
+
+// -----
+
+// The order of tile declarations in the IR does not affect control overlay generation.
+// In this example, the tiles appear in the IR as: (0, 5), (0, 4), (0, 1), (0, 0), (0, 3), (0, 2).
+// However, when assigning shim DMA channels to individual tile CTRL ports, the tiles are processed
+// in sorted order: (0, 0), (0, 1), (0, 2), (0, 3), (0, 4), (0, 5).
+// As a result, for round-robin assignment:
+// - Shim DMA channel 0 connects to tiles (0, 0), (0, 2), and (0, 4).
+// - Shim DMA channel 1 connects to tiles (0, 1), (0, 3), and (0, 5).
+// CHECK-LABEL: @shuffled_tiles
+// CHECK:    %[[C0:.*]] = arith.constant 0 : index
+// CHECK:    %[[C1:.*]] = arith.constant 1 : index
+// CHECK:    %[[C2:.*]] = arith.constant 2 : index
+// CHECK:    %[[C3:.*]] = arith.constant 3 : index
+// CHECK:    %[[C4:.*]] = arith.constant 4 : index
+// CHECK:    %[[C5:.*]] = arith.constant 5 : index
+// CHECK:    amdaie.workgroup {
+// CHECK:      %[[TILE_0_5:.*]] = amdaie.tile(%[[C0]], %[[C5]])
+// CHECK:      %[[TILE_0_4:.*]] = amdaie.tile(%[[C0]], %[[C4]])
+// CHECK:      %[[TILE_0_1:.*]] = amdaie.tile(%[[C0]], %[[C1]])
+// CHECK:      %[[TILE_0_0:.*]] = amdaie.tile(%[[C0]], %[[C0]])
+// CHECK:      %[[TILE_0_3:.*]] = amdaie.tile(%[[C0]], %[[C3]])
+// CHECK:      %[[TILE_0_2:.*]] = amdaie.tile(%[[C0]], %[[C2]])
+// CHECK:      %[[CHANNEL_0:.*]] = amdaie.channel(%[[TILE_0_0]], 0, port_type = DMA, direction = MM2S)
+// CHECK:      %[[CHANNEL_1:.*]] = amdaie.channel(%[[TILE_0_0]], 0, port_type = CTRL, direction = S2MM)
+// CHECK:      %[[CONNECT_0:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_1]]}, %{{.+}} {%[[CHANNEL_0]]}) {connection_type = #amdaie<connection_type Packet>}
+// CHECK:      %[[CHANNEL_2:.*]] = amdaie.channel(%[[TILE_0_0]], 1, port_type = DMA, direction = MM2S)
+// CHECK:      %[[CHANNEL_3:.*]] = amdaie.channel(%[[TILE_0_1]], 0, port_type = CTRL, direction = S2MM)
+// CHECK:      %[[CONNECT_1:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_3]]}, %{{.+}} {%[[CHANNEL_2]]}) {connection_type = #amdaie<connection_type Packet>}
+// CHECK:      %[[CHANNEL_5:.*]] = amdaie.channel(%[[TILE_0_2]], 0, port_type = CTRL, direction = S2MM)
+// CHECK:      %[[CONNECT_2:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_5]]}, %{{.+}} {%[[CHANNEL_0]]}) {connection_type = #amdaie<connection_type Packet>}
+// CHECK:      %[[CHANNEL_7:.*]] = amdaie.channel(%[[TILE_0_3]], 0, port_type = CTRL, direction = S2MM)
+// CHECK:      %[[CONNECT_3:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_7]]}, %{{.+}} {%[[CHANNEL_2]]}) {connection_type = #amdaie<connection_type Packet>}
+// CHECK:      %[[CHANNEL_9:.*]] = amdaie.channel(%[[TILE_0_4]], 0, port_type = CTRL, direction = S2MM)
+// CHECK:      %[[CONNECT_4:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_9]]}, %{{.+}} {%[[CHANNEL_0]]}) {connection_type = #amdaie<connection_type Packet>}
+// CHECK:      %[[CHANNEL_11:.*]] = amdaie.channel(%[[TILE_0_5]], 0, port_type = CTRL, direction = S2MM)
+// CHECK:      %[[CONNECT_5:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_11]]}, %{{.+}} {%[[CHANNEL_2]]}) {connection_type = #amdaie<connection_type Packet>}
+// CHECK:      %[[CHANNEL_12:.*]] = amdaie.channel(%[[TILE_0_0]], 0, port_type = CTRL, direction = MM2S)
+// CHECK:      %[[CHANNEL_13:.*]] = amdaie.channel(%[[TILE_0_0]], 0, port_type = SOUTH, direction = S2MM)
+// CHECK:      %[[CONNECT_6:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_13]]}, %{{.+}} {%[[CHANNEL_12]]}) {connection_type = #amdaie<connection_type Circuit>}
+// CHECK:      amdaie.controlcode {
+// CHECK-COUNT-6:amdaie.npu.dma_placeholder
+// CHECK:        amdaie.end
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @shuffled_tiles() {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c2 = arith.constant 2 : index
+    %c3 = arith.constant 3 : index
+    %c4 = arith.constant 4 : index
+    %c5 = arith.constant 5 : index
+    amdaie.workgroup {
+      %tile_0_5 = amdaie.tile(%c0, %c5)
+      %tile_0_4 = amdaie.tile(%c0, %c4)
+      %tile_0_1 = amdaie.tile(%c0, %c1)
+      %tile_0_0 = amdaie.tile(%c0, %c0)
+      %tile_0_3 = amdaie.tile(%c0, %c3)
+      %tile_0_2 = amdaie.tile(%c0, %c2)
+      amdaie.controlcode {
+        amdaie.end
+      }
+    }
+    return
+  }
+}

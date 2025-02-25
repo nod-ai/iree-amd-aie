@@ -9,6 +9,8 @@
 
 #include "AIETarget.h"
 #include "aie/AIEDialect.h"
+#include "iree/compiler/Dialect/HAL/IR/HALDialect.h"
+#include "iree/compiler/Dialect/HAL/IR/HALTypes.h"
 #include "mlir/Support/LogicalResult.h"
 
 namespace mlir::iree_compiler::AMDAIE {
@@ -28,8 +30,8 @@ mlir::LogicalResult aie2xclbin(
     const std::optional<std::string> &ukernel,
     const std::string &additionalPeanoOptFlags);
 
-mlir::LogicalResult emitNpuInstructions(xilinx::AIE::DeviceOp deviceOp,
-                                        const std::string &outputNPU);
+mlir::LogicalResult emitDenseArrayAttrToFile(Operation *op, StringRef attrName,
+                                             StringRef fileName);
 
 namespace detail {
 
