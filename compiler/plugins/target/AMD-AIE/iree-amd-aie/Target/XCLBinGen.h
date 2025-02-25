@@ -28,8 +28,7 @@ mlir::LogicalResult aie2xclbin(
     const std::string &xclBinInstanceName, const std::string &amdAIEInstallDir,
     const std::optional<std::string> &InputXCLBin,
     const std::optional<std::string> &ukernel,
-    const std::string &additionalPeanoOptFlags,
-    const IREE::HAL::ExecutableTargetAttr &targetAttr);
+    const std::string &additionalPeanoOptFlags);
 
 mlir::LogicalResult emitDenseArrayAttrToFile(Operation *op, StringRef attrName,
                                              StringRef fileName);

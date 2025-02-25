@@ -106,13 +106,6 @@ int main(int argc, char **argv) {
   }
   std::string peanoDirStr = peanoDir;
 
-  auto targetAttr =
-      mlir::iree_compiler::IREE::HAL::ExecutableTargetAttr::lookup(moduleOp);
-  if (!targetAttr) {
-    llvm::errs() << "Error: HAL target attribute not found\n";
-    return 1;
-  }
-
   // Use `aie2xclbin` to generate the elf files.
   if (failed(aie2xclbin(
           /*ctx=*/&context,
@@ -139,8 +132,7 @@ int main(int argc, char **argv) {
           /*amdAIEInstallDir=*/"",
           /*InputXCLBin=*/std::nullopt,
           /*ukernel=*/std::nullopt,
-          /*additionalPeanoOptFlags=*/"",
-          /*targetAttr=*/targetAttr))) {
+          /*additionalPeanoOptFlags=*/""))) {
     llvm::errs() << "Error: failed to generate xclbin\n";
     return 1;
   }

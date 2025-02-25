@@ -407,11 +407,6 @@ LogicalResult AIETargetBackend::serializeExecutable(
   SmallVector<uint32_t> indices(ordinalCount);
   SmallVector<uint32_t> asmInstrIndices(ordinalCount);
 
-  auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(moduleOp);
-  if (!targetAttr) {
-    return moduleOp.emitOpError("missing target attribute");
-  }
-
   for (size_t i = 0; i < entryPointNames.size(); i++) {
     uint64_t ordinal = entryPointOrdinals.at(entryPointNames[i]);
     entryPointNamesFb[ordinal] = entryPointNames[i];
@@ -508,8 +503,7 @@ LogicalResult AIETargetBackend::serializeExecutable(
             /*amdAIEInstallDir=*/options.amdAieInstallDir,
             /*InputXCLBin=*/std::nullopt,
             /*ukernel=*/options.enableAMDAIEUkernels,
-            /*additionalPeanoOptFlags=*/options.additionalPeanoOptFlags,
-            /*targetAttr=*/targetAttr))) {
+            /*additionalPeanoOptFlags=*/options.additionalPeanoOptFlags))) {
       return failure();
     }
 

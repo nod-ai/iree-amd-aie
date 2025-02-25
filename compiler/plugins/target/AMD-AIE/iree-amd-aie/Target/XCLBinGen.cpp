@@ -1382,11 +1382,12 @@ namespace mlir::iree_compiler::AMDAIE {
 
 /// Pipeline to generate control packets from `xilinx::aie::device`, and dump
 /// them into files.
-LogicalResult generateControlPackets(
-    MLIRContext *context, AIE::DeviceOp deviceOp,
-    const IREE::HAL::ExecutableTargetAttr &targetAttr, const Path &tempDirPath,
-    bool printIRBeforeAll, bool printIRAfterAll, bool printIRModuleScope,
-    bool timing) {
+LogicalResult generateControlPackets(MLIRContext *context,
+                                     AIE::DeviceOp deviceOp,
+                                     const Path &tempDirPath,
+                                     bool printIRBeforeAll,
+                                     bool printIRAfterAll,
+                                     bool printIRModuleScope, bool timing) {
   assert(deviceOp->getParentOp() && isa<ModuleOp>(deviceOp->getParentOp()) &&
          "DeviceOp must be in a module parent");
   PassManager pm(context, ModuleOp::getOperationName());
@@ -1399,6 +1400,7 @@ LogicalResult generateControlPackets(
     options.pathToElfs = tempDirPath.string();
     pm.addPass(createAMDAIEConvertDeviceToControlPacketsPass(options));
   }
+  // TODO (zhewen): avoid regeneration?
   // Regenerate the overlay for sending control packets.
   {
     AMDAIEGenerateControlOverlayOptions options;
@@ -1407,6 +1409,7 @@ LogicalResult generateControlPackets(
     pm.addPass(createCSEPass());
     pm.addPass(createCanonicalizerPass());
   }
+  // TODO (zhewen): avoid regeneration?
   // Regenerate the flows and packet ids.
   pm.addPass(createAMDAIEConnectionToFlowPass());
   pm.addPass(createAMDAIEAssignPacketIdsPass());
@@ -1424,6 +1427,7 @@ LogicalResult generateControlPackets(
   pm.addPass(createAMDAIEControlCodeToTransactionPass());
 
   // Run the pipeline.
+  auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(deviceOp);
   ModuleOp moduleOpCopy = cast<ModuleOp>(deviceOp->getParentOp()).clone();
   moduleOpCopy->setAttr("hal.executable.target", targetAttr);
   if (failed(pm.run(moduleOpCopy))) {
@@ -1505,8 +1509,7 @@ LogicalResult aie2xclbin(
     const std::string &xclBinInstanceName, const std::string &amdAIEInstallDir,
     const std::optional<std::string> &InputXCLBin,
     const std::optional<std::string> &ukernel,
-    const std::string &additionalPeanoOptFlags,
-    const IREE::HAL::ExecutableTargetAttr &targetAttr) {
+    const std::string &additionalPeanoOptFlags) {
   if (outputNPU.has_value() &&
       failed(emitDenseArrayAttrToFile(deviceOp, "npu_instructions",
                                       outputNPU.value()))) {
@@ -1538,10 +1541,9 @@ LogicalResult aie2xclbin(
     return failure();
   }
 
-  if (emitCtrlPkt &&
-      failed(generateControlPackets(ctx, deviceOp, targetAttr, tempDirPath,
-                                    printIRBeforeAll, printIRAfterAll,
-                                    printIRModuleScope, timing))) {
+  if (emitCtrlPkt && failed(generateControlPackets(
+                         ctx, deviceOp, tempDirPath, printIRBeforeAll,
+                         printIRAfterAll, printIRModuleScope, timing))) {
     llvm::errs() << "Failed to generate control packets MLIR file\n";
     return failure();
   }
