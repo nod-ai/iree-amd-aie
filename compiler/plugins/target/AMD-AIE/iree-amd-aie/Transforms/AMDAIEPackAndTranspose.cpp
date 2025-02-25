@@ -106,9 +106,9 @@ void AMDAIEPackAndTransposePass::runOnOperation() {
   }
 
   // Step 3. Pack Transpose
-  SmallVector<tensor::PackOp> packOps = packResult->packOps;
+  SmallVector<linalg::PackOp> packOps = packResult->packOps;
   linalg::LinalgOp packedOp = packResult->packedLinalgOp;
-  SmallVector<tensor::UnPackOp> unpackOps = packResult->unPackOps;
+  SmallVector<linalg::UnPackOp> unpackOps = packResult->unPackOps;
 
   if (packOps.size() != 3 || !packedOp || unpackOps.empty()) {
     funcOp->emitOpError("failed to get correct pack and unpack ops");
@@ -122,7 +122,7 @@ void AMDAIEPackAndTransposePass::runOnOperation() {
 
   for (auto [index, unpackEmpty, innerPerm, outerPerm] :
        llvm::zip(packIndices, unpackArr, innerPermArr, outerPermArr)) {
-    tensor::UnPackOp unpackOp;
+    linalg::UnPackOp unpackOp;
     if (unpackEmpty) {
       unpackOp = unpackOps.back();
     }

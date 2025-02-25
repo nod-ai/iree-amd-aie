@@ -14,14 +14,14 @@ func.func @matmul_static(%arg0 : tensor<1024x2048xi32>, %arg1 : tensor<2048x512x
     %c0 = arith.constant 0 : index
     %5 = tensor.empty() : tensor<1024x512xi32>
     %6 = tensor.empty() : tensor<16x32x64x64xi32>
-    %pack = tensor.pack %arg0 inner_dims_pos = [0, 1] inner_tiles = [64, 64] into %6 : tensor<1024x2048xi32> -> tensor<16x32x64x64xi32>
+    %pack = linalg.pack %arg0 inner_dims_pos = [0, 1] inner_tiles = [64, 64] into %6 : tensor<1024x2048xi32> -> tensor<16x32x64x64xi32>
     %7 = tensor.empty() : tensor<32x8x64x64xi32>
-    %pack_0 = tensor.pack %arg1 outer_dims_perm = [0, 1] inner_dims_pos = [0, 1] inner_tiles = [64, 64] into %7 : tensor<2048x512xi32> -> tensor<32x8x64x64xi32>
+    %pack_0 = linalg.pack %arg1 outer_dims_perm = [0, 1] inner_dims_pos = [0, 1] inner_tiles = [64, 64] into %7 : tensor<2048x512xi32> -> tensor<32x8x64x64xi32>
     %8 = tensor.empty() : tensor<16x8x64x64xi32>
     %9 = tensor.empty() : tensor<16x32x16x8x4x8xi32>
-    %pack_1 = tensor.pack %pack inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %9 : tensor<16x32x64x64xi32> -> tensor<16x32x16x8x4x8xi32>
+    %pack_1 = linalg.pack %pack inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %9 : tensor<16x32x64x64xi32> -> tensor<16x32x16x8x4x8xi32>
     %10 = tensor.empty() : tensor<32x8x8x8x8x8xi32>
-    %pack_2 = tensor.pack %pack_0 inner_dims_pos = [3, 2] inner_tiles = [8, 8] into %10 : tensor<32x8x64x64xi32> -> tensor<32x8x8x8x8x8xi32>
+    %pack_2 = linalg.pack %pack_0 inner_dims_pos = [3, 2] inner_tiles = [8, 8] into %10 : tensor<32x8x64x64xi32> -> tensor<32x8x8x8x8x8xi32>
     %11 = tensor.empty() : tensor<16x8x16x8x4x8xi32>
     %12 = linalg.fill ins(%c0_i32 : i32) outs(%11 : tensor<16x8x16x8x4x8xi32>) -> tensor<16x8x16x8x4x8xi32>
     %13 = linalg.generic {indexing_maps = [#map, #map1, #map2], iterator_types = ["parallel", "parallel", "reduction", "parallel", "parallel", "reduction", "parallel", "parallel", "reduction"]} ins(%pack_1, %pack_2 : tensor<16x32x16x8x4x8xi32>, tensor<32x8x8x8x8x8xi32>) outs(%12 : tensor<16x8x16x8x4x8xi32>) {
@@ -30,48 +30,48 @@ func.func @matmul_static(%arg0 : tensor<1024x2048xi32>, %arg1 : tensor<2048x512x
       %15 = arith.addi %out, %14 : i32
       linalg.yield %15 : i32
     } -> tensor<16x8x16x8x4x8xi32>
-    %unpack = tensor.unpack %13 inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %8 : tensor<16x8x16x8x4x8xi32> -> tensor<16x8x64x64xi32>
-    %unpack_3 = tensor.unpack %unpack inner_dims_pos = [0, 1] inner_tiles = [64, 64] into %5 : tensor<16x8x64x64xi32> -> tensor<1024x512xi32>
+    %unpack = linalg.unpack %13 inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %8 : tensor<16x8x16x8x4x8xi32> -> tensor<16x8x64x64xi32>
+    %unpack_3 = linalg.unpack %unpack inner_dims_pos = [0, 1] inner_tiles = [64, 64] into %5 : tensor<16x8x64x64xi32> -> tensor<1024x512xi32>
     return %unpack_3 : tensor<1024x512xi32>
 }
 
 // LINALG-INPUT-OUTPUT-NOT:  memref.alloc
-// LINALG-INPUT-OUTPUT:      tensor.pack
+// LINALG-INPUT-OUTPUT:      linalg.pack
 // LINALG-INPUT-OUTPUT-NOT:  memref.alloc
-// LINALG-INPUT-OUTPUT:      tensor.pack
+// LINALG-INPUT-OUTPUT:      linalg.pack
 // LINALG-INPUT-OUTPUT:      memref.alloc() : memref<16x32x16x8x4x8xi32, 2 : i32>
 // LINALG-INPUT-OUTPUT:      bufferization.to_tensor
-// LINALG-INPUT-OUTPUT:      tensor.pack
+// LINALG-INPUT-OUTPUT:      linalg.pack
 // LINALG-INPUT-OUTPUT:      memref.alloc() : memref<32x8x8x8x8x8xi32, 2 : i32>
 // LINALG-INPUT-OUTPUT:      bufferization.to_tensor
-// LINALG-INPUT-OUTPUT:      tensor.pack
+// LINALG-INPUT-OUTPUT:      linalg.pack
 // LINALG-INPUT-OUTPUT:      memref.alloc() : memref<16x8x16x8x4x8xi32, 2 : i32>
 // LINALG-INPUT-OUTPUT:      bufferization.to_tensor
 // LINALG-INPUT-OUTPUT:      linalg.fill
 // LINALG-INPUT-OUTPUT:      linalg.generic
 
 // LINALG-INPUT-NOT:  memref.alloc
-// LINALG-INPUT:      tensor.pack
+// LINALG-INPUT:      linalg.pack
 // LINALG-INPUT-NOT:  memref.alloc
-// LINALG-INPUT:      tensor.pack
+// LINALG-INPUT:      linalg.pack
 // LINALG-INPUT:      memref.alloc() : memref<16x32x16x8x4x8xi32, 2 : i32>
 // LINALG-INPUT:      bufferization.to_tensor
-// LINALG-INPUT:      tensor.pack
+// LINALG-INPUT:      linalg.pack
 // LINALG-INPUT:      memref.alloc() : memref<32x8x8x8x8x8xi32, 2 : i32>
 // LINALG-INPUT:      bufferization.to_tensor
-// LINALG-INPUT:      tensor.pack
+// LINALG-INPUT:      linalg.pack
 // LINALG-INPUT-NOT:  memref.alloc
 // LINALG-INPUT:      linalg.fill
 // LINALG-INPUT:      linalg.generic
 
 // LINALG-OUTPUT-NOT:  memref.alloc
-// LINALG-OUTPUT:      tensor.pack
+// LINALG-OUTPUT:      linalg.pack
 // LINALG-OUTPUT-NOT:  memref.alloc
-// LINALG-OUTPUT:      tensor.pack
+// LINALG-OUTPUT:      linalg.pack
 // LINALG-OUTPUT-NOT:  memref.alloc
-// LINALG-OUTPUT:      tensor.pack
+// LINALG-OUTPUT:      linalg.pack
 // LINALG-OUTPUT-NOT:  memref.alloc
-// LINALG-OUTPUT:      tensor.pack
+// LINALG-OUTPUT:      linalg.pack
 // LINALG-OUTPUT:      memref.alloc() : memref<16x8x16x8x4x8xi32, 2 : i32>
 // LINALG-OUTPUT:      bufferization.to_tensor
 // LINALG-OUTPUT:      linalg.fill
@@ -79,14 +79,14 @@ func.func @matmul_static(%arg0 : tensor<1024x2048xi32>, %arg1 : tensor<2048x512x
 
 // PACK-INPUT:      memref.alloc() : memref<16x32x64x64xi32, 1 : i32>
 // PACK-INPUT:      bufferization.to_tensor
-// PACK-INPUT:      tensor.pack
+// PACK-INPUT:      linalg.pack
 // PACK-INPUT:      memref.alloc() : memref<32x8x64x64xi32, 1 : i32>
 // PACK-INPUT:      bufferization.to_tensor
-// PACK-INPUT:      tensor.pack
+// PACK-INPUT:      linalg.pack
 // PACK-INPUT-NOT:  memref.alloc
-// PACK-INPUT:      tensor.pack
+// PACK-INPUT:      linalg.pack
 // PACK-INPUT-NOT:  memref.alloc
-// PACK-INPUT:      tensor.pack
+// PACK-INPUT:      linalg.pack
 // PACK-INPUT-NOT:  memref.alloc
 // PACK-INPUT:      linalg.fill
 // PACK-INPUT:      linalg.generic
@@ -105,14 +105,14 @@ func.func @matmul_elementwise(%arg0: tensor<1024x512xi8>, %arg1: tensor<512x1024
     %extracted_slice_0 = tensor.extract_slice %arg1[0, %arg4] [512, 64] [1, 1] : tensor<512x1024xi8> to tensor<512x64xi8>
     %extracted_slice_1 = tensor.extract_slice %0[%arg3, %arg4] [64, 64] [1, 1] : tensor<1024x1024xi32> to tensor<64x64xi32>
     %2 = tensor.empty() : tensor<1x16x64x32xi8>
-    %pack = tensor.pack %extracted_slice inner_dims_pos = [0, 1] inner_tiles = [64, 32] into %2 : tensor<64x512xi8> -> tensor<1x16x64x32xi8>
+    %pack = linalg.pack %extracted_slice inner_dims_pos = [0, 1] inner_tiles = [64, 32] into %2 : tensor<64x512xi8> -> tensor<1x16x64x32xi8>
     %3 = tensor.empty() : tensor<16x1x32x64xi8>
-    %pack_2 = tensor.pack %extracted_slice_0 outer_dims_perm = [0, 1] inner_dims_pos = [0, 1] inner_tiles = [32, 64] into %3 : tensor<512x64xi8> -> tensor<16x1x32x64xi8>
+    %pack_2 = linalg.pack %extracted_slice_0 outer_dims_perm = [0, 1] inner_dims_pos = [0, 1] inner_tiles = [32, 64] into %3 : tensor<512x64xi8> -> tensor<16x1x32x64xi8>
     %4 = tensor.empty() : tensor<1x1x64x64xi32>
     %5 = tensor.empty() : tensor<1x16x4x16x4x8xi8>
-    %pack_3 = tensor.pack %pack outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %5 : tensor<1x16x64x32xi8> -> tensor<1x16x4x16x4x8xi8>
+    %pack_3 = linalg.pack %pack outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %5 : tensor<1x16x64x32xi8> -> tensor<1x16x4x16x4x8xi8>
     %6 = tensor.empty() : tensor<16x1x8x4x8x8xi8>
-    %pack_4 = tensor.pack %pack_2 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [8, 8] into %6 : tensor<16x1x32x64xi8> -> tensor<16x1x8x4x8x8xi8>
+    %pack_4 = linalg.pack %pack_2 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [8, 8] into %6 : tensor<16x1x32x64xi8> -> tensor<16x1x8x4x8x8xi8>
     %7 = tensor.empty() : tensor<1x1x8x16x4x8xi32>
     %8 = linalg.fill ins(%c0_i32 : i32) outs(%7 : tensor<1x1x8x16x4x8xi32>) -> tensor<1x1x8x16x4x8xi32>
     %9 = linalg.generic {indexing_maps = [#map, #map1, #map2], iterator_types = ["parallel", "parallel", "reduction", "parallel", "parallel", "reduction", "parallel", "parallel", "reduction"]} ins(%pack_3, %pack_4 : tensor<1x16x4x16x4x8xi8>, tensor<16x1x8x4x8x8xi8>) outs(%8 : tensor<1x1x8x16x4x8xi32>) {
@@ -125,17 +125,17 @@ func.func @matmul_elementwise(%arg0: tensor<1024x512xi8>, %arg1: tensor<512x1024
     } -> tensor<1x1x8x16x4x8xi32>
     %extracted_slice_5 = tensor.extract_slice %arg2[%arg3, %arg4] [64, 64] [1, 1] : tensor<1024x1024xi32> to tensor<64x64xi32>
     %extracted_slice_6 = tensor.extract_slice %arg5[%arg3, %arg4] [64, 64] [1, 1] : tensor<1024x1024xi32> to tensor<64x64xi32>
-    %pack_7 = tensor.pack %extracted_slice_6 inner_dims_pos = [0, 1] inner_tiles = [64, 64] into %4 : tensor<64x64xi32> -> tensor<1x1x64x64xi32>
-    %pack_8 = tensor.pack %extracted_slice_5 inner_dims_pos = [0, 1] inner_tiles = [64, 64] into %4 : tensor<64x64xi32> -> tensor<1x1x64x64xi32>
-    %pack_9 = tensor.pack %pack_7 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %7 : tensor<1x1x64x64xi32> -> tensor<1x1x8x16x4x8xi32>
-    %pack_10 = tensor.pack %pack_8 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %7 : tensor<1x1x64x64xi32> -> tensor<1x1x8x16x4x8xi32>
+    %pack_7 = linalg.pack %extracted_slice_6 inner_dims_pos = [0, 1] inner_tiles = [64, 64] into %4 : tensor<64x64xi32> -> tensor<1x1x64x64xi32>
+    %pack_8 = linalg.pack %extracted_slice_5 inner_dims_pos = [0, 1] inner_tiles = [64, 64] into %4 : tensor<64x64xi32> -> tensor<1x1x64x64xi32>
+    %pack_9 = linalg.pack %pack_7 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %7 : tensor<1x1x64x64xi32> -> tensor<1x1x8x16x4x8xi32>
+    %pack_10 = linalg.pack %pack_8 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %7 : tensor<1x1x64x64xi32> -> tensor<1x1x8x16x4x8xi32>
     %10 = linalg.generic {indexing_maps = [#map3, #map3, #map3], iterator_types = ["parallel", "parallel", "parallel", "parallel", "parallel", "parallel"]} ins(%9, %pack_10 : tensor<1x1x8x16x4x8xi32>, tensor<1x1x8x16x4x8xi32>) outs(%pack_9 : tensor<1x1x8x16x4x8xi32>) {
     ^bb0(%in: i32, %in_12: i32, %out: i32):
       %11 = arith.addi %in, %in_12 : i32
       linalg.yield %11 : i32
     } -> tensor<1x1x8x16x4x8xi32>
-    %unpack = tensor.unpack %10 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %4 : tensor<1x1x8x16x4x8xi32> -> tensor<1x1x64x64xi32>
-    %unpack_11 = tensor.unpack %unpack inner_dims_pos = [0, 1] inner_tiles = [64, 64] into %extracted_slice_1 : tensor<1x1x64x64xi32> -> tensor<64x64xi32>
+    %unpack = linalg.unpack %10 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %4 : tensor<1x1x8x16x4x8xi32> -> tensor<1x1x64x64xi32>
+    %unpack_11 = linalg.unpack %unpack inner_dims_pos = [0, 1] inner_tiles = [64, 64] into %extracted_slice_1 : tensor<1x1x64x64xi32> -> tensor<64x64xi32>
     scf.forall.in_parallel {
       tensor.parallel_insert_slice %unpack_11 into %arg5[%arg3, %arg4] [64, 64] [1, 1] : tensor<64x64xi32> into tensor<1024x1024xi32>
     }
@@ -143,31 +143,31 @@ func.func @matmul_elementwise(%arg0: tensor<1024x512xi8>, %arg1: tensor<512x1024
   return %1 : tensor<1024x1024xi32>
 }
 
-// ELEMENTWISE-INPUT-COUNT-4: tensor.pack
+// ELEMENTWISE-INPUT-COUNT-4: linalg.pack
 // ELEMENTWISE-INPUT:         linalg.fill
 // ELEMENTWISE-INPUT:         linalg.generic
 // ELEMENTWISE-INPUT-NOT:     memref.alloc
-// ELEMENTWISE-INPUT:         tensor.pack
+// ELEMENTWISE-INPUT:         linalg.pack
 // ELEMENTWISE-INPUT-NOT:     memref.alloc
-// ELEMENTWISE-INPUT:         tensor.pack
+// ELEMENTWISE-INPUT:         linalg.pack
 // ELEMENTWISE-INPUT-NOT:     memref.alloc
-// ELEMENTWISE-INPUT:         tensor.pack
+// ELEMENTWISE-INPUT:         linalg.pack
 // ELEMENTWISE-INPUT:         memref.alloc() : memref<1x1x8x16x4x8xi32, 2 : i32>
 // ELEMENTWISE-INPUT:         bufferization.to_tensor
-// ELEMENTWISE-INPUT:         tensor.pack
+// ELEMENTWISE-INPUT:         linalg.pack
 // ELEMENTWISE-INPUT:         linalg.generic
 
-// ELEMENTWISE-INPUT-OUTPUT-COUNT-4:  tensor.pack
+// ELEMENTWISE-INPUT-OUTPUT-COUNT-4:  linalg.pack
 // ELEMENTWISE-INPUT-OUTPUT:          linalg.fill
 // ELEMENTWISE-INPUT-OUTPUT:          linalg.generic
 // ELEMENTWISE-INPUT-OUTPUT-NOT:      memref.alloc
-// ELEMENTWISE-INPUT-OUTPUT:          tensor.pack
+// ELEMENTWISE-INPUT-OUTPUT:          linalg.pack
 // ELEMENTWISE-INPUT-OUTPUT-NOT:      memref.alloc
-// ELEMENTWISE-INPUT-OUTPUT:          tensor.pack
+// ELEMENTWISE-INPUT-OUTPUT:          linalg.pack
 // ELEMENTWISE-INPUT-OUTPUT:          memref.alloc() : memref<1x1x8x16x4x8xi32, 2 : i32>
 // ELEMENTWISE-INPUT-OUTPUT:          bufferization.to_tensor
-// ELEMENTWISE-INPUT-OUTPUT:          tensor.pack
+// ELEMENTWISE-INPUT-OUTPUT:          linalg.pack
 // ELEMENTWISE-INPUT-OUTPUT:          memref.alloc() : memref<1x1x8x16x4x8xi32, 2 : i32>
 // ELEMENTWISE-INPUT-OUTPUT:          bufferization.to_tensor
-// ELEMENTWISE-INPUT-OUTPUT:          tensor.pack
+// ELEMENTWISE-INPUT-OUTPUT:          linalg.pack
 // ELEMENTWISE-INPUT-OUTPUT:          linalg.generic

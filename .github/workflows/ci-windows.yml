@@ -84,7 +84,7 @@ jobs:
           pip install pyyaml pybind11==2.13.6 nanobind==2.4.0
 
       - name: Enable cache
-        uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+        uses: actions/cache/restore@0c907a75c2c80ebcb7f088228285e798b750cf8f # v4.2.1
         with:
           path: ${{ env.CACHE_DIR }}
           key: ${{ env.CACHE_KEY }}
@@ -114,7 +114,7 @@ jobs:
           tar cf iree-dist-windows.tar iree-install
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
         if: ${{ !cancelled() }}
         with:
           name: windows_x86_64_llvm_packages
@@ -122,7 +122,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
         if: ${{ !cancelled() }}
         with:
           name: windows_x86_64_iree_packages
@@ -130,7 +130,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Save cache
-        uses: actions/cache/save@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+        uses: actions/cache/save@0c907a75c2c80ebcb7f088228285e798b750cf8f # v4.2.1
         if: ${{ !cancelled() && (inputs.force_ccache || github.event_name == 'push' && github.ref_name == 'main') }}
         with:
           path: ${{ env.CACHE_DIR }}

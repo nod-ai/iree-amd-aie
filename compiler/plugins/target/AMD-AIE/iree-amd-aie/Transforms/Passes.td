@@ -358,7 +358,7 @@ def AMDAIEFuseProducerIntoLoop :
   let description = [{
     Greedily fuse the producers of a linalg computation op based on the `fuseDepth`.
     Currently, the two producer ops that are allowed in the defining op chain are
-    tensor.pack and linalg.copy ops.
+    linalg.pack and linalg.copy ops.
   }];
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFuseProducerIntoLoopPass()";
   let options = [

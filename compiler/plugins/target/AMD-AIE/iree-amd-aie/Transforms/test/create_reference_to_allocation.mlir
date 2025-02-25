@@ -129,22 +129,22 @@ func.func @matmul_example(%arg0: tensor<128x256xi32>, %arg1: tensor<256x128xi32>
       %extracted_slice_4 = tensor.extract_slice %extracted_slice[0, %8] [64, 32] [1, 1] : tensor<64x256xi32> to tensor<64x32xi32>
       %alloc_5 = memref.alloc() : memref<2x1x32x32xi32, 1 : i32>
       %9 = bufferization.to_tensor %alloc_5 restrict writable : memref<2x1x32x32xi32, 1 : i32> to tensor<2x1x32x32xi32>
-      %pack = tensor.pack %extracted_slice_4 inner_dims_pos = [0, 1] inner_tiles = [32, 32] into %9 : tensor<64x32xi32> -> tensor<2x1x32x32xi32>
+      %pack = linalg.pack %extracted_slice_4 inner_dims_pos = [0, 1] inner_tiles = [32, 32] into %9 : tensor<64x32xi32> -> tensor<2x1x32x32xi32>
       %extracted_slice_6 = tensor.extract_slice %extracted_slice_0[%8, 0] [32, 64] [1, 1] : tensor<256x64xi32> to tensor<32x64xi32>
       %alloc_7 = memref.alloc() : memref<1x2x32x32xi32, 1 : i32>
       %10 = bufferization.to_tensor %alloc_7 restrict writable : memref<1x2x32x32xi32, 1 : i32> to tensor<1x2x32x32xi32>
-      %pack_8 = tensor.pack %extracted_slice_6 outer_dims_perm = [0, 1] inner_dims_pos = [0, 1] inner_tiles = [32, 32] into %10 : tensor<32x64xi32> -> tensor<1x2x32x32xi32>
+      %pack_8 = linalg.pack %extracted_slice_6 outer_dims_perm = [0, 1] inner_dims_pos = [0, 1] inner_tiles = [32, 32] into %10 : tensor<32x64xi32> -> tensor<1x2x32x32xi32>
       %11 = scf.forall (%arg7, %arg8) in (2, 2) shared_outs(%arg9 = %arg6) -> (tensor<2x2x8x8x4x4xi32>) {
         %extracted_slice_9 = tensor.extract_slice %pack[%arg7, 0, 0, 0] [1, 1, 32, 32] [1, 1, 1, 1] : tensor<2x1x32x32xi32> to tensor<1x1x32x32xi32>
         %extracted_slice_10 = tensor.extract_slice %5[%arg7, 0, 0, 0, 0, 0] [1, 1, 4, 8, 4, 8] [1, 1, 1, 1, 1, 1] : tensor<2x1x4x8x4x8xi32> to tensor<1x1x4x8x4x8xi32>
         %alloc_11 = memref.alloc() : memref<1x1x4x8x4x8xi32, 2 : i32>
         %12 = bufferization.to_tensor %alloc_11 restrict writable : memref<1x1x4x8x4x8xi32, 2 : i32> to tensor<1x1x4x8x4x8xi32>
-        %pack_12 = tensor.pack %extracted_slice_9 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %12 : tensor<1x1x32x32xi32> -> tensor<1x1x4x8x4x8xi32>
+        %pack_12 = linalg.pack %extracted_slice_9 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %12 : tensor<1x1x32x32xi32> -> tensor<1x1x4x8x4x8xi32>
         %extracted_slice_13 = tensor.extract_slice %pack_8[0, %arg8, 0, 0] [1, 1, 32, 32] [1, 1, 1, 1] : tensor<1x2x32x32xi32> to tensor<1x1x32x32xi32>
         %extracted_slice_14 = tensor.extract_slice %6[0, %arg8, 0, 0, 0, 0] [1, 1, 8, 4, 8, 4] [1, 1, 1, 1, 1, 1] : tensor<1x2x8x4x8x4xi32> to tensor<1x1x8x4x8x4xi32>
         %alloc_15 = memref.alloc() : memref<1x1x8x4x8x4xi32, 2 : i32>
         %13 = bufferization.to_tensor %alloc_15 restrict writable : memref<1x1x8x4x8x4xi32, 2 : i32> to tensor<1x1x8x4x8x4xi32>
-        %pack_16 = tensor.pack %extracted_slice_13 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [8, 4] into %13 : tensor<1x1x32x32xi32> -> tensor<1x1x8x4x8x4xi32>
+        %pack_16 = linalg.pack %extracted_slice_13 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [8, 4] into %13 : tensor<1x1x32x32xi32> -> tensor<1x1x8x4x8x4xi32>
         %extracted_slice_17 = tensor.extract_slice %arg9[%arg7, %arg8, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1, 1, 1, 1, 1, 1] : tensor<2x2x8x8x4x4xi32> to tensor<1x1x8x8x4x4xi32>
         %14 = linalg.generic {indexing_maps = [#map1, #map2, #map3], iterator_types = ["parallel", "parallel", "reduction", "parallel", "parallel", "reduction", "parallel", "parallel", "reduction"]} ins(%pack_12, %pack_16 : tensor<1x1x4x8x4x8xi32>, tensor<1x1x8x4x8x4xi32>) outs(%extracted_slice_17 : tensor<1x1x8x8x4x4xi32>) {
         ^bb0(%in: i32, %in_18: i32, %out: i32):
@@ -162,8 +162,8 @@ func.func @matmul_example(%arg0: tensor<128x256xi32>, %arg1: tensor<256x128xi32>
       memref.dealloc %alloc_7 : memref<1x2x32x32xi32, 1 : i32>
       scf.yield %11 : tensor<2x2x8x8x4x4xi32>
     }
-    %unpack = tensor.unpack %7 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 4] into %2 : tensor<2x2x8x8x4x4xi32> -> tensor<2x2x32x32xi32>
-    %unpack_3 = tensor.unpack %unpack inner_dims_pos = [0, 1] inner_tiles = [32, 32] into %extracted_slice_1 : tensor<2x2x32x32xi32> -> tensor<64x64xi32>
+    %unpack = linalg.unpack %7 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 4] into %2 : tensor<2x2x8x8x4x4xi32> -> tensor<2x2x32x32xi32>
+    %unpack_3 = linalg.unpack %unpack inner_dims_pos = [0, 1] inner_tiles = [32, 32] into %extracted_slice_1 : tensor<2x2x32x32xi32> -> tensor<64x64xi32>
     memref.dealloc %alloc : memref<2x2x32x32xi32, 1 : i32>
     memref.dealloc %alloc_2 : memref<2x2x8x8x4x4xi32, 2 : i32>
     scf.forall.in_parallel {

@@ -14,9 +14,9 @@ func.func @fuse_pack_into_for(%arg0: tensor<1x1x32x512xi32>, %arg1: tensor<1x1x5
   %c0_i32 = arith.constant 0 : i32
   %c0 = arith.constant 0 : index
   %15 = tensor.empty() : tensor<1x1x64x8x4x8xi32>
-  %pack_8 = tensor.pack %arg0 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %15 : tensor<1x1x32x512xi32> -> tensor<1x1x64x8x4x8xi32>
+  %pack_8 = linalg.pack %arg0 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %15 : tensor<1x1x32x512xi32> -> tensor<1x1x64x8x4x8xi32>
   %16 = tensor.empty() : tensor<1x1x4x64x8x8xi32>
-  %pack_9 = tensor.pack %arg1 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [8, 8] into %16 : tensor<1x1x512x32xi32> -> tensor<1x1x4x64x8x8xi32>
+  %pack_9 = linalg.pack %arg1 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [8, 8] into %16 : tensor<1x1x512x32xi32> -> tensor<1x1x4x64x8x8xi32>
   %17 = tensor.empty() : tensor<1x1x4x8x4x8xi32>
   %18 = linalg.fill ins(%c0_i32 : i32) outs(%17 : tensor<1x1x4x8x4x8xi32>) -> tensor<1x1x4x8x4x8xi32>
   %19 = scf.for %arg6 = %c0 to %c64 step %c4 iter_args(%arg7 = %18) -> (tensor<1x1x4x8x4x8xi32>) {
@@ -38,10 +38,10 @@ func.func @fuse_pack_into_for(%arg0: tensor<1x1x32x512xi32>, %arg1: tensor<1x1x5
 // DEPTH-1:  {
 // DEPTH-1:     tensor.extract_slice %{{.*}} : tensor<1x1x32x512xi32> to tensor<1x1x32x32xi32>
 // DEPTH-1:     tensor.extract_slice %{{.*}} : tensor<1x1x64x8x4x8xi32> to tensor<1x1x4x8x4x8xi32>
-// DEPTH-1:     tensor.pack %{{.*}} outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %{{.*}} : tensor<1x1x32x32xi32> -> tensor<1x1x4x8x4x8xi32>
+// DEPTH-1:     linalg.pack %{{.*}} outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %{{.*}} : tensor<1x1x32x32xi32> -> tensor<1x1x4x8x4x8xi32>
 // DEPTH-1:     tensor.extract_slice %{{.*}} : tensor<1x1x512x32xi32> to tensor<1x1x32x32xi32>
 // DEPTH-1:     tensor.extract_slice %{{.*}} : tensor<1x1x4x64x8x8xi32> to tensor<1x1x4x4x8x8xi32>
-// DEPTH-1:     tensor.pack %{{.*}} outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [8, 8] into %{{.*}} : tensor<1x1x32x32xi32> -> tensor<1x1x4x4x8x8xi32>
+// DEPTH-1:     linalg.pack %{{.*}} outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [8, 8] into %{{.*}} : tensor<1x1x32x32xi32> -> tensor<1x1x4x4x8x8xi32>
 // DEPTH-1:     linalg.generic
 // DEPTH-1:  }
 
@@ -63,15 +63,15 @@ func.func @fuse_multilevel_pack_into_for(%arg0: tensor<2048x2048xi32>, %arg1: te
     %extracted_slice_0 = tensor.extract_slice %arg1[0, %arg3] [2048, 64] [1, 1] : tensor<2048x2048xi32> to tensor<2048x64xi32>
     %extracted_slice_1 = tensor.extract_slice %arg4[%arg2, %arg3] [64, 64] [1, 1] : tensor<2048x2048xi32> to tensor<64x64xi32>
     %2 = tensor.empty() : tensor<1x64x64x32xi32>
-    %pack = tensor.pack %extracted_slice inner_dims_pos = [0, 1] inner_tiles = [64, 32] into %2 : tensor<64x2048xi32> -> tensor<1x64x64x32xi32>
+    %pack = linalg.pack %extracted_slice inner_dims_pos = [0, 1] inner_tiles = [64, 32] into %2 : tensor<64x2048xi32> -> tensor<1x64x64x32xi32>
     %3 = tensor.empty() : tensor<64x1x32x64xi32>
-    %pack_2 = tensor.pack %extracted_slice_0 outer_dims_perm = [0, 1] inner_dims_pos = [0, 1] inner_tiles = [32, 64] into %3 : tensor<2048x64xi32> -> tensor<64x1x32x64xi32>
+    %pack_2 = linalg.pack %extracted_slice_0 outer_dims_perm = [0, 1] inner_dims_pos = [0, 1] inner_tiles = [32, 64] into %3 : tensor<2048x64xi32> -> tensor<64x1x32x64xi32>
     %alloc = memref.alloc() : memref<1x1x64x64xi32, 1 : i32>
     %4 = bufferization.to_tensor %alloc restrict writable : memref<1x1x64x64xi32, 1 : i32> to tensor<1x1x64x64xi32>
     %5 = tensor.empty() : tensor<1x64x4x16x4x8xi32>
-    %pack_3 = tensor.pack %pack outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %5 : tensor<1x64x64x32xi32> -> tensor<1x64x4x16x4x8xi32>
+    %pack_3 = linalg.pack %pack outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %5 : tensor<1x64x64x32xi32> -> tensor<1x64x4x16x4x8xi32>
     %6 = tensor.empty() : tensor<64x1x16x4x8x4xi32>
-    %pack_4 = tensor.pack %pack_2 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [8, 4] into %6 : tensor<64x1x32x64xi32> -> tensor<64x1x16x4x8x4xi32>
+    %pack_4 = linalg.pack %pack_2 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [8, 4] into %6 : tensor<64x1x32x64xi32> -> tensor<64x1x16x4x8x4xi32>
     %alloc_5 = memref.alloc() : memref<1x1x16x16x4x4xi32, 2 : i32>
     %7 = bufferization.to_tensor %alloc_5 restrict writable : memref<1x1x16x16x4x4xi32, 2 : i32> to tensor<1x1x16x16x4x4xi32>
     %8 = linalg.fill ins(%c0_i32 : i32) outs(%7 : tensor<1x1x16x16x4x4xi32>) -> tensor<1x1x16x16x4x4xi32>
@@ -86,8 +86,8 @@ func.func @fuse_multilevel_pack_into_for(%arg0: tensor<2048x2048xi32>, %arg1: te
       } -> tensor<1x1x16x16x4x4xi32>
       scf.yield %10 : tensor<1x1x16x16x4x4xi32>
     }
-    %unpack = tensor.unpack %9 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 4] into %4 : tensor<1x1x16x16x4x4xi32> -> tensor<1x1x64x64xi32>
-    %unpack_6 = tensor.unpack %unpack inner_dims_pos = [0, 1] inner_tiles = [64, 64] into %extracted_slice_1 : tensor<1x1x64x64xi32> -> tensor<64x64xi32>
+    %unpack = linalg.unpack %9 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 4] into %4 : tensor<1x1x16x16x4x4xi32> -> tensor<1x1x64x64xi32>
+    %unpack_6 = linalg.unpack %unpack inner_dims_pos = [0, 1] inner_tiles = [64, 64] into %extracted_slice_1 : tensor<1x1x64x64xi32> -> tensor<64x64xi32>
     memref.dealloc %alloc : memref<1x1x64x64xi32, 1 : i32>
     memref.dealloc %alloc_5 : memref<1x1x16x16x4x4xi32, 2 : i32>
     scf.forall.in_parallel {
@@ -102,10 +102,10 @@ func.func @fuse_multilevel_pack_into_for(%arg0: tensor<2048x2048xi32>, %arg1: te
 // DEPTH-1:  {
 // DEPTH-1:        %[[PACK_1_SOURCE:.*]] = tensor.extract_slice %{{.*}} : tensor<1x64x64x32xi32> to tensor<1x1x64x32xi32>
 // DEPTH-1:        %[[PACK_1_DEST:.*]] = tensor.extract_slice %{{.*}} : tensor<1x64x4x16x4x8xi32> to tensor<1x1x4x16x4x8xi32>
-// DEPTH-1:        %[[PACK_1:.*]] = tensor.pack %[[PACK_1_SOURCE]] {{.*}} into %[[PACK_1_DEST]] : tensor<1x1x64x32xi32> -> tensor<1x1x4x16x4x8xi32>
+// DEPTH-1:        %[[PACK_1:.*]] = linalg.pack %[[PACK_1_SOURCE]] {{.*}} into %[[PACK_1_DEST]] : tensor<1x1x64x32xi32> -> tensor<1x1x4x16x4x8xi32>
 // DEPTH-1:        %[[PACK_2_SOURCE:.*]] = tensor.extract_slice %{{.*}} : tensor<64x1x32x64xi32> to tensor<1x1x32x64xi32>
 // DEPTH-1:        %[[PACK_2_DEST:.*]] = tensor.extract_slice %{{.*}} : tensor<64x1x16x4x8x4xi32> to tensor<1x1x16x4x8x4xi32>
-// DEPTH-1:        %[[PACK_2:.*]] = tensor.pack %[[PACK_2_SOURCE]] {{.*}} into %[[PACK_2_DEST]] : tensor<1x1x32x64xi32> -> tensor<1x1x16x4x8x4xi32>
+// DEPTH-1:        %[[PACK_2:.*]] = linalg.pack %[[PACK_2_SOURCE]] {{.*}} into %[[PACK_2_DEST]] : tensor<1x1x32x64xi32> -> tensor<1x1x16x4x8x4xi32>
 // DEPTH-1:        linalg.generic {{.*}} ins(%[[PACK_1]], %[[PACK_2]] :
 // DEPTH-1:  }
 
@@ -114,14 +114,14 @@ func.func @fuse_multilevel_pack_into_for(%arg0: tensor<2048x2048xi32>, %arg1: te
 // DEPTH-2:  {
 // DEPTH-2:        %[[PACK_1_SOURCE:.*]] = tensor.extract_slice %{{.*}} : tensor<64x2048xi32> to tensor<64x32xi32>
 // DEPTH-2:        %[[PACK_1_DEST:.*]] = tensor.extract_slice %{{.*}} : tensor<1x64x64x32xi32> to tensor<1x1x64x32xi32>
-// DEPTH-2:        %[[PACK_1_DEPTH_2:.*]] = tensor.pack %[[PACK_1_SOURCE]] {{.*}} into %[[PACK_1_DEST]] : tensor<64x32xi32> -> tensor<1x1x64x32xi32>
+// DEPTH-2:        %[[PACK_1_DEPTH_2:.*]] = linalg.pack %[[PACK_1_SOURCE]] {{.*}} into %[[PACK_1_DEST]] : tensor<64x32xi32> -> tensor<1x1x64x32xi32>
 // DEPTH-2:        %[[PACK_1_DEST_2:.*]] = tensor.extract_slice %{{.*}} : tensor<1x64x4x16x4x8xi32> to tensor<1x1x4x16x4x8xi32>
-// DEPTH-2:        %[[PACK_1_DEPTH_1:.*]] = tensor.pack %[[PACK_1_DEPTH_2]] {{.*}} into %[[PACK_1_DEST_2]] : tensor<1x1x64x32xi32> -> tensor<1x1x4x16x4x8xi32>
+// DEPTH-2:        %[[PACK_1_DEPTH_1:.*]] = linalg.pack %[[PACK_1_DEPTH_2]] {{.*}} into %[[PACK_1_DEST_2]] : tensor<1x1x64x32xi32> -> tensor<1x1x4x16x4x8xi32>
 // DEPTH-2:        %[[PACK_2_SOURCE:.*]] = tensor.extract_slice %{{.*}} : tensor<2048x64xi32> to tensor<32x64xi32>
 // DEPTH-2:        %[[PACK_2_DEST:.*]] = tensor.extract_slice %{{.*}} : tensor<64x1x32x64xi32> to tensor<1x1x32x64xi32>
-// DEPTH-2:        %[[PACK_2_DEPTH_2:.*]] = tensor.pack %[[PACK_2_SOURCE]] {{.*}} into %[[PACK_2_DEST]] : tensor<32x64xi32> -> tensor<1x1x32x64xi32>
+// DEPTH-2:        %[[PACK_2_DEPTH_2:.*]] = linalg.pack %[[PACK_2_SOURCE]] {{.*}} into %[[PACK_2_DEST]] : tensor<32x64xi32> -> tensor<1x1x32x64xi32>
 // DEPTH-2:        %[[PACK_2_DEST_2:.*]] = tensor.extract_slice %{{.*}} : tensor<64x1x16x4x8x4xi32> to tensor<1x1x16x4x8x4xi32>
-// DEPTH-2:        %[[PACK_2_DEPTH_1:.*]] = tensor.pack %[[PACK_2_DEPTH_2]] {{.*}} into %[[PACK_2_DEST_2]] : tensor<1x1x32x64xi32> -> tensor<1x1x16x4x8x4xi32>
+// DEPTH-2:        %[[PACK_2_DEPTH_1:.*]] = linalg.pack %[[PACK_2_DEPTH_2]] {{.*}} into %[[PACK_2_DEST_2]] : tensor<1x1x32x64xi32> -> tensor<1x1x16x4x8x4xi32>
 // DEPTH-2:        linalg.generic {{.*}} ins(%[[PACK_1_DEPTH_1]], %[[PACK_2_DEPTH_1]] :
 // DEPTH-2:  }
 
@@ -156,14 +156,14 @@ func.func @fuse_multilevel_pack_into_forall(%arg0: tensor<2048x2048xi32>, %arg1:
       %10 = affine.apply #map(%arg5)
       %extracted_slice_4 = tensor.extract_slice %extracted_slice[0, %10] [64, 32] [1, 1] : tensor<64x2048xi32> to tensor<64x32xi32>
       %extracted_slice_5 = tensor.extract_slice %2[0, %arg5, 0, 0] [1, 1, 64, 32] [1, 1, 1, 1] : tensor<1x64x64x32xi32> to tensor<1x1x64x32xi32>
-      %pack = tensor.pack %extracted_slice_4 inner_dims_pos = [0, 1] inner_tiles = [64, 32] into %extracted_slice_5 : tensor<64x32xi32> -> tensor<1x1x64x32xi32>
+      %pack = linalg.pack %extracted_slice_4 inner_dims_pos = [0, 1] inner_tiles = [64, 32] into %extracted_slice_5 : tensor<64x32xi32> -> tensor<1x1x64x32xi32>
       %extracted_slice_6 = tensor.extract_slice %5[0, %arg5, 0, 0, 0, 0] [1, 1, 4, 16, 4, 8] [1, 1, 1, 1, 1, 1] : tensor<1x64x4x16x4x8xi32> to tensor<1x1x4x16x4x8xi32>
-      %pack_7 = tensor.pack %pack outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %extracted_slice_6 : tensor<1x1x64x32xi32> -> tensor<1x1x4x16x4x8xi32>
+      %pack_7 = linalg.pack %pack outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %extracted_slice_6 : tensor<1x1x64x32xi32> -> tensor<1x1x4x16x4x8xi32>
       %extracted_slice_8 = tensor.extract_slice %extracted_slice_0[%10, 0] [32, 64] [1, 1] : tensor<2048x64xi32> to tensor<32x64xi32>
       %extracted_slice_9 = tensor.extract_slice %3[%arg5, 0, 0, 0] [1, 1, 32, 64] [1, 1, 1, 1] : tensor<64x1x32x64xi32> to tensor<1x1x32x64xi32>
-      %pack_10 = tensor.pack %extracted_slice_8 outer_dims_perm = [0, 1] inner_dims_pos = [0, 1] inner_tiles = [32, 64] into %extracted_slice_9 : tensor<32x64xi32> -> tensor<1x1x32x64xi32>
+      %pack_10 = linalg.pack %extracted_slice_8 outer_dims_perm = [0, 1] inner_dims_pos = [0, 1] inner_tiles = [32, 64] into %extracted_slice_9 : tensor<32x64xi32> -> tensor<1x1x32x64xi32>
       %extracted_slice_11 = tensor.extract_slice %6[%arg5, 0, 0, 0, 0, 0] [1, 1, 16, 4, 8, 4] [1, 1, 1, 1, 1, 1] : tensor<64x1x16x4x8x4xi32> to tensor<1x1x16x4x8x4xi32>
-      %pack_12 = tensor.pack %pack_10 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [8, 4] into %extracted_slice_11 : tensor<1x1x32x64xi32> -> tensor<1x1x16x4x8x4xi32>
+      %pack_12 = linalg.pack %pack_10 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [8, 4] into %extracted_slice_11 : tensor<1x1x32x64xi32> -> tensor<1x1x16x4x8x4xi32>
       %11 = scf.forall (%arg7, %arg8) in (1, 1) shared_outs(%arg9 = %arg6) -> (tensor<1x1x16x16x4x4xi32>) {
         %extracted_slice_13 = tensor.extract_slice %pack_7[%arg7, 0, 0, 0, 0, 0] [1, 1, 4, 16, 4, 8] [1, 1, 1, 1, 1, 1] : tensor<1x1x4x16x4x8xi32> to tensor<1x1x4x16x4x8xi32>
         %extracted_slice_14 = tensor.extract_slice %pack_12[0, %arg8, 0, 0, 0, 0] [1, 1, 16, 4, 8, 4] [1, 1, 1, 1, 1, 1] : tensor<1x1x16x4x8x4xi32> to tensor<1x1x16x4x8x4xi32>
@@ -180,8 +180,8 @@ func.func @fuse_multilevel_pack_into_forall(%arg0: tensor<2048x2048xi32>, %arg1:
       } {mapping = [#gpu.block<y>, #gpu.block<x>]}
       scf.yield %11 : tensor<1x1x16x16x4x4xi32>
     }
-    %unpack = tensor.unpack %9 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 4] into %4 : tensor<1x1x16x16x4x4xi32> -> tensor<1x1x64x64xi32>
-    %unpack_3 = tensor.unpack %unpack inner_dims_pos = [0, 1] inner_tiles = [64, 64] into %extracted_slice_1 : tensor<1x1x64x64xi32> -> tensor<64x64xi32>
+    %unpack = linalg.unpack %9 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 4] into %4 : tensor<1x1x16x16x4x4xi32> -> tensor<1x1x64x64xi32>
+    %unpack_3 = linalg.unpack %unpack inner_dims_pos = [0, 1] inner_tiles = [64, 64] into %extracted_slice_1 : tensor<1x1x64x64xi32> -> tensor<64x64xi32>
     memref.dealloc %alloc : memref<1x1x64x64xi32, 1 : i32>
     memref.dealloc %alloc_2 : memref<1x1x16x16x4x4xi32, 2 : i32>
     scf.forall.in_parallel {
@@ -198,10 +198,10 @@ func.func @fuse_multilevel_pack_into_forall(%arg0: tensor<2048x2048xi32>, %arg1:
 // FORALL-DEPTH-1:     {
 // FORALL-DEPTH-1:        %[[PACK_1_SOURCE:.*]] = tensor.extract_slice %{{.*}} : tensor<1x1x64x32xi32> to tensor<1x1x64x32xi32>
 // FORALL-DEPTH-1:        %[[PACK_1_DEST:.*]] = tensor.extract_slice %{{.*}} : tensor<1x1x4x16x4x8xi32> to tensor<1x1x4x16x4x8xi32>
-// FORALL-DEPTH-1:        %[[PACK_1:.*]] = tensor.pack %[[PACK_1_SOURCE]] {{.*}} into %[[PACK_1_DEST]] : tensor<1x1x64x32xi32> -> tensor<1x1x4x16x4x8xi32>
+// FORALL-DEPTH-1:        %[[PACK_1:.*]] = linalg.pack %[[PACK_1_SOURCE]] {{.*}} into %[[PACK_1_DEST]] : tensor<1x1x64x32xi32> -> tensor<1x1x4x16x4x8xi32>
 // FORALL-DEPTH-1:        %[[PACK_2_SOURCE:.*]] = tensor.extract_slice %{{.*}} : tensor<1x1x32x64xi32> to tensor<1x1x32x64xi32>
 // FORALL-DEPTH-1:        %[[PACK_2_DEST:.*]] = tensor.extract_slice %{{.*}} : tensor<1x1x16x4x8x4xi32> to tensor<1x1x16x4x8x4xi32>
-// FORALL-DEPTH-1:        %[[PACK_2:.*]] = tensor.pack %[[PACK_2_SOURCE]] {{.*}} into %[[PACK_2_DEST]] : tensor<1x1x32x64xi32> -> tensor<1x1x16x4x8x4xi32>
+// FORALL-DEPTH-1:        %[[PACK_2:.*]] = linalg.pack %[[PACK_2_SOURCE]] {{.*}} into %[[PACK_2_DEST]] : tensor<1x1x32x64xi32> -> tensor<1x1x16x4x8x4xi32>
 // FORALL-DEPTH-1:        linalg.generic {{.*}} ins(%[[PACK_1]], %[[PACK_2]] :
 // FORALL-DEPTH-1:      }
 // FORALL-DEPTH-1:  }
@@ -213,14 +213,14 @@ func.func @fuse_multilevel_pack_into_forall(%arg0: tensor<2048x2048xi32>, %arg1:
 // FORALL-DEPTH-2:     {
 // FORALL-DEPTH-2:        %[[PACK_1_SOURCE:.*]] = tensor.extract_slice %{{.*}} : tensor<64x32xi32> to tensor<64x32xi32>
 // FORALL-DEPTH-2:        %[[PACK_1_DEST:.*]] = tensor.extract_slice %{{.*}} : tensor<1x1x64x32xi32> to tensor<1x1x64x32xi32>
-// FORALL-DEPTH-2:        %[[PACK_1_DEPTH_2:.*]] = tensor.pack %[[PACK_1_SOURCE]] {{.*}} into %[[PACK_1_DEST]] : tensor<64x32xi32> -> tensor<1x1x64x32xi32>
+// FORALL-DEPTH-2:        %[[PACK_1_DEPTH_2:.*]] = linalg.pack %[[PACK_1_SOURCE]] {{.*}} into %[[PACK_1_DEST]] : tensor<64x32xi32> -> tensor<1x1x64x32xi32>
 // FORALL-DEPTH-2:        %[[PACK_1_DEST_2:.*]] = tensor.extract_slice %{{.*}} : tensor<1x1x4x16x4x8xi32> to tensor<1x1x4x16x4x8xi32>
-// FORALL-DEPTH-2:        %[[PACK_1_DEPTH_1:.*]] = tensor.pack %[[PACK_1_DEPTH_2]] {{.*}} into %[[PACK_1_DEST_2]] : tensor<1x1x64x32xi32> -> tensor<1x1x4x16x4x8xi32>
+// FORALL-DEPTH-2:        %[[PACK_1_DEPTH_1:.*]] = linalg.pack %[[PACK_1_DEPTH_2]] {{.*}} into %[[PACK_1_DEST_2]] : tensor<1x1x64x32xi32> -> tensor<1x1x4x16x4x8xi32>
 // FORALL-DEPTH-2:        %[[PACK_2_SOURCE:.*]] = tensor.extract_slice %{{.*}} : tensor<32x64xi32> to tensor<32x64xi32>
 // FORALL-DEPTH-2:        %[[PACK_2_DEST:.*]] = tensor.extract_slice %{{.*}} : tensor<1x1x32x64xi32> to tensor<1x1x32x64xi32>
-// FORALL-DEPTH-2:        %[[PACK_2_DEPTH_2:.*]] = tensor.pack %[[PACK_2_SOURCE]] {{.*}} into %[[PACK_2_DEST]] : tensor<32x64xi32> -> tensor<1x1x32x64xi32>
+// FORALL-DEPTH-2:        %[[PACK_2_DEPTH_2:.*]] = linalg.pack %[[PACK_2_SOURCE]] {{.*}} into %[[PACK_2_DEST]] : tensor<32x64xi32> -> tensor<1x1x32x64xi32>
 // FORALL-DEPTH-2:        %[[PACK_2_DEST_2:.*]] = tensor.extract_slice %{{.*}} : tensor<1x1x16x4x8x4xi32> to tensor<1x1x16x4x8x4xi32>
-// FORALL-DEPTH-2:        %[[PACK_2_DEPTH_1:.*]] = tensor.pack %[[PACK_2_DEPTH_2]] {{.*}} into %[[PACK_2_DEST_2]] : tensor<1x1x32x64xi32> -> tensor<1x1x16x4x8x4xi32>
+// FORALL-DEPTH-2:        %[[PACK_2_DEPTH_1:.*]] = linalg.pack %[[PACK_2_DEPTH_2]] {{.*}} into %[[PACK_2_DEST_2]] : tensor<1x1x32x64xi32> -> tensor<1x1x16x4x8x4xi32>
 // FORALL-DEPTH-2:        linalg.generic {{.*}} ins(%[[PACK_1_DEPTH_1]], %[[PACK_2_DEPTH_1]] :
 // FORALL-DEPTH-2:      }
 // FORALL-DEPTH-2:  }
@@ -382,9 +382,9 @@ func.func @pack_without_slice(%arg0: tensor<1x1x32x512xi32>, %arg1: tensor<1x1x3
   %c0_i32 = arith.constant 0 : i32
   %c0 = arith.constant 0 : index
   %15 = tensor.empty() : tensor<1x1x64x8x4x8xi32>
-  %pack_8 = tensor.pack %arg0 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %15 : tensor<1x1x32x512xi32> -> tensor<1x1x64x8x4x8xi32>
+  %pack_8 = linalg.pack %arg0 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %15 : tensor<1x1x32x512xi32> -> tensor<1x1x64x8x4x8xi32>
   %16 = tensor.empty() : tensor<1x1x4x4x8x8xi32>
-  %pack_10 = tensor.pack %arg1 outer_dims_perm = [0, 1, 2, 3] inner_dims_pos = [2, 3] inner_tiles = [8, 8] into %16 : tensor<1x1x32x32xi32> -> tensor<1x1x4x4x8x8xi32>
+  %pack_10 = linalg.pack %arg1 outer_dims_perm = [0, 1, 2, 3] inner_dims_pos = [2, 3] inner_tiles = [8, 8] into %16 : tensor<1x1x32x32xi32> -> tensor<1x1x4x4x8x8xi32>
 
   %17 = tensor.empty() : tensor<1x1x4x8x4x8xi32>
   %18 = linalg.fill ins(%c0_i32 : i32) outs(%17 : tensor<1x1x4x8x4x8xi32>) -> tensor<1x1x4x8x4x8xi32>
@@ -403,7 +403,7 @@ func.func @pack_without_slice(%arg0: tensor<1x1x32x512xi32>, %arg1: tensor<1x1x3
 
 // DEPTH-1-LABEL: pack_without_slice
 // DEPTH-1:       scf.for
-// DEPTH-1-DAG:   %[[PACK_1:.*]] = tensor.pack %{{.*}} into %{{.*}} : tensor<1x1x32x32xi32> -> tensor<1x1x4x4x8x8xi32>
-// DEPTH-1-DAG:   %[[PACK_2:.*]] = tensor.pack %{{.*}} into %{{.*}} : tensor<1x1x32x32xi32> -> tensor<1x1x4x8x4x8xi32>
+// DEPTH-1-DAG:   %[[PACK_1:.*]] = linalg.pack %{{.*}} into %{{.*}} : tensor<1x1x32x32xi32> -> tensor<1x1x4x4x8x8xi32>
+// DEPTH-1-DAG:   %[[PACK_2:.*]] = linalg.pack %{{.*}} into %{{.*}} : tensor<1x1x32x32xi32> -> tensor<1x1x4x8x4x8xi32>
 // DEPTH-1:       linalg.generic
 // DEPTH-1-SAME:  ins(%[[PACK_2]], %[[PACK_1]]
