@@ -279,12 +279,16 @@ func.func @trivial_read_access_rank_reduced(%arg0: memref<4x8x1x8xbf16, strided<
 // CHECK-SAME:          : vector<1x1x4x4xf32> to vector<16xf32>
 // CHECK:           vector.transfer_write %[[SHAPE_CAST]], %[[COLLAPSE_SHAPE]]
 // CHECK:           return
+
+#executable_target_ = #hal.executable.target<"", "", {target_device = "npu1_4col"}>
+module attributes {hal.executable.target = #executable_target_} {
 func.func @trivial_write_access(%arg0: memref<8x8x4x4xf32, strided<[128, 16, 4, 1]>>, %arg1: vector<1x1x4x4xf32>) {
     %c0 = arith.constant 0 : index
     %cst = arith.constant 0.000000e+00 : bf16
     %subview = memref.subview %arg0[2, 3, 0, 0] [1, 1, 4, 4] [1, 1, 1, 1] : memref<8x8x4x4xf32, strided<[128, 16, 4, 1]>> to memref<1x1x4x4xf32, strided<[128, 16, 4, 1], offset: 304>>
     vector.transfer_write %arg1, %subview[%c0, %c0, %c0, %c0] {in_bounds = [true, true, true, true]} : vector<1x1x4x4xf32>, memref<1x1x4x4xf32, strided<[128, 16, 4, 1], offset: 304>>
     return
+}
 }
 
 // -----
