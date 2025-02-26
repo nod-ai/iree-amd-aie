@@ -1796,6 +1796,25 @@ class Tests:
 
         self.register(
             Matmul(
+                32,
+                128,
+                128,
+                "i32",
+                "i32",
+                test_params=TestParams(
+                    run_on_target=["npu4"],
+                    use_chess=False,
+                    tile_pipeline="pack-peel-4-level-tiling",
+                    aie_compilation_flags=[
+                        "--iree-amdaie-num-rows=4",
+                        "--iree-amdaie-num-cols=2",
+                    ],
+                ),
+            )
+        )
+
+        self.register(
+            Matmul(
                 1024,
                 1024,
                 1024,
