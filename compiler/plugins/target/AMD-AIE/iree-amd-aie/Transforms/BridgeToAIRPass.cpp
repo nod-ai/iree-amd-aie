@@ -18,38 +18,6 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
-/// Pattern to rewriter scf.forall -> scf.parallel after bufferization.
-class SCFForAllToParallelOp : public OpRewritePattern<scf::ForallOp> {
-  using OpRewritePattern<scf::ForallOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(scf::ForallOp forallOp,
-                                PatternRewriter &rewriter) const override {
-    if (forallOp.getNumResults() != 0) {
-      return failure();
-    }
-    Location loc = forallOp.getLoc();
-    SmallVector<Value> lowerBounds = getValueOrCreateConstantIndexOp(
-        rewriter, loc, forallOp.getMixedLowerBound());
-    SmallVector<Value> upperBounds = getValueOrCreateConstantIndexOp(
-        rewriter, loc, forallOp.getMixedUpperBound());
-    SmallVector<Value> step =
-        getValueOrCreateConstantIndexOp(rewriter, loc, forallOp.getMixedStep());
-    auto parallelOp = rewriter.create<scf::ParallelOp>(
-        loc, lowerBounds, upperBounds, step, ValueRange{},
-        [&](OpBuilder &b, Location bodyLoc, ValueRange ivs,
-            ValueRange regionArgs) {});
-    rewriter.inlineRegionBefore(forallOp.getRegion(), parallelOp.getRegion(),
-                                parallelOp.getRegion().begin());
-    rewriter.eraseBlock(&parallelOp.getRegion().back());
-    // Fixup the terminator
-    OpBuilder::InsertionGuard g(rewriter);
-    rewriter.setInsertionPointToEnd(&parallelOp.getRegion().front());
-    rewriter.replaceOpWithNewOp<scf::ReduceOp>(
-        parallelOp.getRegion().front().getTerminator());
-    return success();
-  }
-};
-
 /// Pattern to rewrite `linalg.copy` to `memref.copy`.
 class LinalgCopyToMemRefCopy : public OpRewritePattern<linalg::CopyOp> {
   using OpRewritePattern<linalg::CopyOp>::OpRewritePattern;
@@ -100,9 +68,7 @@ class AMDAIEBridgeToAIRPass
 void AMDAIEBridgeToAIRPass::runOnOperation() {
   MLIRContext *context = &getContext();
   RewritePatternSet patterns(context);
-  patterns
-      .insert<LinalgCopyToMemRefCopy, SCFForAllToParallelOp, AffineApplyOnSym>(
-          context);
+  patterns.insert<LinalgCopyToMemRefCopy, AffineApplyOnSym>(context);
   xilinx::air::populateBufferMemrefToFuncArgsPattern(patterns);
   if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
     return signalPassFailure();
