@@ -9,7 +9,6 @@
 
 #include "iree-amd-aie/Transforms/PassDetail.h"
 #include "iree-amd-aie/aie_runtime/AMDAIEEnums.h"
-#include "iree/compiler/Codegen/Common/TileSizeSelection.h"
 #include "mlir/Pass/Pass.h"
 
 namespace mlir::iree_compiler::AMDAIE {
@@ -74,6 +73,13 @@ std::unique_ptr<Pass> createAMDAIEAccessToAcquireReleasePass();
 /// `amdaie.use_lock`
 std::unique_ptr<Pass> createAMDAIEAcquireReleaseToUseLockPass();
 
+/// Create pass to add the llvm.noalias attribute to function arguments
+/// where it is safe to do so.
+std::unique_ptr<Pass> createAMDAIEAddNoAliasFunctionArgumentsPass();
+
+/// Create pass to to add the no_inline attribute to llvm.functions
+std::unique_ptr<Pass> createAMDAIEAddNoInlineAnnotationPass();
+
 /// Create a pass to assign channels to connections.
 std::unique_ptr<Pass> createAMDAIEAssignChannelsPass();
 
@@ -111,6 +117,13 @@ std::unique_ptr<Pass> createAMDAIECanonicalizeNpuDmaCpyNdPass();
 std::unique_ptr<Pass> createAMDAIECanonicalizeDoublyStridedOpPass(
     AMDAIECanonicalizeDoublyStridedOpOptions options = {});
 
+/// Create pass to invoke several cleanup and canonicalization patterns.
+std::unique_ptr<Pass> createAMDAIECleanupPass();
+
+/// Create pass to combine strided ops within the same block if access patterns
+/// are compatible.
+std::unique_ptr<Pass> createAMDAIECombineStridedOpsPass();
+
 /// Create pass to create `amdaie.flow` ops for connections.
 std::unique_ptr<Pass> createAMDAIEConnectionToFlowPass();
 
@@ -142,24 +155,16 @@ std::unique_ptr<Pass> createAMDAIEConvertCoreForallToForPass();
 std::unique_ptr<Pass> createAMDAIEConvertDeviceToControlPacketsPass(
     AMDAIEConvertDeviceToControlPacketsOptions options = {});
 
-/// Pass to insert an infinite loop around each `amdaie.core`'s block.
-std::unique_ptr<Pass> createAMDAIEInsertInfiniteLoopAroundCoreBlockPass();
-
 /// Pass to create a single AIE workgroup.
 std::unique_ptr<Pass> createAMDAIECreateAIEWorkgroupPass();
 
 /// Pass to create references to allocations in L1 memory space.
 std::unique_ptr<Pass> createAMDAIECreateReferenceToAllocationPass();
 
-/// Create a pass to vectorize operations.
-std::unique_ptr<Pass> createAMDAIEVectorizationPass();
-
-/// Create pass to invoke several cleanup and canonicalization patterns.
-std::unique_ptr<Pass> createAMDAIECleanupPass();
-
-/// Create pass to combine strided ops within the same block if access patterns
-/// are compatible.
-std::unique_ptr<Pass> createAMDAIECombineStridedOpsPass();
+/// Create pass to lower copy/pack/unpack ops to AMDAIE DMA ops operating on
+/// logical objectFifos.
+std::unique_ptr<Pass> createAMDAIEConvertToDmaPass(
+    AMDAIEConvertToDmaOptions options = {});
 
 /// Create a pass decomposing iree_linalg_ext.pack and unpack ops to AIR
 /// dialect.
@@ -193,9 +198,8 @@ std::unique_ptr<Pass> createAMDAIEDmaToCircularDmaPass();
 /// Create a pass to flatten the logical objectFifos.
 std::unique_ptr<Pass> createAMDAIEFlattenLogicalObjectFifoPass();
 
-/// Create a pass for function outlining.
-std::unique_ptr<Pass> createAMDAIELinalgFunctionOutliningPass(
-    AMDAIELinalgFunctionOutliningOptions = {});
+/// Create a pass to remove redundant DMA wait operations.
+std::unique_ptr<Pass> createAMDAIEFoldDmaWaitsPass();
 
 /// Create a pass to fuse the consumer op into the innermost last scf loop.
 std::unique_ptr<Pass> createAMDAIEFuseConsumerIntoLoopPass(
@@ -203,6 +207,10 @@ std::unique_ptr<Pass> createAMDAIEFuseConsumerIntoLoopPass(
 
 /// Create a pass to fuse the linalg.fill into the forall loops.
 std::unique_ptr<Pass> createAMDAIEFuseFillIntoForallPass();
+
+/// Create a pass to fuse the producer operations into the scf loops.
+std::unique_ptr<Pass> createAMDAIEFuseProducerIntoLoopPass(
+    AMDAIEFuseProducerIntoLoopOptions options = {});
 
 /// Create pass to generate packet-flow routings for control packets entering or
 /// leaving each tile.
@@ -216,28 +224,31 @@ std::unique_ptr<Pass> createAMDAIEHoistForLoopAffineApplyPass();
 /// operands.
 std::unique_ptr<Pass> createAMDAIEHoistLogicalObjFifoPass();
 
+/// Create pass to insert `amdaie.core` operations inside the innermost
+/// `scf.forall` operations selected for parallel execution.
+std::unique_ptr<Pass> createAMDAIEInsertCoresPass();
+
 /// Create pass to chain DMA BD IDs by updating next_bd operands.
 std::unique_ptr<Pass> createAMDAIEInsertDmaBdChainPass();
+
+/// Pass to insert an infinite loop around each `amdaie.core`'s block.
+std::unique_ptr<Pass> createAMDAIEInsertInfiniteLoopAroundCoreBlockPass();
 
 /// Create a pass to transform linalg.generics into a form which benefits later
 /// vectorization passes (to vector and aievec dialects).
 std::unique_ptr<Pass> createAMDAIEInsertLoopsForVectorizationPass(
     AMDAIEInsertLoopsForVectorizationOptions options = {});
 
-/// Create a pass to remove redundant DMA wait operations.
-std::unique_ptr<Pass> createAMDAIEFoldDmaWaitsPass();
-
-/// Create a pass to fuse the producer operations into the scf loops.
-std::unique_ptr<Pass> createAMDAIEFuseProducerIntoLoopPass(
-    AMDAIEFuseProducerIntoLoopOptions options = {});
-
-/// Create pass to insert `amdaie.core` operations inside the innermost
-/// `scf.forall` operations selected for parallel execution.
-std::unique_ptr<Pass> createAMDAIEInsertCoresPass();
+/// Create a pass for function outlining.
+std::unique_ptr<Pass> createAMDAIELinalgFunctionOutliningPass(
+    AMDAIELinalgFunctionOutliningOptions = {});
 
 /// Links AMDAIE HAL executables within the top-level program module.
 std::unique_ptr<OperationPass<mlir::ModuleOp>>
 createAMDAIELinkExecutablesPass();
+
+/// Create pass to reset the alignment of LLVM load operations.
+std::unique_ptr<Pass> createAMDAIELoadStoreAlignmentResetPass();
 
 /// Create a pass to localize logical objectfifos to local parallel loop scopes.
 std::unique_ptr<Pass> createAMDAIELocalizeLogicalObjectFifoPass();
@@ -247,12 +258,12 @@ std::unique_ptr<InterfacePass<FunctionOpInterface>>
 createAMDAIELowerExecutableTargetPass(
     AMDAIELowerExecutableTargetOptions options = {});
 
+/// Create pass to lower function arguments.
+std::unique_ptr<Pass> createAMDAIELowerFuncArgsPass();
+
 /// Create pass for adding lowering strategy configurations.
 std::unique_ptr<OperationPass<ModuleOp>> createAMDAIELoweringStrategyPass(
     AMDAIELoweringStrategyOptions options = {});
-
-/// Create pass to lower function arguments.
-std::unique_ptr<Pass> createAMDAIELowerFuncArgsPass();
 
 /// Create pass to lower from the AMDAIE dialect to the AIE/AIEX dialects.
 void addAMDAIEToAIEPasses(OpPassManager &);
@@ -287,17 +298,15 @@ std::unique_ptr<Pass> createAMDAIEObjFifoBufferizationPass();
 std::unique_ptr<Pass> createAMDAIEPackAndTransposePass(
     AMDAIEPackAndTransposeOptions options = {});
 
-/// Create pass to lower copy/pack/unpack ops to AMDAIE DMA ops operating on
-/// logical objectFifos.
-std::unique_ptr<Pass> createAMDAIEConvertToDmaPass(
-    AMDAIEConvertToDmaOptions options = {});
-
 /// Create a pass to pad MatmulOp.
 std::unique_ptr<Pass> createAMDAIEPadPass(AMDAIEPadOptions options = {});
 
 /// Create a pass to peel the first iteration out of the scf.for loop.
 std::unique_ptr<Pass> createAMDAIEPeelForLoopPass(
     AMDAIEPeelForLoopOptions options = {});
+
+/// Create pass to propagate pack/unpack ops using upstream patterns.
+std::unique_ptr<Pass> createAMDAIEPropagateDataLayoutPass();
 
 /// Create a pass to remove memory space annotation from all types.
 std::unique_ptr<Pass> createAMDAIERemoveMemorySpacePass();
@@ -308,11 +317,11 @@ std::unique_ptr<Pass> createAMDAIESinkIntoCorePass();
 /// Create a pass to split control packet data into smaller chunks.
 std::unique_ptr<Pass> createAMDAIESplitControlPacketDataPass();
 
-/// Create a pass to split logicalobjectfifos for shimTile/memTile distribution.
-std::unique_ptr<Pass> createAMDAIESplitLogicalObjFifosPass();
-
 /// Create a pass to split logicalobjectfifos for connection reuse.
 std::unique_ptr<Pass> createAMDAIESplitLogicalObjFifosForConnectionReusePass();
+
+/// Create a pass to split logicalobjectfifos for shimTile/memTile distribution.
+std::unique_ptr<Pass> createAMDAIESplitLogicalObjFifosPass();
 
 /// Create a pass to bufferize temporary alloc ops.
 std::unique_ptr<Pass> createAMDAIETemporaryAllocBufferizationPass();
@@ -324,15 +333,8 @@ std::unique_ptr<Pass> createAMDAIETilePass(AMDAIETileOptions options = {});
 std::unique_ptr<Pass> createAMDAIETileAndFusePass(
     AMDAIETileAndFuseOptions options = {});
 
-/// Create pass to add the llvm.noalias attribute to function arguments
-/// where it is safe to do so.
-std::unique_ptr<Pass> createAMDAIEAddNoAliasFunctionArgumentsPass();
-
-/// Create pass to propagate pack/unpack ops using upstream patterns.
-std::unique_ptr<Pass> createAMDAIEPropagateDataLayoutPass();
-
-/// Create pass to reset the alignment of LLVM load operations.
-std::unique_ptr<Pass> createAMDAIELoadStoreAlignmentResetPass();
+/// Create a pass to vectorize operations.
+std::unique_ptr<Pass> createAMDAIEVectorizationPass();
 
 void registerAMDAIEPasses();
 

@@ -1185,6 +1185,8 @@ void addLowerToLLVMPasses(OpPassManager &pm) {
   ConvertFuncToLLVMPassOptions opts;
   opts.useBarePtrCallConv = true;
   pm.addPass(createConvertFuncToLLVMPass(opts));
+  pm.addPass(
+      mlir::iree_compiler::AMDAIE::createAMDAIEAddNoInlineAnnotationPass());
   pm.addPass(createArithToLLVMConversionPass());
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
