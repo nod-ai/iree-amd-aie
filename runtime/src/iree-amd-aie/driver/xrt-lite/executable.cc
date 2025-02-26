@@ -138,16 +138,106 @@ iree_amd_aie_hal_xrt_lite_native_executable_flatbuffer_verify(
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT, "no pdi present");
   }
 
-  iree_amd_aie_hal_xrt_lite_AsmInstDef_vec_t asm_instr =
-      iree_amd_aie_hal_xrt_lite_ExecutableDef_asm_instrs_get(executable_def);
-  size_t number_asm_instr =
-      iree_amd_aie_hal_xrt_lite_AsmInstDef_vec_len(asm_instr);
-  if (number_asm_instr != entry_point_count) {
+  iree_amd_aie_hal_xrt_lite_UI32Array2dDef_vec_t asm_instr_runlist_vec =
+      iree_amd_aie_hal_xrt_lite_ExecutableDef_asm_instr_runlists_get(
+          executable_def);
+  size_t number_asm_instr_runlist =
+      iree_amd_aie_hal_xrt_lite_UI32Array2dDef_vec_len(asm_instr_runlist_vec);
+  if (number_asm_instr_runlist != entry_point_count) {
     IREE_TRACE_ZONE_END(z0);
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "number of entry points (%zu) and number of asm "
                             "instructions (%zu) mismatched",
-                            entry_point_count, number_asm_instr);
+                            entry_point_count, number_asm_instr_runlist);
+  }
+
+  iree_amd_aie_hal_xrt_lite_UI32Array2dDef_vec_t reconf_data_runlist_vec =
+      iree_amd_aie_hal_xrt_lite_ExecutableDef_reconf_data_runlists_get(
+          executable_def);
+  size_t number_reconf_data_runlist =
+      iree_amd_aie_hal_xrt_lite_UI32Array2dDef_vec_len(reconf_data_runlist_vec);
+  if (entry_point_count < number_reconf_data_runlist) {
+    IREE_TRACE_ZONE_END(z0);
+    return iree_make_status(
+        IREE_STATUS_INVALID_ARGUMENT,
+        "number of entry points (%zu) should be greater than or equal to the "
+        "number of reconfiguration data runlists (%zu)",
+        entry_point_count, number_reconf_data_runlist);
+  }
+
+  flatbuffers_uint32_vec_t asm_instr_runlist_indices_vec =
+      iree_amd_aie_hal_xrt_lite_ExecutableDef_asm_instr_runlist_indices_get(
+          executable_def);
+  flatbuffers_int32_vec_t reconf_data_runlist_indices_vec =
+      iree_amd_aie_hal_xrt_lite_ExecutableDef_reconf_data_runlist_indices_get(
+          executable_def);
+  iree_amd_aie_hal_xrt_lite_UI32Array2dDef_vec_t asm_instr_runlists_vec =
+      iree_amd_aie_hal_xrt_lite_ExecutableDef_asm_instr_runlists_get(
+          executable_def);
+  iree_amd_aie_hal_xrt_lite_UI32Array2dDef_vec_t reconf_data_runlists_vec =
+      iree_amd_aie_hal_xrt_lite_ExecutableDef_reconf_data_runlists_get(
+          executable_def);
+  for (size_t i = 0; i < entry_point_count; ++i) {
+    int32_t reconf_data_runlist_index =
+        flatbuffers_int32_vec_at(reconf_data_runlist_indices_vec, i);
+    if (reconf_data_runlist_index >= 0) {
+      // Get ther number of reconfiguration data for the current entry point.
+      iree_amd_aie_hal_xrt_lite_UI32Array2dDef_table_t reconf_data_runlist_def =
+          iree_amd_aie_hal_xrt_lite_UI32Array2dDef_vec_at(
+              reconf_data_runlists_vec, reconf_data_runlist_index);
+      iree_amd_aie_hal_xrt_lite_UI32Array1dDef_vec_t reconf_data_vec =
+          iree_amd_aie_hal_xrt_lite_UI32Array2dDef_arrays_get(
+              reconf_data_runlist_def);
+      size_t length_reconf_data_runlist =
+          iree_amd_aie_hal_xrt_lite_UI32Array1dDef_vec_len(reconf_data_vec);
+      // Get the number of asm instructions for the current entry point.
+      uint32_t asm_instr_runlist_index =
+          flatbuffers_uint32_vec_at(asm_instr_runlist_indices_vec, i);
+      iree_amd_aie_hal_xrt_lite_UI32Array2dDef_table_t asm_inst_runlist_def =
+          iree_amd_aie_hal_xrt_lite_UI32Array2dDef_vec_at(
+              asm_instr_runlists_vec, asm_instr_runlist_index);
+      iree_amd_aie_hal_xrt_lite_UI32Array1dDef_vec_t asm_inst_vec =
+          iree_amd_aie_hal_xrt_lite_UI32Array2dDef_arrays_get(
+              asm_inst_runlist_def);
+      size_t length_asm_inst_runlist =
+          iree_amd_aie_hal_xrt_lite_UI32Array1dDef_vec_len(asm_inst_vec);
+      // Check runlist length.
+      if (length_asm_inst_runlist != (2 * length_reconf_data_runlist + 1)) {
+        IREE_TRACE_ZONE_END(z0);
+        return iree_make_status(
+            IREE_STATUS_INVALID_ARGUMENT,
+            "Invalid `length_asm_inst_runlist` (%zu): expected "
+            "(2 × `length_reconf_data_runlist` (%zu)) + 1. "
+            "The first set of asm instructions corresponds to the initial PDI "
+            "execution, and each reconfiguration requires two additional sets "
+            "of ASM instructions.",
+            length_asm_inst_runlist, length_reconf_data_runlist);
+      }
+    }
+  }
+
+  IREE_TRACE_ZONE_END(z0);
+  return iree_ok_status();
+}
+
+/// Helper function to parse the 2d array of uint32_t from the flatbuffer.
+static iree_status_t iree_amd_aie_hal_xrt_lite_executable_parse_UI32Array2dDef(
+    iree_amd_aie_hal_xrt_lite_UI32Array2dDef_table_t& array2d_def,
+    std::vector<std::vector<uint32_t>>& array2d) {
+  IREE_TRACE_ZONE_BEGIN(z0);
+
+  iree_amd_aie_hal_xrt_lite_UI32Array1dDef_vec_t array1d_vec =
+      iree_amd_aie_hal_xrt_lite_UI32Array2dDef_arrays_get(array2d_def);
+  size_t length_array2d =
+      iree_amd_aie_hal_xrt_lite_UI32Array1dDef_vec_len(array1d_vec);
+  for (size_t i = 0; i < length_array2d; ++i) {
+    iree_amd_aie_hal_xrt_lite_UI32Array1dDef_table_t array1d_def =
+        iree_amd_aie_hal_xrt_lite_UI32Array1dDef_vec_at(array1d_vec, i);
+    flatbuffers_uint32_vec_t data_vec =
+        iree_amd_aie_hal_xrt_lite_UI32Array1dDef_data_get(array1d_def);
+    size_t length_array1d = flatbuffers_uint32_vec_len(data_vec);
+    std::vector<uint32_t> data(data_vec, data_vec + length_array1d);
+    array2d.push_back(data);
   }
 
   IREE_TRACE_ZONE_END(z0);
@@ -185,15 +275,22 @@ iree_status_t iree_hal_xrt_lite_native_executable_create(
           executable_params->executable_data.data);
   flatbuffers_uint32_vec_t pdi_indices_vec =
       iree_amd_aie_hal_xrt_lite_ExecutableDef_pdi_indices_get(executable_def);
-  flatbuffers_uint32_vec_t asm_instr_indices_vec =
-      iree_amd_aie_hal_xrt_lite_ExecutableDef_asm_instr_indices_get(
+  flatbuffers_uint32_vec_t asm_instr_runlist_indices_vec =
+      iree_amd_aie_hal_xrt_lite_ExecutableDef_asm_instr_runlist_indices_get(
+          executable_def);
+  flatbuffers_int32_vec_t reconf_data_runlist_indices_vec =
+      iree_amd_aie_hal_xrt_lite_ExecutableDef_reconf_data_runlist_indices_get(
           executable_def);
   flatbuffers_string_vec_t entry_points_vec =
       iree_amd_aie_hal_xrt_lite_ExecutableDef_entry_points_get(executable_def);
   iree_amd_aie_hal_xrt_lite_PdiDef_vec_t pdis_vec =
       iree_amd_aie_hal_xrt_lite_ExecutableDef_pdis_get(executable_def);
-  iree_amd_aie_hal_xrt_lite_AsmInstDef_vec_t asm_instrs_vec =
-      iree_amd_aie_hal_xrt_lite_ExecutableDef_asm_instrs_get(executable_def);
+  iree_amd_aie_hal_xrt_lite_UI32Array2dDef_vec_t asm_instr_runlists_vec =
+      iree_amd_aie_hal_xrt_lite_ExecutableDef_asm_instr_runlists_get(
+          executable_def);
+  iree_amd_aie_hal_xrt_lite_UI32Array2dDef_vec_t reconf_data_runlists_vec =
+      iree_amd_aie_hal_xrt_lite_ExecutableDef_reconf_data_runlists_get(
+          executable_def);
   iree_host_size_t entry_point_count =
       flatbuffers_string_vec_len(entry_points_vec);
 
@@ -239,16 +336,32 @@ iree_status_t iree_hal_xrt_lite_native_executable_create(
     std::vector<uint8_t> pdiVector(pdi_fb,
                                    pdi_fb + flatbuffers_string_len(pdi_fb));
     params->pdi = pdiVector;
-    uint32_t asm_instr_index =
-        flatbuffers_uint32_vec_at(asm_instr_indices_vec, entry_ordinal);
-    iree_amd_aie_hal_xrt_lite_AsmInstDef_table_t asminst_def =
-        iree_amd_aie_hal_xrt_lite_AsmInstDef_vec_at(asm_instrs_vec,
-                                                    asm_instr_index);
-    flatbuffers_uint32_vec_t asm_inst =
-        iree_amd_aie_hal_xrt_lite_AsmInstDef_asm_inst_get(asminst_def);
-    std::vector<uint32_t> asmVector(
-        asm_inst, asm_inst + flatbuffers_uint32_vec_len(asm_inst));
-    params->asm_inst = asmVector;
+
+    // Get the asm instructions runlist for the current entry point, and store
+    // it in the kernel parameters as a 2D std::vector.
+    uint32_t asm_instr_runlist_index =
+        flatbuffers_uint32_vec_at(asm_instr_runlist_indices_vec, entry_ordinal);
+    iree_amd_aie_hal_xrt_lite_UI32Array2dDef_table_t asm_inst_runlist_def =
+        iree_amd_aie_hal_xrt_lite_UI32Array2dDef_vec_at(
+            asm_instr_runlists_vec, asm_instr_runlist_index);
+    IREE_RETURN_AND_END_ZONE_IF_ERROR(
+        z0, iree_amd_aie_hal_xrt_lite_executable_parse_UI32Array2dDef(
+                asm_inst_runlist_def, params->asm_inst_runlist));
+
+    // Get the reconfiguratoin data runlist for the current entry point, and
+    // store it in the kernel parameters as a 2D std::vector.
+    int32_t reconf_data_runlist_index = flatbuffers_int32_vec_at(
+        reconf_data_runlist_indices_vec, entry_ordinal);
+    // A negative index indicates that no reconfiguration data is required
+    // for this entry point, so we skip processing in such cases.
+    if (reconf_data_runlist_index >= 0) {
+      iree_amd_aie_hal_xrt_lite_UI32Array2dDef_table_t reconf_data_runlist_def =
+          iree_amd_aie_hal_xrt_lite_UI32Array2dDef_vec_at(
+              reconf_data_runlists_vec, reconf_data_runlist_index);
+      IREE_RETURN_AND_END_ZONE_IF_ERROR(
+          z0, iree_amd_aie_hal_xrt_lite_executable_parse_UI32Array2dDef(
+                  reconf_data_runlist_def, params->reconf_data_runlist));
+    }
 
     IREE_TRACE({
       memcpy(string_table_buffer, params->kernel_name.data(),
