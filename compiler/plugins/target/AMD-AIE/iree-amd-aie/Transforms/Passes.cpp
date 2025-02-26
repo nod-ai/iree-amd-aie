@@ -914,12 +914,14 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
   passManager.addPass(xilinx::air::createAIRIsolateAsyncDmaLoopNests());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
-  passManager.addNestedPass<func::FuncOp>(xilinx::air::createAIRFuseAllocDealloc());
-  passManager.addNestedPass<func::FuncOp>(xilinx::air::createAIRShrinkMemrefSizesByAccess());
+  passManager.addNestedPass<func::FuncOp>(
+      xilinx::air::createAIRFuseAllocDealloc());
+  passManager.addNestedPass<func::FuncOp>(
+      xilinx::air::createAIRShrinkMemrefSizesByAccess());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
 
-  if (useTilePipeline != TilePassPipeline::PackPeel4LevelTilingPipeline){
+  if (useTilePipeline != TilePassPipeline::PackPeel4LevelTilingPipeline) {
     passManager.addPass(
         xilinx::air::createAIRLabelScfForLoopForPingPongPattern());
     {
@@ -934,7 +936,8 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
   {
     xilinx::air::AIROptimizeMemtileDMABDsOptions options;
     options.clDevice = stringifyEnum(device);
-    passManager.addNestedPass<func::FuncOp>(xilinx::air::createAIROptimizeMemtileDMABDs(options));
+    passManager.addNestedPass<func::FuncOp>(
+        xilinx::air::createAIROptimizeMemtileDMABDs(options));
   }
 
   passManager.addPass(createCanonicalizerPass());
@@ -990,7 +993,7 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
     // within the hardware limit.
     if (useTilePipeline == TilePassPipeline::PackPeelPipeline ||
         useTilePipeline == TilePassPipeline::PackPeel4LevelTilingPipeline) {
-          const static llvm::SmallVector<unsigned> tile_sizes = {2, 2};
+      const static llvm::SmallVector<unsigned> tile_sizes = {2, 2};
       options.clTileSizes = tile_sizes;
     }
     passManager.addNestedPass<func::FuncOp>(
