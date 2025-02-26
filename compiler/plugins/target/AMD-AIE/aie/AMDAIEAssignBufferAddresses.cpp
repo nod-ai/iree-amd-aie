@@ -19,9 +19,9 @@ using namespace xilinx::AIE;
 namespace mlir::iree_compiler::AMDAIE {
 
 static LogicalResult basicAllocation(
-    const DenseMap<TileOp, SetVector<BufferOp>> &tileToBuffers,
+    DenseMap<TileOp, SetVector<BufferOp>> &tileToBuffers,
     AMDAIEDeviceModel deviceModel) {
-  for (auto [tile, buffers] : tileToBuffers) {
+  for (auto &&[tile, buffers] : tileToBuffers) {
     // Leave room at the bottom of the address range for stack
     int64_t address = 0;
     if (CoreOp core = getCoreOp(tile)) address += core.getStackSize();
