@@ -159,7 +159,7 @@ iree_cc_library(
   NAME
     AIEPasses
   SRCS
-    AMDAIEAssignBufferAddressesBasic.cpp
+    AMDAIEAssignBufferAddresses.cpp
     AMDAIEAssignBufferDescriptorIDs.cpp
     AMDAIECoreToStandard.cpp
     AMDAIECreatePathFindFlows.cpp
