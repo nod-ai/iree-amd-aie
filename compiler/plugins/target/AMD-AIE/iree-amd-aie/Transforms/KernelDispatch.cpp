@@ -365,12 +365,15 @@ static SmallVector<int64_t> setOuterPermB(bool isMatmulTransposeB,
 
 static LogicalResult setRootConfigForPackPeel4LevelTilingPipeline(
     mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
-    AMDAIEDevice targetDevice, uint32_t numRows, uint32_t numCols) {
+    LowerToAIEPassPipeline useLowerToAIEPipeline, AMDAIEDevice targetDevice,
+    uint32_t numRows, uint32_t numCols) {
   // Scale the L1 K with a factor of 2 compared with the outer dimensions M and
   // N to increase the L1 memory usage.
+  bool isObjectFifo =
+      useLowerToAIEPipeline == LowerToAIEPassPipeline::ObjectFifo;
   auto maybePackPeelTiling =
-      ParameterSetting::create(linalgOp, /*isObjectFifo=*/true, targetDevice,
-                               numRows, numCols, /*kPackScaleL1=*/2);
+      ParameterSetting::create(linalgOp, isObjectFifo, targetDevice, numRows,
+                               numCols, /*kPackScaleL1=*/2);
   if (failed(maybePackPeelTiling)) return failure();
   auto packPeelTiling = maybePackPeelTiling.value();
 
@@ -824,7 +827,8 @@ static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
   }
   if (passPipeline == TilePassPipeline::PackPeel4LevelTilingPipeline) {
     return setRootConfigForPackPeel4LevelTilingPipeline(
-        entryPointFn, genericOp, targetDevice, numRows, numCols);
+        entryPointFn, genericOp, useLowerToAIEPipeline, targetDevice, numRows,
+        numCols);
   }
   return genericOp.emitError("Unhandled pass pipeline in setRootConfig.");
 }
@@ -851,7 +855,8 @@ static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
   }
   if (passPipeline == TilePassPipeline::PackPeel4LevelTilingPipeline) {
     return setRootConfigForPackPeel4LevelTilingPipeline(
-        entryPointFn, linalgOp, targetDevice, numRows, numCols);
+        entryPointFn, linalgOp, useLowerToAIEPipeline, targetDevice, numRows,
+        numCols);
   }
   return linalgOp.emitError("Unhandled pass pipeline in setRootConfig.");
 }
