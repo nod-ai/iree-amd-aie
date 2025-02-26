@@ -1232,10 +1232,12 @@ LogicalResult checkStackSize(const std::string &outputFile, bool verbose,
     }
     auto stackSize = coreOp.getStackSize();
     if (stackSize < iter->second) {
-      llvm::errs() << "An upper bound of the stack size, inferred from "
-                      "dumper stack size file, is"
-                   << iter->second << " bytes. The assigned stack size is "
-                   << stackSize << " bytes, which is insufficient. ";
+      llvm::errs() << "An upper bound for the stack size of the core (col="
+                   << col << ", row=" << row
+                   << "), inferred from the object file, is " << iter->second
+                   << " bytes. The assigned memory for the stack is "
+                   << stackSize << " bytes, which is insufficient ("
+                   << iter->second << " > " << stackSize << ").\n";
       return failure();
     }
   }
