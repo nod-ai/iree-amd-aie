@@ -782,7 +782,7 @@ void addMLIRAIELoweringPasses(OpPassManager &pm) {
     OpPassManager &devicePM = pm.nest<xilinx::AIE::DeviceOp>();
     devicePM.addPass(createCanonicalizerPass());
     devicePM.addPass(createAMDAIEAssignBufferDescriptorIDsPass());
-    devicePM.addPass(createAMDAIEAssignBufferAddressesBasicPass());
+    devicePM.addPass(createAMDAIEAssignBufferAddressesPass());
     {
       // Route control and data flows separately, prioritizing control flows
       // first to ensure their deterministic routing results.

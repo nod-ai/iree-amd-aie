@@ -10,6 +10,22 @@
 include "mlir/Pass/PassBase.td"
 include "AIEOps.td"
 
+def AMDAIEAssignBufferAddresses :
+    Pass<"amdaie-assign-buffer-addresses", "xilinx::AIE::DeviceOp"> {
+  let summary = "Pass to assign buffers to memory addresses.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAssignBufferAddressesPass()";
+  let options = [
+    Option<"allocScheme", "alloc-scheme", "AllocScheme", /*default=*/"AllocScheme::Sequential",
+      "Choose which scheme to apply for buffer allocation",
+      [{::llvm::cl::values(
+        clEnumValN(AllocScheme::Sequential, "sequential",
+                   "Basic sequential allocation."),
+        clEnumValN(AllocScheme::BankAware, "bank-aware",
+                   "Bank aware scheme to round-robin each alloc over available banks.")
+      )}]>
+  ];
+}
+
 def AMDAIERouteFlowsWithPathfinder :
     Pass<"amdaie-create-pathfinder-flows", "xilinx::AIE::DeviceOp"> {
   let summary = "Using Dijkstra's pathfinding algorithm to route"
