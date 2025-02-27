@@ -27,8 +27,8 @@ TEST(XCLBinGenTest, makePeanoOptArgs) {
   // `additionalFlags`.
   for (uint32_t i = 0; i < 10; ++i) {
     std::string optFlag = "-O" + std::to_string(i);
-    std::string defaultOptFlag = "-passes=default<O" + std::to_string(i) +
-                                 ">,gvn,instcombine,early-cse,dce";
+    std::string defaultOptFlag =
+        "-passes=default<O" + std::to_string(i) + ">,early-cse,dce";
     if (i == 4) {
       EXPECT_EQ(std::count(optArgs.begin(), optArgs.end(), optFlag), 0);
       EXPECT_EQ(std::count(optArgs.begin(), optArgs.end(), defaultOptFlag), 1);
