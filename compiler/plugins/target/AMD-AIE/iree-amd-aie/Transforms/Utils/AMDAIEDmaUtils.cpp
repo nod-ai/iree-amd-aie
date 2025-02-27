@@ -136,6 +136,18 @@ std::optional<int64_t> getGlobalOffsetDifference(
 
   return globalOffsetDifference;
 }
+
+int64_t findFactorResultingInSmallerSize(int64_t size, int64_t maxSize) {
+  assert(size >= 0 && "size must be non-negative");
+  assert(maxSize >= 0 && "maxSize must be non-negative");
+  if (size == 0 || maxSize == 0 || size == 1 || maxSize == 1) return 1;
+  if (size <= maxSize) return 1;
+  for (int64_t i = 2; i <= size / 2; i++) {
+    if (size % i == 0 && size / i <= maxSize) return i;
+  }
+  return size;
+}
+
 }  // namespace detail
 
 namespace {
@@ -290,6 +302,73 @@ LogicalResult combineAccessPatterns(
   if (exceedsNbDims(newOffsets.size())) return failure();
 
   return success();
+}
+
+/// Expand dimensions with a size that exceeds a maximum size.
+///
+/// Example:
+///
+/// `offsets: [0], sizes: [8], strides: [1], maxSizes: [5]`
+///
+/// This describes accessing 8 contiguous elements. If the maximum size is 5,
+/// this will be transformed into:
+///
+/// `offsets: [0, 0], sizes: [2, 4], strides: [4, 1]`
+///
+/// Here, all the sizes are smaller or equal to the max size. This helps with
+/// enabling more DMA composition transformations.
+LogicalResult expandLargeDimIntoLinearDims(
+    MLIRContext *ctx, const SmallVector<OpFoldResult> &offsets,
+    const SmallVector<OpFoldResult> &sizes,
+    const SmallVector<OpFoldResult> &strides,
+    SmallVector<OpFoldResult> &newOffsets, SmallVector<OpFoldResult> &newSizes,
+    SmallVector<OpFoldResult> &newStrides, ArrayRef<int64_t> maxSizes) {
+  assert(offsets.size() == sizes.size() && offsets.size() == strides.size() &&
+         "expected same number of offsets, sizes and strides");
+  assert(maxSizes.size() >= sizes.size() &&
+         "expected `maxSizes` to have at least as many elements as `sizes`");
+  bool expandableLinearDimsFound = false;
+  if (offsets.size() == 0) return success(expandableLinearDimsFound);
+
+  std::optional<SmallVector<int64_t>> staticSizes = getConstantIntValues(sizes);
+  std::optional<SmallVector<int64_t>> staticStrides =
+      getConstantIntValues(strides);
+  if (!staticSizes || !staticStrides) return failure();
+  SmallVector<int64_t> staticSizeVals = staticSizes.value();
+  SmallVector<int64_t> staticStrideVals = staticStrides.value();
+
+  for (size_t i = 0; i < offsets.size(); i++) {
+    int64_t size = staticSizeVals[offsets.size() - i - 1];
+    int64_t stride = staticStrideVals[strides.size() - i - 1];
+    int64_t maxSize = maxSizes[maxSizes.size() - i - 1];
+    OpFoldResult offset = offsets[offsets.size() - i - 1];
+    do {
+      int64_t factor = detail::findFactorResultingInSmallerSize(size, maxSize);
+      if (factor == 1 || factor == size) {
+        // No factor found or the factor is the size itself, so we can't expand
+        // this dimension.
+        newOffsets.push_back(offset);
+        newStrides.push_back(getAsIndexOpFoldResult(ctx, stride));
+        newSizes.push_back(getAsIndexOpFoldResult(ctx, size));
+        break;
+      }
+      int64_t newSize = size / factor;
+      newOffsets.push_back(offset);
+      newStrides.push_back(getAsIndexOpFoldResult(ctx, stride));
+      newSizes.push_back(getAsIndexOpFoldResult(ctx, newSize));
+      // Update the offset, stride and size for the next iteration.
+      offset = getAsIndexOpFoldResult(ctx, 0);
+      stride *= newSize;
+      size = factor;
+      expandableLinearDimsFound = true;
+    } while (size > 1);
+  }
+
+  // Reverse as the new offsets/sizes/strides were created in reverse order.
+  std::reverse(newOffsets.begin(), newOffsets.end());
+  std::reverse(newSizes.begin(), newSizes.end());
+  std::reverse(newStrides.begin(), newStrides.end());
+  return success(expandableLinearDimsFound);
 }
 
 /// Fold subsequent dimensions within a strided access pattern that describe a
@@ -665,20 +744,7 @@ SmallVector<int64_t> CircularDmaDimConfig::getMaxSizes(
   size_t nbDims = maybeNbDims.has_value() ? maybeNbDims.value() : maxNbDims;
   uint32_t maxIntraSize = deviceModel.getDmaBdProp<uint16_t>(
       tileType, 0, AMDAIE::AMDAIEDmaBdProp::WrapMax);
-  SmallVector<int64_t> maxSizes(nbDims, 0);
-  int64_t nbIntraDimsToBeFilled =
-      std::min((int64_t)nbIntraDims, (int64_t)maxSizes.size());
-  int64_t intraStart = maxSizes.size() - nbIntraDimsToBeFilled;
-  std::fill_n(maxSizes.begin() + intraStart, nbIntraDimsToBeFilled,
-              maxIntraSize);
-  assert(intraStart >= 0 &&
-         "The start index for intra dimensions should be greater than or equal "
-         "to zero");
-  if (intraStart < maxSizes.size())
-    maxSizes[intraStart] = std::numeric_limits<int64_t>::max();
-  // All other dimension can have any size for circular DMAs.
-  std::fill_n(maxSizes.begin(), intraStart,
-              std::numeric_limits<int64_t>::max());
+  SmallVector<int64_t> maxSizes(nbDims, maxIntraSize);
   return maxSizes;
 }
 
