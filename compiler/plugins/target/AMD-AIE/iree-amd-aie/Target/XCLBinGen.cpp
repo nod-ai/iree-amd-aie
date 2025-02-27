@@ -248,39 +248,13 @@ FailureOr<std::vector<std::string>> makePeanoOptArgs(
     }
   }
 
-  // Some background to this opt pass finetuning/hack.
-  // currently performance (function outlining, phoenix, matmul) is much better
-  // with -O3 than -O2. But the memory used with -O3 is much higher than with
-  // -O2. This is because with -O3, the outlined function is inlined at most
-  // call sites and in the the process of inlining for some reason the integer
-  // arithmetic is rearranged, and in particular there are fewer common
-  // sub-expressions. For example in the -O2 case, the outlined function after
-  // optimization contains
-  //
-  //    ```
-  //    ...
-  //    %45 = trunc i64 %38 to i20
-  //    ...
-  //    %49 = trunc i64 %38 to i20
-  //    ...
-  //    ```
-  //
-  // whereas the inlined (with -O3) does not. So inlining has found a roundabout
-  // way to improve the code which has nothing to do with any actual traditional
-  // advantages of inlining (fewer function calls etc).
-  //
-  // Can we get this improvement without the memory overhead of -O3? I have
-  // found that running the -O2 pass pipeline, followed by a basic llvm cse pass
-  // gets us almost all the way there.
-  //
-  // early-cse information:
-  //    https://llvm.org/doxygen/structllvm_1_1EarlyCSEPass.html#details
-  //
-  // I have experimented with adding gvn too (gvn is a more powerful version of
-  // cse), but it results in vector loads being merged, which results in spills
-  // from registers, which results in performance degredation.
-  //
-  for (auto &flag : args) {
+  // Adding cse after the default O2 pipeline eliminates repeated
+  // ```
+  // %49 = trunc i64 %38 to i20
+  // ```
+  // for certain matmuls (outlining, phoenix), and results in dramatic
+  // improvements in performance.
+  for (std::string &flag : args) {
     if (isOptLevelFlag(flag)) {
       auto optLevel = flag.substr(1);
       auto passes = "default<" + optLevel + ">,early-cse,dce";

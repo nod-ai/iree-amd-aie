@@ -60,7 +60,7 @@ func.func @fuse_without_slice(%arg0: tensor<8xi8>) -> tensor<8xi8> {
 // CHECK: %[[NEWFILL:.*]] = linalg.fill
 // CHECK-SAME: outs(%[[ARG2]] : tensor<8xi8>) -> tensor<8xi8>
 // CHECK: linalg.generic
-// check the the parallel_insert_slice still happens on arg2, not the filled
+// check the parallel_insert_slice still happens on arg2, not the filled
 // tensor. This is because it must match the shared_outs of the scf.forall:
 // CHECK: tensor.parallel_insert_slice
 // CHECK-SAME: into %[[ARG2]]
