@@ -247,6 +247,15 @@ FailureOr<std::vector<std::string>> makePeanoOptArgs(
       *iter = flag;
     }
   }
+
+  // TODO(newling) describe the wild geese chased.
+  for (auto &flag : args) {
+    if (isOptLevelFlag(flag)) {
+      auto optLevel = flag.substr(1);
+      auto passes = "default<" + optLevel + ">,gvn,instcombine,early-cse,dce";
+      flag = "-passes=" + passes;
+    }
+  }
   return args;
 }
 }  // namespace detail
@@ -1185,6 +1194,8 @@ void addLowerToLLVMPasses(OpPassManager &pm) {
   ConvertFuncToLLVMPassOptions opts;
   opts.useBarePtrCallConv = true;
   pm.addPass(createConvertFuncToLLVMPass(opts));
+  pm.addPass(
+      mlir::iree_compiler::AMDAIE::createAMDAIEAddNoInlineAnnotationPass());
   pm.addPass(createArithToLLVMConversionPass());
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
