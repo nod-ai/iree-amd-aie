@@ -7,6 +7,7 @@
 #include "XCLBinGen.h"
 
 #include <charconv>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -510,10 +511,13 @@ LogicalResult runTool(
   if (!hasEnding(program, ".exe")) program = program + ".exe";
 #endif  // _WIN32
   if (verbose) {
-    llvm::outs() << "\nRun: ";
-    if (env)
+    llvm::outs() << '\n';
+    if (env) {
+      llvm::outs() << "Environment variables:";
       for (auto &s : *env) llvm::outs() << " " << s;
-    llvm::outs() << " " << program;
+      llvm::outs() << "\n";
+    }
+    llvm::outs() << "Running: \n" << program;
     for (auto &s : args) llvm::outs() << " " << s;
     llvm::outs() << "\n";
   }
@@ -535,7 +539,6 @@ LogicalResult runTool(
       std::ofstream ofs(lfn);
       ofs.close();
     }
-
   } else {
     std::string prefix{"tmpRunTool"};
     std::string suffix{"Logging"};
@@ -564,12 +567,14 @@ LogicalResult runTool(
 
   bool executionFailed;
   std::string errMsg;
-  sys::ProcessStatistics stats;
-  std::optional<sys::ProcessStatistics> optStats(stats);
-  int result = sys::ExecuteAndWait(program, pArgs, envSmallVec,
-                                   /* redirects */ redirects,
-                                   /*SecondsToWait*/ 0, /*MemoryLimit*/ 0,
-                                   &errMsg, &executionFailed, &optStats);
+
+  sys::ProcessStatistics stats_;
+  std::optional<sys::ProcessStatistics> optStats = std::move(stats_);
+
+  int exitCode = sys::ExecuteAndWait(program, pArgs, envSmallVec,
+                                     /* redirects */ redirects,
+                                     /*SecondsToWait*/ 0, /*MemoryLimit*/ 0,
+                                     &errMsg, &executionFailed, &optStats);
 
 #ifndef _WIN32
   auto maybeOutputFromFile = [&]() -> std::optional<std::string> {
@@ -590,19 +595,23 @@ LogicalResult runTool(
 #endif
 
   if (verbose) {
-    float totalTime = std::chrono::duration_cast<std::chrono::duration<float>>(
-                          stats.TotalTime)
-                          .count();
-    std::string exitStatusStr = result == 0 ? "Succeeded" : "Failed";
-    llvm::outs() << "\n"
-                 << exitStatusStr << " in totalTime " << totalTime
-                 << " [s]. Exit code=" << result << "\n";
+    std::chrono::microseconds microSecondsTotal = optStats->TotalTime;
+    std::chrono::microseconds microSecondsUser = optStats->UserTime;
+    std::string exitStatusStr = exitCode == 0 ? "Succeeded" : "Failed";
+    llvm::outs() << exitStatusStr
+                 << ". Total time = " << microSecondsTotal.count() / 1e6
+                 << " [s] and user time = " << microSecondsUser.count() / 1e6
+                 << " [s].\n";
+    if (exitCode != 0) llvm::outs() << "Exit code : " << exitCode << "\n";
 #ifndef _WIN32
-    llvm::outs() << outputFromFile << "\n";
+    if (!outputFromFile.empty()) {
+      llvm::outs() << "The logging in file " << logPathRef.str() << " is:\n";
+      llvm::outs() << outputFromFile << "\n";
+    }
 #endif
   }
 
-  if (result) {
+  if (exitCode) {
     llvm::errs() << "Failed to run tool: " << program << ". Error: '" << errMsg
                  << "'\n";
 #ifndef _WIN32
@@ -719,7 +728,20 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
     return failure();
   }
 
-  for (AIE::TileOp tileOp : tileOps) {
+  uint32_t nTileOps = std::distance(tileOps.begin(), tileOps.end());
+
+  for (auto iter : llvm::enumerate(tileOps)) {
+    // Control logging verbosity: lower verbosing for all but the first core.
+    bool verboseForThisIteration = verbose && (iter.index() == 0);
+    if (verbose) {
+      llvm::outs() << "Generating elf for core " << iter.index() << " / "
+                   << nTileOps;
+      std::string tail =
+          verboseForThisIteration ? "" : ", won't print full log";
+      llvm::outs() << tail << ".\n";
+    }
+
+    AIE::TileOp tileOp = iter.value();
     int col = tileOp.getCol();
     int row = tileOp.getRow();
     auto coreOp = AIE::getCoreOp(tileOp);
@@ -755,7 +777,7 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
               /*extraArgs=*/std::vector<std::string>{},
               /*workDir=*/tempDir,
               /*vitisDir=*/*maybeVitisDir,
-              /*npuVersion*/ npuVersion, verbose);
+              /*npuVersion*/ npuVersion, verboseForThisIteration);
         } else {
           std::string targetLower = StringRef(targetArch).lower();
           std::vector<std::string> extraArgs{"--target=" + targetLower +
@@ -768,7 +790,7 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
               /*extraArgs=*/extraArgs,
               /*workDir=*/tempDir,
               /*vitisDir=*/peanoDir,
-              /*npuVersion*/ npuVersion, verbose);
+              /*npuVersion*/ npuVersion, verboseForThisIteration);
         }
         if (failed(mmObjectFilePath)) return failure();
       } else {
@@ -789,7 +811,7 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
             /*extraArgs*/ std::vector<std::string>{},
             /*workDir=*/tempDir,
             /*vitisDir=*/*maybeVitisDir,
-            /*npuVersion*/ npuVersion, verbose);
+            /*npuVersion*/ npuVersion, verboseForThisIteration);
         if (failed(chessIntrinsicsObjFile)) return failure();
       } else {
         chessIntrinsicsObjFile = cwd / "chess_intrinsic_wrapper.o";
@@ -813,8 +835,8 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
         bcfOutput->keep();
       }
 
-      auto [xChessCCExe, chessArgs] =
-          makeChessArgs(*vitisDir, tempDir, npuVersion, verbose);
+      auto [xChessCCExe, chessArgs] = makeChessArgs(
+          *vitisDir, tempDir, npuVersion, verboseForThisIteration);
       chessArgs.emplace_back(objFile);
       chessArgs.emplace_back(chessIntrinsicsObjFile->string());
       if (ukernel && (ukernel == "mm" || ukernel == "all")) {
@@ -825,7 +847,8 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
       chessArgs.emplace_back("-o");
       chessArgs.emplace_back(elfFile.string());
       std::vector<std::string> env = makeChessEnv(*vitisDir, npuVersion);
-      if (failed(runTool(xChessCCExe, chessArgs, verbose, env))) {
+      if (failed(
+              runTool(xChessCCExe, chessArgs, verboseForThisIteration, env))) {
         return deviceOp.emitOpError() << "failed to generate elf for core: ("
                                       << col << ", " << row << ")";
       }
@@ -868,8 +891,8 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
       if (verbose) flags.emplace_back("-v");
       // we run clang (ie cc) so that libc, libm, crt0/1 paths are injected
       // automatically into the ld.lld invocation
-      if (failed(
-              runTool((peanoDir / "bin" / "clang").string(), flags, verbose))) {
+      if (failed(runTool((peanoDir / "bin" / "clang").string(), flags,
+                         verboseForThisIteration))) {
         return failure();
       }
     }
