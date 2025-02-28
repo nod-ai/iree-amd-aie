@@ -185,9 +185,7 @@ void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
 
     rewriter.setInsertionPoint(computeOp);
 
-    int numberOfCalls = 2;
-
-    if (numberOfCalls == 1) {
+    if (callInLoopCount == 1) {
       rewriter.create<func::CallOp>(computeOp.getLoc(), func,
                                     computeOp->getOperands());
     } else {
@@ -197,7 +195,7 @@ void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
         return rewriter.create<arith::ConstantIndexOp>(computeOp.getLoc(), v);
       };
       Value cStart = getConstant(0);
-      Value cEnd = getConstant(numberOfCalls);
+      Value cEnd = getConstant(callInLoopCount);
       Value cStep = getConstant(1);
       scf::ForOp loopOp =
           rewriter.create<scf::ForOp>(computeOp.getLoc(), cStart, cEnd, cStep);

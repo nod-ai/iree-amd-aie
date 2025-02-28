@@ -582,8 +582,8 @@ void buildAMDAIETransformPassPipeline(
     bool enableVectorizationPasses, const std::string &pathToUkernels,
     bool enablePacketFlow, bool enableCoalescingLoops,
     bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
-    bool replaceOutlinedFunctionsWithEmpty, bool insertLoopAroundCoreBlock,
-    bool emitCtrlPkt) {
+    bool replaceOutlinedFunctionsWithEmpty, int outliningCallInLoopCount,
+    bool insertLoopAroundCoreBlock, bool emitCtrlPkt) {
   OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
   {
     FunctionLikeNest funcPassManager(modulePassManager);
@@ -615,8 +615,8 @@ void buildAMDAIETransformPassPipeline(
         modulePassManager, enablePacketFlow, useTilePipeline,
         enableVectorizationPasses, enableCoalescingLoops,
         enableCollapsingUnitDims, enableFunctionOutlining,
-        replaceOutlinedFunctionsWithEmpty, insertLoopAroundCoreBlock, numCols,
-        emitCtrlPkt);
+        replaceOutlinedFunctionsWithEmpty, outliningCallInLoopCount,
+        insertLoopAroundCoreBlock, numCols, emitCtrlPkt);
   } else if (useLowerToAIEPipeline == LowerToAIEPassPipeline::AIR) {
     addMLIRAIRLoweringPasses(modulePassManager, device, useTilePipeline,
                              matmulElementwiseFusion,
@@ -641,8 +641,8 @@ void addAMDAIEObjectFifoLoweringPasses(
     TilePassPipeline useTilePipeline, bool enableVectorizationPasses,
     bool enableCoalescingLoops, bool enableCollapsingUnitDims,
     OutliningStrategy enableFunctionOutlining,
-    bool replaceOutlinedFunctionsWithEmpty, bool insertLoopAroundCoreBlock,
-    uint32_t numCols, bool emitCtrlPkt) {
+    bool replaceOutlinedFunctionsWithEmpty, int outliningCallInLoopCount,
+    bool insertLoopAroundCoreBlock, uint32_t numCols, bool emitCtrlPkt) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
 
@@ -672,6 +672,7 @@ void addAMDAIEObjectFifoLoweringPasses(
   AMDAIELinalgFunctionOutliningOptions options;
   options.outliningStrategy = enableFunctionOutlining;
   options.emptyFunctions = replaceOutlinedFunctionsWithEmpty;
+  options.callInLoopCount = outliningCallInLoopCount;
   passManager.addPass(createAMDAIELinalgFunctionOutliningPass(options));
 
   {
