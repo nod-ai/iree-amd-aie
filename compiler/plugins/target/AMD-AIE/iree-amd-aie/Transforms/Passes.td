@@ -24,6 +24,40 @@ def AMDAIEAcquireReleaseToUseLock :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAcquireReleaseToUseLockPass()";
 }
 
+def AMDAIEAddNoAliasFunctionArguments :
+    Pass<"iree-amdaie-add-no-alias-function-arguments", ""> {
+ let summary = "Add `llvm.noalias` to function arguments when safe.";
+ let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAddNoAliasFunctionArgumentsPass()";
+  let description = [{
+    Where it is safe to do so, give function arguments the `llvm.noalias`
+    attribute. Motivation: peano can generate much faster code if it knows
+    that the arguments to a function do not alias.
+
+    Basic algorithm: for each function, for each call site, for each operand:
+    check if the operand's defining memory allocation (currently `memref.alloc`
+    or `amdaie.buffer`) is the same as any other operand's. If it is the same,
+    then the function signature cannot have the `llvm.noalias` attribute for
+    the corresponding argument.
+  }];
+}
+
+def AMDAIEAddNoInlineAnnotation :
+    Pass<"iree-amdaie-add-no-inline-annotation", ""> {
+ let summary = "Add `no_inline` to llvm.func operations.";
+let description = [{
+  Add the `no_inline` attribute to `llvm.func` functions. Currently this pass
+  adds the attribute to all functions.
+
+  It might seem better to run this pass in the func dialect, but the lowering
+  pass `convert-func-to-llvm` does not convert the `no_inline` attributes
+  (they can be attached to `func.func` and `func.call` ops) to the LLVM
+  dialect. My understanding  is that the `no_inline` attribute in MLIR is used
+  only for interacting with MLIR's inliner, as suggested in PR
+    https://github.com/llvm/llvm-project/pull/119970
+ }];
+ let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAddNoInlineAnnotationPass()";
+}
+
 def AMDAIEAssignChannels :
     Pass<"iree-amdaie-assign-channels", ""> {
   let summary = "Assign channels to `amdaie.connection` ops.";
@@ -603,22 +637,6 @@ def AMDAIEMapForallToCores :
   ];
 }
 
-def AMDAIEAddNoAliasFunctionArguments :
-    Pass<"iree-amdaie-add-no-alias-function-arguments", ""> {
- let summary = "Add `llvm.noalias` to function arguments when safe.";
- let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAddNoAliasFunctionArgumentsPass()";
-  let description = [{
-    Where it is safe to do so, give function arguments the `llvm.noalias`
-    attribute. Motivation: peano can generate much faster code if it knows
-    that the arguments to a function do not alias.
-
-    Basic algorithm: for each function, for each call site, for each operand:
-    check if the operand's defining memory allocation (currently `memref.alloc`
-    or `amdaie.buffer`) is the same as any other operand's. If it is the same,
-    then the function signature cannot have the `llvm.noalias` attribute for
-    the corresponding argument.
-  }];
-}
 
 def AMDAIENoneAccessToTemporaryBuffer :
   Pass<"iree-amdaie-none-access-to-temporary-buffer", ""> {
