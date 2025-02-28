@@ -563,7 +563,7 @@ LogicalResult AIETargetBackend::serializeExecutable(
     SmallVector<flatbuffers_int32_vec_ref_t> asmInstrsRunlist;
     SmallVector<flatbuffers_int32_vec_ref_t> reconfDataRunlist;
     asmInstrIndices[ordinal] = asmInstrRefs.size();
-    // TODO (zhewen): support multiple times of reconfiguration.
+    // TODO (zhewen): support multiple iterations of reconfiguration.
     if (!options.dirToLoadCtrlPktFiles.empty()) {
       // Reconfiguration is required.
       // Load control packet instructions from file.

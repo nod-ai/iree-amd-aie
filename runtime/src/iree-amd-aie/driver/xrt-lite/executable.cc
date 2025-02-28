@@ -347,7 +347,7 @@ iree_status_t iree_hal_xrt_lite_native_executable_create(
         z0, iree_amd_aie_hal_xrt_lite_executable_parse_UI32Array2dDef(
                 asm_inst_runlist_def, params->asm_inst_runlist));
 
-    // Get the reconfiguratoin data runlist for the current entry point, and
+    // Get the reconfiguration data runlist for the current entry point, and
     // store it in the kernel parameters as a 2D std::vector.
     int32_t reconf_data_runlist_index = flatbuffers_int32_vec_at(
         reconf_data_runlist_indices_vec, entry_ordinal);
