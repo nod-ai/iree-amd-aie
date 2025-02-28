@@ -60,6 +60,13 @@ int main(int argc, char **argv) {
   bool emitCtrlPkt = false;
   if (argc > 3 && std::string(argv[3]) == "true") emitCtrlPkt = true;
 
+  // Path to store the control packet instructions.
+  SmallString<128> ctrlpktInstPath(workDir);
+  llvm::sys::path::append(ctrlpktInstPath, "ctrlpkt_inst.txt");
+  // Path to store the control packet sequence.
+  SmallString<128> ctrlpktSeqPath(workDir);
+  llvm::sys::path::append(ctrlpktSeqPath, "ctrlpkt_seq.txt");
+
   DialectRegistry registry;
   registerDialects(registry);
   registerBuiltinDialectTranslation(registry);
@@ -110,8 +117,13 @@ int main(int argc, char **argv) {
   if (failed(aie2xclbin(
           /*ctx=*/&context,
           /*deviceOp=*/deviceOp,
-          /*outputNPU=*/std::nullopt,
-          /*emitCtrlPkt=*/emitCtrlPkt,
+          /*outputNpuInstPath=*/std::nullopt,
+          /*outputCtrlPktInstPath=*/
+          emitCtrlPkt ? std::make_optional(ctrlpktInstPath.str().str())
+                      : std::nullopt,
+          /*outputCtrlPktSeqPath=*/
+          emitCtrlPkt ? std::make_optional(ctrlpktSeqPath.str().str())
+                      : std::nullopt,
           /*artifactPath=*/artifactPath.str().str(),
           /*printIRBeforeAll=*/false,
           /*printIRAfterAll=*/false,

@@ -181,7 +181,7 @@ iree_amd_aie_hal_xrt_lite_native_executable_flatbuffer_verify(
     int32_t reconf_data_runlist_index =
         flatbuffers_int32_vec_at(reconf_data_runlist_indices_vec, i);
     if (reconf_data_runlist_index >= 0) {
-      // Get ther number of reconfiguration data for the current entry point.
+      // Get the number of reconfiguration data for the current entry point.
       iree_amd_aie_hal_xrt_lite_UI32Array2dDef_table_t reconf_data_runlist_def =
           iree_amd_aie_hal_xrt_lite_UI32Array2dDef_vec_at(
               reconf_data_runlists_vec, reconf_data_runlist_index);
@@ -202,14 +202,13 @@ iree_amd_aie_hal_xrt_lite_native_executable_flatbuffer_verify(
       size_t length_asm_inst_runlist =
           iree_amd_aie_hal_xrt_lite_UI32Array1dDef_vec_len(asm_inst_vec);
       // Check runlist length.
-      if (length_asm_inst_runlist != (2 * length_reconf_data_runlist + 1)) {
+      if (length_asm_inst_runlist != (2 * length_reconf_data_runlist)) {
         IREE_TRACE_ZONE_END(z0);
         return iree_make_status(
             IREE_STATUS_INVALID_ARGUMENT,
             "Invalid `length_asm_inst_runlist` (%zu): expected "
-            "(2 × `length_reconf_data_runlist` (%zu)) + 1. "
-            "The first set of asm instructions corresponds to the initial PDI "
-            "execution, and each reconfiguration requires two additional sets "
+            "(2 × `length_reconf_data_runlist` (%zu)). "
+            "Each reconfiguration requires two additional sets "
             "of ASM instructions.",
             length_asm_inst_runlist, length_reconf_data_runlist);
       }

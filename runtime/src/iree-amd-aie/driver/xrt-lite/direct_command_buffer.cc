@@ -255,25 +255,30 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_dispatch(
   shim_xdna::hw_q* hwq = context.get_hw_queue();
   shim_xdna::cuidx_t cu_idx =
       context.open_cu_context(kernel_params.kernel_name);
-  // Dispatch the kernel.
-  IREE_RETURN_AND_END_ZONE_IF_ERROR(
-      z0, iree_hal_xrt_lite_direct_command_buffer_normal_run(
-              bindings, command_buffer, hwq, cu_idx,
-              kernel_params.n_kernel_runs, kernel_params.asm_inst_runlist[0]));
+
   size_t num_reconfigurations = kernel_params.reconf_data_runlist.size();
-  for (size_t i = 0; i < num_reconfigurations; i++) {
-    // Reconfigure the device.
-    IREE_RETURN_AND_END_ZONE_IF_ERROR(
-        z0, iree_hal_xrt_lite_direct_command_buffer_reconfigure(
-                command_buffer, hwq, cu_idx,
-                kernel_params.asm_inst_runlist[2 * i + 1],
-                kernel_params.reconf_data_runlist[i]));
-    // Dispatch the new kernel.
+  if (num_reconfigurations == 0) {
+    // Normal kernel dispatch.
     IREE_RETURN_AND_END_ZONE_IF_ERROR(
         z0,
         iree_hal_xrt_lite_direct_command_buffer_normal_run(
             bindings, command_buffer, hwq, cu_idx, kernel_params.n_kernel_runs,
-            kernel_params.asm_inst_runlist[2 * i + 2]));
+            kernel_params.asm_inst_runlist[0]));
+  } else {
+    for (size_t i = 0; i < num_reconfigurations; i++) {
+      // Reconfigure the device.
+      IREE_RETURN_AND_END_ZONE_IF_ERROR(
+          z0, iree_hal_xrt_lite_direct_command_buffer_reconfigure(
+                  command_buffer, hwq, cu_idx,
+                  kernel_params.asm_inst_runlist[2 * i],
+                  kernel_params.reconf_data_runlist[i]));
+      // Dispatch the new kernel.
+      IREE_RETURN_AND_END_ZONE_IF_ERROR(
+          z0, iree_hal_xrt_lite_direct_command_buffer_normal_run(
+                  bindings, command_buffer, hwq, cu_idx,
+                  kernel_params.n_kernel_runs,
+                  kernel_params.asm_inst_runlist[2 * i + 1]));
+    }
   }
 
   IREE_TRACE_ZONE_END(z0);

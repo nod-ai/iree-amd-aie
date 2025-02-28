@@ -477,9 +477,21 @@ LogicalResult AIETargetBackend::serializeExecutable(
         llvm::errs() << "Unsupported device HAL\n";
         return failure();
     }
+    // Path to store the NPU instructions.
     SmallString<128> npuInstPath(entryPointWorkDir);
-    llvm::sys::path::append(npuInstPath,
-                            entryPointNamesFb[ordinal] + ".npu.txt");
+    SmallString<128> npuInstFileName(entryPointNamesFb[ordinal] +
+                                     ".npu_inst.txt");
+    llvm::sys::path::append(npuInstPath, npuInstFileName);
+    // Path to store the control packet instructions.
+    SmallString<128> ctrlpktInstPath(entryPointWorkDir);
+    SmallString<128> ctrlpktInstFileName(entryPointNamesFb[ordinal] +
+                                         ".ctrlpkt_inst.txt");
+    llvm::sys::path::append(ctrlpktInstPath, ctrlpktInstFileName);
+    // Path to store the control packet sequence.
+    SmallString<128> ctrlpktSeqPath(entryPointWorkDir);
+    SmallString<128> ctrlpktSeqFileName(entryPointNamesFb[ordinal] +
+                                        ".ctrlpkt_seq.txt");
+    llvm::sys::path::append(ctrlpktSeqPath, ctrlpktSeqFileName);
 
     // Convert ordinal to hexadecimal string for kernel id.
     std::stringstream ordinalHex;
@@ -515,8 +527,13 @@ LogicalResult AIETargetBackend::serializeExecutable(
     if (failed(aie2xclbin(
             /*ctx=*/variantOp->getContext(),
             /*deviceOp=*/deviceOps[i],
-            /*outputNPU=*/npuInstPath.str().str(),
-            /*emitCtrlPkt=*/options.emitCtrlPkt,
+            /*outputNpuInstPath=*/npuInstPath.str().str(),
+            /*outputCtrlPktInstPath=*/options.emitCtrlPkt
+                ? std::make_optional(ctrlpktInstPath.str().str())
+                : std::nullopt,
+            /*outputCtrlPktSeqPath=*/options.emitCtrlPkt
+                ? std::make_optional(ctrlpktSeqPath.str().str())
+                : std::nullopt,
             /*artifactPath=*/artifactPath.str().str(),
             /*printIRBeforeAll=*/options.aie2xclbinPrintIrBeforeAll,
             /*printIRAfterAll=*/options.aie2xclbinPrintIrAfterAll,
@@ -545,38 +562,39 @@ LogicalResult AIETargetBackend::serializeExecutable(
 
     SmallVector<flatbuffers_int32_vec_ref_t> asmInstrsRunlist;
     SmallVector<flatbuffers_int32_vec_ref_t> reconfDataRunlist;
-    // Load normal NPU instructions from file.
-    FailureOr<std::vector<uint32_t>> npuInstrs =
-        loadUInt32ArrayFromFile(npuInstPath);
-    if (failed(npuInstrs)) return failure();
-    asmInstrsRunlist.push_back(builder.createInt32Vec(npuInstrs.value()));
     asmInstrIndices[ordinal] = asmInstrRefs.size();
     // TODO (zhewen): support multiple times of reconfiguration.
-    if (!options.pathToLoadCtrlPktFiles.empty()) {
+    if (!options.dirToLoadCtrlPktFiles.empty()) {
+      // Reconfiguration is required.
       // Load control packet instructions from file.
-      SmallString<128> ctrlpktInstPath(options.pathToLoadCtrlPktFiles);
-      llvm::sys::path::append(ctrlpktInstPath, "ctrlpkt_instructions.txt");
+      SmallString<128> ctrlpktInstPath(options.dirToLoadCtrlPktFiles);
+      llvm::sys::path::append(ctrlpktInstPath, ctrlpktInstFileName);
       FailureOr<std::vector<uint32_t>> ctrlpktInstrs =
           loadUInt32ArrayFromFile(ctrlpktInstPath);
       if (failed(ctrlpktInstrs)) return failure();
       asmInstrsRunlist.push_back(builder.createInt32Vec(ctrlpktInstrs.value()));
       // Load control packet sequence from file.
-      SmallString<128> ctrlpktSeqPath(options.pathToLoadCtrlPktFiles);
-      llvm::sys::path::append(ctrlpktSeqPath, "ctrlpkt_sequence.txt");
+      SmallString<128> ctrlpktSeqPath(options.dirToLoadCtrlPktFiles);
+      llvm::sys::path::append(ctrlpktSeqPath, ctrlpktSeqFileName);
       FailureOr<std::vector<uint32_t>> ctrlpktSeq =
           loadUInt32ArrayFromFile(ctrlpktSeqPath);
       if (failed(ctrlpktSeq)) return failure();
       reconfDataRunlist.push_back(builder.createInt32Vec(ctrlpktSeq.value()));
       reconfDataIndices[ordinal] = reconfDataRefs.size();
       // Load new NPU instructions (executed after reconfiguration) from file.
-      SmallString<128> newNpuInstPath(options.pathToLoadCtrlPktFiles);
-      llvm::sys::path::append(newNpuInstPath,
-                              entryPointNamesFb[ordinal] + ".npu.txt");
+      SmallString<128> newNpuInstPath(options.dirToLoadCtrlPktFiles);
+      llvm::sys::path::append(newNpuInstPath, npuInstFileName);
       FailureOr<std::vector<uint32_t>> newNpuInstrs =
           loadUInt32ArrayFromFile(newNpuInstPath);
       if (failed(newNpuInstrs)) return failure();
       asmInstrsRunlist.push_back(builder.createInt32Vec(newNpuInstrs.value()));
     } else {
+      // No reconfiguration is needed.
+      // Load normal NPU instructions from file.
+      FailureOr<std::vector<uint32_t>> npuInstrs =
+          loadUInt32ArrayFromFile(npuInstPath);
+      if (failed(npuInstrs)) return failure();
+      asmInstrsRunlist.push_back(builder.createInt32Vec(npuInstrs.value()));
       // Use "-1" as a special value to indicate that no reconfiguration data is
       // needed for this entry point ordinal.
       reconfDataIndices[ordinal] = -1;

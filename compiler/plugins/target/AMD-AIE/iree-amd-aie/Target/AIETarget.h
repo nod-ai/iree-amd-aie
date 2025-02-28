@@ -68,7 +68,7 @@ struct AMDAIEOptions {
   unsigned AMDAIENumCols{getDeviceModel(AMDAIETargetDevice).getNumCoreCols()};
   std::string enableAMDAIEUkernels{"none"};
   bool enablePacketFlow{false};
-  std::string pathToLoadCtrlPktFiles{""};
+  std::string dirToLoadCtrlPktFiles{""};
 
   enum class DeviceHAL { XRT, XRT_LITE };
   DeviceHAL deviceHal{DeviceHAL::XRT_LITE};
@@ -296,11 +296,12 @@ struct AMDAIEOptions {
                        "`ctrlpkt_instructions.txt`"));
 
     binder.opt<std::string>(
-        "iree-amdaie-path-to-load-control-packet", pathToLoadCtrlPktFiles,
+        "iree-amdaie-dir-to-load-control-packet", dirToLoadCtrlPktFiles,
         llvm::cl::cat(category),
-        llvm::cl::desc("Path to load control packet files. These files will be "
-                       "added to the flatbuffer for device reconfiguration. "
-                       "Empty string means no reconfiguration."));
+        llvm::cl::desc(
+            "Directory to load control packet files. These files will be "
+            "added to the flatbuffer for device reconfiguration. "
+            "Empty string means no reconfiguration."));
   }
 };
 

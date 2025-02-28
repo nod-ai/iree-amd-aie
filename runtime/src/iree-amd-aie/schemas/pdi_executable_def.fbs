@@ -53,9 +53,9 @@ table ExecutableDef {
   // This is a 3D uint32 array:
   //   - The first dimension corresponds to different entry points (same size as `entry_points`).
   //   - The second dimension represents the number of kernel runs per entry point.
-  //     The size is computed as `1 + 2 * num_reconfiguration`, where:
-  //       - The base kernel run is always present.
-  //       - Each reconfiguration requires two additional kernel runs:
+  //     Its size is either 1 (for a standard run) or `2 * num_reconfiguration` (if reconfiguration is required).
+  //     In the case of reconfiguration:
+  //       - Each reconfiguration consists of two kernel runs:
   //         - One for the configuration.
   //         - One for the actual execution after reconfiguration.
   //   - The third dimension is a uint32 array containing the instruction stream for a single kernel run.
@@ -73,7 +73,7 @@ table ExecutableDef {
   // This forms a 3D uint32 array:
   //   - The first dimension corresponds to entry points that require reconfiguration.
   //     - Its size is smaller than `entry_points` because not all entry points require reconfiguration.
-  //     - Null elements are not supported in flattenbuffer, so only entries with reconfiguration are included.
+  //     - Null elements are not supported in flatbuffer, so only entries with reconfiguration are included.
   //   - The second dimension represents the number of reconfiguration sequences per entry point.
   //   - The third dimension contains a uint32 array with control packet data required for a single reconfiguration.
   reconf_data_runlists: [UI32Array2dDef];
