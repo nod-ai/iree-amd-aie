@@ -10,7 +10,19 @@ def get_higher_order_element_type(element_type):
 
 
 def generate_matmul_test(
-    output_fn, input_fn, m, n, k, lhs_rhs_type, acc_type, b=0, m0=0, n0=0, k0=0
+    output_fn,
+    input_fn,
+    m,
+    n,
+    k,
+    lhs_rhs_type,
+    acc_type,
+    b=0,
+    m0=0,
+    n0=0,
+    k0=0,
+    trunci_scale=None,
+    trunci_shift=None,
 ):
     """
     Generate mlir file (output_fn) from the template file (input_fn).
@@ -33,6 +45,9 @@ def generate_matmul_test(
 
     # This is only used for batch matmul.
     replace["B"] = b
+
+    replace["TRUNCI_SCALE"] = trunci_scale
+    replace["TRUNCI_SHIFT"] = trunci_shift
 
     # m0, n0, k0 are only used for matmul4d as inner dim sizes.
     replace["M0"] = m0

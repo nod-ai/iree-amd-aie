@@ -733,10 +733,9 @@ class MatmulScaleTrunci(BaseMatmul):
         K,
         input_type,
         acc_type,
-        lhs,
-        rhs,
-        expected_out,
         test_params=None,
+        trunci_scale=10,
+        trunci_shift=7,
     ):
         super().__init__(
             name=f"matmul_scale_trunci_{M}_{N}_{K}_{input_type}_{acc_type}",
@@ -749,23 +748,42 @@ class MatmulScaleTrunci(BaseMatmul):
         )
         self.labels.append("MatmulScaleTrunci")
 
-        # Assertions on shapes: Check that lhs is MxK, rhs is KxN, and expected_out is MxN
-        assert lhs.shape == (M, K)
-        assert rhs.shape == (K, N)
-        assert expected_out.shape == (M, N)
+        self.trunci_scale = trunci_scale
+        self.trunci_shift = trunci_shift
+        self.lhs = np.random.randint(0, 3, (self.M, self.K)).astype(np.int8)
+        self.rhs = np.random.randint(0, 3, (self.K, self.N)).astype(np.int8)
+        self.expected_out = np.right_shift(
+            (
+                (self.lhs.astype(np.int32) @ self.rhs.astype(np.int32))
+                * self.trunci_scale
+            ),
+            self.trunci_shift,
+        ).astype(np.int8)
 
-        self.lhs = lhs
-        self.rhs = rhs
-        self.expected_out = expected_out
+        # Assertions on shapes: Check that lhs is MxK, rhs is KxN, and expected_out is MxN
+        assert self.expected_out.shape == (M, N)
 
     def _execute(self, config):
         matmul_template_dir = config.file_dir / "matmul_template"
         template_name = matmul_template_dir / "matmul_trunci_scaling_MxK_KxN.mlir"
-        self.generate(config, template_name)
+
+        generate_matmul_test(
+            self.get_filename(config),
+            template_name,
+            k=self.K,
+            m=self.M,
+            n=self.N,
+            lhs_rhs_type=self.input_type,
+            acc_type=self.acc_type,
+            trunci_scale=self.trunci_scale,
+            trunci_shift=self.trunci_shift,
+        )
+
         filename = self.get_filename(config)
         input_args = generate_inputs(
             filename, self.get_dir(config), 1, {1: self.lhs, 2: self.rhs}
         )
+
         aie_vs_baseline(
             config=config,
             aie_compilation_flags=self.aie_compilation_flags,
@@ -1576,9 +1594,6 @@ class Tests:
                 128,
                 "i8",
                 "i32",
-                2 * np.ones([256, 128], dtype=np.int8),
-                3 * np.ones([128, 256], dtype=np.int8),
-                60 * np.ones([256, 256], dtype=np.int8),
                 test_params=TestParams(
                     name_suffix="scaling",
                     tile_pipeline="pack-peel-4-level-tiling",
@@ -1599,9 +1614,6 @@ class Tests:
                 128,
                 "i8",
                 "i32",
-                2 * np.ones([256, 128], dtype=np.int8),
-                3 * np.ones([128, 256], dtype=np.int8),
-                60 * np.ones([256, 256], dtype=np.int8),
                 test_params=TestParams(
                     tile_pipeline="pack-peel-4-level-tiling",
                     run_on_target=["npu1_4col"],
@@ -1620,9 +1632,6 @@ class Tests:
                 128,
                 "i8",
                 "i32",
-                2 * np.ones([256, 128], dtype=np.int8),
-                3 * np.ones([128, 256], dtype=np.int8),
-                60 * np.ones([256, 256], dtype=np.int8),
                 test_params=TestParams(
                     tile_pipeline="pack-peel-4-level-tiling",
                     run_on_target=["npu4"],
@@ -1636,6 +1645,7 @@ class Tests:
                 ),
             )
         )
+
         # Matmul with truncf test(s):
         for tile_pipeline in ["pack-peel", "pack-peel-4-level-tiling"]:
             self.register(
