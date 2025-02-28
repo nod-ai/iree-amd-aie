@@ -247,6 +247,20 @@ FailureOr<std::vector<std::string>> makePeanoOptArgs(
       *iter = flag;
     }
   }
+
+  // Adding cse after the default O2 pipeline eliminates repeated
+  // ```
+  // %49 = trunc i64 %38 to i20
+  // ```
+  // for certain matmuls (outlining, phoenix), and results in dramatic
+  // improvements in performance.
+  for (std::string &flag : args) {
+    if (isOptLevelFlag(flag)) {
+      auto optLevel = flag.substr(1);
+      auto passes = "default<" + optLevel + ">,early-cse,dce";
+      flag = "-passes=" + passes;
+    }
+  }
   return args;
 }
 }  // namespace detail
