@@ -30,7 +30,7 @@ struct AMDAIESession
                            PluginActivationPolicy::DefaultActivated> {
   static void registerPasses() {
     AMDAIE::registerAMDAIEPasses();
-    AMDAIE::registerAMDAIEAssignBufferAddressesBasic();
+    registerAMDAIEAssignBufferAddresses();
     AMDAIE::registerAMDAIEAssignBufferDescriptorIDs();
     registerAMDAIECoreToStandard();
     AMDAIE::registerAMDAIELocalizeLocks();
