@@ -282,24 +282,58 @@ void serializePDIToFb(FlatbufferBuilder &builder,
                       flatbuffers_string_vec_ref_t entryPointsRef,
                       SmallVector<uint32_t> &asmInstrIndices,
                       SmallVector<uint32_t> &pdiIndices,
+                      SmallVector<int32_t> &reconfDataIndices,
                       SmallVector<flatbuffers_ref_t> pdiRefs,
-                      SmallVector<flatbuffers_ref_t> asmInstrRefs) {
+                      SmallVector<flatbuffers_ref_t> asmInstrRefs,
+                      SmallVector<flatbuffers_ref_t> reconfDataRefs) {
+  // Add the entry points to the flatbuffer.
   iree_amd_aie_hal_xrt_lite_ExecutableDef_entry_points_add(builder,
                                                            entryPointsRef);
+  // Add all the indices to the flatbuffer.
   flatbuffers_int32_vec_ref_t asmInstrIndicesRef =
       builder.createInt32Vec(asmInstrIndices);
-  iree_amd_aie_hal_xrt_lite_ExecutableDef_asm_instr_indices_add(
+  iree_amd_aie_hal_xrt_lite_ExecutableDef_asm_instr_runlist_indices_add(
       builder, asmInstrIndicesRef);
   flatbuffers_int32_vec_ref_t pdiIndicesRef =
       builder.createInt32Vec(pdiIndices);
   iree_amd_aie_hal_xrt_lite_ExecutableDef_pdi_indices_add(builder,
                                                           pdiIndicesRef);
+  flatbuffers_int32_vec_ref_t reconfDataIndicesRef =
+      builder.createInt32Vec(reconfDataIndices);
+  iree_amd_aie_hal_xrt_lite_ExecutableDef_reconf_data_runlist_indices_add(
+      builder, reconfDataIndicesRef);
+  // Add the PDI strings to the flatbuffer.
   flatbuffers_vec_ref_t pdisRef = builder.createOffsetVecDestructive(pdiRefs);
   iree_amd_aie_hal_xrt_lite_ExecutableDef_pdis_add(builder, pdisRef);
+  // Add the npu instructions to the flatbuffer.
   flatbuffers_vec_ref_t asmInstrsRef =
       builder.createOffsetVecDestructive(asmInstrRefs);
-  iree_amd_aie_hal_xrt_lite_ExecutableDef_asm_instrs_add(builder, asmInstrsRef);
+  iree_amd_aie_hal_xrt_lite_ExecutableDef_asm_instr_runlists_add(builder,
+                                                                 asmInstrsRef);
+  // Add the reconfiguration data to the flatbuffer.
+  flatbuffers_vec_ref_t reconfDataRef =
+      builder.createOffsetVecDestructive(reconfDataRefs);
+  iree_amd_aie_hal_xrt_lite_ExecutableDef_reconf_data_runlists_add(
+      builder, reconfDataRef);
   iree_amd_aie_hal_xrt_lite_ExecutableDef_end_as_root(builder);
+}
+
+/// Loads a uint32_t array from a file. Each line in the file should contain a
+/// single uint32_t value in hexadecimal format.
+FailureOr<std::vector<uint32_t>> loadUInt32ArrayFromFile(StringRef filePath) {
+  std::ifstream fileStream(static_cast<std::string>(filePath));
+  std::string line;
+  std::vector<uint32_t> array;
+  while (std::getline(fileStream, line)) {
+    std::istringstream iss(line);
+    uint32_t data;
+    if (!(iss >> std::hex >> data)) {
+      llvm::errs() << "Unable to parse file: " << filePath << "\n";
+      return failure();
+    }
+    array.push_back(data);
+  }
+  return array;
 }
 
 LogicalResult AIETargetBackend::serializeExecutable(
@@ -399,6 +433,7 @@ LogicalResult AIETargetBackend::serializeExecutable(
 
   SmallVector<flatbuffers_ref_t> refs;
   SmallVector<flatbuffers_ref_t> asmInstrRefs;
+  SmallVector<flatbuffers_ref_t> reconfDataRefs;
 
   // Per entry-point data.
   // Note that the following vectors should all be of the same size and
@@ -406,6 +441,7 @@ LogicalResult AIETargetBackend::serializeExecutable(
   SmallVector<std::string> entryPointNamesFb(ordinalCount);
   SmallVector<uint32_t> indices(ordinalCount);
   SmallVector<uint32_t> asmInstrIndices(ordinalCount);
+  SmallVector<int32_t> reconfDataIndices(ordinalCount);
 
   for (size_t i = 0; i < entryPointNames.size(); i++) {
     uint64_t ordinal = entryPointOrdinals.at(entryPointNames[i]);
@@ -441,9 +477,21 @@ LogicalResult AIETargetBackend::serializeExecutable(
         llvm::errs() << "Unsupported device HAL\n";
         return failure();
     }
+    // Path to store the NPU instructions.
     SmallString<128> npuInstPath(entryPointWorkDir);
-    llvm::sys::path::append(npuInstPath,
-                            entryPointNamesFb[ordinal] + ".npu.txt");
+    SmallString<128> npuInstFileName(entryPointNamesFb[ordinal] +
+                                     ".npu_inst.txt");
+    llvm::sys::path::append(npuInstPath, npuInstFileName);
+    // Path to store the control packet instructions.
+    SmallString<128> ctrlpktInstPath(entryPointWorkDir);
+    SmallString<128> ctrlpktInstFileName(entryPointNamesFb[ordinal] +
+                                         ".ctrlpkt_inst.txt");
+    llvm::sys::path::append(ctrlpktInstPath, ctrlpktInstFileName);
+    // Path to store the control packet sequence.
+    SmallString<128> ctrlpktSeqPath(entryPointWorkDir);
+    SmallString<128> ctrlpktSeqFileName(entryPointNamesFb[ordinal] +
+                                        ".ctrlpkt_seq.txt");
+    llvm::sys::path::append(ctrlpktSeqPath, ctrlpktSeqFileName);
 
     // Convert ordinal to hexadecimal string for kernel id.
     std::stringstream ordinalHex;
@@ -479,8 +527,13 @@ LogicalResult AIETargetBackend::serializeExecutable(
     if (failed(aie2xclbin(
             /*ctx=*/variantOp->getContext(),
             /*deviceOp=*/deviceOps[i],
-            /*outputNPU=*/npuInstPath.str().str(),
-            /*emitCtrlPkt=*/options.emitCtrlPkt,
+            /*outputNpuInstPath=*/npuInstPath.str().str(),
+            /*outputCtrlPktInstPath=*/options.emitCtrlPkt
+                ? std::make_optional(ctrlpktInstPath.str().str())
+                : std::nullopt,
+            /*outputCtrlPktSeqPath=*/options.emitCtrlPkt
+                ? std::make_optional(ctrlpktSeqPath.str().str())
+                : std::nullopt,
             /*artifactPath=*/artifactPath.str().str(),
             /*printIRBeforeAll=*/options.aie2xclbinPrintIrBeforeAll,
             /*printIRAfterAll=*/options.aie2xclbinPrintIrAfterAll,
@@ -507,28 +560,71 @@ LogicalResult AIETargetBackend::serializeExecutable(
       return failure();
     }
 
-    std::ifstream instrFile(static_cast<std::string>(npuInstPath));
-    std::string line;
-    // Vector to store LX6 instructions.
-    std::vector<uint32_t> npuInstrs;
-    while (std::getline(instrFile, line)) {
-      std::istringstream iss(line);
-      uint32_t a;
-      if (!(iss >> std::hex >> a)) {
-        return moduleOp.emitOpError("Unable to parse instruction file");
-      }
-      npuInstrs.push_back(a);
-    }
-    flatbuffers_int32_vec_ref_t npuInstrsVec =
-        builder.createInt32Vec(npuInstrs);
+    SmallVector<flatbuffers_int32_vec_ref_t> asmInstrsRunlist;
+    SmallVector<flatbuffers_int32_vec_ref_t> reconfDataRunlist;
     asmInstrIndices[ordinal] = asmInstrRefs.size();
+    // TODO (zhewen): support multiple iterations of reconfiguration.
+    if (!options.dirToLoadCtrlPktFiles.empty()) {
+      // Reconfiguration is required.
+      // Load control packet instructions from file.
+      SmallString<128> ctrlpktInstPath(options.dirToLoadCtrlPktFiles);
+      llvm::sys::path::append(ctrlpktInstPath, ctrlpktInstFileName);
+      FailureOr<std::vector<uint32_t>> ctrlpktInstrs =
+          loadUInt32ArrayFromFile(ctrlpktInstPath);
+      if (failed(ctrlpktInstrs)) return failure();
+      asmInstrsRunlist.push_back(builder.createInt32Vec(ctrlpktInstrs.value()));
+      // Load control packet sequence from file.
+      SmallString<128> ctrlpktSeqPath(options.dirToLoadCtrlPktFiles);
+      llvm::sys::path::append(ctrlpktSeqPath, ctrlpktSeqFileName);
+      FailureOr<std::vector<uint32_t>> ctrlpktSeq =
+          loadUInt32ArrayFromFile(ctrlpktSeqPath);
+      if (failed(ctrlpktSeq)) return failure();
+      reconfDataRunlist.push_back(builder.createInt32Vec(ctrlpktSeq.value()));
+      reconfDataIndices[ordinal] = reconfDataRefs.size();
+      // Load new NPU instructions (executed after reconfiguration) from file.
+      SmallString<128> newNpuInstPath(options.dirToLoadCtrlPktFiles);
+      llvm::sys::path::append(newNpuInstPath, npuInstFileName);
+      FailureOr<std::vector<uint32_t>> newNpuInstrs =
+          loadUInt32ArrayFromFile(newNpuInstPath);
+      if (failed(newNpuInstrs)) return failure();
+      asmInstrsRunlist.push_back(builder.createInt32Vec(newNpuInstrs.value()));
+    } else {
+      // No reconfiguration is needed.
+      // Load normal NPU instructions from file.
+      FailureOr<std::vector<uint32_t>> npuInstrs =
+          loadUInt32ArrayFromFile(npuInstPath);
+      if (failed(npuInstrs)) return failure();
+      asmInstrsRunlist.push_back(builder.createInt32Vec(npuInstrs.value()));
+      // Use "-1" as a special value to indicate that no reconfiguration data is
+      // needed for this entry point ordinal.
+      reconfDataIndices[ordinal] = -1;
+    }
 
     if (options.deviceHal == AMDAIEOptions::DeviceHAL::XRT_LITE) {
-      asmInstrRefs.push_back(
-          iree_amd_aie_hal_xrt_lite_AsmInstDef_create(builder, npuInstrsVec));
+      // Convert the asm instruction runlist to a flatbuffer vector.
+      SmallVector<iree_amd_aie_hal_xrt_lite_UI32Array1dDef_ref_t> asmInstrsVec;
+      for (auto &asmInstr : asmInstrsRunlist) {
+        asmInstrsVec.push_back(
+            iree_amd_aie_hal_xrt_lite_UI32Array1dDef_create(builder, asmInstr));
+      }
+      asmInstrRefs.push_back(iree_amd_aie_hal_xrt_lite_UI32Array2dDef_create(
+          builder, builder.createOffsetVecDestructive(asmInstrsVec)));
+      if (reconfDataRunlist.size() > 0) {
+        // Convert the reconfiguration data runlist to a flatbuffer vector.
+        SmallVector<iree_amd_aie_hal_xrt_lite_UI32Array1dDef_ref_t>
+            reconfDataVec;
+        for (auto &reconfData : reconfDataRunlist) {
+          reconfDataVec.push_back(
+              iree_amd_aie_hal_xrt_lite_UI32Array1dDef_create(builder,
+                                                              reconfData));
+        }
+        reconfDataRefs.push_back(
+            iree_amd_aie_hal_xrt_lite_UI32Array2dDef_create(
+                builder, builder.createOffsetVecDestructive(reconfDataVec)));
+      }
     } else if (options.deviceHal == AMDAIEOptions::DeviceHAL::XRT) {
       asmInstrRefs.push_back(
-          iree_amd_aie_hal_xrt_AsmInstDef_create(builder, npuInstrsVec));
+          iree_amd_aie_hal_xrt_AsmInstDef_create(builder, asmInstrsRunlist[0]));
     } else {
       llvm::report_fatal_error("unsupported backend");
     }
@@ -566,8 +662,8 @@ LogicalResult AIETargetBackend::serializeExecutable(
                           refs, asmInstrRefs);
       break;
     case AMDAIEOptions::DeviceHAL::XRT_LITE:
-      serializePDIToFb(builder, entryPointsRef, asmInstrIndices, indices, refs,
-                       asmInstrRefs);
+      serializePDIToFb(builder, entryPointsRef, asmInstrIndices, indices,
+                       reconfDataIndices, refs, asmInstrRefs, reconfDataRefs);
       break;
     default:
       llvm::errs() << "Unsupported device HAL\n";

@@ -19,7 +19,8 @@
 
 struct iree_hal_xrt_lite_kernel_params {
   std::vector<uint8_t> pdi;
-  std::vector<uint32_t> asm_inst;
+  std::vector<std::vector<uint32_t>> asm_inst_runlist;
+  std::vector<std::vector<uint32_t>> reconf_data_runlist;
   std::string kernel_name;
   uint32_t n_kernel_runs{1};
   IREE_TRACE(iree_string_view_t source_filename;)
