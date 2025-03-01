@@ -64,8 +64,25 @@ struct AMDAIEOptions {
   bool insertLoopAroundCoreBlock{false};
   bool matmulElementwiseFusion{false};
   AMDAIEDevice AMDAIETargetDevice{AMDAIEDevice::npu1_4col};
-  unsigned AMDAIENumRows{getDeviceModel(AMDAIETargetDevice).getNumCoreRows()};
-  unsigned AMDAIENumCols{getDeviceModel(AMDAIETargetDevice).getNumCoreCols()};
+
+  // The number of rows for the compiler to target. '0' denotes 'all'.
+ private:
+  unsigned AMDAIENumRows{0};
+
+ public:
+  unsigned getNumRows(const AMDAIEDeviceModel &model) const {
+    return AMDAIENumRows == 0 ? model.getNumCoreRows() : AMDAIENumRows;
+  }
+
+  // The number of rows for the compiler to target. '0' denotes 'all'.
+ private:
+  unsigned AMDAIENumCols{0};
+
+ public:
+  unsigned getNumCols(const AMDAIEDeviceModel &model) const {
+    return AMDAIENumCols == 0 ? model.getNumCoreCols() : AMDAIENumCols;
+  }
+
   std::string enableAMDAIEUkernels{"none"};
   bool enablePacketFlow{false};
   std::string dirToLoadCtrlPktFiles{""};
