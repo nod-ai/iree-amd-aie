@@ -536,6 +536,10 @@ struct AMDAIEDeviceModel {
 
   FailureOr<std::array<uint32_t, 3>> getAIEMatmulInstructionSize(
       Type elTypeLhs, Type elTypeRhs, Type elTypeAcc) const;
+
+  uint32_t getNumBanks(int col, int row) const {
+    return isMemTile(col, row) ? 8 : 4;
+  }
 };
 
 struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device);
