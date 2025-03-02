@@ -1421,12 +1421,10 @@ namespace mlir::iree_compiler::AMDAIE {
 
 /// Pipeline to generate control packets from `xilinx::aie::device`, and dump
 /// them into files.
-LogicalResult generateControlPackets(MLIRContext *context,
-                                     AIE::DeviceOp deviceOp,
-                                     const Path &tempDirPath,
-                                     bool printIRBeforeAll,
-                                     bool printIRAfterAll,
-                                     bool printIRModuleScope, bool timing) {
+LogicalResult generateControlPackets(
+    MLIRContext *context, AIE::DeviceOp deviceOp, const Path &tempDirPath,
+    StringRef ctrlpktInstPath, StringRef ctrlpktSeqPath, bool printIRBeforeAll,
+    bool printIRAfterAll, bool printIRModuleScope, bool timing) {
   assert(deviceOp->getParentOp() && isa<ModuleOp>(deviceOp->getParentOp()) &&
          "DeviceOp must be in a module parent");
   PassManager pm(context, ModuleOp::getOperationName());
@@ -1485,16 +1483,14 @@ LogicalResult generateControlPackets(MLIRContext *context,
   }
   // Dump the control packets sequence (i.e., the data inside the control
   // packets) to a file.
-  Path ctrlPktSequence = tempDirPath / "ctrlpkt_sequence.txt";
   if (failed(emitDenseArrayAttrToFile(workgroupOps[0], "ctrlpkt_sequence",
-                                      ctrlPktSequence.string()))) {
+                                      ctrlpktSeqPath))) {
     llvm::errs() << "Failed to emit control packets sequence \n";
     return failure();
   }
   // Dump the control packets DMA instructions to a file.
-  Path ctrlPktInstructions = tempDirPath / "ctrlpkt_instructions.txt";
   if (failed(emitDenseArrayAttrToFile(workgroupOps[0], "npu_instructions",
-                                      ctrlPktInstructions.string()))) {
+                                      ctrlpktInstPath))) {
     llvm::errs() << "Failed to emit control packets instructions \n";
     return failure();
   }
@@ -1536,7 +1532,9 @@ LogicalResult emitDenseArrayAttrToFile(Operation *op, StringRef attrName,
 
 LogicalResult aie2xclbin(
     MLIRContext *ctx, AIE::DeviceOp deviceOp,
-    const std::optional<std::string> &outputNPU, bool emitCtrlPkt,
+    const std::optional<std::string> &outputNpuInstPath,
+    const std::optional<std::string> &outputCtrlPktInstPath,
+    const std::optional<std::string> &outputCtrlPktSeqPath,
     const std::string &artifactPath, bool printIRBeforeAll,
     bool printIRAfterAll, bool printIRModuleScope, bool timing,
     const std::string &tempDir, bool useChess, bool useChessForUKernel,
@@ -1549,9 +1547,9 @@ LogicalResult aie2xclbin(
     const std::optional<std::string> &InputXCLBin,
     const std::optional<std::string> &ukernel,
     const std::string &additionalPeanoOptFlags) {
-  if (outputNPU.has_value() &&
+  if (outputNpuInstPath.has_value() &&
       failed(emitDenseArrayAttrToFile(deviceOp, "npu_instructions",
-                                      outputNPU.value()))) {
+                                      outputNpuInstPath.value()))) {
     return failure();
   }
 
@@ -1580,9 +1578,11 @@ LogicalResult aie2xclbin(
     return failure();
   }
 
-  if (emitCtrlPkt && failed(generateControlPackets(
-                         ctx, deviceOp, tempDirPath, printIRBeforeAll,
-                         printIRAfterAll, printIRModuleScope, timing))) {
+  if (outputCtrlPktInstPath.has_value() && outputCtrlPktSeqPath.has_value() &&
+      failed(generateControlPackets(
+          ctx, deviceOp, tempDirPath, outputCtrlPktInstPath.value(),
+          outputCtrlPktSeqPath.value(), printIRBeforeAll, printIRAfterAll,
+          printIRModuleScope, timing))) {
     llvm::errs() << "Failed to generate control packets MLIR file\n";
     return failure();
   }
