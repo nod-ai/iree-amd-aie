@@ -14,7 +14,8 @@
 namespace mlir::iree_compiler::AMDAIE {
 
 std::unique_ptr<OperationPass<xilinx::AIE::DeviceOp>>
-createAMDAIEAssignBufferAddressesBasicPass();
+createAMDAIEAssignBufferAddressesPass(
+    AMDAIEAssignBufferAddressesOptions options = {});
 std::unique_ptr<OperationPass<xilinx::AIE::DeviceOp>>
 createAMDAIEAssignBufferDescriptorIDsPass();
 std::unique_ptr<OperationPass<xilinx::AIE::DeviceOp>>
@@ -31,7 +32,6 @@ std::unique_ptr<OperationPass<ModuleOp>> createAMDAIECoreToStandardPass(
 std::unique_ptr<OperationPass<xilinx::AIE::DeviceOp>>
 createAMDAIEDmaToNpuPass();
 
-void registerAMDAIEAssignBufferAddressesBasic();
 void registerAMDAIEAssignBufferDescriptorIDs();
 void registerAMDAIELocalizeLocks();
 void registerAMDAIENormalizeAddressSpaces();

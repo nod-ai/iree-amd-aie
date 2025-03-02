@@ -22,14 +22,19 @@ TEST(XCLBinGenTest, makePeanoOptArgs) {
       detail::makePeanoOptArgs(maybeAdditionalFlags.value());
   EXPECT_TRUE(succeeded(maybeOptArgs));
   std::vector<std::string> optArgs = std::move(maybeOptArgs.value());
-  // We expect to find 1 -O4 flag, and 0 flags for -On for all other n.
-  // Why -O4? because it's the flag which appears last in `additionalFlags`.
+  // We expect to find 1 flag corresponding to -O4, and 0 flags corresponding to
+  // -On for all other n. Why -O4? because it's the flag which appears last in
+  // `additionalFlags`.
   for (uint32_t i = 0; i < 10; ++i) {
     std::string optFlag = "-O" + std::to_string(i);
+    std::string defaultOptFlag =
+        "-passes=default<O" + std::to_string(i) + ">,early-cse,dce";
     if (i == 4) {
-      EXPECT_EQ(std::count(optArgs.begin(), optArgs.end(), optFlag), 1);
+      EXPECT_EQ(std::count(optArgs.begin(), optArgs.end(), optFlag), 0);
+      EXPECT_EQ(std::count(optArgs.begin(), optArgs.end(), defaultOptFlag), 1);
     } else {
       EXPECT_EQ(std::count(optArgs.begin(), optArgs.end(), optFlag), 0);
+      EXPECT_EQ(std::count(optArgs.begin(), optArgs.end(), defaultOptFlag), 0);
     }
   }
 

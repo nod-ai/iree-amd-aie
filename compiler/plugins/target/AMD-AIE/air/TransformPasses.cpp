@@ -31,5 +31,8 @@ void registerAIRTransformPasses() {
   registerAffineLoopOptPass();
   registerAIRSplitL2MemrefForBufferConstraintPass();
   registerDmaToChannel();
+  registerAIRFuseAllocDealloc();
+  registerAIRShrinkMemrefSizesByAccess();
+  registerAIROptimizeMemtileDMABDs();
 }
 }  // namespace mlir::iree_compiler::AMDAIE

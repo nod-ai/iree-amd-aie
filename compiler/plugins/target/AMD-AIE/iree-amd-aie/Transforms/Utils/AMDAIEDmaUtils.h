@@ -137,6 +137,10 @@ std::optional<int64_t> getGlobalOffsetDifference(
     ArrayRef<OpFoldResult> offsetsX, ArrayRef<OpFoldResult> stridesX,
     ArrayRef<OpFoldResult> offsetsY, ArrayRef<OpFoldResult> stridesY);
 
+/// Find the smallest factor of `size` that results in a quotient less than or
+/// equal to `maxSize`.
+int64_t findFactorResultingInSmallerSize(int64_t size, int64_t maxSize);
+
 }  // namespace detail
 
 /// Combine two access patterns into a single one. Assumes that access pattern A
@@ -168,6 +172,17 @@ LogicalResult foldLinearDims(
     SmallVector<OpFoldResult> &newStrides,
     function_ref<bool(size_t, int64_t)> checkValidSize =
         [](size_t idxFromEnd, int64_t size) { return true; });
+
+/// Expand dimensions within a strided access pattern that exceed a maximum
+/// size. Returns `success` if expansion took place. The `maxSizes` array is
+/// expected to be provided in the same order as `sizes` and they are compared
+/// from right to left (innermost to outermost).
+LogicalResult expandLargeDimIntoLinearDims(
+    MLIRContext *ctx, const SmallVector<OpFoldResult> &offsets,
+    const SmallVector<OpFoldResult> &sizes,
+    const SmallVector<OpFoldResult> &strides,
+    SmallVector<OpFoldResult> &newOffsets, SmallVector<OpFoldResult> &newSizes,
+    SmallVector<OpFoldResult> &newStrides, ArrayRef<int64_t> maxSizes);
 
 /// Utility to fold a provided repetition count from the front of the access
 /// pattern (dimensions with `size > 1` and `stride == 0` indicate a

@@ -542,6 +542,15 @@ run_matmul_test \
   --m "128" --n "256" --k "512" \
   --do_transpose_rhs "1"
 
+run_matmul_test \
+  --name_prefix "packPeel4LvlBf16" \
+  --lower_to_aie_pipeline "air" \
+  --tile_pipeline "pack-peel-4-level-tiling" \
+  --lhs_rhs_type "bf16" \
+  --acc_type "f32" \
+  --m "512" --n "512" --k "512" \
+  --num_repeat_runs "1"
+
 ###################################################################
 # ObjectFifo Matmul tests
 ###################################################################
