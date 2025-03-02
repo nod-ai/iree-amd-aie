@@ -84,7 +84,6 @@ void AMDAIEVectorizationPass::runOnOperation() {
         for (Operation &innerOps : genericOp.getBody()->getOperations()) {
           if (!isa<arith::TruncFOp, arith::TruncIOp, linalg::YieldOp>(
                   innerOps)) {
-            op->emitRemark() << "not vectorizing linalg elementwise op";
             return WalkResult::advance();
           }
         }

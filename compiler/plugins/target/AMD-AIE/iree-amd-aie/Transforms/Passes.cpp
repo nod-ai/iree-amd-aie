@@ -34,6 +34,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
+#include "mlir/Dialect/SCF/Transforms/Passes.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 
@@ -781,7 +782,7 @@ void addMLIRAIELoweringPasses(OpPassManager &pm) {
     OpPassManager &devicePM = pm.nest<xilinx::AIE::DeviceOp>();
     devicePM.addPass(createCanonicalizerPass());
     devicePM.addPass(createAMDAIEAssignBufferDescriptorIDsPass());
-    devicePM.addPass(createAMDAIEAssignBufferAddressesBasicPass());
+    devicePM.addPass(createAMDAIEAssignBufferAddressesPass());
     {
       // Route control and data flows separately, prioritizing control flows
       // first to ensure their deterministic routing results.
@@ -864,14 +865,16 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
   passManager.addPass(createCSEPass());
   {
     xilinx::air::ParallelToHerdOptions options;
-    options.clAssignDepth = 1;
+    options.clAssignDepth = -1;
     passManager.addPass(xilinx::air::createParallelToHerdPass(options));
   }
   {
     xilinx::air::ParallelToLaunchOptions options;
     options.clHasSegment = true;
+    options.clAssignDepth = 0;
     passManager.addPass(xilinx::air::createParallelToLaunchPass(options));
   }
+  passManager.addPass(mlir::createForallToForLoopPass());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
   passManager.addPass(xilinx::air::createCopyToDmaPass());
@@ -879,8 +882,7 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
   passManager.addPass(createCSEPass());
 
   passManager.addPass(xilinx::air::createAIRDependencyPass());
-  if (!((useTilePipeline == TilePassPipeline::PackPeelPipeline ||
-         useTilePipeline == TilePassPipeline::PackPeel4LevelTilingPipeline) &&
+  if (!(useTilePipeline == TilePassPipeline::PackPeelPipeline &&
         matmulElementwiseFusion)) {
     passManager.addPass(xilinx::air::createAIRDependencyScheduleOptPass());
     passManager.addPass(xilinx::air::createAIRSpecializeDmaBroadcast());
@@ -896,8 +898,7 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
   passManager.addPass(createCSEPass());
   {
     xilinx::air::AIRFuseChannelsOptions options;
-    if ((useTilePipeline == TilePassPipeline::PackPeelPipeline ||
-         useTilePipeline == TilePassPipeline::PackPeel4LevelTilingPipeline) &&
+    if (useTilePipeline == TilePassPipeline::PackPeelPipeline &&
         matmulElementwiseFusion) {
       const static llvm::SmallVector<std::string> mode = {"L1"};
       options.clAggressiveMode = mode;
@@ -908,26 +909,37 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
   passManager.addPass(createCSEPass());
   passManager.addNestedPass<func::FuncOp>(
       xilinx::air::createAIRSplitL2MemrefForBufferConstraintPass());
+  passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createCSEPass());
   passManager.addPass(xilinx::air::createAIRIsolateAsyncDmaLoopNests());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
+  passManager.addNestedPass<func::FuncOp>(
+      xilinx::air::createAIRFuseAllocDealloc());
+  passManager.addNestedPass<func::FuncOp>(
+      xilinx::air::createAIRShrinkMemrefSizesByAccess());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
-  passManager.addNestedPass<func::FuncOp>(xilinx::air::createAIRLoopFusion());
 
-  passManager.addPass(
-      xilinx::air::createAIRLabelScfForLoopForPingPongPattern());
-  {
-    xilinx::air::AIRPingPongTransformationPatternOptions options;
-    options.clKeepMemrefDealloc = true;
+  if (useTilePipeline != TilePassPipeline::PackPeel4LevelTilingPipeline) {
     passManager.addPass(
-        xilinx::air::createAIRPingPongTransformationPattern(options));
+        xilinx::air::createAIRLabelScfForLoopForPingPongPattern());
+    {
+      xilinx::air::AIRPingPongTransformationPatternOptions options;
+      options.clKeepMemrefDealloc = true;
+      passManager.addPass(
+          xilinx::air::createAIRPingPongTransformationPattern(options));
+    }
+    passManager.addPass(createCanonicalizerPass());
+    passManager.addPass(createCSEPass());
   }
-  passManager.addPass(createCanonicalizerPass());
-  passManager.addPass(createCSEPass());
+  {
+    xilinx::air::AIROptimizeMemtileDMABDsOptions options;
+    options.clDevice = stringifyEnum(device);
+    passManager.addNestedPass<func::FuncOp>(
+        xilinx::air::createAIROptimizeMemtileDMABDs(options));
+  }
 
-  passManager.addPass(
-      xilinx::air::createAIRSpecializeChannelWrapAndStridePattern());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
 

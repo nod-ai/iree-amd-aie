@@ -46,6 +46,8 @@ class TransactionBuilder {
     // Resize instructions and copy data.
     instructions.resize(instructionCount);
     memcpy(instructions.data(), txn_ptr.get(), sizeInBytes);
+    LLVM_DEBUG(llvm::dbgs()
+               << "Instruction size: " << getInstructionSize() << "\n");
     // Clear the transaction.
     TRY_XAIE_API_FATAL_ERROR(XAie_ClearTransaction, &deviceModel.devInst);
     return ArrayRef<uint32_t>(instructions.data(), instructions.size());
@@ -268,8 +270,6 @@ void AMDAIEControlCodeToTransactionPass::runOnOperation() {
                                         transactionBuilder))) {
       return WalkResult::interrupt();
     }
-    LLVM_DEBUG(llvm::dbgs() << "Instruction size: "
-                            << transactionBuilder.getInstructionSize() << "\n");
     ArrayRef<uint32_t> instructions =
         transactionBuilder.finalizeAndReturnInstructions();
     workgroupOp.setNpuInstructionsAttr(DenseUI32ResourceElementsAttr::get(
