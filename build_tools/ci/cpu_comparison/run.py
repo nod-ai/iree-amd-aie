@@ -1796,6 +1796,25 @@ class Tests:
 
         self.register(
             Matmul(
+                32,
+                128,
+                128,
+                "i32",
+                "i32",
+                test_params=TestParams(
+                    run_on_target=["npu4"],
+                    use_chess=False,
+                    tile_pipeline="pack-peel-4-level-tiling",
+                    aie_compilation_flags=[
+                        "--iree-amdaie-num-rows=4",
+                        "--iree-amdaie-num-cols=2",
+                    ],
+                ),
+            )
+        )
+
+        self.register(
+            Matmul(
                 1024,
                 1024,
                 1024,
@@ -2014,122 +2033,65 @@ class Tests:
                 "M": 512,
                 "N": 512,
                 "K": 4096,
-                "use_ukernel": False,
                 "peano_opt_level": 2,
                 "outline": "none",
-                "transpose_a": False,
-                "transpose_b": False,
-                "tile_pipeline": "pack-peel",
             },
             {
                 "M": 512,
                 "N": 512,
                 "K": 4096,
-                "use_ukernel": False,
                 "peano_opt_level": 2,
-                "outline": "balanced",
-                "transpose_a": False,
-                "transpose_b": False,
-                "tile_pipeline": "pack-peel",
             },
             {
                 "M": 512,
                 "N": 512,
                 "K": 4096,
-                "use_ukernel": False,
-                "peano_opt_level": 3,
                 "outline": "none",
-                "transpose_a": False,
-                "transpose_b": False,
-                "tile_pipeline": "pack-peel",
             },
             {
                 "M": 512,
                 "N": 512,
                 "K": 4096,
-                "use_ukernel": False,
-                "peano_opt_level": 3,
-                "outline": "balanced",
-                "transpose_a": False,
-                "transpose_b": False,
-                "tile_pipeline": "pack-peel",
             },
             {
                 "M": 512,
                 "N": 512,
                 "K": 4096,
                 "use_ukernel": True,
-                "peano_opt_level": 3,
-                "outline": "balanced",
-                "transpose_a": False,
-                "transpose_b": False,
-                "tile_pipeline": "pack-peel",
             },
             {
                 "M": 512,
                 "N": 4096,
                 "K": 512,
-                "use_ukernel": False,
-                "peano_opt_level": 3,
-                "outline": "balanced",
-                "transpose_a": False,
-                "transpose_b": False,
-                "tile_pipeline": "pack-peel",
             },
             {
                 "M": 512,
                 "N": 4096,
                 "K": 512,
                 "use_ukernel": True,
-                "peano_opt_level": 3,
-                "outline": "balanced",
-                "transpose_a": False,
-                "transpose_b": False,
-                "tile_pipeline": "pack-peel",
             },
             {
                 "M": 512,
                 "N": 4096,
                 "K": 512,
-                "use_ukernel": False,
-                "peano_opt_level": 3,
-                "outline": "balanced",
-                "transpose_a": False,
                 "transpose_b": True,
-                "tile_pipeline": "pack-peel",
             },
             {
                 "M": 4096,
                 "N": 512,
                 "K": 512,
-                "use_ukernel": False,
-                "peano_opt_level": 3,
-                "outline": "balanced",
-                "transpose_a": False,
-                "transpose_b": False,
-                "tile_pipeline": "pack-peel",
             },
             {
                 "M": 4096,
                 "N": 512,
                 "K": 512,
                 "use_ukernel": True,
-                "peano_opt_level": 3,
-                "outline": "balanced",
-                "transpose_a": False,
-                "transpose_b": False,
-                "tile_pipeline": "pack-peel",
             },
             {
                 "M": 4096,
                 "N": 512,
                 "K": 512,
-                "use_ukernel": False,
-                "peano_opt_level": 3,
-                "outline": "balanced",
                 "transpose_a": True,
-                "transpose_b": False,
-                "tile_pipeline": "pack-peel",
             },
             # Test where the compute is omitted, this should help triangulate
             # how much performance gain can be obtained with better matmul
@@ -2138,24 +2100,13 @@ class Tests:
                 "M": 4096,
                 "N": 512,
                 "K": 512,
-                "use_ukernel": False,
-                "peano_opt_level": 3,
-                "outline": "balanced",
                 "outline_to_empty_function": True,
-                "transpose_a": False,
-                "transpose_b": False,
                 "skip_numerics": True,
-                "tile_pipeline": "pack-peel",
             },
             {
                 "M": 512,
                 "N": 4096,
                 "K": 512,
-                "use_ukernel": False,
-                "peano_opt_level": 3,
-                "outline": "balanced",
-                "transpose_a": False,
-                "transpose_b": False,
                 "tile_pipeline": "pack-peel-4-level-tiling",
             },
             {
@@ -2163,10 +2114,6 @@ class Tests:
                 "N": 4096,
                 "K": 512,
                 "use_ukernel": True,
-                "peano_opt_level": 3,
-                "outline": "balanced",
-                "transpose_a": False,
-                "transpose_b": False,
                 "tile_pipeline": "pack-peel-4-level-tiling",
             },
             {
@@ -2174,10 +2121,6 @@ class Tests:
                 "N": 4096,
                 "K": 512,
                 "use_ukernel": True,
-                "peano_opt_level": 3,
-                "outline": "balanced",
-                "transpose_a": False,
-                "transpose_b": False,
                 "matmul4d": True,
                 "tile_pipeline": "pack-peel-4-level-tiling",
             },
@@ -2188,12 +2131,7 @@ class Tests:
                 "M": 512,
                 "N": 4096,
                 "K": 512,
-                "use_ukernel": False,
-                "peano_opt_level": 3,
-                "outline": "balanced",
                 "outline_to_empty_function": True,
-                "transpose_a": False,
-                "transpose_b": False,
                 "skip_numerics": True,
                 "tile_pipeline": "pack-peel-4-level-tiling",
             },
@@ -2205,13 +2143,8 @@ class Tests:
                 "N": 4096,
                 "K": 512,
                 "in_dtype": "i8",
-                "out_dtype": "i32",
                 "use_ukernel": True,
-                "peano_opt_level": 3,
                 "outline": "all",
-                "transpose_a": False,
-                "transpose_b": False,
-                "tile_pipeline": "pack-peel",
                 "run_on_target": "npu4",
             },
             {
@@ -2219,14 +2152,8 @@ class Tests:
                 "N": 4096,
                 "K": 512,
                 "in_dtype": "i8",
-                "out_dtype": "i32",
-                "use_ukernel": False,
-                "peano_opt_level": 3,
                 "outline": "all",
                 "outline_to_empty_function": True,
-                "transpose_a": False,
-                "transpose_b": False,
-                "tile_pipeline": "pack-peel",
                 "run_on_target": "npu4",
                 "skip_numerics": True,
             },
@@ -2235,12 +2162,8 @@ class Tests:
                 "N": 4096,
                 "K": 512,
                 "in_dtype": "i8",
-                "out_dtype": "i32",
                 "use_ukernel": True,
-                "peano_opt_level": 3,
                 "outline": "all",
-                "transpose_a": False,
-                "transpose_b": False,
                 "tile_pipeline": "pack-peel-4-level-tiling",
                 "run_on_target": "npu4",
             },
@@ -2249,12 +2172,8 @@ class Tests:
                 "N": 4096,
                 "K": 512,
                 "in_dtype": "i8",
-                "out_dtype": "i32",
                 "use_ukernel": True,
-                "peano_opt_level": 3,
                 "outline": "all",
-                "transpose_a": False,
-                "transpose_b": False,
                 "matmul4d": True,
                 "tile_pipeline": "pack-peel-4-level-tiling",
                 "run_on_target": "npu4",
@@ -2264,13 +2183,8 @@ class Tests:
                 "N": 4096,
                 "K": 512,
                 "in_dtype": "i8",
-                "out_dtype": "i32",
-                "use_ukernel": False,
-                "peano_opt_level": 3,
                 "outline": "all",
                 "outline_to_empty_function": True,
-                "transpose_a": False,
-                "transpose_b": False,
                 "tile_pipeline": "pack-peel-4-level-tiling",
                 "run_on_target": "npu4",
                 "skip_numerics": True,
@@ -2280,12 +2194,8 @@ class Tests:
                 "N": 4096,
                 "K": 512,
                 "in_dtype": "i8",
-                "out_dtype": "i32",
                 "use_ukernel": True,
-                "peano_opt_level": 3,
                 "outline": "all",
-                "transpose_a": False,
-                "transpose_b": False,
                 "tile_pipeline": "pack-peel-4-level-tiling",
                 "run_on_target": "npu4",
                 "use_chess_for_ukernel": False,
@@ -2297,23 +2207,19 @@ class Tests:
             M = test["M"]
             N = test["N"]
             K = test["K"]
-            use_ukernel = test["use_ukernel"]
-            peano_opt_level = test["peano_opt_level"]
-            outline = test["outline"]
-            transpose_a = test["transpose_a"]
-            transpose_b = test["transpose_b"]
-            tile_pipeline = test["tile_pipeline"]
-            matmul4d = test["matmul4d"] if "matmul4d" in test else False
-            run_on_target = (
-                test["run_on_target"] if "run_on_target" in test else "npu1_4col"
-            )
-            in_dtype = test["in_dtype"] if "in_dtype" in test else "bf16"
-            out_dtype = test["out_dtype"] if "out_dtype" in test else "f32"
-            use_chess_for_ukernel = (
-                test["use_chess_for_ukernel"]
-                if "use_chess_for_ukernel" in test
-                else True
-            )
+            peano_opt_level = test.get("peano_opt_level", 3)
+            outline = test.get("outline", "balanced")
+            transpose_a = test.get("transpose_a", False)
+            transpose_b = test.get("transpose_b", False)
+            use_ukernel = test.get("use_ukernel", False)
+            tile_pipeline = test.get("tile_pipeline", "pack-peel")
+            matmul4d = test.get("matmul4d", False)
+            use_chess_for_ukernel = test.get("use_chess_for_ukernel", True)
+            run_on_target = test.get("run_on_target", "npu1_4col")
+            in_dtype = test.get("in_dtype", "bf16")
+            out_dtype = test.get("out_dtype", "f32")
+            if in_dtype == "i8" and out_dtype == "f32":
+                out_dtype = "i32"
 
             outlining_string = "--iree-amdaie-enable-function-outlining=" + outline
 
