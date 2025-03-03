@@ -616,7 +616,8 @@ class MatmulFullBias(BaseMatmul):
 
 class MatmulConstBiasCtrlpkt(BaseMatmul):
     """
-    A test of the form matmul(A,B) where A:MxK, B:KxN
+    A test of the form matmul(A,B) + C, reconfigured at runtime to matmul(A,B) + D,
+    where A:MxK, B:KxN, C and D are constant scalar biases.
     """
 
     def __init__(
@@ -626,6 +627,8 @@ class MatmulConstBiasCtrlpkt(BaseMatmul):
         K,
         input_type,
         acc_type,
+        constant_bias_C,
+        constant_bias_D,
         additional_labels=None,
         n_kernel_runs=1,
         test_params=None,
@@ -641,6 +644,8 @@ class MatmulConstBiasCtrlpkt(BaseMatmul):
             n_kernel_runs=n_kernel_runs,
         )
         self.labels.append("MatmulConstBiasCtrlPacket")
+
+        # TODO (zhewen): Test full array.
         self.aie_compilation_flags += [
             "--iree-amdaie-num-rows=1",
             "--iree-amdaie-num-cols=1",
@@ -657,76 +662,79 @@ class MatmulConstBiasCtrlpkt(BaseMatmul):
             ]
             self.labels.append("MatmulConstBiasCtrlPacketBenchmark")
 
+        self.constant_bias_C = constant_bias_C
+        self.constant_bias_D = constant_bias_D
+
+    def generate_vmfb_with_ctrlpkts(self, config, constant_bias, aie_ctrlpkt_flags=[]):
+        # Make a copy of the original name, and append the bias value to differentiate test directories.
+        name_copy = self.name
+        self.name = name_copy + f"_bias_{constant_bias}"
+        matmul_template_dir = config.file_dir / "matmul_template"
+        template_name = matmul_template_dir / "matmul_constant_bias_MxK_KxN.mlir"
+        # Generate MLIR using the specified bias.
+        self.generate(config, template_name, constant_bias)
+        test_dir = self.get_dir(config)
+        test_file = self.get_filename(config)
+        test_name = name_from_mlir_filename(test_file)
+        # Generate the AIE VMFB file, applying control packet flags if provided.
+        aie_vmfb = generate_aie_vmfb(
+            config,
+            self.aie_compilation_flags + aie_ctrlpkt_flags,
+            test_name,
+            self.tile_pipeline,
+            self.lower_to_aie_pipeline,
+            self.use_ukernel,
+            test_file,
+        )
+        # Restore the original test name.
+        self.name = name_copy
+        return test_dir, test_file, test_name, aie_vmfb
+
     def _execute(self, config):
         # TODO (zhewen): Generalize this test flow.
 
-        matmul_template_dir = config.file_dir / "matmul_template"
-        template_name = matmul_template_dir / "matmul_constant_bias_MxK_KxN.mlir"
-        name_copy = self.name
-
-        # Compile the test file with an initial constant bias of 2.
+        # Compile the test file with an initial constant bias of `D`.
         # This will also generate the control packets needed for runtime reconfiguration.
-        self.name = name_copy + "_2"
-        self.generate(config, template_name, constant_bias=2)
-        test_dir_2 = self.get_dir(config)
-        test_file_2 = self.get_filename(config)
-        test_name_2 = name_from_mlir_filename(test_file_2)
-        aie_vmfb_2 = generate_aie_vmfb(
-            config,
-            self.aie_compilation_flags,
-            test_name_2,
-            self.tile_pipeline,
-            self.lower_to_aie_pipeline,
-            self.use_ukernel,
-            test_file_2,
+        test_dir_D, test_file_D, test_name_D, _ = self.generate_vmfb_with_ctrlpkts(
+            config, self.constant_bias_D
         )
 
-        # Compile the test file with an initial constant bias = 1, and generate the PDI for it.
+        # Compile the test file with an initial constant bias = `C`, and generate the PDI for it.
         # The PDI will be combined with previously generated control packets to generate the final ".vmfb" file.
         # Without applying the control packets (`aie_ctrlpkt_flags`), the test is expected
-        # to fail, as all values would deviate by 1.
-        aie_ctrlpkt_flags = [f"--iree-amdaie-dir-to-load-control-packet={test_dir_2}"]
-        self.name = name_copy + "_1"
-        self.generate(config, template_name, constant_bias=1)
-        test_file_1 = self.get_filename(config)
-        test_name_1 = name_from_mlir_filename(test_file_1)
-        aie_vmfb_1 = generate_aie_vmfb(
-            config,
-            self.aie_compilation_flags + aie_ctrlpkt_flags,
-            test_name_1,
-            self.tile_pipeline,
-            self.lower_to_aie_pipeline,
-            self.use_ukernel,
-            test_file_1,
+        # to fail, as all values would deviate by `D - C`.
+        aie_ctrlpkt_flags = [f"--iree-amdaie-dir-to-load-control-packet={test_dir_D}"]
+        _, _, test_name_C, aie_vmfb_C = self.generate_vmfb_with_ctrlpkts(
+            config, self.constant_bias_C, aie_ctrlpkt_flags
         )
 
-        # Generate the CPU output for constant bias = 2.
+        # Generate the CPU output for constant bias = `D`.
         input_args = generate_inputs(
-            test_file_2, config.get_test_dir(test_name_2), seed=1
+            test_file_D, config.get_test_dir(test_name_D), seed=1
         )
-        output_type = get_output_type(test_file_2)
+        output_type = get_output_type(test_file_D)
         cpu_output = generate_llvm_cpu_output(
             config,
-            test_name_2,
-            test_file_2,
+            test_name_D,
+            test_file_D,
             input_args,
             None,
             output_type,
         )
 
-        # Load the PDI with an initial constant bias of 1.
-        # The control packets are then applied at runtime to update the bias to 2.
+        # Load the PDI with an initial constant bias of `C`.
+        # The control packets are then applied at runtime to update the bias to `D`.
         # After reconfiguration, run the new kernel and generate the AIE output.
         aie_output = generate_aie_output(
             config,
-            aie_vmfb_1,
+            aie_vmfb_C,
             input_args,
             None,
-            test_name_1,
+            test_name_C,
             output_type,
         )
 
-        # If the control packet successfully reconfigures the bias from 1 to 2,
+        # If the control packet successfully reconfigures the bias from `C` to `D`,
         # the AIE output should match the expected CPU output.
         summary_string = compare(cpu_output, aie_output, rtol=1e-6, atol=1e-6)
         if summary_string:
@@ -2152,8 +2160,8 @@ class Tests:
                 )
             )
 
-        # Control packet test.
-        self.register(MatmulConstBiasCtrlpkt(8, 8, 8, "i8", "i32"))
+        # Control packet test with constant biases 1 and 2.
+        self.register(MatmulConstBiasCtrlpkt(8, 8, 8, "i8", "i32", 1, 2))
 
         performance_tests = [
             ##############
