@@ -14,6 +14,6 @@
 #include "aie/AIEEnums.h.inc"
 // clang-format on
 
-enum class AllocScheme { Sequential, BankAware };
+enum class AllocScheme { Sequential, BankAware, None };
 
 #endif

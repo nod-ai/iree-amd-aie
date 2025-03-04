@@ -15,7 +15,7 @@ def AMDAIEAssignBufferAddresses :
   let summary = "Pass to assign buffers to memory addresses.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAssignBufferAddressesPass()";
   let options = [
-    Option<"allocScheme", "alloc-scheme", "AllocScheme", /*default=*/"AllocScheme::BankAware",
+    Option<"allocScheme", "alloc-scheme", "AllocScheme", /*default=*/"AllocScheme::None",
       "Choose which scheme to apply for buffer allocation",
       [{::llvm::cl::values(
         clEnumValN(AllocScheme::Sequential, "sequential",
