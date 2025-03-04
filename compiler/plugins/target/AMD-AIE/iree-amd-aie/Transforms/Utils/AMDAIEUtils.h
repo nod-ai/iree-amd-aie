@@ -131,6 +131,11 @@ std::string getConstantIntValuesString(ArrayRef<OpFoldResult> opFoldResults);
 bool sinkInto(Region &, IRRewriter &,
               std::function<bool(Operation *)> shouldSink);
 
+/// Create an scf.for operation with an attribute specifying that LLVM
+/// must not unroll it. The for loop will iterate from `start` to `end` with
+/// `step` increment, and have debug location `loc`. The body of the loop will
+/// be empty, and the insertion point of builder will be unchanged by this
+/// function.
 scf::ForOp createForOpWithUnrollingDisabled(OpBuilder &builder, Location loc,
                                             int start, int end, int step);
 

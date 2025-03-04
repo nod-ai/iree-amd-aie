@@ -23,7 +23,7 @@ func.func @reduction(%A: memref<4xbf16>, %B: memref<bf16>) {
 // EMPTY-NOT: linalg.generic
 // EMPTY: return
 
-// The (default) case where call-replication=1, the outlined function should be called once. 
+// The (default) case where call-replication=1, the outlined function should be called once.
 // NOT_EMPTY: func.func private
 // NOT_EMPTY: linalg.generic
 // NOT_EMPTY: return
@@ -34,20 +34,6 @@ func.func @reduction(%A: memref<4xbf16>, %B: memref<bf16>) {
 // REPLICATED: func.func private
 // REPLICATED: linalg.generic
 // REPLICATED: return
-// REPLICATED: scf.for 
+// REPLICATED: scf.for
 // REPLICATED-SAME: %c0 to %c2_0 step %c1
 // REPLICATED: func.call @generic_0_outlined
-
-
-
-
-
-
-
-
-
-
-
-
-
-

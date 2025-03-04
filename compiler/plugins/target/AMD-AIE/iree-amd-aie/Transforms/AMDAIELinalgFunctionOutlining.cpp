@@ -207,9 +207,8 @@ void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
     rewriter.eraseOp(op);
   }
 
-  // Instead of having 0 calls, we replace call into a function that does
-  // nothing. We do this because having no calls can result in DCE that removes
-  // more than we want.
+  // Instead of 0 calls, we call into a function that does nothing. We do this
+  // because having no calls can result in DCE that removes more than we want.
   if (callReplication == 0) {
     for (auto &&nameAndFuncOp : computeOpToOutlinedFuncMap) {
       Region &region = nameAndFuncOp.second.getBody();

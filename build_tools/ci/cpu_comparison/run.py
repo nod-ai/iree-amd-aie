@@ -2119,31 +2119,43 @@ class Tests:
         # Control packet test with constant biases 1 and 2.
         self.register(MatmulConstBiasCtrlpkt(8, 8, 8, "i8", "i32", 1, 2))
 
-        performance_tests = [
-            ##############
-            # NPU1 Tests #
-            ##############
-            {
-                "M": 512,
-                "N": 512,
-                "K": 512,
-                "use_ukernel": False,
-                "peano_opt_level": 2,
-                "outline": "balanced",
-                "transpose_a": False,
-                "transpose_b": False,
-                "tile_pipeline": "pack-peel",
-                "skip_numerics": True,
-                "additional_labels": ["CorePerformance"],
-                "outline_call_replication": 100,
-                "aie_compilation_flags": [
-                    "--iree-amdaie-num-rows=1",
-                    "--iree-amdaie-num-cols=1",
-                    # "--iree-amdaie-outlining-call-replication=100",
-                ],
-                "n_performance_repeats": 1,
-                "n_performance_kernel_runs": 1,
-            },
+        performance_tests = []
+
+        ##############
+        # NPU1 Tests #
+        ##############
+        for opt_level in [2, 3]:
+            # Tests of performance of peano code generation, with a comparison between O2 and O3.
+            # We run on a 512x512x512 on a single core in a loop 100 times without any
+            # data copies between memory tiles and core tile memory. If we know that the
+            # peak performance for the 4x4 array is 4 TFlops, then
+            # peak performace for single core is 4/16 = 0.25 TFlops.
+            # This matmul is 512x512x512*2 flops = 0.25 GFlops.
+            # So at peak performance, to run 100 this in a loop 100 times should take  0.1 seconds (100'000 microseconds).
+            performance_tests.append(
+                {
+                    "M": 512,
+                    "N": 512,
+                    "K": 512,
+                    "use_ukernel": False,
+                    "peano_opt_level": opt_level,
+                    "additional_labels": ["CorePerformance"],
+                    "aie_compilation_flags": [
+                        "--iree-amdaie-num-rows=1",
+                        "--iree-amdaie-num-cols=1",
+                    ],
+                    # effectively this says:
+                    #   for 3 launches:
+                    #     for 1 copy of data to and from AIE:
+                    #       for 100 calls to the matmul function:
+                    #          compute
+                    "outline_call_replication": 100,
+                    "n_performance_repeats": 3,
+                    "n_performance_kernel_runs": 1,
+                }
+            )
+
+        performance_tests += [
             {
                 "M": 512,
                 "N": 512,
@@ -2208,15 +2220,14 @@ class Tests:
                 "K": 512,
                 "transpose_a": True,
             },
-            # Test where the compute is omitted, this should help triangulate
-            # how much performance gain can be obtained with better matmul
-            # on core vs data movement.
             {
                 "M": 4096,
                 "N": 512,
                 "K": 512,
+                # outline_call_replication = 0 means the compute is omitted, this should
+                # help triangulate how much performance gain can be obtained with better
+                # matmul on core vs data movement.
                 "outline_call_replication": 0,
-                "skip_numerics": True,
             },
             {
                 "M": 512,
@@ -2239,15 +2250,11 @@ class Tests:
                 "matmul4d": True,
                 "tile_pipeline": "pack-peel-4-level-tiling",
             },
-            # Test where the compute is omitted, this should help triangulate
-            # how much performance gain can be obtained with better matmul
-            # on core vs data movement.
             {
                 "M": 512,
                 "N": 4096,
                 "K": 512,
                 "outline_call_replication": 0,
-                "skip_numerics": True,
                 "tile_pipeline": "pack-peel-4-level-tiling",
             },
             ##############
@@ -2270,7 +2277,6 @@ class Tests:
                 "outline": "all",
                 "outline_call_replication": 0,
                 "run_on_target": "npu4",
-                "skip_numerics": True,
             },
             {
                 "M": 512,
@@ -2302,7 +2308,6 @@ class Tests:
                 "outline_call_replication": 0,
                 "tile_pipeline": "pack-peel-4-level-tiling",
                 "run_on_target": "npu4",
-                "skip_numerics": True,
             },
             {
                 "M": 512,
@@ -2334,6 +2339,9 @@ class Tests:
             run_on_target = test.get("run_on_target", "npu1_4col")
             in_dtype = test.get("in_dtype", "bf16")
             out_dtype = test.get("out_dtype", "f32")
+
+            # Default of 1 means that outlined functions are called once at each
+            # call site (i.e. normal behaviour).
             outline_call_replication = test.get("outline_call_replication", 1)
 
             if in_dtype == "i8" and out_dtype == "f32":
@@ -2341,10 +2349,9 @@ class Tests:
 
             n_performance_repeats = test.get("n_performance_repeats", 5)
             n_performance_kernel_runs = test.get("n_performance_kernel_runs", 100)
-            skip_numerics = test.get("skip_numerics", False)
             additional_labels = test.get("additional_labels", [])
-            if skip_numerics:
-                additional_labels.append("SkipNumerics")
+
+            skip_numerics = outline_call_replication != 1
 
             outlining_string = "--iree-amdaie-enable-function-outlining=" + outline
 

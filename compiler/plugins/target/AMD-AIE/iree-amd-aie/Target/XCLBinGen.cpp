@@ -758,7 +758,7 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
     int row = coreOp.getTileOp().getRow();
 
     if (verbose) {
-      llvm::outs() << "Generating elf for core " << iter.index() << " / "
+      llvm::outs() << "Generating elf for core " << 1 + iter.index() << " / "
                    << nCoreOps;
       std::string tail =
           verboseForThisIteration ? "" : ", won't print full log";
