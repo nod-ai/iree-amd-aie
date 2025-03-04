@@ -61,7 +61,6 @@ table ExecutableDef {
   //   - The third dimension is a uint32 array containing the instruction stream for a single kernel run.
   asm_instr_runlists:[UI32Array2dDef];
 
-
   // A map of entry point ordinals to the indices of the containing `reconf_data_runlists` (the following field).
   // This list has the same size as the `entry_points` list.
   // - The type is `int32` instead of `uint32` to allow `-1` as a special value.
