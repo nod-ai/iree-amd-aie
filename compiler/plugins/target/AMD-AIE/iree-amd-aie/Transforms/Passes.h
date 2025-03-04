@@ -32,7 +32,8 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
 
 /// Add lowering passes from MLIR-AIE. This is
 /// currently the default passes used for lowering from AIE dialect.
-void addMLIRAIELoweringPasses(OpPassManager &passManager);
+void addMLIRAIELoweringPasses(OpPassManager &passManager,
+                              TilePassPipeline useTilePipeline);
 
 /// Populates passes needed to lower linalg/arith/math ops to LLVM dialect via
 /// the structured ops path. The pass manager `pm` here operate on the module
