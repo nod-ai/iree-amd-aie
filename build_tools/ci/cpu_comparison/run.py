@@ -1718,10 +1718,6 @@ class Tests:
                     name_suffix="scaling",
                     tile_pipeline="pack-peel-4-level-tiling",
                     run_on_target=["npu1_4col"],
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=4",
-                        "--iree-amdaie-num-cols=4",
-                    ],
                     use_ukernel=True,
                 ),
             )
@@ -1740,10 +1736,6 @@ class Tests:
                 test_params=TestParams(
                     tile_pipeline="pack-peel-4-level-tiling",
                     run_on_target=["npu1_4col"],
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=4",
-                        "--iree-amdaie-num-cols=4",
-                    ],
                 ),
             )
         )
@@ -1761,10 +1753,6 @@ class Tests:
                 test_params=TestParams(
                     tile_pipeline="pack-peel-4-level-tiling",
                     run_on_target=["npu4"],
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=4",
-                        "--iree-amdaie-num-cols=8",
-                    ],
                     use_chess=False,
                     use_ukernel=True,
                     use_chess_for_ukernel=False,
@@ -1842,10 +1830,6 @@ class Tests:
                     tile_pipeline="pack-peel-4-level-tiling",
                     run_on_target=["npu4"],
                     name_suffix="4x8_npu4",
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=4",
-                        "--iree-amdaie-num-cols=8",
-                    ],
                     n_repeats=10,
                 ),
             )
@@ -1863,10 +1847,6 @@ class Tests:
                     tile_pipeline="pack-peel-4-level-tiling",
                     run_on_target=["npu4"],
                     name_suffix="4x8_npu4",
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=4",
-                        "--iree-amdaie-num-cols=8",
-                    ],
                     n_repeats=10,
                 ),
             )
@@ -1958,10 +1938,6 @@ class Tests:
                 test_params=TestParams(
                     name_suffix="4rows_8cols_npu4",
                     run_on_target=["npu4"],
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=4",
-                        "--iree-amdaie-num-cols=8",
-                    ],
                     use_chess=False,
                 ),
             )
@@ -1977,10 +1953,6 @@ class Tests:
                     name_suffix="4rows_8cols_npu4_pack_peel_4_level_tiling",
                     tile_pipeline="pack-peel-4-level-tiling",
                     run_on_target=["npu4"],
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=4",
-                        "--iree-amdaie-num-cols=8",
-                    ],
                 ),
             )
         )
@@ -2031,10 +2003,6 @@ class Tests:
                     use_ukernel=True,
                     use_chess=False,
                     use_chess_for_ukernel=False,
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=4",
-                        "--iree-amdaie-num-cols=8",
-                    ],
                     run_on_target=["npu4"],
                 ),
             )
@@ -2052,10 +2020,6 @@ class Tests:
                     use_chess_for_ukernel=False,
                     run_on_target=["npu4"],
                     tile_pipeline="pack-peel-4-level-tiling",
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=4",
-                        "--iree-amdaie-num-cols=8",
-                    ],
                 ),
                 additional_labels=["I8UKernel"],
             )
@@ -2072,10 +2036,6 @@ class Tests:
                     use_ukernel=True,
                     tile_pipeline="pack-peel-4-level-tiling",
                     run_on_target=["npu4"],
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=4",
-                        "--iree-amdaie-num-cols=8",
-                    ],
                     use_chess=False,
                     use_chess_for_ukernel=False,
                 ),
@@ -2093,10 +2053,6 @@ class Tests:
                     use_ukernel=True,
                     tile_pipeline="pack-peel-4-level-tiling",
                     run_on_target=["npu4"],
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=4",
-                        "--iree-amdaie-num-cols=8",
-                    ],
                     use_chess=False,
                     use_chess_for_ukernel=False,
                 ),
@@ -2369,10 +2325,6 @@ class Tests:
                 outlining_string,
                 f"--iree-amd-aie-additional-peano-opt-flags={peano_opt_level_string}",
             ]
-
-            if run_on_target == "npu4":
-                aie_compilation_flags.append("--iree-amdaie-num-rows=4")
-                aie_compilation_flags.append("--iree-amdaie-num-cols=8")
 
             outline_to_empty_function = False
             empty_key = "outline_to_empty_function"

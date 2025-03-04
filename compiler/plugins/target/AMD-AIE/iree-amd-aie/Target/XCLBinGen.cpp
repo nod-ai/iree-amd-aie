@@ -742,24 +742,28 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
     return failure();
   }
 
-  uint32_t nTileOps = std::distance(tileOps.begin(), tileOps.end());
+  SmallVector<AIE::CoreOp> coreOps;
+  for (AIE::TileOp tileOp : tileOps) {
+    AIE::CoreOp coreOp = AIE::getCoreOp(tileOp);
+    if (coreOp) coreOps.push_back(coreOp);
+  }
 
-  for (auto iter : llvm::enumerate(tileOps)) {
+  uint32_t nCoreOps = coreOps.size();
+
+  for (auto iter : llvm::enumerate(coreOps)) {
     // Control logging verbosity: lower verbosing for all but the first core.
     bool verboseForThisIteration = verbose && (iter.index() == 0);
+    AIE::CoreOp coreOp = iter.value();
+    int col = coreOp.getTileOp().getCol();
+    int row = coreOp.getTileOp().getRow();
+
     if (verbose) {
       llvm::outs() << "Generating elf for core " << iter.index() << " / "
-                   << nTileOps;
+                   << nCoreOps;
       std::string tail =
           verboseForThisIteration ? "" : ", won't print full log";
       llvm::outs() << tail << ".\n";
     }
-
-    AIE::TileOp tileOp = iter.value();
-    int col = tileOp.getCol();
-    int row = tileOp.getRow();
-    auto coreOp = AIE::getCoreOp(tileOp);
-    if (!coreOp) continue;
 
     std::string elfFileName;
     if (auto fileAttr = coreOp.getElfFileAttr()) {
