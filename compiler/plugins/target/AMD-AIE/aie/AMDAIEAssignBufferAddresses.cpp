@@ -80,11 +80,17 @@ void setAndUpdateAddressInBank(BufferOp buffer, int64_t start_addr,
 FailureOr<bool> checkAndAddBufferWithAddress(
     BufferOp buffer, uint32_t bankSize, SmallVector<int64_t> &nextAddrInBanks,
     const SmallVector<BankLimits> &bankLimits) {
-  auto addrAttr = buffer->getAttrOfType<IntegerAttr>("address");
-  if (!addrAttr) return false;
+  std::optional<uint32_t> maybeAddr = buffer.getAddress();
+  if (!maybeAddr) return false;
+  uint32_t addr = maybeAddr.value();
+  uint32_t bankIndex = addr / bankSize;
 
-  int addr = addrAttr.getInt();
-  int64_t bankIndex = addr / bankSize;
+  // If the bank has pre-assigned, check if the bank index matches.
+  if (std::optional<uint32_t> memBank = buffer.getMemBank()) {
+    assert(memBank.value() == bankIndex &&
+           "bank index is not equal to the preset value");
+    return true;
+  }
 
   // If the allocator already allocated this address, fail.
   if (addr < nextAddrInBanks[bankIndex])
@@ -92,6 +98,8 @@ FailureOr<bool> checkAndAddBufferWithAddress(
 
   // The allocator can accommodate this existing allocation.
   nextAddrInBanks[bankIndex] = addr + getAllocationSize(buffer);
+  if (nextAddrInBanks[bankIndex] > bankLimits[bankIndex].endAddr)
+    return buffer->emitOpError("would over run the current bank limit");
   buffer.setMemBank(bankIndex);
   return true;
 }
@@ -103,14 +111,22 @@ FailureOr<bool> checkAndAddBufferWithAddress(
 FailureOr<bool> checkAndAddBufferWithMemBank(
     BufferOp buffer, SmallVector<int64_t> &nextAddrInBanks,
     const SmallVector<BankLimits> &bankLimits) {
-  auto memBankAttr = buffer->getAttrOfType<IntegerAttr>("mem_bank");
-  if (!memBankAttr) return false;
+  std::optional<uint32_t> maybeBank = buffer.getMemBank();
+  if (!maybeBank) return false;
+  uint32_t memBank = maybeBank.value();
 
-  int mem_bank = memBankAttr.getInt();
-  int64_t startAddr = nextAddrInBanks[mem_bank];
+  // If the buffer has preset address, the next available address for the bank
+  // will start from there.
+  if (std::optional<uint32_t> addr = buffer.getAddress()) {
+    if (addr.value() > nextAddrInBanks[memBank]) {
+      nextAddrInBanks[memBank] = addr.value();
+    }
+  }
+
+  int64_t startAddr = nextAddrInBanks[memBank];
   int64_t endAddr = startAddr + getAllocationSize(buffer);
-  if (endAddr > bankLimits[mem_bank].endAddr)
-    return buffer->emitOpError("would override the existing mem_bank");
+  if (endAddr > bankLimits[memBank].endAddr)
+    return buffer->emitOpError("would over run the current bank limit");
   setAndUpdateAddressInBank(buffer, startAddr, endAddr, nextAddrInBanks);
   return true;
 }
@@ -170,12 +186,11 @@ LogicalResult bankAwareAllocation(
 
     // Each entry of `nextAddrInBanks` is the next address available for use
     // in that bank, and the index is the bank number.
-    int stackSize = 0;
     SmallVector<int64_t> nextAddrInBanks;
     for (int i = 0; i < numBanks; i++) nextAddrInBanks.push_back(bankSize * i);
     // Leave room at the bottom of the address range for stack.
     if (CoreOp core = tile.getCoreOp()) {
-      stackSize = core.getStackSize();
+      int64_t stackSize = core.getStackSize();
       if (stackSize > bankSize)
         return tile.emitOpError("stack size: ")
                << stackSize
@@ -190,17 +205,17 @@ LogicalResult bankAwareAllocation(
       bankLimits.emplace_back(i * bankSize, (i + 1) * bankSize);
     }
 
-    // If possible, the buffers with an already specified address will not be
-    // overwritten (the available address range of the bank the buffers are in
-    // will start AFTER the specified address + buffer size). Buffers with a
-    // specified mem_bank will be assigned first, after the above.
+    // The buffers with an already specified address will not be overwritten
+    // (the available address range of the bank the buffers are in will start
+    // AFTER the specified address + buffer size). Buffers with a specified
+    // memory bank will be assigned first, after the above.
     SmallVector<BufferOp> preAllocatedBuffers;
     SmallVector<BufferOp> buffersToAlloc;
     for (BufferOp buffer : buffers) {
-      FailureOr<bool> has_addr = checkAndAddBufferWithAddress(
-          buffer, bankSize, nextAddrInBanks, bankLimits);
       FailureOr<bool> has_bank =
           checkAndAddBufferWithMemBank(buffer, nextAddrInBanks, bankLimits);
+      FailureOr<bool> has_addr = checkAndAddBufferWithAddress(
+          buffer, bankSize, nextAddrInBanks, bankLimits);
       if (failed(has_addr) || failed(has_bank)) return failure();
       if (!has_addr.value() && !has_bank.value())
         buffersToAlloc.push_back(buffer);
