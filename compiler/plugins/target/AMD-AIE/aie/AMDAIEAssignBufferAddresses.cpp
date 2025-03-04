@@ -208,11 +208,13 @@ LogicalResult bankAwareAllocation(
         preAllocatedBuffers.push_back(buffer);
     }
 
-    // Sort by largest allocation size before allocating.
-    std::sort(buffersToAlloc.begin(), buffersToAlloc.end(),
-              [](BufferOp a, BufferOp b) {
-                return getAllocationSize(a) > getAllocationSize(b);
-              });
+    // Note: This is currently disabled to avoid numerical error in ci for
+    // depthwise_conv2d op.
+    // // Sort by largest allocation size before allocating.
+    // std::sort(buffersToAlloc.begin(), buffersToAlloc.end(),
+    //           [](BufferOp a, BufferOp b) {
+    //             return getAllocationSize(a) > getAllocationSize(b);
+    //           });
 
     // Set addresses for remaining buffers.
     SmallVector<BufferOp> allocatedBuffers;

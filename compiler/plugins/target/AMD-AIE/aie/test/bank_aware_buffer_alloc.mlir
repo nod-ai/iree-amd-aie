@@ -3,9 +3,9 @@
 
 // CHECK-LABEL:   aie.device(xcvc1902) {
 // CHECK:           %[[TILE_3_3:.*]] = aie.tile(3, 3)
-// CHECK:           aie.buffer(%[[TILE_3_3]]) {address = 16384 : i32, mem_bank = 2 : i32, sym_name = "a"} : memref<16xi8>
-// CHECK:           aie.buffer(%[[TILE_3_3]]) {address = 1024 : i32, mem_bank = 0 : i32, sym_name = "b"} : memref<512xi32>
-// CHECK:           aie.buffer(%[[TILE_3_3]]) {address = 8192 : i32, mem_bank = 1 : i32, sym_name = "c"} : memref<16xi16>
+// CHECK:           aie.buffer(%[[TILE_3_3]]) {address = 1024 : i32, mem_bank = 0 : i32, sym_name = "a"} : memref<16xi8>
+// CHECK:           aie.buffer(%[[TILE_3_3]]) {address = 8192 : i32, mem_bank = 1 : i32, sym_name = "b"} : memref<512xi32>
+// CHECK:           aie.buffer(%[[TILE_3_3]]) {address = 16384 : i32, mem_bank = 2 : i32, sym_name = "c"} : memref<16xi16>
 // CHECK:           %[[TILE_4_4:.*]] = aie.tile(4, 4)
 // CHECK:           aie.buffer(%[[TILE_4_4]]) {address = 1024 : i32, mem_bank = 0 : i32, sym_name = "_anonymous0"} : memref<500xi32>
 // CHECK:           aie.core(%[[TILE_3_3]]) {
