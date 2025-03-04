@@ -61,6 +61,7 @@ struct AMDAIEOptions {
   bool enableCollapsingUnitDims{false};
   OutliningStrategy enableFunctionOutlining{OutliningStrategy::Balanced};
   bool replaceOutlinedFunctionsWithEmpty{false};
+  int outliningCallInLoopCount{1};
   bool insertLoopAroundCoreBlock{false};
   bool matmulElementwiseFusion{false};
   AMDAIEDevice AMDAIETargetDevice{AMDAIEDevice::npu1_4col};
@@ -240,6 +241,10 @@ struct AMDAIEOptions {
         llvm::cl::desc(
             "Flag to enable/disable replacing outlined functions with "
             "empty functions. For development purposes only."));
+
+    binder.opt<int>("iree-amdaie-outlining-call-in-loop-count",
+                    outliningCallInLoopCount, llvm::cl::cat(category),
+                    llvm::cl::desc("TODO"));
 
     binder.opt<bool>(
         "iree-amdaie-enable-infinite-loop-around-core-block",

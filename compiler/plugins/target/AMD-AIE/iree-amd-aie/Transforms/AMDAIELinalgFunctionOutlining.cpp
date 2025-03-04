@@ -8,6 +8,7 @@
 #include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
+#include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
 #include "mlir/Dialect/Linalg/Transforms/Hoisting.h"
@@ -183,8 +184,52 @@ void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
     func::FuncOp func = maybeFunc.value();
 
     rewriter.setInsertionPoint(computeOp);
-    rewriter.create<func::CallOp>(computeOp.getLoc(), func,
-                                  computeOp->getOperands());
+
+    if (callInLoopCount == 1) {
+      rewriter.create<func::CallOp>(computeOp.getLoc(), func,
+                                    computeOp->getOperands());
+    } else {
+      // create an scf.for operation which just repeats the call,
+      // numberOfRepeats times:
+      auto getConstant = [&](int64_t v) {
+        return rewriter.create<arith::ConstantIndexOp>(computeOp.getLoc(), v);
+      };
+      Value cStart = getConstant(0);
+      Value cEnd = getConstant(callInLoopCount);
+      Value cStep = getConstant(1);
+      scf::ForOp loopOp =
+          rewriter.create<scf::ForOp>(computeOp.getLoc(), cStart, cEnd, cStep);
+
+      // TODO(newling) consider partial unrolling if beneficial, or some smarter
+      // way of deciding whether to attach no unrolling. Perhaps this should
+      // even be a separate pass. Preventing this from unrolling here for now,
+      // as I see it saves 1K PM bytes for a linalg.fill for a matmul.
+      mlir::LLVM::LoopUnrollAttr unrollAttr;
+      mlir::LLVM::LoopAnnotationAttr loopAnnotationAttr;
+      BoolAttr disableAttr = rewriter.getBoolAttr(true);
+      unrollAttr = mlir::LLVM::LoopUnrollAttr::get(
+          rewriter.getContext(), /*disable=*/disableAttr, /*count=*/{},
+          /*runtimeDisable=*/{}, /*full=*/{}, /*followupUnrolled=*/{},
+          /*followupRemainder=*/{}, /*followupAll=*/{});
+
+      loopAnnotationAttr = mlir::LLVM::LoopAnnotationAttr::get(
+          rewriter.getContext(), /*disableNonforced=*/{},
+          /*vectorize=*/{}, /*interleave=*/{}, /*unroll=*/unrollAttr,
+          /*unrollAndJam=*/{}, /*licm=*/{}, /*distribute=*/{},
+          /*pipeline=*/{},
+          /*peeled=*/{}, /*unswitch=*/{}, /*mustProgress=*/{},
+          /*isVectorized=*/{}, /*startLoc=*/{}, /*endLoc=*/{},
+          /*parallelAccesses=*/{});
+
+      // Add the llvm.loop_annotation attribute to the loop.
+      loopOp->setAttr("loop_annotation", loopAnnotationAttr);
+
+      // Create transfer_write inside loop body.
+      rewriter.setInsertionPointToStart(loopOp.getBody());
+
+      rewriter.create<func::CallOp>(computeOp.getLoc(), func,
+                                    computeOp->getOperands());
+    }
 
     // We cannot immediately erase the compute op because it'd be used for
     // equivalence check.

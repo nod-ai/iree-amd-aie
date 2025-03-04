@@ -2126,6 +2126,26 @@ class Tests:
             {
                 "M": 512,
                 "N": 512,
+                "K": 512,
+                "use_ukernel": False,
+                "peano_opt_level": 2,
+                "outline": "balanced",
+                "transpose_a": False,
+                "transpose_b": False,
+                "tile_pipeline": "pack-peel",
+                "skip_numerics": True,
+                "additional_labels": ["CorePerformance"],
+                "aie_compilation_flags": [
+                    "--iree-amdaie-num-rows=1",
+                    "--iree-amdaie-num-cols=1",
+                    "--iree-amdaie-outlining-call-in-loop-count=0",
+                ],
+                "n_performance_repeats": 1,
+                "n_performance_kernel_runs": 1,
+            },
+            {
+                "M": 512,
+                "N": 512,
                 "K": 4096,
                 "peano_opt_level": 2,
                 "outline": "none",
@@ -2301,6 +2321,7 @@ class Tests:
             M = test["M"]
             N = test["N"]
             K = test["K"]
+
             peano_opt_level = test.get("peano_opt_level", 3)
             outline = test.get("outline", "balanced")
             transpose_a = test.get("transpose_a", False)
@@ -2315,13 +2336,21 @@ class Tests:
             if in_dtype == "i8" and out_dtype == "f32":
                 out_dtype = "i32"
 
+            n_performance_repeats = test.get("n_performance_repeats", 5)
+            n_performance_kernel_runs = test.get("n_performance_kernel_runs", 100)
+            skip_numerics = test.get("skip_numerics", False)
+            additional_labels = test.get("additional_labels", [])
+            if skip_numerics:
+                additional_labels.append("SkipNumerics")
+
             outlining_string = "--iree-amdaie-enable-function-outlining=" + outline
 
             peano_opt_level_string = f'"-O{peano_opt_level}"'
             name_suffix = "O" + str(peano_opt_level)
             name_suffix += "_" + run_on_target
 
-            aie_compilation_flags = [
+            aie_compilation_flags = test.get("aie_compilation_flags", [])
+            aie_compilation_flags += [
                 outlining_string,
                 f"--iree-amd-aie-additional-peano-opt-flags={peano_opt_level_string}",
             ]
@@ -2355,7 +2384,7 @@ class Tests:
 
             # This should only be the case for benchmark tests which we expect
             # to not pass numerically.
-            if "skip_numerics" in test and test["skip_numerics"]:
+            if skip_numerics:
                 pass
             else:
                 self.register(
@@ -2374,7 +2403,8 @@ class Tests:
                             n_repeats=2,
                             use_chess_for_ukernel=use_chess_for_ukernel,
                         ),
-                        additional_labels=["PerformanceCorrectness"],
+                        additional_labels=["PerformanceCorrectness"]
+                        + additional_labels,
                     )
                 )
 
@@ -2392,11 +2422,11 @@ class Tests:
                         aie_compilation_flags=aie_compilation_flags,
                         name_suffix=name_suffix,
                         run_benchmark=True,
-                        n_repeats=5,
+                        n_repeats=n_performance_repeats,
                         use_chess_for_ukernel=use_chess_for_ukernel,
                     ),
-                    additional_labels=["Performance"],
-                    n_kernel_runs=100,
+                    additional_labels=["Performance"] + additional_labels,
+                    n_kernel_runs=n_performance_kernel_runs,
                 )
             )
 
