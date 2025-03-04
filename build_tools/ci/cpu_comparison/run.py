@@ -2125,13 +2125,13 @@ class Tests:
         # NPU1 Tests #
         ##############
         for opt_level in [2, 3]:
-            # Tests of performance of peano code generation, with a comparison between O2 and O3.
-            # We run on a 512x512x512 on a single core in a loop 100 times without any
-            # data copies between memory tiles and core tile memory. If we know that the
-            # peak performance for the 4x4 array is 4 TFlops, then
-            # peak performace for single core is 4/16 = 0.25 TFlops.
-            # This matmul is 512x512x512*2 flops = 0.25 GFlops.
-            # So at peak performance, to run 100 this in a loop 100 times should take  0.1 seconds (100'000 microseconds).
+            # Test performance of core code generated with peano.
+            # A matmul of shape 512x512x512, run on a single core,  in a loop 100
+            # times without any data copy to/from core memory. Peak performance for
+            # the 4x4 phoenix array is 4 TFlops, so peak performace for single core
+            # is 4/16 = 0.25 TFlops. This matmul is 512x512x512*2 flops = 0.25 GFlops.
+            # So at peak performance, to run this 100 times should take
+            # 0.1 seconds (100'000 microseconds).
             performance_tests.append(
                 {
                     "M": 512,
