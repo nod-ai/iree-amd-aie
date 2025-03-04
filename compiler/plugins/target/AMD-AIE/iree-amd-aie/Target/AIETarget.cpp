@@ -258,23 +258,39 @@ void serializeXCLBinToFb(FlatbufferBuilder &builder,
                          flatbuffers_string_vec_ref_t entryPointsRef,
                          SmallVector<uint32_t> &asmInstrIndices,
                          SmallVector<uint32_t> &xclbinIndices,
+                         SmallVector<int32_t> &reconfDataIndices,
                          SmallVector<flatbuffers_ref_t> xclbinRefs,
-                         SmallVector<flatbuffers_ref_t> asmInstrRefs) {
+                         SmallVector<flatbuffers_ref_t> asmInstrRefs,
+                         SmallVector<flatbuffers_ref_t> reconfDataRefs) {
+  // Add the entry points to the flatbuffer.
   iree_amd_aie_hal_xrt_ExecutableDef_entry_points_add(builder, entryPointsRef);
+  // Add all the indices to the flatbuffer.
   flatbuffers_int32_vec_ref_t asmInstrIndicesRef =
       builder.createInt32Vec(asmInstrIndices);
-  iree_amd_aie_hal_xrt_ExecutableDef_asm_instr_indices_add(builder,
-                                                           asmInstrIndicesRef);
+  iree_amd_aie_hal_xrt_ExecutableDef_asm_instr_runlist_indices_add(
+      builder, asmInstrIndicesRef);
   flatbuffers_int32_vec_ref_t xclbinIndicesRef =
       builder.createInt32Vec(xclbinIndices);
   iree_amd_aie_hal_xrt_ExecutableDef_xclbin_indices_add(builder,
                                                         xclbinIndicesRef);
+  flatbuffers_int32_vec_ref_t reconfDataIndicesRef =
+      builder.createInt32Vec(reconfDataIndices);
+  iree_amd_aie_hal_xrt_ExecutableDef_reconf_data_runlist_indices_add(
+      builder, reconfDataIndicesRef);
+  // Add the XCLBIN strings to the flatbuffer.
   flatbuffers_vec_ref_t xclbinsRef =
       builder.createOffsetVecDestructive(xclbinRefs);
   iree_amd_aie_hal_xrt_ExecutableDef_xclbins_add(builder, xclbinsRef);
+  // Add the npu instructions to the flatbuffer.
   flatbuffers_vec_ref_t asmInstrsRef =
       builder.createOffsetVecDestructive(asmInstrRefs);
-  iree_amd_aie_hal_xrt_ExecutableDef_asm_instrs_add(builder, asmInstrsRef);
+  iree_amd_aie_hal_xrt_ExecutableDef_asm_instr_runlists_add(builder,
+                                                            asmInstrsRef);
+  // Add the reconfiguration data to the flatbuffer.
+  flatbuffers_vec_ref_t reconfDataRef =
+      builder.createOffsetVecDestructive(reconfDataRefs);
+  iree_amd_aie_hal_xrt_ExecutableDef_reconf_data_runlists_add(builder,
+                                                              reconfDataRef);
   iree_amd_aie_hal_xrt_ExecutableDef_end_as_root(builder);
 }
 
@@ -623,8 +639,24 @@ LogicalResult AIETargetBackend::serializeExecutable(
                 builder, builder.createOffsetVecDestructive(reconfDataVec)));
       }
     } else if (options.deviceHal == AMDAIEOptions::DeviceHAL::XRT) {
-      asmInstrRefs.push_back(
-          iree_amd_aie_hal_xrt_AsmInstDef_create(builder, asmInstrsRunlist[0]));
+      // Convert the asm instruction runlist to a flatbuffer vector.
+      SmallVector<iree_amd_aie_hal_xrt_UI32Array1dDef_ref_t> asmInstrsVec;
+      for (auto &asmInstr : asmInstrsRunlist) {
+        asmInstrsVec.push_back(
+            iree_amd_aie_hal_xrt_UI32Array1dDef_create(builder, asmInstr));
+      }
+      asmInstrRefs.push_back(iree_amd_aie_hal_xrt_UI32Array2dDef_create(
+          builder, builder.createOffsetVecDestructive(asmInstrsVec)));
+      if (reconfDataRunlist.size() > 0) {
+        // Convert the reconfiguration data runlist to a flatbuffer vector.
+        SmallVector<iree_amd_aie_hal_xrt_UI32Array1dDef_ref_t> reconfDataVec;
+        for (auto &reconfData : reconfDataRunlist) {
+          reconfDataVec.push_back(
+              iree_amd_aie_hal_xrt_UI32Array1dDef_create(builder, reconfData));
+        }
+        reconfDataRefs.push_back(iree_amd_aie_hal_xrt_UI32Array2dDef_create(
+            builder, builder.createOffsetVecDestructive(reconfDataVec)));
+      }
     } else {
       llvm::report_fatal_error("unsupported backend");
     }
@@ -659,7 +691,8 @@ LogicalResult AIETargetBackend::serializeExecutable(
   switch (options.deviceHal) {
     case AMDAIEOptions::DeviceHAL::XRT:
       serializeXCLBinToFb(builder, entryPointsRef, asmInstrIndices, indices,
-                          refs, asmInstrRefs);
+                          reconfDataIndices, refs, asmInstrRefs,
+                          reconfDataRefs);
       break;
     case AMDAIEOptions::DeviceHAL::XRT_LITE:
       serializePDIToFb(builder, entryPointsRef, asmInstrIndices, indices,
