@@ -10,6 +10,7 @@
 #include "iree-amd-aie/aie_runtime/AMDAIEEnums.h"
 #include "iree/compiler/Dialect/HAL/IR/HALTypes.h"
 #include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Types.h"
 
 namespace mlir::iree_compiler::AMDAIE {
@@ -129,6 +130,9 @@ std::string getConstantIntValuesString(ArrayRef<OpFoldResult> opFoldResults);
 /// \return true if the region was changed.
 bool sinkInto(Region &, IRRewriter &,
               std::function<bool(Operation *)> shouldSink);
+
+scf::ForOp createForOpWithUnrollingDisabled(OpBuilder &builder, Location loc,
+                                            int start, int end, int step);
 
 }  // namespace mlir::iree_compiler::AMDAIE
 

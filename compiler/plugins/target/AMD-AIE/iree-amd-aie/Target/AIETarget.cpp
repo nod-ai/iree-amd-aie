@@ -239,10 +239,8 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
         options.matmulElementwiseFusion, options.enableVectorizationPasses,
         options.pathToUkernels, options.enablePacketFlow,
         options.enableCoalescingLoops, options.enableCollapsingUnitDims,
-        options.enableFunctionOutlining,
-        options.replaceOutlinedFunctionsWithEmpty,
-        options.outliningCallInLoopCount, options.insertLoopAroundCoreBlock,
-        options.emitCtrlPkt);
+        options.enableFunctionOutlining, options.outliningCallReplication,
+        options.insertLoopAroundCoreBlock, options.emitCtrlPkt);
   }
 
   void buildLinkingPassPipeline(OpPassManager &passManager) override {

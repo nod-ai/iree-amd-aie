@@ -306,20 +306,16 @@ def AMDAIELinalgFunctionOutlining :
     the code footprint overall as the loop unrolling in the later passes lead to a lot of
     repeated codes.
   }];
+
+  // Better name: call-replication && callReplication
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELinalgFunctionOutliningPass()";
   let options = [
-    Option<"emptyFunctions", "empty-functions", "bool", /*default=*/"false",
-      "A developer only option that results in incorrect numerics. "
-      "Replace all outlined functions with a function that does nothing, "
-      "i.e. it just returns. Useful for measuring the performance of data "
-      "movement to/from the device -- by doing zero compute, all time is spent "
-      "moving data to/from the AIE cores.">,
-    Option<"callInLoopCount", "call-in-loop-count", "int64_t", /*default=*/"1",
+    Option<"callReplication", "call-replication", "int64_t", /*default=*/"1",
       "The number of times the outlined function is called inside a loop. "
       "This is a 'developer only' only that results in incorrect numerics. "
       "Useful for measuring the performance of AIE core code. "
       "Every outlined function, instead of being called once at each call site, "
-      "is called `call-in-loop-count` times.">,
+      "is called `call-replication` times.">,
     Option<"outliningStrategy", "outlining-strategy",
       "mlir::iree_compiler::AMDAIE::OutliningStrategy",
       /*default=*/"mlir::iree_compiler::AMDAIE::OutliningStrategy::Balanced",

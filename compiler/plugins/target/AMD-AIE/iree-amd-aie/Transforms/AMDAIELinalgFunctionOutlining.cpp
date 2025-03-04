@@ -8,11 +8,12 @@
 #include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
-#include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
 #include "mlir/Dialect/Linalg/Transforms/Hoisting.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 
 #define DEBUG_TYPE "iree-amdaie-linalg-function-outlining"
@@ -98,7 +99,8 @@ class AMDAIELinalgFunctionOutliningPass
       : AMDAIELinalgFunctionOutliningBase(opts) {}
 
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<linalg::LinalgDialect>();
+    registry.insert<linalg::LinalgDialect, scf::SCFDialect, LLVM::LLVMDialect,
+                    func::FuncDialect>();
   }
 
   void runOnOperation() override;
@@ -161,11 +163,12 @@ void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
   IRRewriter rewriter(context);
 
   if (outliningStrategy == OutliningStrategy::None) {
-    if (emptyFunctions) {
+    if (callReplication != 1) {
       moduleOp.emitWarning()
-          << "The option to empty outlined functions is enabled while the "
-             "outlining strategy specifies to not outline any functions, so no "
-             "transformation will happen. This combination might not result in "
+          << "The option to call the outlined function " << callReplication
+          << " times instead of once is enabled, while the outlining strategy "
+             "specifies to not outline any functions, so no transformation "
+             "will happen. This combination might not result in "
              "the intended behaviour.";
     }
     return;
@@ -185,51 +188,14 @@ void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
 
     rewriter.setInsertionPoint(computeOp);
 
-    if (callInLoopCount == 1) {
-      rewriter.create<func::CallOp>(computeOp.getLoc(), func,
-                                    computeOp->getOperands());
-    } else {
-      // create an scf.for operation which just repeats the call,
-      // numberOfRepeats times:
-      auto getConstant = [&](int64_t v) {
-        return rewriter.create<arith::ConstantIndexOp>(computeOp.getLoc(), v);
-      };
-      Value cStart = getConstant(0);
-      Value cEnd = getConstant(callInLoopCount);
-      Value cStep = getConstant(1);
-      scf::ForOp loopOp =
-          rewriter.create<scf::ForOp>(computeOp.getLoc(), cStart, cEnd, cStep);
-
-      // TODO(newling) consider partial unrolling if beneficial, or some smarter
-      // way of deciding whether to attach no unrolling. Perhaps this should
-      // even be a separate pass. Preventing this from unrolling here for now,
-      // as I see it saves 1K PM bytes for a linalg.fill for a matmul.
-      mlir::LLVM::LoopUnrollAttr unrollAttr;
-      mlir::LLVM::LoopAnnotationAttr loopAnnotationAttr;
-      BoolAttr disableAttr = rewriter.getBoolAttr(true);
-      unrollAttr = mlir::LLVM::LoopUnrollAttr::get(
-          rewriter.getContext(), /*disable=*/disableAttr, /*count=*/{},
-          /*runtimeDisable=*/{}, /*full=*/{}, /*followupUnrolled=*/{},
-          /*followupRemainder=*/{}, /*followupAll=*/{});
-
-      loopAnnotationAttr = mlir::LLVM::LoopAnnotationAttr::get(
-          rewriter.getContext(), /*disableNonforced=*/{},
-          /*vectorize=*/{}, /*interleave=*/{}, /*unroll=*/unrollAttr,
-          /*unrollAndJam=*/{}, /*licm=*/{}, /*distribute=*/{},
-          /*pipeline=*/{},
-          /*peeled=*/{}, /*unswitch=*/{}, /*mustProgress=*/{},
-          /*isVectorized=*/{}, /*startLoc=*/{}, /*endLoc=*/{},
-          /*parallelAccesses=*/{});
-
-      // Add the llvm.loop_annotation attribute to the loop.
-      loopOp->setAttr("loop_annotation", loopAnnotationAttr);
-
-      // Create transfer_write inside loop body.
-      rewriter.setInsertionPointToStart(loopOp.getBody());
-
-      rewriter.create<func::CallOp>(computeOp.getLoc(), func,
-                                    computeOp->getOperands());
+    if (callReplication > 1) {
+      scf::ForOp loop = createForOpWithUnrollingDisabled(
+          rewriter, computeOp.getLoc(), 0, callReplication, 1);
+      rewriter.setInsertionPointToStart(loop.getBody());
     }
+
+    rewriter.create<func::CallOp>(computeOp.getLoc(), func,
+                                  computeOp->getOperands());
 
     // We cannot immediately erase the compute op because it'd be used for
     // equivalence check.
@@ -241,11 +207,11 @@ void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
     rewriter.eraseOp(op);
   }
 
-  // If the option is set to true, make the body of all outlined functions
-  // empty, so that only the return remains. This option to 'do no compute'
-  // is useful for benchmarking purposes.
-  if (emptyFunctions) {
-    for (auto &nameAndFuncOp : computeOpToOutlinedFuncMap) {
+  // Instead of having 0 calls, we replace call into a function that does
+  // nothing. We do this because having no calls can result in DCE that removes
+  // more than we want.
+  if (callReplication == 0) {
+    for (auto &&nameAndFuncOp : computeOpToOutlinedFuncMap) {
       Region &region = nameAndFuncOp.second.getBody();
       Block &block = region.front();
       uint64_t nOperations = block.getOperations().size();

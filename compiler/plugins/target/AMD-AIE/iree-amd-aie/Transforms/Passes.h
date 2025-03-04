@@ -18,8 +18,7 @@ void addAMDAIEObjectFifoLoweringPasses(
     OpPassManager &passManager, bool enablePacketFlow,
     TilePassPipeline useTilePipeline, bool enableVectorizationPasses,
     bool enableCoalescingLoops, bool enableCollapsingUnitDims,
-    OutliningStrategy enableFunctionOutlining,
-    bool replaceOutlinedFunctionsWithEmpty, int outliningLoopInCallCount,
+    OutliningStrategy enableFunctionOutlining, int outliningLoopInCallCount,
     bool insertLoopAroundCoreBlock, uint32_t numCols, bool emitCtrlPkt);
 
 /// Add passes to lower from MLIR-AIR through AIE. This is
@@ -43,8 +42,8 @@ void buildAMDAIETransformPassPipeline(
     bool enableVectorizationPasses, const std::string &pathToUkernels,
     bool enablePacketFlow, bool enableCoalescingLoops,
     bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
-    bool replaceOutlinedFunctionsWithEmpty, int outliningLoopInCallCount,
-    bool insertLoopAroundCoreBlock, bool emitCtrlPkt);
+    int outliningLoopInCallCount, bool insertLoopAroundCoreBlock,
+    bool emitCtrlPkt);
 
 /// Populates passes needed to lower the IR via a Pack-Peel based approach.
 void addPackPeelBasedPassPipeline(OpPassManager &passManager,

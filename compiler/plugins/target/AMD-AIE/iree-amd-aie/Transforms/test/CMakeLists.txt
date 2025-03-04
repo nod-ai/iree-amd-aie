@@ -47,7 +47,7 @@ iree_lit_test_suite(
     "fold_dma_waits.mlir"
     "flatten_logical_objectfifo.mlir"
     "linalg_function_outlining.mlir"
-    "linalg_function_outlining_to_empty.mlir"
+    "linalg_function_outlining_call_replication.mlir"
     "fuse_consumer_into_loop.mlir"
     "fuse_fill_into_forall.mlir"
     "fuse_producer_into_loop.mlir"

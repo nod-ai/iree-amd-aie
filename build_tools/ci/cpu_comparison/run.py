@@ -2135,10 +2135,11 @@ class Tests:
                 "tile_pipeline": "pack-peel",
                 "skip_numerics": True,
                 "additional_labels": ["CorePerformance"],
+                "outline_call_replication": 100,
                 "aie_compilation_flags": [
                     "--iree-amdaie-num-rows=1",
                     "--iree-amdaie-num-cols=1",
-                    "--iree-amdaie-outlining-call-in-loop-count=0",
+                    # "--iree-amdaie-outlining-call-replication=100",
                 ],
                 "n_performance_repeats": 1,
                 "n_performance_kernel_runs": 1,
@@ -2214,7 +2215,7 @@ class Tests:
                 "M": 4096,
                 "N": 512,
                 "K": 512,
-                "outline_to_empty_function": True,
+                "outline_call_replication": 0,
                 "skip_numerics": True,
             },
             {
@@ -2245,7 +2246,7 @@ class Tests:
                 "M": 512,
                 "N": 4096,
                 "K": 512,
-                "outline_to_empty_function": True,
+                "outline_call_replication": 0,
                 "skip_numerics": True,
                 "tile_pipeline": "pack-peel-4-level-tiling",
             },
@@ -2267,7 +2268,7 @@ class Tests:
                 "K": 512,
                 "in_dtype": "i8",
                 "outline": "all",
-                "outline_to_empty_function": True,
+                "outline_call_replication": 0,
                 "run_on_target": "npu4",
                 "skip_numerics": True,
             },
@@ -2298,7 +2299,7 @@ class Tests:
                 "K": 512,
                 "in_dtype": "i8",
                 "outline": "all",
-                "outline_to_empty_function": True,
+                "outline_call_replication": 0,
                 "tile_pipeline": "pack-peel-4-level-tiling",
                 "run_on_target": "npu4",
                 "skip_numerics": True,
@@ -2333,6 +2334,8 @@ class Tests:
             run_on_target = test.get("run_on_target", "npu1_4col")
             in_dtype = test.get("in_dtype", "bf16")
             out_dtype = test.get("out_dtype", "f32")
+            outline_call_replication = test.get("outline_call_replication", 1)
+
             if in_dtype == "i8" and out_dtype == "f32":
                 out_dtype = "i32"
 
@@ -2355,21 +2358,14 @@ class Tests:
                 f"--iree-amd-aie-additional-peano-opt-flags={peano_opt_level_string}",
             ]
 
-            outline_to_empty_function = False
-            empty_key = "outline_to_empty_function"
-            if empty_key in test and test[empty_key] == True:
-                outline_to_empty_function = True
-
-            if outline_to_empty_function:
+            if outline_call_replication != 1:
                 aie_compilation_flags.append(
-                    "--iree-amdaie-replace-outlined-functions-with-empty"
+                    f"--iree-amdaie-outlining-call-replication={outline_call_replication}"
                 )
+                name_suffix += "_callrepl_" + str(outline_call_replication)
 
             if outline != "none":
-                if outline_to_empty_function:
-                    name_suffix += "_outline_empty"
-                else:
-                    name_suffix += "_outline"
+                name_suffix += "_outline"
 
             if matmul4d:
                 TestClass = Matmul4d
