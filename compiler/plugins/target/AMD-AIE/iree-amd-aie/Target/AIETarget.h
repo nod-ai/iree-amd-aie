@@ -64,10 +64,28 @@ struct AMDAIEOptions {
   bool insertLoopAroundCoreBlock{false};
   bool matmulElementwiseFusion{false};
   AMDAIEDevice AMDAIETargetDevice{AMDAIEDevice::npu1_4col};
-  unsigned AMDAIENumRows{getDeviceModel(AMDAIETargetDevice).getNumCoreRows()};
-  unsigned AMDAIENumCols{getDeviceModel(AMDAIETargetDevice).getNumCoreCols()};
+
+  // The number of rows for the compiler to target. '0' denotes 'all'.
+ private:
+  unsigned AMDAIENumRows{0};
+
+ public:
+  unsigned getNumRows(const AMDAIEDeviceModel &model) const {
+    return AMDAIENumRows == 0 ? model.getNumCoreRows() : AMDAIENumRows;
+  }
+
+  // The number of rows for the compiler to target. '0' denotes 'all'.
+ private:
+  unsigned AMDAIENumCols{0};
+
+ public:
+  unsigned getNumCols(const AMDAIEDeviceModel &model) const {
+    return AMDAIENumCols == 0 ? model.getNumCoreCols() : AMDAIENumCols;
+  }
+
   std::string enableAMDAIEUkernels{"none"};
   bool enablePacketFlow{false};
+  std::string dirToLoadCtrlPktFiles{""};
 
   enum class DeviceHAL { XRT, XRT_LITE };
   DeviceHAL deviceHal{DeviceHAL::XRT_LITE};
@@ -291,8 +309,16 @@ struct AMDAIEOptions {
 
     binder.opt<bool>(
         "iree-amdaie-emit-control-packet", emitCtrlPkt, llvm::cl::cat(category),
+        llvm::cl::desc("Convert `aie.device` to `ctrlpkt_sequence.txt` and "
+                       "`ctrlpkt_instructions.txt`"));
+
+    binder.opt<std::string>(
+        "iree-amdaie-dir-to-load-control-packet", dirToLoadCtrlPktFiles,
+        llvm::cl::cat(category),
         llvm::cl::desc(
-            "Convert `aie.device` to a sequence of control packets."));
+            "Directory to load control packet files. These files will be "
+            "added to the flatbuffer for device reconfiguration. "
+            "Empty string means no reconfiguration."));
   }
 };
 
