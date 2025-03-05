@@ -312,7 +312,7 @@ def AMDAIELinalgFunctionOutlining :
   let options = [
     Option<"callReplication", "call-replication", "int64_t", /*default=*/"1",
       "The number of times the outlined function is called inside a loop. "
-      "This is a 'developer only' only that results in incorrect numerics. "
+      "This is a 'developer-only' feature that may result in incorrect numerics. "
       "Useful for measuring the performance of AIE core code. "
       "Every outlined function, instead of being called once at each call site, "
       "is called `call-replication` times.">,
