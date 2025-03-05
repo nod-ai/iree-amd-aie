@@ -427,12 +427,13 @@ static LogicalResult setRootConfigForPackPeel4LevelTilingPipeline(
     unpackEmpty = {false, false, true};
     innerPerm = {innerPermA, innerPermB, {0, 1}};
     outerPerm = {outerPermA, outerPermB};
-    // Add outer permutation for unpack. NOTE: This currently fails for some
-    // tests in the AIR pipeline.
+    // Add outer permutation for unpack.
     if (isBatchMatmul) {
       outerPerm.push_back({0, 2, 1});
     } else {
-      outerPerm.push_back({1, 0});
+      if (isObjectFifo) {
+        outerPerm.push_back({1, 0});
+      }
     }
 
     auto packingConfigLevel0Attr = getPackingConfigPackingLevelAttr(
