@@ -288,13 +288,10 @@ struct AMDAIEAssignBufferAddressesPass
           return signalPassFailure();
         break;
       default:
-        emitWarning(UnknownLoc::get(ctx))
-            << "Buffer assignment scheme is unrecognized. Defaulting to "
-               "bank-aware scheme.";
         if (failed(bankAwareAllocation(tileToBuffers, deviceModel))) {
           emitWarning(UnknownLoc::get(ctx))
-              << "Bank-aware scheme is failed. Try the basic sequential "
-                 "scheme.";
+              << "Bank-aware scheme for buffer address assignment is failed. "
+                 "Try the basic sequential scheme.";
           if (failed(basicAllocation(tileToBuffers, deviceModel)))
             return signalPassFailure();
         }
