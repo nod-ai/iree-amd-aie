@@ -709,7 +709,9 @@ def AMDAIEPad :
       "mlir::iree_compiler::AMDAIE::createAMDAIEPadPass()";
   let options = [
     Option<"paddingLevel", "padding-level", "int64_t", /*default=*/"-1",
-      "A temporary workaround to figure the config for padding">
+      "A temporary workaround to figure the config for padding">,
+    Option<"padElementwise", "pad-elementwise", "bool", /*default=*/"false",
+      "Indicator of whether the target op for padding is an elementwise op">,
   ];
 }
 

@@ -11,6 +11,7 @@
 #include "mlir/Dialect/MemRef/Transforms/Transforms.h"
 #include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
 #include "mlir/Dialect/SCF/Transforms/Transforms.h"
+#include "mlir/IR/Iterators.h"
 #include "mlir/Pass/Pass.h"
 
 #define DEBUG_TYPE "iree-amdaie-pad"
@@ -118,7 +119,7 @@ getThirdLevelLinalgPaddingOptions(IRRewriter &rewriter,
   options.paddingDimensions = getPaddingDimensions(linalgOp);
   SmallVector<int64_t> padToMultipleOf(options.paddingDimensions.size(), 1);
   options.padToMultipleOf = padToMultipleOf;
-  options.copyBackOp = linalg::LinalgPaddingOptions::CopyBackOp::LinalgCopy;
+  options.copyBackOp = linalg::LinalgPaddingOptions::CopyBackOp::None;
   return options;
 }
 
@@ -184,13 +185,24 @@ void AMDAIEPadPass::runOnOperation() {
   MLIRContext *context = &getContext();
   mlir::FunctionOpInterface funcOp = getOperation();
   linalg::LinalgOp linalgOp;
-  funcOp->walk([&](linalg::LinalgOp op) {
-    if (linalg::isaContractionOpInterface(op) ||
-        linalg::isaConvolutionOpInterface(op)) {
-      linalgOp = op;
-      return WalkResult::interrupt();
+  funcOp->walk<WalkOrder::PostOrder, ReverseIterator>([&](linalg::LinalgOp op) {
+    if (!isElementwise(op) && !linalg::isaContractionOpInterface(op) &&
+        !linalg::isaConvolutionOpInterface(op)) {
+      return WalkResult::advance();
     }
-    return WalkResult::advance();
+    if (isa<linalg::FillOp, linalg::CopyOp>(op)) {
+      return WalkResult::advance();
+    }
+    // Use flag `padElementwise` to indicate whether the target for
+    // padding is an elementwise op.
+    if (padElementwise && !isElementwise(op)) {
+      return WalkResult::advance();
+    }
+    if (!padElementwise && isElementwise(op)) {
+      return WalkResult::advance();
+    }
+    linalgOp = op;
+    return WalkResult::interrupt();
   });
   if (!linalgOp) {
     LLVM_DEBUG(llvm::dbgs() << "----- skip, no matmul op -----\n");

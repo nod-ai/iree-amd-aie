@@ -337,7 +337,14 @@ void addPackPeel4LevelTilingBasedPassPipeline(OpPassManager &funcPassManager,
     // First level pad
     {
       AMDAIEPadOptions padOptions;
-      padOptions.paddingLevel = 0;
+      padOptions.padElementwise = true;
+      padOptions.paddingLevel = 1;
+      funcPassManager.addPass(createAMDAIEPadPass(padOptions));
+    }
+    {
+      AMDAIEPadOptions padOptions;
+      padOptions.padElementwise = false;
+      padOptions.paddingLevel = 2;
       funcPassManager.addPass(createAMDAIEPadPass(padOptions));
     }
     funcPassManager.addPass(createCanonicalizerPass());
