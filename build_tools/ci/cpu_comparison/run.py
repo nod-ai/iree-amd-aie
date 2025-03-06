@@ -927,6 +927,70 @@ class MatmulScaleTrunci(BaseMatmul):
         return True
 
 
+class Matmul4dScaleTrunci(BaseMatmul):
+    """
+    A test of the form C = matmul4d(A,B) + scale(C) + trunci(C)
+    where A:M1xK1xM0xK0, B:N1xK1xK0xN0, C:N1xM1xM0xN0
+    """
+
+    def __init__(
+        self,
+        M,
+        N,
+        K,
+        input_type,
+        acc_type,
+        M0=32,
+        N0=32,
+        K0=64,
+        additional_labels=None,
+        n_kernel_runs=1,
+        test_params=None,
+    ):
+        super().__init__(
+            name=f"matmul4d_scale_trunci_{M}_{N}_{K}_{input_type}_{acc_type}",
+            test_params=test_params,
+            M=M,
+            N=N,
+            K=K,
+            input_type=input_type,
+            acc_type=acc_type,
+            function_name="matmul4d_trunci",
+            n_kernel_runs=n_kernel_runs,
+        )
+        self.M0 = M0
+        self.N0 = N0
+        self.K0 = K0
+        self.labels.append("Matmul4dScaleTrunci")
+        if additional_labels:
+            self.labels += additional_labels
+        if self.run_benchmark:
+            self.aie_compilation_flags += [
+                "--iree-amdaie-enable-infinite-loop-around-core-block=true"
+            ]
+            self.labels.append("Matmul4dScaleTrunciBenchmark")
+
+    def _execute(self, config):
+        matmul_template_dir = config.file_dir / "matmul_template"
+        template_name = matmul_template_dir / "matmul4d_trunci_scaling.mlir"
+        generate_matmul_test(
+            self.get_filename(config),
+            template_name,
+            m=self.M,
+            n=self.N,
+            k=self.K,
+            lhs_rhs_type=self.input_type,
+            acc_type=self.acc_type,
+            m0=self.M0,
+            n0=self.N0,
+            k0=self.K0,
+        )
+        if self.run_benchmark:
+            return self.benchmark(config)
+
+        return self.vs_cpu(config)
+
+
 def find_executable(install_dir: Path, executable_name):
     """
     Search for an executable in the given directory and its subdirectories
@@ -2304,6 +2368,18 @@ class Tests:
                 "N": 4096,
                 "K": 512,
                 "in_dtype": "i8",
+                "use_ukernel": True,
+                "outline": "all",
+                "matmul4d": True,
+                "scale_trunc": True,
+                "tile_pipeline": "pack-peel-4-level-tiling",
+                "run_on_target": "npu4",
+            },
+            {
+                "M": 512,
+                "N": 4096,
+                "K": 512,
+                "in_dtype": "i8",
                 "outline": "all",
                 "outline_call_replication": 0,
                 "tile_pipeline": "pack-peel-4-level-tiling",
@@ -2335,6 +2411,7 @@ class Tests:
             use_ukernel = test.get("use_ukernel", False)
             tile_pipeline = test.get("tile_pipeline", "pack-peel")
             matmul4d = test.get("matmul4d", False)
+            scale_trunc = test.get("scale_trunc", False)
             use_chess_for_ukernel = test.get("use_chess_for_ukernel", True)
             run_on_target = test.get("run_on_target", "npu1_4col")
             in_dtype = test.get("in_dtype", "bf16")
@@ -2375,7 +2452,7 @@ class Tests:
                 name_suffix += "_outline"
 
             if matmul4d:
-                TestClass = Matmul4d
+                TestClass = Matmul4d if scale_trunc is False else Matmul4dScaleTrunci
             elif (transpose_a, transpose_b) == (False, False):
                 TestClass = Matmul
             elif (transpose_a, transpose_b) == (True, False):
