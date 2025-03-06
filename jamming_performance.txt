@@ -1,0 +1,69 @@
+Some performance numbers. 
+
+Before. 
+
+O2: BM_matmul/process_time/real_time_median     425293 us         1880 us            3 items_per_second=2.35132/s
+03: BM_matmul/process_time/real_time_median     362827 us         1825 us            3 items_per_second=2.75614/s
+
+=========================================
+
+uj_1_4_u_0_4_u_0_2_u_0_2
+O2: BM_matmul/process_time/real_time_median     345913 us         1799 us            3 items_per_second=2.8909/s
+O3: stack insufficient (2112 > 1024)
+
+=========================================
+
+Some very slow ones:
+uj_1_4_uj_2_2_u_0_4
+uj_1_4_uj_2_4_u_0_4
+uj_2_4_uj_1_4_u_0_4
+
+O2: BM_matmul/process_time/real_time_median    1580205 us         2140 us            3 items_per_second=0.632829/s
+O3: also slow
+
+=========================================
+
+uj_1_2_uj_2_2_u_0_4_u_0_4
+O2 : BM_matmul/process_time/real_time_median     619204 us         1504 us            3 items_per_second=1.61498/s
+O3 : also slow
+
+=========================================
+
+uj_1_4_uj_2_2_u_0_4_u_0_2
+O2: stack (1184 > 1024)
+O3: same
+
+=========================================
+
+uj_0_2_uj_1_2_uj_2_2_u_0_2_u_0_4
+O2: BM_matmul/process_time/real_time_median     406601 us         1949 us            3 items_per_second=2.45941/s
+O3: BM_matmul/process_time/real_time_median     286535 us         2064 us            3 items_per_second=3.48997/s
+
+=========================================
+
+uj_0_4_uj_1_2_uj_2_2_u_0_4
+O2: stack
+
+=========================================
+
+uj_0_4_uj_0_2_uj_1_2_u_0_2
+O2: BM_matmul/process_time/real_time_median     809892 us         1709 us            3 items_per_second=1.23473/s
+O3: equally slow
+
+=========================================
+
+uj_1_2_uj_0_2_uj_2_2_u_0_2_u_0_4
+O2: BM_matmul/process_time/real_time_median     381876 us         1754 us            3 items_per_second=2.61865/s
+O3: BM_matmul/process_time/real_time_median     282004 us         1726 us            3 items_per_second=3.54605/s
+
+=========================================
+
+uj_0_2_uj_2_2_uj_1_2_u_0_2_u_0_4
+O2: BM_matmul/process_time/real_time_median     415112 us         1691 us            3 items_per_second=2.40899/s
+O3: BM_matmul/process_time/real_time_median     266086 us         1900 us            3 items_per_second=3.75818/s
+
+=========================================
+
+uj_0_2_uj_2_2_u_0_2_u_0_4_u_0_2
+O2 : BM_matmul/process_time/real_time_median    285396 us         1954 us            3 items_per_second=3.5039/s
+O3 : BM_matmul/process_time/real_time_median    276760 us         1943 us            3 items_per_second=3.61324/s

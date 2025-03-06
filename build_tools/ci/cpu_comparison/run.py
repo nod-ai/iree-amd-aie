@@ -2143,7 +2143,8 @@ class Tests:
                     "aie_compilation_flags": [
                         "--iree-amdaie-num-rows=1",
                         "--iree-amdaie-num-cols=1",
-                        "--iree-amd-aie-unroll-jam=uj_0_2_uj_2_2_u_0_2_u_0_4_u_0_2",
+                        # "--iree-amd-aie-unroll-jam=uj_0_2_uj_2_2_u_0_2_u_0_4_u_0_2",
+                        "--iree-amd-aie-unroll-jam=auto",
                     ],
                     # effectively this says:
                     #   for 3 launches:

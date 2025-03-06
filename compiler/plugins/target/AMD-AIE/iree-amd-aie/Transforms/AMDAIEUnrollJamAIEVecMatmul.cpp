@@ -11,6 +11,7 @@
 #include "iree-amd-aie/Target/XCLBinGen.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
+#include "iree-amd-aie/aie_runtime/AMDAIEEnums.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Utils/Utils.h"
@@ -55,7 +56,8 @@ class AMDAIEUnrollJamAIEVecMatmulPass
           AMDAIEUnrollJamAIEVecMatmulPass> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<AMDAIEDialect>();
+    registry.insert<AMDAIEDialect, scf::SCFDialect, aievec::AIEVecDialect,
+                    LLVM::LLVMDialect>();
   }
   AMDAIEUnrollJamAIEVecMatmulPass(
       const AMDAIEUnrollJamAIEVecMatmulOptions &opts)
@@ -141,7 +143,25 @@ FailureOr<SmallVector<std::tuple<UnrollType, int, int>>> getTransformations(
   return transformations;
 }
 
-LogicalResult unrollJam(func::FuncOp funcOp, std::string_view sequence) {
+std::string getTunedUnrollJamSequence(aievec::MatMulOp matMulOp,
+                                      AMDAIE::AMDAIEDevice device) {
+  auto outType = matMulOp.getType().getElementType();
+  (void)outType;
+  auto inType = matMulOp.getLhs().getType().getElementType();
+  if (isAie2(device)) {
+    if (inType.isBF16()) {
+      return "uj_0_2_uj_2_2_u_0_2_u_0_4_u_0_2";
+    }
+  }
+
+  if (isAie2(device)) {
+    // TODO(newling) what is a good tiling for AIE2P?
+  }
+
+  return "none";
+}
+
+LogicalResult unrollJam(func::FuncOp funcOp, std::string sequence) {
   // Check if funcOp contains any matmuls:
   aievec::MatMulOp rootMatMul;
   auto walkResult = funcOp->walk([&](aievec::MatMulOp op) {
@@ -157,6 +177,28 @@ LogicalResult unrollJam(func::FuncOp funcOp, std::string_view sequence) {
 
   // No work to do for functions without matmuls, return success immediately.
   if (!rootMatMul) return success();
+
+  if (sequence == "auto" || sequence == "default") {
+    std::optional<AMDAIE::AMDAIEDevice> maybeDevice =
+        AMDAIE::getConfigAMDAIEDeviceFromAncestor(funcOp);
+    if (!maybeDevice.has_value()) {
+      funcOp->emitOpError(
+          "doesn't have target_device specified in a parent module.");
+      return failure();
+    }
+    AMDAIE::AMDAIEDevice device = maybeDevice.value();
+    (void)device;
+
+    sequence = getTunedUnrollJamSequence(rootMatMul, device);
+
+    // funcOp->emitOpError(
+    //     "need to implement this case still, default/auto need device");
+    // return failure();
+  }
+
+  if (sequence.empty() || sequence == "none") {
+    return success();
+  }
 
   FailureOr<SmallVector<std::tuple<UnrollType, int, int>>>
       maybeTransformations = getTransformations(funcOp, sequence);
@@ -237,6 +279,7 @@ LogicalResult unrollJam(func::FuncOp funcOp, std::string_view sequence) {
 void AMDAIEUnrollJamAIEVecMatmulPass::runOnOperation() {
   Operation *parentOp = getOperation();
   IRRewriter rewriter(parentOp);
+
   auto walkResult = parentOp->walk([&](func::FuncOp funcOp) -> WalkResult {
     auto result = unrollJam(funcOp, sequence);
     if (failed(result))

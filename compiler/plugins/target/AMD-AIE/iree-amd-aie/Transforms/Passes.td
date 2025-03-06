@@ -64,6 +64,12 @@ def AMDAIEUnrollJamAIEVecMatmul :
   ensuring that no later passes do further unrolling, thus ensuring complete control
   over the unrolling in this pass.
 
+  If `sequence` is the empty string or `none` then the pass is not applied.
+
+  If `sequence` is `auto` or `default`, then a default sequence is applied, specific
+  to the data type, the device, and the current loop nesting.
+
+
   For more information on unroll & jam, see for example
   https://www.cs.utexas.edu/~lin/cs380c/handout28.pdf
 

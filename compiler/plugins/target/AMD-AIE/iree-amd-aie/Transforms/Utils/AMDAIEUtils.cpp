@@ -443,7 +443,6 @@ bool sinkInto(Region &region, IRRewriter &rewriter,
   return regionChanged;
 }
 
-
 void addNoUnrollAttribute(scf::ForOp forOp, OpBuilder &builder) {
   mlir::LLVM::LoopUnrollAttr unrollAttr;
   mlir::LLVM::LoopAnnotationAttr loopAnnotationAttr;
