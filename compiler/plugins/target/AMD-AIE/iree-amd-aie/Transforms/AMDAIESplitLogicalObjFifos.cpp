@@ -189,35 +189,39 @@ static FailureOr<int64_t> getOffsetBias(OpFoldResult offset) {
 }
 template <CopyOpOperateOn OperateOn>
 static LogicalResult checkTotalCoverageOfAccessPattern(
-  SmallVector<CopyOpInterface> copyLikeOps, int64_t sizeAtSplitDim, int64_t splitDim, int64_t &splitFactor) {
+    SmallVector<CopyOpInterface> copyLikeOps, int64_t sizeAtSplitDim,
+    int64_t splitDim, int64_t &splitFactor) {
   DenseSet<int64_t> uniqueOffsetBiasesAtSplitDim;
   for (CopyOpInterface copyOp : copyLikeOps) {
     FailureOr<int64_t> maybeOffset;
     auto dmaCpyNdOp = dyn_cast<AMDAIE::DmaCpyNdOp>(copyOp.getOperation());
     if constexpr (OperateOn == CopyOpOperateOn::Target) {
       // Extract Source offset : Retriever/Bias.
-      SmallVector<OpFoldResult> sourceOffsets = dmaCpyNdOp.getSourceMixedOffsets();
+      SmallVector<OpFoldResult> sourceOffsets =
+          dmaCpyNdOp.getSourceMixedOffsets();
       maybeOffset = getOffsetBias(sourceOffsets[splitDim]);
     } else {
       // Extract Target offset : Retriever/Bias.
-      SmallVector<OpFoldResult> targetOffsets = dmaCpyNdOp.getTargetMixedOffsets();
+      SmallVector<OpFoldResult> targetOffsets =
+          dmaCpyNdOp.getTargetMixedOffsets();
       maybeOffset = getOffsetBias(targetOffsets[splitDim]);
     }
     if (failed(maybeOffset)) {
       return dmaCpyNdOp.emitOpError()
-              << "could not retrieve source/target objectFifo's offset value at split dimension ("<<splitDim<<")";
+             << "could not retrieve source/target objectFifo's offset value at "
+                "split dimension ("
+             << splitDim << ")";
     }
     uniqueOffsetBiasesAtSplitDim.insert(*maybeOffset);
   }
   DenseSet<int64_t> offsetsToCover;
-  for (unsigned i = 0; i<sizeAtSplitDim; i++) {
+  for (unsigned i = 0; i < sizeAtSplitDim; i++) {
     offsetsToCover.insert(i);
   }
   for (int64_t offset : offsetsToCover) {
     uniqueOffsetBiasesAtSplitDim.erase(offset);
   }
-  if (uniqueOffsetBiasesAtSplitDim.empty())
-    splitFactor = 1;
+  if (uniqueOffsetBiasesAtSplitDim.empty()) splitFactor = 1;
   return success();
 }
 
@@ -334,7 +338,9 @@ LogicalResult collectSplittingDims(
       if (sourceSize % splitFactor != 0 || targetSize % splitFactor != 0) {
         splitFactor = std::gcd(sourceSize, targetSize);
       }
-      (void)checkTotalCoverageOfAccessPattern<CopyOpOperateOn::Target>(objFifo.getCopyLikeConsumers(), splitDimSize/splitFactor, objFifoSplitDim, splitFactor);
+      (void)checkTotalCoverageOfAccessPattern<CopyOpOperateOn::Target>(
+          objFifo.getCopyLikeConsumers(), splitDimSize / splitFactor,
+          objFifoSplitDim, splitFactor);
       LLVM_DEBUG(llvm::dbgs() << "sourceSplitDim: " << sourceSplitDim << "\n");
       LLVM_DEBUG(llvm::dbgs() << "targetSplitDim: " << targetSplitDim << "\n");
       LLVM_DEBUG(llvm::dbgs()
@@ -405,7 +411,9 @@ LogicalResult collectSplittingDims(
       if (sourceSize % splitFactor != 0 || targetSize % splitFactor != 0) {
         splitFactor = std::gcd(sourceSize, targetSize);
       }
-      (void)checkTotalCoverageOfAccessPattern<CopyOpOperateOn::Source>(objFifo.getCopyLikeProducers(), splitDimSize/splitFactor, objFifoSplitDim, splitFactor);
+      (void)checkTotalCoverageOfAccessPattern<CopyOpOperateOn::Source>(
+          objFifo.getCopyLikeProducers(), splitDimSize / splitFactor,
+          objFifoSplitDim, splitFactor);
       LLVM_DEBUG(llvm::dbgs() << "sourceSplitDim: " << sourceSplitDim << "\n");
       LLVM_DEBUG(llvm::dbgs() << "targetSplitDim: " << targetSplitDim << "\n");
       LLVM_DEBUG(llvm::dbgs()
