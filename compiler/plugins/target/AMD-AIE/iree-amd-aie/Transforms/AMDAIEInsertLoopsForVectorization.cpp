@@ -10,6 +10,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/SCF/Utils/Utils.h"
 
 namespace mlir::iree_compiler::AMDAIE {
 
@@ -214,6 +215,7 @@ class AMDAIEInsertLoopsForVectorizationPass
              << "unable to form tile sizes for the matmul op";
     }
     performTiling(rewriter, genericOp, *tileSizes);
+
     return success();
   }
 

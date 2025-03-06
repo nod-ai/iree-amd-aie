@@ -91,6 +91,7 @@ struct AMDAIEOptions {
   DeviceHAL deviceHal{DeviceHAL::XRT_LITE};
 
   bool emitCtrlPkt{false};
+  std::string unrollJam{};
 
   void bindOptions(OptionsBinder &binder) {
     static llvm::cl::OptionCategory category("AMD AIE Options");
@@ -313,6 +314,11 @@ struct AMDAIEOptions {
         "iree-amdaie-emit-control-packet", emitCtrlPkt, llvm::cl::cat(category),
         llvm::cl::desc("Convert `aie.device` to `ctrlpkt_sequence.txt` and "
                        "`ctrlpkt_instructions.txt`"));
+
+    binder.opt<std::string>(
+        "iree-amd-aie-unroll-jam", unrollJam, llvm::cl::cat(category),
+        llvm::cl::desc("Please see iree-amdaie-unroll-jam-aievec-matmul "
+                       "for details."));
 
     binder.opt<std::string>(
         "iree-amdaie-dir-to-load-control-packet", dirToLoadCtrlPktFiles,
