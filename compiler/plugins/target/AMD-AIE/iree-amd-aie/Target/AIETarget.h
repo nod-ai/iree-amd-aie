@@ -60,7 +60,7 @@ struct AMDAIEOptions {
   bool enableCoalescingLoops{false};
   bool enableCollapsingUnitDims{false};
   OutliningStrategy enableFunctionOutlining{OutliningStrategy::Balanced};
-  bool replaceOutlinedFunctionsWithEmpty{false};
+  int outliningCallReplication{1};
   bool insertLoopAroundCoreBlock{false};
   bool matmulElementwiseFusion{false};
   AMDAIEDevice AMDAIETargetDevice{AMDAIEDevice::npu1_4col};
@@ -234,12 +234,14 @@ struct AMDAIEOptions {
                                     "a good balance between "
                                     "performance and program size.")));
 
-    binder.opt<bool>(
-        "iree-amdaie-replace-outlined-functions-with-empty",
-        replaceOutlinedFunctionsWithEmpty, llvm::cl::cat(category),
+    binder.opt<int>(
+        "iree-amdaie-outlining-call-replication", outliningCallReplication,
+        llvm::cl::cat(category),
         llvm::cl::desc(
-            "Flag to enable/disable replacing outlined functions with "
-            "empty functions. For development purposes only."));
+            "The number of calls to outlined function. n!=1 will result "
+            "in numerical errors. Useful for benchmarking data movement "
+            "(n=0) and core performance (n>>1). For development purposes "
+            "only."));
 
     binder.opt<bool>(
         "iree-amdaie-enable-infinite-loop-around-core-block",

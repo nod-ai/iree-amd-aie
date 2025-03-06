@@ -25,7 +25,6 @@
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -505,40 +504,15 @@ struct SerializeSplatTransferReadWithTargetLoadSize
           writeOp.getPermutationMapAttr(), writeOp.getInBoundsAttr());
     };
 
-    auto getConstant = [&](int64_t v) {
-      return rewriter.create<arith::ConstantIndexOp>(writeOp.getLoc(), v);
-    };
     // Construct the loop body.
     rewriter.setInsertionPointAfter(writeOp);
-    Value cStart = getConstant(initialIndex);
-    Value cEnd = getConstant(tailStart);
-    Value cStep = getConstant(elementsPerWrite);
-    scf::ForOp loopOp =
-        rewriter.create<scf::ForOp>(writeOp.getLoc(), cStart, cEnd, cStep);
 
     // TODO(newling) consider partial unrolling if beneficial, or some smarter
     // way of deciding whether to attach no unrolling. Perhaps this should even
     // be a separate pass. Preventing this from unrolling here for now, as I see
     // it saves 1K PM bytes for a linalg.fill for a matmul.
-    mlir::LLVM::LoopUnrollAttr unrollAttr;
-    mlir::LLVM::LoopAnnotationAttr loopAnnotationAttr;
-    BoolAttr disableAttr = rewriter.getBoolAttr(true);
-    unrollAttr = mlir::LLVM::LoopUnrollAttr::get(
-        rewriter.getContext(), /*disable=*/disableAttr, /*count=*/{},
-        /*runtimeDisable=*/{}, /*full=*/{}, /*followupUnrolled=*/{},
-        /*followupRemainder=*/{}, /*followupAll=*/{});
-
-    loopAnnotationAttr = mlir::LLVM::LoopAnnotationAttr::get(
-        rewriter.getContext(), /*disableNonforced=*/{},
-        /*vectorize=*/{}, /*interleave=*/{}, /*unroll=*/unrollAttr,
-        /*unrollAndJam=*/{}, /*licm=*/{}, /*distribute=*/{},
-        /*pipeline=*/{},
-        /*peeled=*/{}, /*unswitch=*/{}, /*mustProgress=*/{},
-        /*isVectorized=*/{}, /*startLoc=*/{}, /*endLoc=*/{},
-        /*parallelAccesses=*/{});
-
-    // Add the llvm.loop_annotation attribute to the loop.
-    loopOp->setAttr("loop_annotation", loopAnnotationAttr);
+    auto loopOp = AMDAIE::createForOpWithUnrollingDisabled(
+        rewriter, writeOp.getLoc(), initialIndex, tailStart, elementsPerWrite);
 
     // Create transfer_write inside loop body.
     rewriter.setInsertionPointToStart(loopOp.getBody());
@@ -547,6 +521,8 @@ struct SerializeSplatTransferReadWithTargetLoadSize
     // If there are tail elements, create a transfer_write for them.
     if (nbTailElements > 0) {
       rewriter.setInsertionPointAfter(loopOp);
+      Value cEnd =
+          rewriter.create<arith::ConstantIndexOp>(writeOp.getLoc(), tailStart);
       createTransferWrite(nbTailElements, cEnd);
     }
 

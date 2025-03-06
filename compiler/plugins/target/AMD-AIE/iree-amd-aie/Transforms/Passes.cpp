@@ -582,7 +582,7 @@ void buildAMDAIETransformPassPipeline(
     bool enableVectorizationPasses, const std::string &pathToUkernels,
     bool enablePacketFlow, bool enableCoalescingLoops,
     bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
-    bool replaceOutlinedFunctionsWithEmpty, bool insertLoopAroundCoreBlock,
+    int outliningCallReplication, bool insertLoopAroundCoreBlock,
     bool emitCtrlPkt) {
   OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
   {
@@ -615,7 +615,7 @@ void buildAMDAIETransformPassPipeline(
         modulePassManager, enablePacketFlow, useTilePipeline,
         enableVectorizationPasses, enableCoalescingLoops,
         enableCollapsingUnitDims, enableFunctionOutlining,
-        replaceOutlinedFunctionsWithEmpty, insertLoopAroundCoreBlock, numCols,
+        outliningCallReplication, insertLoopAroundCoreBlock, numCols,
         emitCtrlPkt);
   } else if (useLowerToAIEPipeline == LowerToAIEPassPipeline::AIR) {
     addMLIRAIRLoweringPasses(modulePassManager, device, useTilePipeline,
@@ -640,9 +640,8 @@ void addAMDAIEObjectFifoLoweringPasses(
     OpPassManager &passManager, bool enablePacketFlow,
     TilePassPipeline useTilePipeline, bool enableVectorizationPasses,
     bool enableCoalescingLoops, bool enableCollapsingUnitDims,
-    OutliningStrategy enableFunctionOutlining,
-    bool replaceOutlinedFunctionsWithEmpty, bool insertLoopAroundCoreBlock,
-    uint32_t numCols, bool emitCtrlPkt) {
+    OutliningStrategy enableFunctionOutlining, int outliningCallReplication,
+    bool insertLoopAroundCoreBlock, uint32_t numCols, bool emitCtrlPkt) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
 
@@ -671,7 +670,7 @@ void addAMDAIEObjectFifoLoweringPasses(
   // Create function outlining options object, etc.
   AMDAIELinalgFunctionOutliningOptions options;
   options.outliningStrategy = enableFunctionOutlining;
-  options.emptyFunctions = replaceOutlinedFunctionsWithEmpty;
+  options.callReplication = outliningCallReplication;
   passManager.addPass(createAMDAIELinalgFunctionOutliningPass(options));
 
   {

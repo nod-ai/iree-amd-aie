@@ -8,10 +8,12 @@
 #include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
 #include "mlir/Dialect/Linalg/Transforms/Hoisting.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 
 #define DEBUG_TYPE "iree-amdaie-linalg-function-outlining"
@@ -97,7 +99,8 @@ class AMDAIELinalgFunctionOutliningPass
       : AMDAIELinalgFunctionOutliningBase(opts) {}
 
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<linalg::LinalgDialect>();
+    registry.insert<linalg::LinalgDialect, scf::SCFDialect, LLVM::LLVMDialect,
+                    func::FuncDialect>();
   }
 
   void runOnOperation() override;
@@ -160,11 +163,12 @@ void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
   IRRewriter rewriter(context);
 
   if (outliningStrategy == OutliningStrategy::None) {
-    if (emptyFunctions) {
+    if (callReplication != 1) {
       moduleOp.emitWarning()
-          << "The option to empty outlined functions is enabled while the "
-             "outlining strategy specifies to not outline any functions, so no "
-             "transformation will happen. This combination might not result in "
+          << "The option to call the outlined function " << callReplication
+          << " times instead of once is enabled, while the outlining strategy "
+             "specifies to not outline any functions, so no transformation "
+             "will happen. This combination might not result in "
              "the intended behaviour.";
     }
     return;
@@ -183,6 +187,13 @@ void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
     func::FuncOp func = maybeFunc.value();
 
     rewriter.setInsertionPoint(computeOp);
+
+    if (callReplication > 1) {
+      scf::ForOp loop = createForOpWithUnrollingDisabled(
+          rewriter, computeOp.getLoc(), 0, callReplication, 1);
+      rewriter.setInsertionPointToStart(loop.getBody());
+    }
+
     rewriter.create<func::CallOp>(computeOp.getLoc(), func,
                                   computeOp->getOperands());
 
@@ -196,11 +207,10 @@ void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
     rewriter.eraseOp(op);
   }
 
-  // If the option is set to true, make the body of all outlined functions
-  // empty, so that only the return remains. This option to 'do no compute'
-  // is useful for benchmarking purposes.
-  if (emptyFunctions) {
-    for (auto &nameAndFuncOp : computeOpToOutlinedFuncMap) {
+  // Instead of 0 calls, we call into a function that does nothing. We do this
+  // because having no calls can result in DCE that removes more than we want.
+  if (callReplication == 0) {
+    for (auto &&nameAndFuncOp : computeOpToOutlinedFuncMap) {
       Region &region = nameAndFuncOp.second.getBody();
       Block &block = region.front();
       uint64_t nOperations = block.getOperations().size();

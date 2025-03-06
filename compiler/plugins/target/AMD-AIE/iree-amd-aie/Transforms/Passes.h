@@ -9,7 +9,6 @@
 
 #include "iree-amd-aie/Transforms/PassDetail.h"
 #include "iree-amd-aie/aie_runtime/AMDAIEEnums.h"
-#include "iree/compiler/Codegen/Common/TileSizeSelection.h"
 #include "mlir/Pass/Pass.h"
 
 namespace mlir::iree_compiler::AMDAIE {
@@ -19,9 +18,8 @@ void addAMDAIEObjectFifoLoweringPasses(
     OpPassManager &passManager, bool enablePacketFlow,
     TilePassPipeline useTilePipeline, bool enableVectorizationPasses,
     bool enableCoalescingLoops, bool enableCollapsingUnitDims,
-    OutliningStrategy enableFunctionOutlining,
-    bool replaceOutlinedFunctionsWithEmpty, bool insertLoopAroundCoreBlock,
-    uint32_t numCols, bool emitCtrlPkt);
+    OutliningStrategy enableFunctionOutlining, int outliningLoopInCallCount,
+    bool insertLoopAroundCoreBlock, uint32_t numCols, bool emitCtrlPkt);
 
 /// Add passes to lower from MLIR-AIR through AIE. This is
 /// currently the default passes used for lowering after IREEs tiling.
@@ -44,7 +42,7 @@ void buildAMDAIETransformPassPipeline(
     bool enableVectorizationPasses, const std::string &pathToUkernels,
     bool enablePacketFlow, bool enableCoalescingLoops,
     bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
-    bool replaceOutlinedFunctionsWithEmpty, bool insertLoopAroundCoreBlock,
+    int outliningLoopInCallCount, bool insertLoopAroundCoreBlock,
     bool emitCtrlPkt);
 
 /// Populates passes needed to lower the IR via a Pack-Peel based approach.
