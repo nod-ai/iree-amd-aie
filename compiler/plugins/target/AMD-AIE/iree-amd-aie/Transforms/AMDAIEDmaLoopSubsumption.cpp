@@ -497,16 +497,26 @@ struct SubsumeLoopIntoDMA
         return rewriter.notifyMatchFailure(
             op, "should operate on an `amdaie.connection` op");
       }
-      std::optional<AMDAIE::ConnectionType> connectionType =
-          connectionOp.getConnectionType();
-      if (connectionType &&
-          connectionType.value() == AMDAIE::ConnectionType::Packet) {
-        return rewriter.notifyMatchFailure(
-            op,
-            "operating on a packet connection, which can potentially still be "
-            "merged with other connections, so abort loop subsumption as it "
-            "could potentially lead to deadlocks");
-      }
+
+      // The following check on packet flows is disabled at the moment,
+      // to reduce control code size and improve the performance. However,
+      // this is at the risk of potential deadlocks, if multiple packet flows
+      // share the arbitors.
+      //
+      // TODO(zhewen): resolve this issue more properly by improving the router
+      // or utilizing reconfiguration?
+
+      // std::optional<AMDAIE::ConnectionType> connectionType =
+      //     connectionOp.getConnectionType();
+      // if (connectionType &&
+      //     connectionType.value() == AMDAIE::ConnectionType::Packet) {
+      //   return rewriter.notifyMatchFailure(
+      //       op,
+      //       "operating on a packet connection, which can potentially still be
+      //       " "merged with other connections, so abort loop subsumption as it
+      //       " "could potentially lead to deadlocks");
+      // }
+
       if (hasOtherUsersInSameScope(connectionOp.getResult())) {
         return rewriter.notifyMatchFailure(
             op,
