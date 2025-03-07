@@ -195,16 +195,19 @@ static LogicalResult checkTotalCoverageOfAccessPattern(
   for (CopyOpInterface copyOp : copyLikeOps) {
     FailureOr<int64_t> maybeOffset;
     auto dmaCpyNdOp = dyn_cast<AMDAIE::DmaCpyNdOp>(copyOp.getOperation());
+    OpFoldResult mixedOffset = nullptr;
     if constexpr (OperateOn == CopyOpOperateOn::Target) {
       // Extract Source offset : Retriever/Bias.
       SmallVector<OpFoldResult> sourceOffsets =
           dmaCpyNdOp.getSourceMixedOffsets();
       maybeOffset = getOffsetBias(sourceOffsets[splitDim]);
+      mixedOffset = sourceOffsets[splitDim];
     } else {
       // Extract Target offset : Retriever/Bias.
       SmallVector<OpFoldResult> targetOffsets =
           dmaCpyNdOp.getTargetMixedOffsets();
       maybeOffset = getOffsetBias(targetOffsets[splitDim]);
+      mixedOffset = targetOffsets[splitDim];
     }
     if (failed(maybeOffset)) {
       return dmaCpyNdOp.emitOpError()
@@ -212,7 +215,13 @@ static LogicalResult checkTotalCoverageOfAccessPattern(
                 "split dimension ("
              << splitDim << ")";
     }
-    uniqueOffsetBiasesAtSplitDim.insert(*maybeOffset);
+    if (auto offsetValue = dyn_cast_if_present<Value>(mixedOffset)) {
+      if (isa_and_present<affine::AffineApplyOp>(offsetValue.getDefiningOp())) {
+        uniqueOffsetBiasesAtSplitDim.insert(*maybeOffset);
+      }
+    } else {
+      return failure();
+    }
   }
   DenseSet<int64_t> offsetsToCover;
   for (unsigned i = 0; i < sizeAtSplitDim; i++) {
@@ -411,9 +420,6 @@ LogicalResult collectSplittingDims(
       if (sourceSize % splitFactor != 0 || targetSize % splitFactor != 0) {
         splitFactor = std::gcd(sourceSize, targetSize);
       }
-      (void)checkTotalCoverageOfAccessPattern<CopyOpOperateOn::Source>(
-          objFifo.getCopyLikeProducers(), splitDimSize / splitFactor,
-          objFifoSplitDim, splitFactor);
       LLVM_DEBUG(llvm::dbgs() << "sourceSplitDim: " << sourceSplitDim << "\n");
       LLVM_DEBUG(llvm::dbgs() << "targetSplitDim: " << targetSplitDim << "\n");
       LLVM_DEBUG(llvm::dbgs()
@@ -494,6 +500,7 @@ void AMDAIESplitLogicalObjFifosPass::runOnOperation() {
   for (auto &&[dmaOp, dmaSplitInfo] : dmaSplitInfoMap) {
     auto stridedOp =
         cast<AMDAIE::DoublyStridedOpInterface>(dmaOp.getOperation());
+    if (dmaSplitInfo.splitSize == 1) continue;
     if (failed(splitDoublyStridedOp(
             rewriter, stridedOp, dmaSplitInfo.sourceSplitDim,
             dmaSplitInfo.targetSplitDim, dmaSplitInfo.splitSize,
@@ -504,6 +511,7 @@ void AMDAIESplitLogicalObjFifosPass::runOnOperation() {
     }
   }
   for (auto &&[objFifo, splitInfo] : objFifoSplitInfoMap) {
+    if (splitInfo.splitSize == 1) continue;
     if (failed(splitLogicalObjectFifo(rewriter, objFifo, splitInfo.splitDim,
                                       splitInfo.splitSize,
                                       splitInfo.splitStride))) {
