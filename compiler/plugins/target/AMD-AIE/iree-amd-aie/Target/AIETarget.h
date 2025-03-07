@@ -91,7 +91,7 @@ struct AMDAIEOptions {
   DeviceHAL deviceHal{DeviceHAL::XRT_LITE};
 
   bool emitCtrlPkt{false};
-  std::string unrollJam{};
+  std::string unrollJam{"auto"};
 
   void bindOptions(OptionsBinder &binder) {
     static llvm::cl::OptionCategory category("AMD AIE Options");

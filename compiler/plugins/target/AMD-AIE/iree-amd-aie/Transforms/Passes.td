@@ -18,10 +18,10 @@ def AMDAIEUnrollJamAIEVecMatmul :
 
   This pass takes a string `sequence` that looks something like
 
-  uj_0_2_uj_1_2_uj_2_2_u_0_1_u_1_2_u_2_2.
+  uj_0_2_uj_1_2_uj_2_2_u_0_1_u_1_2_u_2_2
 
   This string defines a sequence of unroll and unroll-and-jams transformations to
-  apply to nested scf.for operation containing aievec.matmuls. In this case there
+  apply to nested scf.for operation containing an aievec.matmul. In this case there
   are 6 transformations:
 
   uj_0_2_uj_1_2_uj_2_2_u_0_1_u_1_2_u_2_2.
@@ -51,24 +51,27 @@ def AMDAIEUnrollJamAIEVecMatmul :
   uj_0_2_uj_1_2_uj_2_2_u_0_1_u_1_2_u_2_2
        =      =      =     =     =     =   <--- these are the unroll factors.
 
-  Defines the factor of unrolling or jamming. For example if this is 1, then
-  there is no transformation (no unrolling).
+  defines the factor of unrolling or jamming. For example if this is 1, then
+  there is no transformation (unrolling with unroll factor 1 does nothing).
 
-  The pass procedes as follows (we many change this in the future):
-  For all func.func operations:
-     If func.func contains 0 aievec.matmul operations, continue
-     If func.func contains 1 aievec.matmul operation, apply the sequence of unrolls
-     If func.func contains 2+ aievec.matmuls, fail.
+  The pass finds all aievec.matmul operations, and applies the sequence of
+  transformations to the scf.for loops that contain them. If the aievec.matmul
+  operation has an attribute `sequence` local to it, then that sequence is used
+  instead of the global sequence. This is useful for testing, and in theory
+  allows different matmuls to have different unrolling strategies.
 
-  All scf.for loops that remain after the transformation are given an llvm attribute
-  ensuring that no later passes do further unrolling, thus ensuring complete control
-  over the unrolling in this pass.
+  All scf.for loops that remain after the transformation are optionally given an llvm
+  attribute ensuring that no later passes do further unrolling, which ensures complete
+  control over the unrolling in this pass. To ensure that the scf.for ops get this
+  attribute, the sequence string should have a suffix '_NOUNROLL', like
 
-  If `sequence` is the empty string or `none` then the pass is not applied.
+  uj_0_2_uj_1_2_uj_2_2_u_0_1_u_1_2_u_2_2_NOUNROLL
 
-  If `sequence` is `auto` or `default`, then a default sequence is applied, specific
-  to the data type, the device, and the current loop nesting.
+  If `sequence` is the empty string or `none` then no unrolling is applied.
 
+  If `sequence` is `auto` or `default`, then a default sequence is applied,
+  specific to the data type, the device, and the loop nesting before this pass. Note
+  that currently only bf16 -> f32 on aie2 has been tuned with a good default.
 
   For more information on unroll & jam, see for example
   https://www.cs.utexas.edu/~lin/cs380c/handout28.pdf
@@ -122,9 +125,9 @@ def AMDAIEAssignLogicalObjectFifoDepth :
   let options = [
     Option<"l3BufferDepth", "l3-buffer-depth", "int64_t", /*default=*/"1",
       "Set the L3 buffer depth to be used.">,
-    Option<"l2BufferDepth", "l2-buffer-depth", "int64_t", /*default=*/"1",
+    Option<"l2BufferDepth", "l2-buffer-depth", "int64_t", /*default=*/"2",
       "Set the L2 buffer depth to be used.">,
-    Option<"l1BufferDepth", "l1-buffer-depth", "int64_t", /*default=*/"1",
+    Option<"l1BufferDepth", "l1-buffer-depth", "int64_t", /*default=*/"2",
       "Set the L1 buffer depth to be used.">,
   ];
 }

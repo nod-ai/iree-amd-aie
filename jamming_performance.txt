@@ -1,6 +1,6 @@
-Some performance numbers. 
+Some performance numbers.
 
-Before. 
+Before.
 
 O2: BM_matmul/process_time/real_time_median     425293 us         1880 us            3 items_per_second=2.35132/s
 03: BM_matmul/process_time/real_time_median     362827 us         1825 us            3 items_per_second=2.75614/s
