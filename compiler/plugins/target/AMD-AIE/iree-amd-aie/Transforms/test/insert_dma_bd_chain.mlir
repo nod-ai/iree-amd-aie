@@ -49,6 +49,55 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
+// Expect a single DMA BD chain, containing the IDs: [0, 1]. Packet flows are present in this test.
+// CHECK-LABEL: @single_bd_chain_pktflow
+// CHECK:       %[[CHANNEL:.+]] = amdaie.channel
+// CHECK:       %[[CONNECTION:.+]] = amdaie.connection
+// CHECK:       amdaie.controlcode
+// CHECK:         %[[BD_ID_0:.+]] = amdaie.bd_id
+// CHECK:         %[[BD_ID_1:.+]] = amdaie.bd_id
+// CHECK:         %[[OBJECT_FIFO:.+]] = amdaie.logicalobjectfifo.from_memref
+// CHECK:         amdaie.npu.half_dma_cpy_nd  %[[CONNECTION]](%[[OBJECT_FIFO]] [] [] [] bd_id = %[[BD_ID_0]] channel = %[[CHANNEL]] next_bd = %[[BD_ID_1]] start_bd = %[[BD_ID_0]])
+// CHECK:         %[[TOKEN_0:.+]] = amdaie.npu.half_dma_cpy_nd async %[[CONNECTION]](%[[OBJECT_FIFO]] [] [] [] bd_id = %[[BD_ID_1]] channel = %[[CHANNEL]] start_bd = %[[BD_ID_0]])
+// CHECK:         amdaie.npu.dma_wait(%[[TOKEN_0]] : !amdaie.async_token)
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+#pipeline_layout = #hal.pipeline.layout<bindings = [#hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, Indirect>], flags = Indirect>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @single_bd_chain_pktflow() {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    amdaie.workgroup {
+      %tile = amdaie.tile(%c0, %c0)
+      %tile_0 = amdaie.tile(%c0, %c1)
+      %buffer = amdaie.buffer(%tile_0) : memref<1024xbf16, 1 : i32>
+      %buffer_2 = amdaie.buffer(%tile_0) : memref<1024xbf16, 1 : i32>
+      %lock = amdaie.lock(%tile_0(0), 0)
+      %lock_3 = amdaie.lock(%tile_0(1), 0)
+      %channel = amdaie.channel(%tile, 0, port_type = DMA, direction = MM2S)
+      %channel_4 = amdaie.channel(%tile_0, 0, port_type = DMA, direction = S2MM)
+      %0 = hal.interface.binding.subspan layout(#pipeline_layout) binding(0) alignment(64) offset(%c0) flags("ReadOnly|Indirect") : memref<512x512xbf16>
+      %1 = amdaie.logicalobjectfifo.from_buffers({%buffer, %buffer_2}, {%lock}, {%lock_3}) : memref<1024xbf16, 1 : i32>, memref<1024xbf16, 1 : i32> -> !amdaie.logicalobjectfifo<memref<1024xbf16, 1 : i32>, 2>
+      %2 = amdaie.logicalobjectfifo.placeholder{%tile} : !amdaie.logicalobjectfifo<memref<512x512xbf16>>
+      %3 = amdaie.flow({%channel} -> {%channel_4}) {is_packet_flow = true}
+      %4 = amdaie.connection(%1 {%channel_4}, %2 {%channel}, flow = %3) {connection_type = #amdaie<connection_type Packet>} : (!amdaie.logicalobjectfifo<memref<1024xbf16, 1 : i32>, 2>, !amdaie.logicalobjectfifo<memref<512x512xbf16>>)
+      amdaie.controlcode {
+        memref.assume_alignment %0, 64 : memref<512x512xbf16>
+        %5 = amdaie.logicalobjectfifo.from_memref %0, {%tile} : memref<512x512xbf16> -> !amdaie.logicalobjectfifo<memref<262144xbf16>>
+        %bd_id = amdaie.bd_id(%tile, %c0)
+        %6 = amdaie.npu.half_dma_cpy_nd async %4(%5 [] [] [] bd_id = %bd_id channel = %channel start_bd = %bd_id) : !amdaie.logicalobjectfifo<memref<262144xbf16>>
+        amdaie.npu.dma_wait(%6 : !amdaie.async_token)
+        %bd_id_1 = amdaie.bd_id(%tile, %c1)
+        %7 = amdaie.npu.half_dma_cpy_nd async %4(%5 [] [] [] bd_id = %bd_id_1 channel = %channel start_bd = %bd_id_1) : !amdaie.logicalobjectfifo<memref<262144xbf16>>
+        amdaie.npu.dma_wait(%7 : !amdaie.async_token)
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
 // Expect no chaining happens, when repeat_count > 1.
 // CHECK-LABEL: @no_bd_chain_repeat_count
 // CHECK:       %[[CHANNEL:.+]] = amdaie.channel
