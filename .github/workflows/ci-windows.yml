@@ -193,4 +193,4 @@ jobs:
             --peano_dir=$PWD/llvm-aie -v \
             --target_device "npu1_4col" \
             --device_hal=xrt \
-            --skip_tests "Performance,MatmulConstBiasCtrlPacket"
+            --skip_tests "Performance"
