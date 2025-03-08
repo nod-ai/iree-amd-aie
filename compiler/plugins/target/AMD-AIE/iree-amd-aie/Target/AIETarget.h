@@ -84,7 +84,8 @@ struct AMDAIEOptions {
   }
 
   std::string enableAMDAIEUkernels{"none"};
-  bool enablePacketFlow{false};
+  bool enableInputPacketFlow{false};
+  bool enableOutputPacketFlow{false};
   std::string dirToLoadCtrlPktFiles{""};
 
   enum class DeviceHAL { XRT, XRT_LITE };
@@ -298,9 +299,17 @@ struct AMDAIEOptions {
             "columns. However, some workloads (like convolution) currently "
             "ignore this flag, and use a hardcoded number of cols."));
 
-    binder.opt<bool>("iree-amdaie-enable-packet-flow", enablePacketFlow,
-                     llvm::cl::cat(category),
-                     llvm::cl::desc("Enable packet routing data movement."));
+    binder.opt<bool>(
+        "iree-amdaie-enable-input-packet-flow", enableInputPacketFlow,
+        llvm::cl::cat(category),
+        llvm::cl::desc(
+            "Enable packet routing data movement for kernel inputs"));
+
+    binder.opt<bool>(
+        "iree-amdaie-enable-output-packet-flow", enableOutputPacketFlow,
+        llvm::cl::cat(category),
+        llvm::cl::desc(
+            "Enable packet routing data movement for kernel outputs"));
 
     binder.opt<DeviceHAL>(
         "iree-amdaie-device-hal", deviceHal, llvm::cl::cat(category),

@@ -371,7 +371,7 @@ function run_matmul_test() {
                       --iree-amdaie-tile-pipeline=${tile_pipeline} \
                       --iree-amd-aie-peano-install-dir=${peano_install_path} \
                       --iree-amd-aie-install-dir=${amd_aie_install_path} \
-                      --iree-amdaie-enable-packet-flow=${enable_packet_flow} \
+                      --iree-amdaie-enable-input-packet-flow=${enable_packet_flow} \
                       --iree-hal-dump-executable-files-to=$PWD \
                       --iree-amdaie-device-hal=${DEVICE_HAL} \
                       --iree-hal-memoization=false \

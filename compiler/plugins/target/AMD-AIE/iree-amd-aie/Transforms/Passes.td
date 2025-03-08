@@ -36,8 +36,10 @@ def AMDAIEAssignConnectionTypes :
   let constructor =
     "mlir::iree_compiler::AMDAIE::createAMDAIEAssignConnectionTypesPass()";
   let options = [
-    Option<"enablePacketFlow", "enable-packet-flow", "bool", /*default=*/"false",
-      "Enable packet routing for connections.">
+    Option<"enableInputPacketFlow", "enable-input-packet-flow", "bool", /*default=*/"false",
+      "Enable packet routing for connections belonging to send kernel inputs.">,
+    Option<"enableOutputPacketFlow", "enable-output-packet-flow", "bool", /*default=*/"false",
+      "Enable packet routing for connections belonging to send kernel outputs.">,
   ];
 }
 

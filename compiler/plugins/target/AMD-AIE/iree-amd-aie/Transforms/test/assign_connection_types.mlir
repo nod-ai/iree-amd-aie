@@ -1,5 +1,7 @@
 // RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-assign-connection-types)" --split-input-file --verify-diagnostics %s | FileCheck %s
-// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-assign-connection-types{enable-packet-flow=true})" --split-input-file --verify-diagnostics %s | FileCheck %s -check-prefix=PACKET
+// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-assign-connection-types{enable-input-packet-flow=true})" --split-input-file --verify-diagnostics %s | FileCheck %s -check-prefix=INPUT-PACKET
+// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-assign-connection-types{enable-output-packet-flow=true})" --split-input-file --verify-diagnostics %s | FileCheck %s -check-prefix=OUTPUT-PACKET
+// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-assign-connection-types{enable-input-packet-flow=true enable-output-packet-flow=true})" --split-input-file --verify-diagnostics %s | FileCheck %s -check-prefix=ALL-PACKET
 
 // CHECK-LABEL: @assign_connection_types
 // CHECK-SAME:  %[[ARG0:.+]]: memref<8x16xi32>, %[[ARG1:.+]]: memref<1x1x8x16xi32, 1>, %[[ARG2:.+]]: memref<1x1x8x16xi32, 2>
@@ -11,15 +13,35 @@
 // CHECK:         amdaie.connection(%[[OBJ0]], %[[OBJ1]]) {connection_type = #amdaie<connection_type Circuit>}
 // CHECK:         amdaie.connection(%[[OBJ2]], %[[OBJ1]]) {connection_type = #amdaie<connection_type Circuit>}
 
-// PACKET-LABEL: @assign_connection_types
-// PACKET-SAME:  %[[ARG0:.+]]: memref<8x16xi32>, %[[ARG1:.+]]: memref<1x1x8x16xi32, 1>, %[[ARG2:.+]]: memref<1x1x8x16xi32, 2>
-// PACKET:       amdaie.workgroup
-// PACKET:         %[[OBJ0:.+]] = amdaie.logicalobjectfifo.from_memref %[[ARG0]]
-// PACKET:         %[[OBJ1:.+]] = amdaie.logicalobjectfifo.from_memref %[[ARG1]]
-// PACKET:         %[[OBJ2:.+]] = amdaie.logicalobjectfifo.from_memref %[[ARG2]]
-// PACKET:         amdaie.connection(%[[OBJ1]], %[[OBJ0]]) {connection_type = #amdaie<connection_type Packet>}
-// PACKET:         amdaie.connection(%[[OBJ0]], %[[OBJ1]]) {connection_type = #amdaie<connection_type Packet>}
-// PACKET:         amdaie.connection(%[[OBJ2]], %[[OBJ1]]) {connection_type = #amdaie<connection_type Packet>}
+// INPUT-PACKET-LABEL: @assign_connection_types
+// INPUT-PACKET-SAME:  %[[ARG0:.+]]: memref<8x16xi32>, %[[ARG1:.+]]: memref<1x1x8x16xi32, 1>, %[[ARG2:.+]]: memref<1x1x8x16xi32, 2>
+// INPUT-PACKET:       amdaie.workgroup
+// INPUT-PACKET:         %[[OBJ0:.+]] = amdaie.logicalobjectfifo.from_memref %[[ARG0]]
+// INPUT-PACKET:         %[[OBJ1:.+]] = amdaie.logicalobjectfifo.from_memref %[[ARG1]]
+// INPUT-PACKET:         %[[OBJ2:.+]] = amdaie.logicalobjectfifo.from_memref %[[ARG2]]
+// INPUT-PACKET:         amdaie.connection(%[[OBJ1]], %[[OBJ0]]) {connection_type = #amdaie<connection_type Packet>}
+// INPUT-PACKET:         amdaie.connection(%[[OBJ0]], %[[OBJ1]]) {connection_type = #amdaie<connection_type Circuit>}
+// INPUT-PACKET:         amdaie.connection(%[[OBJ2]], %[[OBJ1]]) {connection_type = #amdaie<connection_type Packet>}
+
+// OUTPUT-PACKET-LABEL: @assign_connection_types
+// OUTPUT-PACKET-SAME:  %[[ARG0:.+]]: memref<8x16xi32>, %[[ARG1:.+]]: memref<1x1x8x16xi32, 1>, %[[ARG2:.+]]: memref<1x1x8x16xi32, 2>
+// OUTPUT-PACKET:       amdaie.workgroup
+// OUTPUT-PACKET:         %[[OBJ0:.+]] = amdaie.logicalobjectfifo.from_memref %[[ARG0]]
+// OUTPUT-PACKET:         %[[OBJ1:.+]] = amdaie.logicalobjectfifo.from_memref %[[ARG1]]
+// OUTPUT-PACKET:         %[[OBJ2:.+]] = amdaie.logicalobjectfifo.from_memref %[[ARG2]]
+// OUTPUT-PACKET:         amdaie.connection(%[[OBJ1]], %[[OBJ0]]) {connection_type = #amdaie<connection_type Circuit>}
+// OUTPUT-PACKET:         amdaie.connection(%[[OBJ0]], %[[OBJ1]]) {connection_type = #amdaie<connection_type Packet>}
+// OUTPUT-PACKET:         amdaie.connection(%[[OBJ2]], %[[OBJ1]]) {connection_type = #amdaie<connection_type Circuit>}
+
+// ALL-PACKET-LABEL: @assign_connection_types
+// ALL-PACKET-SAME:  %[[ARG0:.+]]: memref<8x16xi32>, %[[ARG1:.+]]: memref<1x1x8x16xi32, 1>, %[[ARG2:.+]]: memref<1x1x8x16xi32, 2>
+// ALL-PACKET:       amdaie.workgroup
+// ALL-PACKET:         %[[OBJ0:.+]] = amdaie.logicalobjectfifo.from_memref %[[ARG0]]
+// ALL-PACKET:         %[[OBJ1:.+]] = amdaie.logicalobjectfifo.from_memref %[[ARG1]]
+// ALL-PACKET:         %[[OBJ2:.+]] = amdaie.logicalobjectfifo.from_memref %[[ARG2]]
+// ALL-PACKET:         amdaie.connection(%[[OBJ1]], %[[OBJ0]]) {connection_type = #amdaie<connection_type Packet>}
+// ALL-PACKET:         amdaie.connection(%[[OBJ0]], %[[OBJ1]]) {connection_type = #amdaie<connection_type Packet>}
+// ALL-PACKET:         amdaie.connection(%[[OBJ2]], %[[OBJ1]]) {connection_type = #amdaie<connection_type Packet>}
 
 module {
   func.func @assign_connection_types(%arg0: memref<8x16xi32>, %arg1: memref<1x1x8x16xi32, 1>, %arg2: memref<1x1x8x16xi32, 2>) {

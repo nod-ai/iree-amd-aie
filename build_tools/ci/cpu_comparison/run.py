@@ -649,7 +649,7 @@ class MatmulConstBiasCtrlpkt(BaseMatmul):
         self.aie_compilation_flags += [
             "--iree-amdaie-num-rows=1",
             "--iree-amdaie-num-cols=1",
-            "--iree-amdaie-enable-packet-flow=true",
+            "--iree-amdaie-enable-input-packet-flow=true",
             "--iree-amdaie-emit-control-packet=true",
             "--mlir-disable-threading",
         ]

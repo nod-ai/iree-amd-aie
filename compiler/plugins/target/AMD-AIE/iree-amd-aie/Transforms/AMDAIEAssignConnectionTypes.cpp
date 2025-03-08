@@ -32,18 +32,41 @@ class AMDAIEAssignConnectionTypesPass
 void AMDAIEAssignConnectionTypesPass::runOnOperation() {
   Operation *parentOp = getOperation();
   IRRewriter rewriter(parentOp->getContext());
-  // Assign connection types based on provided options.
-  AMDAIE::ConnectionType connectionType = enablePacketFlow
-                                              ? AMDAIE::ConnectionType::Packet
-                                              : AMDAIE::ConnectionType::Circuit;
-  ConnectionTypeAttr connectionTypeAttr =
-      ConnectionTypeAttr::get(rewriter.getContext(), connectionType);
+
   WalkResult res = parentOp->walk([&](AMDAIE::ConnectionOp connectionOp) {
     rewriter.setInsertionPoint(connectionOp);
+
+    // Determine the source and target memory spaces of the connection.
+    auto sourceLogicalObjFifo =
+        dyn_cast_if_present<AMDAIE::LogicalObjFifoOpInterface>(
+            connectionOp.getSource().getDefiningOp());
+    auto targetLogicalObjFifo =
+        dyn_cast_if_present<AMDAIE::LogicalObjFifoOpInterface>(
+            connectionOp.getTarget().getDefiningOp());
+    if (!sourceLogicalObjFifo || !targetLogicalObjFifo) {
+      connectionOp.emitError(
+          "source and target of connection must be logical object fifos");
+      return WalkResult::interrupt();
+    }
+    uint8_t sourceMemSpace = sourceLogicalObjFifo.getMemorySpaceAsUInt();
+    uint8_t targetMemSpace = targetLogicalObjFifo.getMemorySpaceAsUInt();
+
+    // Default connection type is circuit.
+    AMDAIE::ConnectionType connectionType = AMDAIE::ConnectionType::Circuit;
+    // Use the memory space to determine if the connetion belongs to the kernel
+    // input or output, and set the connection type accordingly.
+    if (((sourceMemSpace < targetMemSpace) && enableInputPacketFlow) ||
+        ((sourceMemSpace > targetMemSpace) && enableOutputPacketFlow)) {
+      connectionType = AMDAIE::ConnectionType::Packet;
+    }
+
+    ConnectionTypeAttr connectionTypeAttr =
+        ConnectionTypeAttr::get(rewriter.getContext(), connectionType);
     rewriter.replaceOpWithNewOp<AMDAIE::ConnectionOp>(
         connectionOp, connectionOp.getTarget(),
         connectionOp.getTargetChannels(), connectionOp.getSource(),
-        connectionOp.getSourceChannels(), connectionTypeAttr, /*flow*/ nullptr);
+        connectionOp.getSourceChannels(), connectionTypeAttr,
+        /*flow*/ nullptr);
     return WalkResult::advance();
   });
   if (res.wasInterrupted()) return signalPassFailure();
