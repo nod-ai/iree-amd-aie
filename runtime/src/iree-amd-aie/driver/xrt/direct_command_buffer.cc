@@ -267,7 +267,7 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_collective(
 }
 
 static iree_status_t iree_hal_xrt_direct_command_buffer_push_descriptor_set(
-    iree_hal_command_buffer_t* base_command_buffer, uint32_t set,
+    iree_hal_xrt_direct_command_buffer_t* command_buffer, uint32_t set,
     iree_host_size_t binding_count, const iree_hal_buffer_ref_t* bindings) {
   if (binding_count > IREE_HAL_XRT_MAX_DESCRIPTOR_SET_BINDING_COUNT) {
     return iree_make_status(
@@ -277,8 +277,6 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_push_descriptor_set(
         set, binding_count, IREE_HAL_XRT_MAX_DESCRIPTOR_SET_BINDING_COUNT);
   }
 
-  iree_hal_xrt_direct_command_buffer_t* command_buffer =
-      iree_hal_xrt_direct_command_buffer_cast(base_command_buffer);
   IREE_TRACE_ZONE_BEGIN(z0);
 
   xrt::bo** current_bindings = command_buffer->descriptor_sets[set].bindings;
@@ -308,6 +306,117 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_push_descriptor_set(
   return iree_ok_status();
 }
 
+static iree_status_t iree_hal_xrt_direct_command_buffer_normal_run(
+    xrt::device& device, xrt::kernel& kernel,
+    iree_hal_buffer_ref_list_t& bindings,
+    iree_hal_xrt_direct_command_buffer_t* command_buffer,
+    std::vector<uint32_t>& asm_inst) {
+  IREE_TRACE_ZONE_BEGIN(z0);
+  // Allocate a buffer object to hold the control code (`asm_inst`).
+  // XCL_BO_FLAGS_CACHEABLE is used to indicate that this is an instruction
+  // buffer that resides in instr_memory. This buffer is always passed as
+  // the second argument to the kernel and we can use group id 1.
+  size_t ctrl_code_size = asm_inst.size() * sizeof(uint32_t);
+  auto bo_ctrl_code = xrt::bo(device, ctrl_code_size, XCL_BO_FLAGS_CACHEABLE,
+                              kernel.group_id(1));
+  uint32_t* instr_buffer = static_cast<uint32_t*>(bo_ctrl_code.map());
+  memcpy(instr_buffer, asm_inst.data(), ctrl_code_size);
+  bo_ctrl_code.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+
+  xrt::run run = xrt::run(kernel);
+  // Index to push arguments on the kernel.
+  iree_host_size_t arg_index = 0;
+  // First argument is the opcode.
+  unsigned int opcode = 3;
+  run.set_arg(arg_index++, opcode);
+  // Second argument is the LX6 instructions.
+  run.set_arg(arg_index++, bo_ctrl_code);
+  // Third argument is the number of LX6 instructions.
+  run.set_arg(arg_index++, asm_inst.size());
+
+  // Copy descriptors from all sets to the end of the current segment for later
+  // access.
+  // TODO(jornt): hack to ensure that the output buffer is synced by syncing all
+  // buffers after the run.
+  std::vector<xrt::bo> bos;
+  // TODO(max): do we need multiple descriptor sets ever for AIE?
+  uint32_t set = 0;
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(
+      z0, iree_hal_xrt_direct_command_buffer_push_descriptor_set(
+              command_buffer, set, bindings.count, bindings.values));
+  for (iree_host_size_t j = 0; j < bindings.count; ++j) {
+    xrt::bo arg_buffer =
+        xrt::bo(*command_buffer->descriptor_sets[set].bindings[j],
+                command_buffer->descriptor_sets[set].lengths[j],
+                command_buffer->descriptor_sets[set].offsets[j]);
+    bos.push_back(arg_buffer);
+    run.set_arg(arg_index + j, arg_buffer);
+  }
+
+  run.start();
+  try {
+    run.wait2();
+  } catch (const std::exception& e) {
+    IREE_TRACE_ZONE_END(z0);
+    return iree_make_status(IREE_STATUS_UNKNOWN, e.what());
+  }
+
+  for (xrt::bo& bo : bos) bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+
+  IREE_TRACE_ZONE_END(z0);
+  return iree_ok_status();
+}
+
+static iree_status_t iree_hal_xrt_direct_command_buffer_reconfigure(
+    xrt::device& device, xrt::kernel& kernel,
+    std::vector<uint32_t>& ctrlpkt_inst, std::vector<uint32_t>& ctrlpkt_seq) {
+  IREE_TRACE_ZONE_BEGIN(z0);
+  // Allocate a buffer object to hold the control packet instructions.
+  // XCL_BO_FLAGS_CACHEABLE is used to indicate that this is an instruction
+  // buffer that resides in instr_memory. This buffer is always passed as the
+  // second argument to the kernel and we can use group id 1.
+  size_t ctrlpkt_inst_size = ctrlpkt_inst.size() * sizeof(uint32_t);
+  auto bo_ctrlpkt_inst = xrt::bo(device, ctrlpkt_inst_size,
+                                 XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
+  uint32_t* ctrlpkt_inst_buffer = static_cast<uint32_t*>(bo_ctrlpkt_inst.map());
+  memcpy(ctrlpkt_inst_buffer, ctrlpkt_inst.data(), ctrlpkt_inst_size);
+  bo_ctrlpkt_inst.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  // Allocate a buffer object to hold the control packet sequence (content).
+  // XRT_BO_FLAGS_HOST_ONLY is used to indicate that this is a buffer that
+  // resides in the host memory. This buffer is passed as the fourth argument to
+  // the kernel and we can use group id 3.
+  size_t ctrlpkt_seq_size = ctrlpkt_seq.size() * sizeof(uint32_t);
+  auto bo_ctrlpkt_seq = xrt::bo(device, ctrlpkt_seq_size,
+                                XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+  uint32_t* ctrlpkt_seq_buffer = static_cast<uint32_t*>(bo_ctrlpkt_seq.map());
+  memcpy(ctrlpkt_seq_buffer, ctrlpkt_seq.data(), ctrlpkt_seq_size);
+  bo_ctrlpkt_seq.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+
+  xrt::run run = xrt::run(kernel);
+  // Index to push arguments on the kernel.
+  iree_host_size_t arg_index = 0;
+  // First argument is the opcode.
+  unsigned int opcode = 3;
+  run.set_arg(arg_index++, opcode);
+  // Second argument is the LX6 instructions.
+  run.set_arg(arg_index++, bo_ctrlpkt_inst);
+  // Third argument is the number of LX6 instructions.
+  run.set_arg(arg_index++, ctrlpkt_inst.size());
+  // Fourth argument is the control packet sequence (content).
+  run.set_arg(arg_index++, bo_ctrlpkt_seq);
+
+  run.start();
+  try {
+    run.wait2();
+  } catch (const std::exception& e) {
+    IREE_TRACE_ZONE_END(z0);
+    return iree_make_status(IREE_STATUS_UNKNOWN, e.what());
+  }
+
+  IREE_TRACE_ZONE_END(z0);
+  return iree_ok_status();
+}
+
 static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
     iree_hal_command_buffer_t* base_command_buffer,
     iree_hal_executable_t* executable, int32_t entry_point,
@@ -327,45 +436,28 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
       z0, iree_hal_resource_set_insert(command_buffer->resource_set, 1,
                                        &executable));
 
-  xrt::run run = xrt::run(kernel_params.kernel);
-  // Index to push arguments on the kernel.
-  iree_host_size_t arg_index = 0;
-  // First argument is the opcode.
-  unsigned int opcode = 3;
-  run.set_arg(arg_index++, opcode);
-  // Second argument is the LX6 instructions.
-  run.set_arg(arg_index++, kernel_params.instr);
-  // Third argument is the number of LX6 instructions.
-  run.set_arg(arg_index++, kernel_params.num_instr);
-
-  // Copy descriptors from all sets to the end of the current segment for later
-  // access.
-  // TODO(jornt): hack to ensure that the output buffer is synced by syncing all
-  // buffers after the run.
-  std::vector<xrt::bo> bos;
-  // TODO(max): do we need multiple descriptor sets ever for AIE?
-  uint32_t set = 0;
-  IREE_RETURN_AND_END_ZONE_IF_ERROR(
-      z0, iree_hal_xrt_direct_command_buffer_push_descriptor_set(
-              base_command_buffer, set, bindings.count, bindings.values));
-  for (iree_host_size_t j = 0; j < bindings.count; ++j) {
-    xrt::bo arg_buffer =
-        xrt::bo(*command_buffer->descriptor_sets[set].bindings[j],
-                command_buffer->descriptor_sets[set].lengths[j],
-                command_buffer->descriptor_sets[set].offsets[j]);
-    bos.push_back(arg_buffer);
-    run.set_arg(arg_index + j, arg_buffer);
+  size_t num_reconfigurations = kernel_params.reconf_data_runlist.size();
+  if (num_reconfigurations == 0) {
+    // Normal kernel dispatch.
+    IREE_RETURN_AND_END_ZONE_IF_ERROR(
+        z0, iree_hal_xrt_direct_command_buffer_normal_run(
+                kernel_params.device, kernel_params.kernel, bindings,
+                command_buffer, kernel_params.asm_inst_runlist[0]));
+  } else {
+    for (size_t i = 0; i < num_reconfigurations; i++) {
+      // Reconfigure the device.
+      IREE_RETURN_AND_END_ZONE_IF_ERROR(
+          z0, iree_hal_xrt_direct_command_buffer_reconfigure(
+                  kernel_params.device, kernel_params.kernel,
+                  kernel_params.asm_inst_runlist[2 * i],
+                  kernel_params.reconf_data_runlist[i]));
+      // Dispatch the new kernel.
+      IREE_RETURN_AND_END_ZONE_IF_ERROR(
+          z0, iree_hal_xrt_direct_command_buffer_normal_run(
+                  kernel_params.device, kernel_params.kernel, bindings,
+                  command_buffer, kernel_params.asm_inst_runlist[2 * i + 1]));
+    }
   }
-
-  run.start();
-  try {
-    run.wait2();
-  } catch (const std::exception& e) {
-    IREE_TRACE_ZONE_END(z0);
-    return iree_make_status(IREE_STATUS_UNKNOWN, e.what());
-  }
-
-  for (xrt::bo& bo : bos) bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
