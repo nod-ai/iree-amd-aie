@@ -710,8 +710,19 @@ def AMDAIEPad :
   let constructor =
       "mlir::iree_compiler::AMDAIE::createAMDAIEPadPass()";
   let options = [
-    Option<"paddingLevel", "padding-level", "int64_t", /*default=*/"-1",
-      "A temporary workaround to figure the config for padding">
+    Option<"padElementwise", "pad-elementwise", "bool", /*default=*/"false",
+      "Indicator of whether the target op for padding is an elementwise op">,
+    Option<"padOperand", "pad-operand", "mlir::iree_compiler::AMDAIE::PadOperand",
+      /*default=*/"mlir::iree_compiler::AMDAIE::PadOperand::InputOutput",
+      "Select which operands of a linalg op to be padded",
+      [{::llvm::cl::values(
+        clEnumValN(mlir::iree_compiler::AMDAIE::PadOperand::InputOutput, "input-output",
+                   "Pad the input and output of a linalg op."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::PadOperand::Input, "input",
+                   "Only pad the input of a linalg op."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::PadOperand::Output, "output",
+                   "Only pad the output of a linalg op.")
+    )}]>,
   ];
 }
 

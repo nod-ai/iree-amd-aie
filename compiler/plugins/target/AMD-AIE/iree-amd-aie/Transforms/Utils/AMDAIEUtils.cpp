@@ -342,6 +342,21 @@ bool isElementwiseWithMatmulProducer(linalg::LinalgOp linalgOp) {
   return false;
 }
 
+/// Utility to identify if `linalgOp` is a matmul-like operation with an
+/// elementwise op as its consumer.
+bool isMatmulWithElementwiseConsumer(linalg::LinalgOp linalgOp) {
+  if (!isMatmul(linalgOp)) return false;
+  // Check if the user is an elementwise op but not fill or copy op.
+  for (Operation *userOp : linalgOp->getUsers()) {
+    if (auto linalgUser = dyn_cast<linalg::LinalgOp>(userOp)) {
+      if (isElementwise(linalgUser) &&
+          !isa<linalg::FillOp, linalg::CopyOp>(linalgUser))
+        return true;
+    }
+  }
+  return false;
+}
+
 std::string utohexstr(uint32_t value, size_t width, bool header,
                       bool lowercase) {
   std::string res = "";

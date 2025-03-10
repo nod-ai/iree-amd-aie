@@ -29,6 +29,9 @@ enum class TilePassPipeline {
 /// Enum for types of loop peeling.
 enum class PeelingType { First, Last, FirstLast };
 
+/// Enum for operands to be padded.
+enum class PadOperand { InputOutput, Input, Output };
+
 /// Enum for operands to be bufferized to allocation.
 enum class BufferizeOperand {
   LinalgInputOutput,
