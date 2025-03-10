@@ -10,6 +10,7 @@
 #include "iree-amd-aie/aie_runtime/AMDAIEEnums.h"
 #include "iree/compiler/Dialect/HAL/IR/HALTypes.h"
 #include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Types.h"
 
 namespace mlir::iree_compiler::AMDAIE {
@@ -81,6 +82,10 @@ bool isMatmulInDefChain(Value operand);
 /// matmul-like op upstream in its computation tree.
 bool isElementwiseWithMatmulProducer(linalg::LinalgOp linalgOp);
 
+/// Utility to identify if `linalgOp` is a matmul-like operation with an
+/// elementwise op as its consumer.
+bool isMatmulWithElementwiseConsumer(linalg::LinalgOp linalgOp);
+
 /// Utility to convert a `uint32_t` value into a hex string.
 std::string utohexstr(uint32_t value, size_t width, bool header = true,
                       bool lowercase = false);
@@ -129,6 +134,14 @@ std::string getConstantIntValuesString(ArrayRef<OpFoldResult> opFoldResults);
 /// \return true if the region was changed.
 bool sinkInto(Region &, IRRewriter &,
               std::function<bool(Operation *)> shouldSink);
+
+/// Create an scf.for operation with an attribute specifying that LLVM
+/// must not unroll it. The for loop will iterate from `start` to `end` with
+/// `step` increment, and have debug location `loc`. The body of the loop will
+/// be empty, and the insertion point of builder will be unchanged by this
+/// function.
+scf::ForOp createForOpWithUnrollingDisabled(OpBuilder &builder, Location loc,
+                                            int start, int end, int step);
 
 }  // namespace mlir::iree_compiler::AMDAIE
 

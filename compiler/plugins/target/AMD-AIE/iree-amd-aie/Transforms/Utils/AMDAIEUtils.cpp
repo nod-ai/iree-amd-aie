@@ -9,6 +9,7 @@
 #include <optional>
 
 #include "llvm/ADT/StringExtras.h"
+#include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
 #include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -341,6 +342,21 @@ bool isElementwiseWithMatmulProducer(linalg::LinalgOp linalgOp) {
   return false;
 }
 
+/// Utility to identify if `linalgOp` is a matmul-like operation with an
+/// elementwise op as its consumer.
+bool isMatmulWithElementwiseConsumer(linalg::LinalgOp linalgOp) {
+  if (!isMatmul(linalgOp)) return false;
+  // Check if the user is an elementwise op but not fill or copy op.
+  for (Operation *userOp : linalgOp->getUsers()) {
+    if (auto linalgUser = dyn_cast<linalg::LinalgOp>(userOp)) {
+      if (isElementwise(linalgUser) &&
+          !isa<linalg::FillOp, linalg::CopyOp>(linalgUser))
+        return true;
+    }
+  }
+  return false;
+}
+
 std::string utohexstr(uint32_t value, size_t width, bool header,
                       bool lowercase) {
   std::string res = "";
@@ -440,6 +456,44 @@ bool sinkInto(Region &region, IRRewriter &rewriter,
     }
   }
   return regionChanged;
+}
+
+scf::ForOp createForOpWithUnrollingDisabled(OpBuilder &builder, Location loc,
+                                            int start, int end, int step) {
+  // RAII guard to reset the insertion point of the builder when destroyed.
+  OpBuilder::InsertionGuard guard(builder);
+
+  auto getConstant = [&](int64_t v) {
+    return builder.create<arith::ConstantIndexOp>(loc, v);
+  };
+
+  Value cStart = getConstant(start);
+  Value cEnd = getConstant(end);
+  Value cStep = getConstant(step);
+
+  scf::ForOp forOp = builder.create<scf::ForOp>(loc, cStart, cEnd, cStep);
+
+  mlir::LLVM::LoopUnrollAttr unrollAttr;
+  mlir::LLVM::LoopAnnotationAttr loopAnnotationAttr;
+  BoolAttr disableAttr = builder.getBoolAttr(true);
+  unrollAttr = mlir::LLVM::LoopUnrollAttr::get(
+      builder.getContext(), /*disable=*/disableAttr, /*count=*/{},
+      /*runtimeDisable=*/{}, /*full=*/{}, /*followupUnrolled=*/{},
+      /*followupRemainder=*/{}, /*followupAll=*/{});
+
+  loopAnnotationAttr = mlir::LLVM::LoopAnnotationAttr::get(
+      builder.getContext(), /*disableNonforced=*/{},
+      /*vectorize=*/{}, /*interleave=*/{}, /*unroll=*/unrollAttr,
+      /*unrollAndJam=*/{}, /*licm=*/{}, /*distribute=*/{},
+      /*pipeline=*/{},
+      /*peeled=*/{}, /*unswitch=*/{}, /*mustProgress=*/{},
+      /*isVectorized=*/{}, /*startLoc=*/{}, /*endLoc=*/{},
+      /*parallelAccesses=*/{});
+
+  // Add the llvm.loop_annotation attribute to the loop.
+  forOp->setAttr("loop_annotation", loopAnnotationAttr);
+
+  return forOp;
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE

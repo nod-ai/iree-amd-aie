@@ -9,18 +9,17 @@
 
 #include "iree-amd-aie/Transforms/PassDetail.h"
 #include "iree-amd-aie/aie_runtime/AMDAIEEnums.h"
-#include "iree/compiler/Codegen/Common/TileSizeSelection.h"
 #include "mlir/Pass/Pass.h"
 
 namespace mlir::iree_compiler::AMDAIE {
 
 /// Add passes to lower to AIE objectFifos.
 void addAMDAIEObjectFifoLoweringPasses(
-    OpPassManager &passManager, bool enablePacketFlow,
-    TilePassPipeline useTilePipeline, bool enableVectorizationPasses,
-    bool enableCoalescingLoops, bool enableCollapsingUnitDims,
-    OutliningStrategy enableFunctionOutlining,
-    bool replaceOutlinedFunctionsWithEmpty, bool insertLoopAroundCoreBlock,
+    OpPassManager &passManager, bool enableInputPacketFlow,
+    bool enableOutputPacketFlow, TilePassPipeline useTilePipeline,
+    bool enableVectorizationPasses, bool enableCoalescingLoops,
+    bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
+    int outliningLoopInCallCount, bool insertLoopAroundCoreBlock,
     uint32_t numCols, bool emitCtrlPkt);
 
 /// Add passes to lower from MLIR-AIR through AIE. This is
@@ -42,10 +41,10 @@ void buildAMDAIETransformPassPipeline(
     uint32_t numCols, TilePassPipeline useTilePipeline,
     LowerToAIEPassPipeline useLowerToAIEPipeline, bool matmulElementwiseFusion,
     bool enableVectorizationPasses, const std::string &pathToUkernels,
-    bool enablePacketFlow, bool enableCoalescingLoops,
-    bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
-    bool replaceOutlinedFunctionsWithEmpty, bool insertLoopAroundCoreBlock,
-    bool emitCtrlPkt);
+    bool enableInputPacketFlow, bool enableOutputPacketFlow,
+    bool enableCoalescingLoops, bool enableCollapsingUnitDims,
+    OutliningStrategy enableFunctionOutlining, int outliningLoopInCallCount,
+    bool insertLoopAroundCoreBlock, bool emitCtrlPkt);
 
 /// Populates passes needed to lower the IR via a Pack-Peel based approach.
 void addPackPeelBasedPassPipeline(OpPassManager &passManager,

@@ -649,7 +649,7 @@ class MatmulConstBiasCtrlpkt(BaseMatmul):
         self.aie_compilation_flags += [
             "--iree-amdaie-num-rows=1",
             "--iree-amdaie-num-cols=1",
-            "--iree-amdaie-enable-packet-flow=true",
+            "--iree-amdaie-enable-input-packet-flow=true",
             "--iree-amdaie-emit-control-packet=true",
             "--mlir-disable-threading",
         ]
@@ -1718,10 +1718,6 @@ class Tests:
                     name_suffix="scaling",
                     tile_pipeline="pack-peel-4-level-tiling",
                     run_on_target=["npu1_4col"],
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=4",
-                        "--iree-amdaie-num-cols=4",
-                    ],
                     use_ukernel=True,
                 ),
             )
@@ -1740,10 +1736,6 @@ class Tests:
                 test_params=TestParams(
                     tile_pipeline="pack-peel-4-level-tiling",
                     run_on_target=["npu1_4col"],
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=4",
-                        "--iree-amdaie-num-cols=4",
-                    ],
                 ),
             )
         )
@@ -1761,10 +1753,6 @@ class Tests:
                 test_params=TestParams(
                     tile_pipeline="pack-peel-4-level-tiling",
                     run_on_target=["npu4"],
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=4",
-                        "--iree-amdaie-num-cols=8",
-                    ],
                     use_chess=False,
                     use_ukernel=True,
                     use_chess_for_ukernel=False,
@@ -1842,10 +1830,6 @@ class Tests:
                     tile_pipeline="pack-peel-4-level-tiling",
                     run_on_target=["npu4"],
                     name_suffix="4x8_npu4",
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=4",
-                        "--iree-amdaie-num-cols=8",
-                    ],
                     n_repeats=10,
                 ),
             )
@@ -1863,10 +1847,6 @@ class Tests:
                     tile_pipeline="pack-peel-4-level-tiling",
                     run_on_target=["npu4"],
                     name_suffix="4x8_npu4",
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=4",
-                        "--iree-amdaie-num-cols=8",
-                    ],
                     n_repeats=10,
                 ),
             )
@@ -1958,10 +1938,6 @@ class Tests:
                 test_params=TestParams(
                     name_suffix="4rows_8cols_npu4",
                     run_on_target=["npu4"],
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=4",
-                        "--iree-amdaie-num-cols=8",
-                    ],
                     use_chess=False,
                 ),
             )
@@ -1977,10 +1953,6 @@ class Tests:
                     name_suffix="4rows_8cols_npu4_pack_peel_4_level_tiling",
                     tile_pipeline="pack-peel-4-level-tiling",
                     run_on_target=["npu4"],
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=4",
-                        "--iree-amdaie-num-cols=8",
-                    ],
                 ),
             )
         )
@@ -2031,10 +2003,6 @@ class Tests:
                     use_ukernel=True,
                     use_chess=False,
                     use_chess_for_ukernel=False,
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=4",
-                        "--iree-amdaie-num-cols=8",
-                    ],
                     run_on_target=["npu4"],
                 ),
             )
@@ -2052,10 +2020,6 @@ class Tests:
                     use_chess_for_ukernel=False,
                     run_on_target=["npu4"],
                     tile_pipeline="pack-peel-4-level-tiling",
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=4",
-                        "--iree-amdaie-num-cols=8",
-                    ],
                 ),
                 additional_labels=["I8UKernel"],
             )
@@ -2072,10 +2036,6 @@ class Tests:
                     use_ukernel=True,
                     tile_pipeline="pack-peel-4-level-tiling",
                     run_on_target=["npu4"],
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=4",
-                        "--iree-amdaie-num-cols=8",
-                    ],
                     use_chess=False,
                     use_chess_for_ukernel=False,
                 ),
@@ -2093,10 +2053,6 @@ class Tests:
                     use_ukernel=True,
                     tile_pipeline="pack-peel-4-level-tiling",
                     run_on_target=["npu4"],
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=4",
-                        "--iree-amdaie-num-cols=8",
-                    ],
                     use_chess=False,
                     use_chess_for_ukernel=False,
                 ),
@@ -2163,10 +2119,43 @@ class Tests:
         # Control packet test with constant biases 1 and 2.
         self.register(MatmulConstBiasCtrlpkt(8, 8, 8, "i8", "i32", 1, 2))
 
-        performance_tests = [
-            ##############
-            # NPU1 Tests #
-            ##############
+        performance_tests = []
+
+        ##############
+        # NPU1 Tests #
+        ##############
+        for opt_level in [2, 3]:
+            # Test performance of core code generated with peano.
+            # A matmul of shape 512x512x512, run on a single core,  in a loop 100
+            # times without any data copy to/from core memory. Peak performance for
+            # the 4x4 phoenix array is 4 TFlops, so peak performace for single core
+            # is 4/16 = 0.25 TFlops. This matmul is 512x512x512*2 flops = 0.25 GFlops.
+            # So at peak performance, to run this 100 times should take
+            # 0.1 seconds (100'000 microseconds).
+            performance_tests.append(
+                {
+                    "M": 512,
+                    "N": 512,
+                    "K": 512,
+                    "use_ukernel": False,
+                    "peano_opt_level": opt_level,
+                    "additional_labels": ["CorePerformance"],
+                    "aie_compilation_flags": [
+                        "--iree-amdaie-num-rows=1",
+                        "--iree-amdaie-num-cols=1",
+                    ],
+                    # effectively this says:
+                    #   for 3 launches:
+                    #     for 1 copy of data to and from AIE:
+                    #       for 100 calls to the matmul function:
+                    #          compute
+                    "outline_call_replication": 100,
+                    "n_performance_repeats": 3,
+                    "n_performance_kernel_runs": 1,
+                }
+            )
+
+        performance_tests += [
             {
                 "M": 512,
                 "N": 512,
@@ -2231,15 +2220,14 @@ class Tests:
                 "K": 512,
                 "transpose_a": True,
             },
-            # Test where the compute is omitted, this should help triangulate
-            # how much performance gain can be obtained with better matmul
-            # on core vs data movement.
             {
                 "M": 4096,
                 "N": 512,
                 "K": 512,
-                "outline_to_empty_function": True,
-                "skip_numerics": True,
+                # outline_call_replication = 0 means the compute is omitted, this should
+                # help triangulate how much performance gain can be obtained with better
+                # matmul on core vs data movement.
+                "outline_call_replication": 0,
             },
             {
                 "M": 512,
@@ -2262,15 +2250,11 @@ class Tests:
                 "matmul4d": True,
                 "tile_pipeline": "pack-peel-4-level-tiling",
             },
-            # Test where the compute is omitted, this should help triangulate
-            # how much performance gain can be obtained with better matmul
-            # on core vs data movement.
             {
                 "M": 512,
                 "N": 4096,
                 "K": 512,
-                "outline_to_empty_function": True,
-                "skip_numerics": True,
+                "outline_call_replication": 0,
                 "tile_pipeline": "pack-peel-4-level-tiling",
             },
             ##############
@@ -2291,9 +2275,8 @@ class Tests:
                 "K": 512,
                 "in_dtype": "i8",
                 "outline": "all",
-                "outline_to_empty_function": True,
+                "outline_call_replication": 0,
                 "run_on_target": "npu4",
-                "skip_numerics": True,
             },
             {
                 "M": 512,
@@ -2322,10 +2305,9 @@ class Tests:
                 "K": 512,
                 "in_dtype": "i8",
                 "outline": "all",
-                "outline_to_empty_function": True,
+                "outline_call_replication": 0,
                 "tile_pipeline": "pack-peel-4-level-tiling",
                 "run_on_target": "npu4",
-                "skip_numerics": True,
             },
             {
                 "M": 512,
@@ -2345,6 +2327,7 @@ class Tests:
             M = test["M"]
             N = test["N"]
             K = test["K"]
+
             peano_opt_level = test.get("peano_opt_level", 3)
             outline = test.get("outline", "balanced")
             transpose_a = test.get("transpose_a", False)
@@ -2356,8 +2339,19 @@ class Tests:
             run_on_target = test.get("run_on_target", "npu1_4col")
             in_dtype = test.get("in_dtype", "bf16")
             out_dtype = test.get("out_dtype", "f32")
+
+            # Default of 1 means that outlined functions are called once at each
+            # call site (i.e. normal behaviour).
+            outline_call_replication = test.get("outline_call_replication", 1)
+
             if in_dtype == "i8" and out_dtype == "f32":
                 out_dtype = "i32"
+
+            n_performance_repeats = test.get("n_performance_repeats", 5)
+            n_performance_kernel_runs = test.get("n_performance_kernel_runs", 100)
+            additional_labels = test.get("additional_labels", [])
+
+            skip_numerics = outline_call_replication != 1
 
             outlining_string = "--iree-amdaie-enable-function-outlining=" + outline
 
@@ -2365,30 +2359,20 @@ class Tests:
             name_suffix = "O" + str(peano_opt_level)
             name_suffix += "_" + run_on_target
 
-            aie_compilation_flags = [
+            aie_compilation_flags = test.get("aie_compilation_flags", [])
+            aie_compilation_flags += [
                 outlining_string,
                 f"--iree-amd-aie-additional-peano-opt-flags={peano_opt_level_string}",
             ]
 
-            if run_on_target == "npu4":
-                aie_compilation_flags.append("--iree-amdaie-num-rows=4")
-                aie_compilation_flags.append("--iree-amdaie-num-cols=8")
-
-            outline_to_empty_function = False
-            empty_key = "outline_to_empty_function"
-            if empty_key in test and test[empty_key] == True:
-                outline_to_empty_function = True
-
-            if outline_to_empty_function:
+            if outline_call_replication != 1:
                 aie_compilation_flags.append(
-                    "--iree-amdaie-replace-outlined-functions-with-empty"
+                    f"--iree-amdaie-outlining-call-replication={outline_call_replication}"
                 )
+                name_suffix += "_callrepl_" + str(outline_call_replication)
 
             if outline != "none":
-                if outline_to_empty_function:
-                    name_suffix += "_outline_empty"
-                else:
-                    name_suffix += "_outline"
+                name_suffix += "_outline"
 
             if matmul4d:
                 TestClass = Matmul4d
@@ -2403,7 +2387,7 @@ class Tests:
 
             # This should only be the case for benchmark tests which we expect
             # to not pass numerically.
-            if "skip_numerics" in test and test["skip_numerics"]:
+            if skip_numerics:
                 pass
             else:
                 self.register(
@@ -2422,7 +2406,8 @@ class Tests:
                             n_repeats=2,
                             use_chess_for_ukernel=use_chess_for_ukernel,
                         ),
-                        additional_labels=["PerformanceCorrectness"],
+                        additional_labels=["PerformanceCorrectness"]
+                        + additional_labels,
                     )
                 )
 
@@ -2440,11 +2425,11 @@ class Tests:
                         aie_compilation_flags=aie_compilation_flags,
                         name_suffix=name_suffix,
                         run_benchmark=True,
-                        n_repeats=5,
+                        n_repeats=n_performance_repeats,
                         use_chess_for_ukernel=use_chess_for_ukernel,
                     ),
-                    additional_labels=["Performance"],
-                    n_kernel_runs=100,
+                    additional_labels=["Performance"] + additional_labels,
+                    n_kernel_runs=n_performance_kernel_runs,
                 )
             )
 

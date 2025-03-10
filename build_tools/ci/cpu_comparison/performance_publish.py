@@ -25,26 +25,46 @@ def append_history(results_json_path: str, results_history_path: str):
         json.dump(results_history, f, indent=2)
 
 
+def get_canonical_name(name):
+    """
+    Test names might change with commits, even though the test is unchanged.
+    In this case, we canonicalize names to the original names.
+    """
+    # replace callrepl_0_outline with outline_empty:
+    name = name.replace("callrepl_0_outline", "outline_empty")
+    name = name.replace("chess_benchmark", "benchmark")
+    name = name.replace("matmul4d_16_128_8", "matmul4d_512_4096_512")
+    return name
+
+
 def generate_html(results_history_path: str, results_html_path: str):
     results_history = []
     with open(results_history_path, "r") as f:
         results_history = json.load(f)
 
-    # Reformat the data for the graph.
     graph_data = {}
+    for entry in results_history:
+        for test in entry["tests"]:
+            name = get_canonical_name(test["name"])
+            graph_data[name] = {"commit_hashes": [], "durations": []}
+
     time_unit = "us"
     for entry in results_history:
-        commit_hash = entry["commit_hash"]
-        # Truncate commit hash to first 7 characters
-        truncated_commit_hash = str(commit_hash)[:7]
+        commit_hash = str(entry["commit_hash"])[:7]
+        local_tests = dict.fromkeys(graph_data.keys(), None)
         for test in entry["tests"]:
-            test_name = test["name"]
-            duration = test["time_mean"]
-            assert test["time_mean_unit"] == time_unit
-            if test_name not in graph_data:
-                graph_data[test_name] = {"commit_hashes": [], "durations": []}
-            graph_data[test_name]["commit_hashes"].append(truncated_commit_hash)
-            graph_data[test_name]["durations"].append(duration)
+            local_tests[get_canonical_name(test["name"])] = test
+        for test_name, test in local_tests.items():
+            graph_data[test_name]["commit_hashes"].append(commit_hash)
+            # So that the time/commit horizontal/x axis is consistent
+            # across tests, even if a test is missing for a commit,
+            # we add duration=0 if a test did not run.
+            if not test:
+                graph_data[test_name]["durations"].append(0)
+            else:
+                duration = test["time_mean"]
+                assert test["time_mean_unit"] == time_unit
+                graph_data[test_name]["durations"].append(duration)
 
     # Start building the HTML content
     html_content = """
@@ -95,6 +115,7 @@ def generate_html(results_history_path: str, results_html_path: str):
                             }}
                         }},
                         y: {{
+                            beginAtZero: true,  // Ensures the Y-axis starts at 0
                             title: {{
                                 display: true,
                                 text: 'Duration ({time_unit})'

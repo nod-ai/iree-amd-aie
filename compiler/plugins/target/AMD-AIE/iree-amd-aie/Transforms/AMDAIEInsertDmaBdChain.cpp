@@ -142,17 +142,6 @@ LogicalResult insertDmaBdChain(const AMDAIE::AMDAIEDeviceModel &deviceModel,
       }
       AMDAIE::ConnectionOp connectionOp = maybeConnectionOp.value();
 
-      // Packet flow, do not chain BDs.
-      std::optional<AMDAIE::FlowOp> maybeFlowOp = connectionOp.getFlowOp();
-      if (!maybeFlowOp) {
-        connectionOp->emitOpError()
-            << "expected to operate on an `amdaie.flow`";
-        return WalkResult::interrupt();
-      }
-      AMDAIE::FlowOp flowOp = maybeFlowOp.value();
-      bool isPacketFlow = flowOp.getIsPacketFlow();
-      if (isPacketFlow) return WalkResult::advance();
-
       // Repeat count > 1, do not chain BDs.
       int32_t repeatCount = 1;
       uint8_t numAddrDim = DmaDimConfig(deviceModel, 0).maxNbDims;

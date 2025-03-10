@@ -11,6 +11,7 @@
 #include "mlir/Dialect/MemRef/Transforms/Transforms.h"
 #include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
 #include "mlir/Dialect/SCF/Transforms/Transforms.h"
+#include "mlir/IR/Iterators.h"
 #include "mlir/Pass/Pass.h"
 
 #define DEBUG_TYPE "iree-amdaie-pad"
@@ -47,9 +48,8 @@ static SmallVector<int64_t> getPaddingDimensions(linalg::LinalgOp &linalgOp) {
   return paddingDimensions;
 }
 
-static FailureOr<linalg::LinalgPaddingOptions>
-getFirstLevelLinalgPaddingOptions(IRRewriter &rewriter,
-                                  linalg::LinalgOp &linalgOp) {
+static FailureOr<linalg::LinalgPaddingOptions> getPadOptionsForInputOutput(
+    IRRewriter &rewriter, linalg::LinalgOp &linalgOp) {
   SmallVector<Attribute> paddingValues = getPaddingValues(rewriter, linalgOp);
   if (paddingValues.empty()) {
     linalgOp->emitOpError("failed to get padding values");
@@ -58,7 +58,6 @@ getFirstLevelLinalgPaddingOptions(IRRewriter &rewriter,
   linalg::LinalgPaddingOptions options;
   options.paddingValues = paddingValues;
 
-  // In the first level, we pad the input, weight and output operands.
   // For the operations with 2 input and 1 output operands, the packPadding
   // option should be [1, 1, 1]. For `linalg.conv_2d_nhwc_hwcf_q` op, there are
   // 5 operands, and the packPadding options should be [1, 1, 0, 0, 1].
@@ -75,9 +74,8 @@ getFirstLevelLinalgPaddingOptions(IRRewriter &rewriter,
   return options;
 }
 
-static FailureOr<linalg::LinalgPaddingOptions>
-getSecondLevelLinalgPaddingOptions(IRRewriter &rewriter,
-                                   linalg::LinalgOp &linalgOp) {
+static FailureOr<linalg::LinalgPaddingOptions> getPadOptionsForOutput(
+    IRRewriter &rewriter, linalg::LinalgOp &linalgOp) {
   SmallVector<Attribute> paddingValues = getPaddingValues(rewriter, linalgOp);
   if (paddingValues.empty()) {
     linalgOp->emitOpError("failed to get padding values");
@@ -86,7 +84,6 @@ getSecondLevelLinalgPaddingOptions(IRRewriter &rewriter,
   linalg::LinalgPaddingOptions options;
   options.paddingValues = paddingValues;
 
-  // In the second level, we only pad the output operand.
   SmallVector<bool> nofoldFlags(linalgOp->getNumOperands(), false);
   nofoldFlags.back() = true;
   options.nofoldFlags = nofoldFlags;
@@ -98,9 +95,8 @@ getSecondLevelLinalgPaddingOptions(IRRewriter &rewriter,
   return options;
 }
 
-static FailureOr<linalg::LinalgPaddingOptions>
-getThirdLevelLinalgPaddingOptions(IRRewriter &rewriter,
-                                  linalg::LinalgOp &linalgOp) {
+static FailureOr<linalg::LinalgPaddingOptions> getPadOptionsForInput(
+    IRRewriter &rewriter, linalg::LinalgOp &linalgOp) {
   SmallVector<Attribute> paddingValues = getPaddingValues(rewriter, linalgOp);
   if (paddingValues.empty()) {
     linalgOp->emitOpError("failed to get padding values");
@@ -109,7 +105,6 @@ getThirdLevelLinalgPaddingOptions(IRRewriter &rewriter,
   linalg::LinalgPaddingOptions options;
   options.paddingValues = paddingValues;
 
-  // In the third level, we only pad the input operands.
   SmallVector<bool> nofoldFlags(linalgOp->getNumOperands(), false);
   nofoldFlags[0] = true;
   nofoldFlags[1] = true;
@@ -118,22 +113,25 @@ getThirdLevelLinalgPaddingOptions(IRRewriter &rewriter,
   options.paddingDimensions = getPaddingDimensions(linalgOp);
   SmallVector<int64_t> padToMultipleOf(options.paddingDimensions.size(), 1);
   options.padToMultipleOf = padToMultipleOf;
-  options.copyBackOp = linalg::LinalgPaddingOptions::CopyBackOp::LinalgCopy;
+  options.copyBackOp = linalg::LinalgPaddingOptions::CopyBackOp::None;
   return options;
 }
 
 static FailureOr<linalg::LinalgPaddingOptions> getLinalgPaddingOptions(
-    IRRewriter &rewriter, linalg::LinalgOp &linalgOp, int64_t paddingLevel) {
-  if (paddingLevel == 0) {
-    return getFirstLevelLinalgPaddingOptions(rewriter, linalgOp);
+    IRRewriter &rewriter, linalg::LinalgOp &linalgOp, PadOperand padOperand) {
+  switch (padOperand) {
+    /// Pad the input and output operands.
+    case PadOperand::InputOutput:
+      return getPadOptionsForInputOutput(rewriter, linalgOp);
+    /// Pad the input operands.
+    case PadOperand::Input:
+      return getPadOptionsForInput(rewriter, linalgOp);
+    /// Pad the output operands.
+    case PadOperand::Output:
+      return getPadOptionsForOutput(rewriter, linalgOp);
+    default:
+      return failure();
   }
-  if (paddingLevel == 1) {
-    return getSecondLevelLinalgPaddingOptions(rewriter, linalgOp);
-  }
-  if (paddingLevel == 2) {
-    return getThirdLevelLinalgPaddingOptions(rewriter, linalgOp);
-  }
-  return failure();
 }
 
 static LogicalResult applyPadAndConvertToDPS(
@@ -184,13 +182,24 @@ void AMDAIEPadPass::runOnOperation() {
   MLIRContext *context = &getContext();
   mlir::FunctionOpInterface funcOp = getOperation();
   linalg::LinalgOp linalgOp;
-  funcOp->walk([&](linalg::LinalgOp op) {
-    if (linalg::isaContractionOpInterface(op) ||
-        linalg::isaConvolutionOpInterface(op)) {
-      linalgOp = op;
-      return WalkResult::interrupt();
+  funcOp->walk<WalkOrder::PostOrder, ReverseIterator>([&](linalg::LinalgOp op) {
+    if (!isElementwise(op) && !linalg::isaContractionOpInterface(op) &&
+        !linalg::isaConvolutionOpInterface(op)) {
+      return WalkResult::advance();
     }
-    return WalkResult::advance();
+    if (isa<linalg::FillOp, linalg::CopyOp>(op)) {
+      return WalkResult::advance();
+    }
+    // Use flag `padElementwise` to indicate whether the target for padding is
+    // an elementwise op.
+    if (padElementwise && !isElementwise(op)) {
+      return WalkResult::advance();
+    }
+    if (!padElementwise && isElementwise(op)) {
+      return WalkResult::advance();
+    }
+    linalgOp = op;
+    return WalkResult::interrupt();
   });
   if (!linalgOp) {
     LLVM_DEBUG(llvm::dbgs() << "----- skip, no matmul op -----\n");
@@ -199,7 +208,7 @@ void AMDAIEPadPass::runOnOperation() {
 
   IRRewriter rewriter(context);
   FailureOr<linalg::LinalgPaddingOptions> options =
-      getLinalgPaddingOptions(rewriter, linalgOp, paddingLevel);
+      getLinalgPaddingOptions(rewriter, linalgOp, padOperand);
   if (failed(options)) {
     funcOp->emitOpError("unknown padding level");
     return signalPassFailure();

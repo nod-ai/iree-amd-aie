@@ -36,8 +36,10 @@ def AMDAIEAssignConnectionTypes :
   let constructor =
     "mlir::iree_compiler::AMDAIE::createAMDAIEAssignConnectionTypesPass()";
   let options = [
-    Option<"enablePacketFlow", "enable-packet-flow", "bool", /*default=*/"false",
-      "Enable packet routing for connections.">
+    Option<"enableInputPacketFlow", "enable-input-packet-flow", "bool", /*default=*/"false",
+      "Enable packet routing for connections belonging to send kernel inputs.">,
+    Option<"enableOutputPacketFlow", "enable-output-packet-flow", "bool", /*default=*/"false",
+      "Enable packet routing for connections belonging to send kernel outputs.">,
   ];
 }
 
@@ -306,14 +308,16 @@ def AMDAIELinalgFunctionOutlining :
     the code footprint overall as the loop unrolling in the later passes lead to a lot of
     repeated codes.
   }];
+
+  // Better name: call-replication && callReplication
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELinalgFunctionOutliningPass()";
   let options = [
-    Option<"emptyFunctions", "empty-functions", "bool", /*default=*/"false",
-      "A developer only option that results in incorrect numerics. "
-      "Replace all outlined functions with a function that does nothing, "
-      "i.e. it just returns. Useful for measuring the performance of data "
-      "movement to/from the device -- by doing zero compute, all time is spent "
-      "moving data to/from the AIE cores.">,
+    Option<"callReplication", "call-replication", "int64_t", /*default=*/"1",
+      "The number of times the outlined function is called inside a loop. "
+      "This is a 'developer-only' feature that may result in incorrect numerics. "
+      "Useful for measuring the performance of AIE core code. "
+      "Every outlined function, instead of being called once at each call site, "
+      "is called `call-replication` times.">,
     Option<"outliningStrategy", "outlining-strategy",
       "mlir::iree_compiler::AMDAIE::OutliningStrategy",
       /*default=*/"mlir::iree_compiler::AMDAIE::OutliningStrategy::Balanced",
@@ -706,8 +710,19 @@ def AMDAIEPad :
   let constructor =
       "mlir::iree_compiler::AMDAIE::createAMDAIEPadPass()";
   let options = [
-    Option<"paddingLevel", "padding-level", "int64_t", /*default=*/"-1",
-      "A temporary workaround to figure the config for padding">
+    Option<"padElementwise", "pad-elementwise", "bool", /*default=*/"false",
+      "Indicator of whether the target op for padding is an elementwise op">,
+    Option<"padOperand", "pad-operand", "mlir::iree_compiler::AMDAIE::PadOperand",
+      /*default=*/"mlir::iree_compiler::AMDAIE::PadOperand::InputOutput",
+      "Select which operands of a linalg op to be padded",
+      [{::llvm::cl::values(
+        clEnumValN(mlir::iree_compiler::AMDAIE::PadOperand::InputOutput, "input-output",
+                   "Pad the input and output of a linalg op."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::PadOperand::Input, "input",
+                   "Only pad the input of a linalg op."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::PadOperand::Output, "output",
+                   "Only pad the output of a linalg op.")
+    )}]>,
   ];
 }
 

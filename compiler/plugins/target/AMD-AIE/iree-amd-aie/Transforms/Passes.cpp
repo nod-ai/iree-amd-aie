@@ -316,7 +316,8 @@ void addPackPeel4LevelTilingBasedPassPipeline(OpPassManager &funcPassManager,
                                               TilePassPipeline useTilePipeline,
                                               Operation *rootOp) {
   // Check if the root op is a 4D matmul-like operation.
-  bool is4DMatmulOp = is4DMatmulLikeOp(cast<linalg::LinalgOp>(rootOp));
+  auto linalgRootOp = dyn_cast<linalg::LinalgOp>(rootOp);
+  bool is4DMatmulOp = is4DMatmulLikeOp(linalgRootOp);
 
   // First level tiling using scf.forall
   {
@@ -329,16 +330,35 @@ void addPackPeel4LevelTilingBasedPassPipeline(OpPassManager &funcPassManager,
   funcPassManager.addPass(createCanonicalizerPass());
   funcPassManager.addPass(createCSEPass());
 
-  // First level pack or pad operation for data movement.
+  // Data movement from L3 to L2 memory space using pack or pad operation.
   // For 2D matmul-like ops, pack operation is used to expand operands from 2D
   // to 4D. For 4D matmul-like ops, pad operation is used to keep the original
   // dimensions.
   if (is4DMatmulOp) {
     // First level pad
-    {
-      AMDAIEPadOptions padOptions;
-      padOptions.paddingLevel = 0;
-      funcPassManager.addPass(createAMDAIEPadPass(padOptions));
+    if (isMatmulWithElementwiseConsumer(linalgRootOp)) {
+      // For matmul-elementwise case, first pad the output of the elementwise op
+      // and then pad the inputs of matmul op.
+      {
+        AMDAIEPadOptions padOptions;
+        padOptions.padElementwise = true;
+        padOptions.padOperand = PadOperand::Output;
+        funcPassManager.addPass(createAMDAIEPadPass(padOptions));
+      }
+      {
+        AMDAIEPadOptions padOptions;
+        padOptions.padElementwise = false;
+        padOptions.padOperand = PadOperand::Input;
+        funcPassManager.addPass(createAMDAIEPadPass(padOptions));
+      }
+    } else {
+      // For matmul-like op, pad both inputs and output of the root operation.
+      {
+        AMDAIEPadOptions padOptions;
+        padOptions.padElementwise = false;
+        padOptions.padOperand = PadOperand::InputOutput;
+        funcPassManager.addPass(createAMDAIEPadPass(padOptions));
+      }
     }
     funcPassManager.addPass(createCanonicalizerPass());
     funcPassManager.addPass(createCSEPass());
@@ -374,6 +394,7 @@ void addPackPeel4LevelTilingBasedPassPipeline(OpPassManager &funcPassManager,
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }
 
+  // Data movement from L2 to L1 memory space using pack operation.
   // If the input is 4D matmul-like op, this is the first level of packing.
   // Otherwise for 2D matmul-like op, it is the second level.
   {
@@ -514,7 +535,7 @@ void addConvDecomposePassPipeline(OpPassManager &funcPassManager,
   // Pad the linalg operation
   {
     AMDAIEPadOptions padOptions;
-    padOptions.paddingLevel = 0;
+    padOptions.padOperand = PadOperand::InputOutput;
     funcPassManager.addPass(createAMDAIEPadPass(padOptions));
   }
 
@@ -580,10 +601,10 @@ void buildAMDAIETransformPassPipeline(
     uint32_t numCols, TilePassPipeline useTilePipeline,
     LowerToAIEPassPipeline useLowerToAIEPipeline, bool matmulElementwiseFusion,
     bool enableVectorizationPasses, const std::string &pathToUkernels,
-    bool enablePacketFlow, bool enableCoalescingLoops,
-    bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
-    bool replaceOutlinedFunctionsWithEmpty, bool insertLoopAroundCoreBlock,
-    bool emitCtrlPkt) {
+    bool enableInputPacketFlow, bool enableOutputPacketFlow,
+    bool enableCoalescingLoops, bool enableCollapsingUnitDims,
+    OutliningStrategy enableFunctionOutlining, int outliningCallReplication,
+    bool insertLoopAroundCoreBlock, bool emitCtrlPkt) {
   OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
   {
     FunctionLikeNest funcPassManager(modulePassManager);
@@ -612,10 +633,10 @@ void buildAMDAIETransformPassPipeline(
   modulePassManager.addPass(createLowerUKernelOpsToCallsPass());
   if (useLowerToAIEPipeline == LowerToAIEPassPipeline::ObjectFifo) {
     addAMDAIEObjectFifoLoweringPasses(
-        modulePassManager, enablePacketFlow, useTilePipeline,
-        enableVectorizationPasses, enableCoalescingLoops,
+        modulePassManager, enableInputPacketFlow, enableOutputPacketFlow,
+        useTilePipeline, enableVectorizationPasses, enableCoalescingLoops,
         enableCollapsingUnitDims, enableFunctionOutlining,
-        replaceOutlinedFunctionsWithEmpty, insertLoopAroundCoreBlock, numCols,
+        outliningCallReplication, insertLoopAroundCoreBlock, numCols,
         emitCtrlPkt);
   } else if (useLowerToAIEPipeline == LowerToAIEPassPipeline::AIR) {
     addMLIRAIRLoweringPasses(modulePassManager, device, useTilePipeline,
@@ -637,11 +658,11 @@ void buildAMDAIETransformPassPipeline(
 }
 
 void addAMDAIEObjectFifoLoweringPasses(
-    OpPassManager &passManager, bool enablePacketFlow,
-    TilePassPipeline useTilePipeline, bool enableVectorizationPasses,
-    bool enableCoalescingLoops, bool enableCollapsingUnitDims,
-    OutliningStrategy enableFunctionOutlining,
-    bool replaceOutlinedFunctionsWithEmpty, bool insertLoopAroundCoreBlock,
+    OpPassManager &passManager, bool enableInputPacketFlow,
+    bool enableOutputPacketFlow, TilePassPipeline useTilePipeline,
+    bool enableVectorizationPasses, bool enableCoalescingLoops,
+    bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
+    int outliningCallReplication, bool insertLoopAroundCoreBlock,
     uint32_t numCols, bool emitCtrlPkt) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
@@ -671,7 +692,7 @@ void addAMDAIEObjectFifoLoweringPasses(
   // Create function outlining options object, etc.
   AMDAIELinalgFunctionOutliningOptions options;
   options.outliningStrategy = enableFunctionOutlining;
-  options.emptyFunctions = replaceOutlinedFunctionsWithEmpty;
+  options.callReplication = outliningCallReplication;
   passManager.addPass(createAMDAIELinalgFunctionOutliningPass(options));
 
   {
@@ -714,10 +735,14 @@ void addAMDAIEObjectFifoLoweringPasses(
   passManager.addPass(createAMDAIEAccessToAcquireReleasePass());
   passManager.addPass(createAMDAIENoneAccessToTemporaryBufferPass());
 
-  passManager.addPass(
-      createAMDAIEAssignConnectionTypesPass({enablePacketFlow}));
-  passManager.addPass(createCSEPass());
-  passManager.addPass(createCanonicalizerPass());
+  {
+    AMDAIEAssignConnectionTypesOptions options;
+    options.enableInputPacketFlow = enableInputPacketFlow;
+    options.enableOutputPacketFlow = enableOutputPacketFlow;
+    passManager.addPass(createAMDAIEAssignConnectionTypesPass(options));
+    passManager.addPass(createCSEPass());
+    passManager.addPass(createCanonicalizerPass());
+  }
 
   // Convert control code `scf.forall` ops to `scf.for` ops right before the DMA
   // composition optimization pass to enable more loop subsumption optimization

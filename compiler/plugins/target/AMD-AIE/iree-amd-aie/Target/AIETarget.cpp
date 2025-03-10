@@ -154,21 +154,22 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
     // number of rows/cols from the device.
     AMDAIEDeviceModel deviceModel =
         AMDAIE::getDeviceModel(options.AMDAIETargetDevice);
+    uint32_t nRows = options.getNumRows(deviceModel);
+    uint32_t nCols = options.getNumCols(deviceModel);
     uint32_t maxCoreRows = deviceModel.getNumCoreRows();
     uint32_t maxCoreCols = deviceModel.getNumCoreCols();
-    if (options.AMDAIENumRows <= 0 || options.AMDAIENumRows > maxCoreRows) {
-      llvm::report_fatal_error(llvm::Twine("Invalid number of core rows (") +
-                               std::to_string(options.AMDAIENumRows) +
-                               "), must be in the range [1, " +
-                               std::to_string(maxCoreRows) + "] for device " +
-                               stringifyEnum(deviceModel.device));
+
+    if (nRows <= 0 || nRows > maxCoreRows) {
+      llvm::report_fatal_error(
+          llvm::Twine("Invalid number of core rows (") + std::to_string(nRows) +
+          "), must be in the range [1, " + std::to_string(maxCoreRows) +
+          "] for device " + stringifyEnum(deviceModel.device));
     }
-    if (options.AMDAIENumCols <= 0 || options.AMDAIENumCols > maxCoreCols) {
-      llvm::report_fatal_error(llvm::Twine("Invalid number of core cols (") +
-                               std::to_string(options.AMDAIENumCols) +
-                               "), must be in the range [1, " +
-                               std::to_string(maxCoreCols) + "] for device " +
-                               stringifyEnum(deviceModel.device));
+    if (nCols <= 0 || nCols > maxCoreCols) {
+      llvm::report_fatal_error(
+          llvm::Twine("Invalid number of core cols (") + std::to_string(nCols) +
+          "), must be in the range [1, " + std::to_string(maxCoreCols) +
+          "] for device " + stringifyEnum(deviceModel.device));
     }
 
     // Add some configurations to the `hal.executable.target` attribute.
@@ -183,10 +184,10 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
     addConfig("ukernels",
               StringAttr::get(context, options.enableAMDAIEUkernels));
     // Set number of rows/cols used in an AIE array.
-    addConfig("num_rows", IntegerAttr::get(IntegerType::get(context, 32),
-                                           options.AMDAIENumRows));
-    addConfig("num_cols", IntegerAttr::get(IntegerType::get(context, 32),
-                                           options.AMDAIENumCols));
+    addConfig("num_rows",
+              IntegerAttr::get(IntegerType::get(context, 32), nRows));
+    addConfig("num_cols",
+              IntegerAttr::get(IntegerType::get(context, 32), nCols));
     auto configAttr = b.getDictionaryAttr(configItems);
 
     switch (options.deviceHal) {
@@ -229,15 +230,18 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
 
   void buildTranslationPassPipeline(IREE::HAL::ExecutableTargetAttr,
                                     OpPassManager &passManager) override {
+    AMDAIEDeviceModel deviceModel =
+        AMDAIE::getDeviceModel(options.AMDAIETargetDevice);
     buildAMDAIETransformPassPipeline(
-        passManager, options.AMDAIETargetDevice, options.AMDAIENumRows,
-        options.AMDAIENumCols, options.useTilePipeline,
-        options.useLowerToAIEPipeline, options.matmulElementwiseFusion,
-        options.enableVectorizationPasses, options.pathToUkernels,
-        options.enablePacketFlow, options.enableCoalescingLoops,
+        passManager, options.AMDAIETargetDevice,
+        options.getNumRows(deviceModel), options.getNumCols(deviceModel),
+        options.useTilePipeline, options.useLowerToAIEPipeline,
+        options.matmulElementwiseFusion, options.enableVectorizationPasses,
+        options.pathToUkernels, options.enableInputPacketFlow,
+        options.enableOutputPacketFlow, options.enableCoalescingLoops,
         options.enableCollapsingUnitDims, options.enableFunctionOutlining,
-        options.replaceOutlinedFunctionsWithEmpty,
-        options.insertLoopAroundCoreBlock, options.emitCtrlPkt);
+        options.outliningCallReplication, options.insertLoopAroundCoreBlock,
+        options.emitCtrlPkt);
   }
 
   void buildLinkingPassPipeline(OpPassManager &passManager) override {
