@@ -699,8 +699,8 @@ class MatmulConstBiasCtrlpkt(BaseMatmul):
             config, self.constant_bias_D
         )
 
-        # Compile the test file with an initial constant bias = `C`, and generate the PDI for it.
-        # The PDI will be combined with previously generated control packets to generate the final ".vmfb" file.
+        # Compile the test file with an initial constant bias = `C`, and generate the PDI/XCLBIN for it.
+        # The PDI/XCLBIN will be combined with previously generated control packets to generate the final ".vmfb" file.
         # Without applying the control packets (`aie_ctrlpkt_flags`), the test is expected
         # to fail, as all values would deviate by `D - C`.
         aie_ctrlpkt_flags = [f"--iree-amdaie-dir-to-load-control-packet={test_dir_D}"]
@@ -722,7 +722,7 @@ class MatmulConstBiasCtrlpkt(BaseMatmul):
             output_type,
         )
 
-        # Load the PDI with an initial constant bias of `C`.
+        # Load the PDI/XCLBIN with an initial constant bias of `C`.
         # The control packets are then applied at runtime to update the bias to `D`.
         # After reconfiguration, run the new kernel and generate the AIE output.
         aie_output = generate_aie_output(
