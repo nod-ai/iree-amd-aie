@@ -580,10 +580,10 @@ void buildAMDAIETransformPassPipeline(
     uint32_t numCols, TilePassPipeline useTilePipeline,
     LowerToAIEPassPipeline useLowerToAIEPipeline, bool matmulElementwiseFusion,
     bool enableVectorizationPasses, const std::string &pathToUkernels,
-    bool enablePacketFlow, bool enableCoalescingLoops,
-    bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
-    int outliningCallReplication, bool insertLoopAroundCoreBlock,
-    bool emitCtrlPkt) {
+    bool enableInputPacketFlow, bool enableOutputPacketFlow,
+    bool enableCoalescingLoops, bool enableCollapsingUnitDims,
+    OutliningStrategy enableFunctionOutlining, int outliningCallReplication,
+    bool insertLoopAroundCoreBlock, bool emitCtrlPkt) {
   OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
   {
     FunctionLikeNest funcPassManager(modulePassManager);
@@ -612,8 +612,8 @@ void buildAMDAIETransformPassPipeline(
   modulePassManager.addPass(createLowerUKernelOpsToCallsPass());
   if (useLowerToAIEPipeline == LowerToAIEPassPipeline::ObjectFifo) {
     addAMDAIEObjectFifoLoweringPasses(
-        modulePassManager, enablePacketFlow, useTilePipeline,
-        enableVectorizationPasses, enableCoalescingLoops,
+        modulePassManager, enableInputPacketFlow, enableOutputPacketFlow,
+        useTilePipeline, enableVectorizationPasses, enableCoalescingLoops,
         enableCollapsingUnitDims, enableFunctionOutlining,
         outliningCallReplication, insertLoopAroundCoreBlock, numCols,
         emitCtrlPkt);
@@ -637,11 +637,12 @@ void buildAMDAIETransformPassPipeline(
 }
 
 void addAMDAIEObjectFifoLoweringPasses(
-    OpPassManager &passManager, bool enablePacketFlow,
-    TilePassPipeline useTilePipeline, bool enableVectorizationPasses,
-    bool enableCoalescingLoops, bool enableCollapsingUnitDims,
-    OutliningStrategy enableFunctionOutlining, int outliningCallReplication,
-    bool insertLoopAroundCoreBlock, uint32_t numCols, bool emitCtrlPkt) {
+    OpPassManager &passManager, bool enableInputPacketFlow,
+    bool enableOutputPacketFlow, TilePassPipeline useTilePipeline,
+    bool enableVectorizationPasses, bool enableCoalescingLoops,
+    bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
+    int outliningCallReplication, bool insertLoopAroundCoreBlock,
+    uint32_t numCols, bool emitCtrlPkt) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
 
@@ -713,10 +714,14 @@ void addAMDAIEObjectFifoLoweringPasses(
   passManager.addPass(createAMDAIEAccessToAcquireReleasePass());
   passManager.addPass(createAMDAIENoneAccessToTemporaryBufferPass());
 
-  passManager.addPass(
-      createAMDAIEAssignConnectionTypesPass({enablePacketFlow}));
-  passManager.addPass(createCSEPass());
-  passManager.addPass(createCanonicalizerPass());
+  {
+    AMDAIEAssignConnectionTypesOptions options;
+    options.enableInputPacketFlow = enableInputPacketFlow;
+    options.enableOutputPacketFlow = enableOutputPacketFlow;
+    passManager.addPass(createAMDAIEAssignConnectionTypesPass(options));
+    passManager.addPass(createCSEPass());
+    passManager.addPass(createCanonicalizerPass());
+  }
 
   // Convert control code `scf.forall` ops to `scf.for` ops right before the DMA
   // composition optimization pass to enable more loop subsumption optimization
