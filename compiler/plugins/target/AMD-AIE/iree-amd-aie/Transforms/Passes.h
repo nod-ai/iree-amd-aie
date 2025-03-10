@@ -19,18 +19,21 @@ void addAMDAIEObjectFifoLoweringPasses(
     TilePassPipeline useTilePipeline, bool enableVectorizationPasses,
     bool enableCoalescingLoops, bool enableCollapsingUnitDims,
     OutliningStrategy enableFunctionOutlining, int outliningLoopInCallCount,
-    bool insertLoopAroundCoreBlock, uint32_t numCols, bool emitCtrlPkt);
+    bool insertLoopAroundCoreBlock, uint32_t numCols, bool emitCtrlPkt,
+    const std::string &unrollJam);
 
 /// Add passes to lower from MLIR-AIR through AIE. This is
 /// currently the default passes used for lowering after IREEs tiling.
 void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
                               TilePassPipeline useTilePipeline,
                               bool matmulElementwiseFusion,
-                              bool enableVectorizationPasses);
+                              bool enableVectorizationPasses,
+                              const std::string &unrollJam);
 
 /// Add lowering passes from MLIR-AIE. This is
 /// currently the default passes used for lowering from AIE dialect.
-void addMLIRAIELoweringPasses(OpPassManager &passManager);
+void addMLIRAIELoweringPasses(OpPassManager &passManager,
+                              const std::string &unrollJam);
 
 /// Populates passes needed to lower linalg/arith/math ops to LLVM dialect via
 /// the structured ops path. The pass manager `pm` here operate on the module
@@ -43,7 +46,7 @@ void buildAMDAIETransformPassPipeline(
     bool enablePacketFlow, bool enableCoalescingLoops,
     bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
     int outliningLoopInCallCount, bool insertLoopAroundCoreBlock,
-    bool emitCtrlPkt);
+    bool emitCtrlPkt, const std::string &unrollJam);
 
 /// Populates passes needed to lower the IR via a Pack-Peel based approach.
 void addPackPeelBasedPassPipeline(OpPassManager &passManager,
@@ -139,6 +142,9 @@ std::unique_ptr<Pass> createAMDAIEConvertCoreForallToForPass();
 /// ops.
 std::unique_ptr<Pass> createAMDAIEConvertDeviceToControlPacketsPass(
     AMDAIEConvertDeviceToControlPacketsOptions options = {});
+
+std::unique_ptr<Pass> createAMDAIEUnrollJamAIEVecMatmulPass(
+    AMDAIEUnrollJamAIEVecMatmulOptions options = {});
 
 /// Pass to insert an infinite loop around each `amdaie.core`'s block.
 std::unique_ptr<Pass> createAMDAIEInsertInfiniteLoopAroundCoreBlockPass();
