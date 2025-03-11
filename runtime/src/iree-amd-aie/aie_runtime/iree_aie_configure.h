@@ -137,6 +137,12 @@ LogicalResult addElfToTile(const AMDAIEDeviceModel &deviceModel,
 LogicalResult resetUnResetCore(const AMDAIEDeviceModel &deviceModel,
                                const TileLoc &tileLoc);
 
+/// Resets and unresets all the dma channels on a tile. This function needs to
+/// be called to clear any existing BD configuration on all mem tiles and core
+/// tiles.
+LogicalResult resetUnResetDmaChannels(const AMDAIEDeviceModel &deviceModel,
+                                      const TileLoc &tileLoc);
+
 /// Sets/programs locks with explicit initializers; note initialize here is a
 /// misnomer because "uninitialized" locks actually have their counters
 /// initialized to zero anyway by the hardware.
