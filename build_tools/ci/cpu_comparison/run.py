@@ -2220,9 +2220,9 @@ class Tests:
                 }
             )
 
-            # Like the above except with pipeline pack-peel-4-level-tiling. 
-            # Pack-peel-4-level-tiling segfaults with 1x1 AIE array, so using 2x2, 
-            # and so increasing the call replication to 400 so that we're comparing 
+            # Like the above except with pipeline pack-peel-4-level-tiling.
+            # Pack-peel-4-level-tiling segfaults with 1x1 AIE array, so using 2x2,
+            # and so increasing the call replication to 400 so that we're comparing
             # apples to apples.
             performance_tests.append(
                 {
@@ -2242,8 +2242,6 @@ class Tests:
                     "tile_pipeline": "pack-peel-4-level-tiling",
                 }
             )
-
-
 
         performance_tests += [
             {
