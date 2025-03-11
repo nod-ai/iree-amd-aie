@@ -2182,6 +2182,7 @@ class Tests:
 
         # Control packet test with constant biases 1 and 2.
         self.register(MatmulConstBiasCtrlpkt(8, 8, 8, "i8", "i32", 1, 2))
+        self.register(MatmulConstBiasCtrlpkt(1024, 1024, 1024, "i8", "i32", 1, 2))
 
         performance_tests = []
 

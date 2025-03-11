@@ -242,14 +242,8 @@ LogicalResult addElfToTile(const AMDAIEDeviceModel &deviceModel,
   }
   // Ensure the core is disabled before loading the elf.
   TRY_XAIE_API_LOGICAL_RESULT(XAie_CoreDisable, devInst, tileLoc);
-  // Reset All Channels of DMA to make sure they are at idle state.
-  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelResetAll, devInst, tileLoc,
-                              XAie_DmaChReset::DMA_CHANNEL_RESET);
   TRY_XAIE_API_LOGICAL_RESULT(XAie_LoadElf, devInst, tileLoc,
                               elfPath.string().c_str(), /*loadSym*/ aieSim);
-  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelResetAll, devInst, tileLoc,
-                              XAie_DmaChReset::DMA_CHANNEL_UNRESET);
-
   return success();
 }
 
@@ -258,6 +252,17 @@ LogicalResult resetUnResetCore(const AMDAIEDeviceModel &deviceModel,
   auto devInst = const_cast<XAie_DevInst *>(&deviceModel.devInst);
   TRY_XAIE_API_LOGICAL_RESULT(XAie_CoreReset, devInst, tileLoc);
   TRY_XAIE_API_LOGICAL_RESULT(XAie_CoreUnreset, devInst, tileLoc);
+  return success();
+}
+
+LogicalResult resetUnResetDmaChannels(const AMDAIEDeviceModel &deviceModel,
+                                      const TileLoc &tileLoc) {
+  auto devInst = const_cast<XAie_DevInst *>(&deviceModel.devInst);
+  // Reset All Channels of DMA to make sure they are at idle state.
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelResetAll, devInst, tileLoc,
+                              XAie_DmaChReset::DMA_CHANNEL_RESET);
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelResetAll, devInst, tileLoc,
+                              XAie_DmaChReset::DMA_CHANNEL_UNRESET);
   return success();
 }
 

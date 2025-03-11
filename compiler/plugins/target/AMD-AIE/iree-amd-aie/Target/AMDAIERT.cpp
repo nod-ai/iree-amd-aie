@@ -282,6 +282,9 @@ LogicalResult addInitConfig(const AMDAIEDeviceModel &deviceModel,
       continue;
     }
 
+    // Reset and unreset all DMA channels before configuring BDs.
+    if (failed(resetUnResetDmaChannels(deviceModel, tileLoc))) return failure();
+
     // Handle DMA ops separately.
     for (Block &block : memOp->getRegion(0)) {
       if (block.getOps<DMABDOp>().empty()) continue;
