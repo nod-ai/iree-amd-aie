@@ -161,79 +161,6 @@ static FailureOr<int64_t> fetchTotalUniqueLogicalObjFifoUsers(
   return uniqueLof.size();
 }
 
-static FailureOr<int64_t> getOffsetBias(OpFoldResult offset) {
-  if (auto offsetValue = dyn_cast_if_present<Value>(offset)) {
-    if (isa_and_present<affine::AffineApplyOp>(offsetValue.getDefiningOp())) {
-      auto applyOp = cast<affine::AffineApplyOp>(offsetValue.getDefiningOp());
-      if (applyOp.getNumOperands() != 1) {
-        return failure();
-      }
-      AffineMap affineMap = applyOp.getAffineMap();
-      RetrieveScaleAndBias retriever;
-      if (failed(retriever.visit(affineMap.getResult(0)))) {
-        return failure();
-      }
-      return retriever.bias.has_value() ? retriever.bias.value() : 0;
-    } else if (auto blockArg = dyn_cast<BlockArgument>(offsetValue);
-               blockArg &&
-               isa<LoopLikeOpInterface>(blockArg.getOwner()->getParentOp())) {
-      return 0;
-    } else {
-      return failure();
-    }
-  } else if (std::optional<int64_t> maybeOffset = getConstantIntValue(offset)) {
-    return maybeOffset.value();
-  } else {
-    return failure();
-  }
-}
-template <CopyOpOperateOn OperateOn>
-static LogicalResult checkTotalCoverageOfAccessPattern(
-    SmallVector<CopyOpInterface> copyLikeOps, int64_t sizeAtSplitDim,
-    int64_t splitDim, int64_t &splitFactor) {
-  DenseSet<int64_t> uniqueOffsetBiasesAtSplitDim;
-  for (CopyOpInterface copyOp : copyLikeOps) {
-    FailureOr<int64_t> maybeOffset;
-    auto dmaCpyNdOp = dyn_cast<AMDAIE::DmaCpyNdOp>(copyOp.getOperation());
-    OpFoldResult mixedOffset = nullptr;
-    if constexpr (OperateOn == CopyOpOperateOn::Target) {
-      // Extract Source offset : Retriever/Bias.
-      SmallVector<OpFoldResult> sourceOffsets =
-          dmaCpyNdOp.getSourceMixedOffsets();
-      maybeOffset = getOffsetBias(sourceOffsets[splitDim]);
-      mixedOffset = sourceOffsets[splitDim];
-    } else {
-      // Extract Target offset : Retriever/Bias.
-      SmallVector<OpFoldResult> targetOffsets =
-          dmaCpyNdOp.getTargetMixedOffsets();
-      maybeOffset = getOffsetBias(targetOffsets[splitDim]);
-      mixedOffset = targetOffsets[splitDim];
-    }
-    if (failed(maybeOffset)) {
-      return dmaCpyNdOp.emitOpError()
-             << "could not retrieve source/target objectFifo's offset value at "
-                "split dimension ("
-             << splitDim << ")";
-    }
-    if (auto offsetValue = dyn_cast_if_present<Value>(mixedOffset)) {
-      if (isa_and_present<affine::AffineApplyOp>(offsetValue.getDefiningOp())) {
-        uniqueOffsetBiasesAtSplitDim.insert(*maybeOffset);
-      }
-    } else {
-      return failure();
-    }
-  }
-  DenseSet<int64_t> offsetsToCover;
-  for (unsigned i = 0; i < sizeAtSplitDim; i++) {
-    offsetsToCover.insert(i);
-  }
-  for (int64_t offset : offsetsToCover) {
-    uniqueOffsetBiasesAtSplitDim.erase(offset);
-  }
-  if (uniqueOffsetBiasesAtSplitDim.empty()) splitFactor = 1;
-  return success();
-}
-
 /// Find the logical objectFifo and DMA source/target splitting dimensions for
 /// each DMA and objectFifo pair.
 ///
@@ -347,9 +274,6 @@ LogicalResult collectSplittingDims(
       if (sourceSize % splitFactor != 0 || targetSize % splitFactor != 0) {
         splitFactor = std::gcd(sourceSize, targetSize);
       }
-      (void)checkTotalCoverageOfAccessPattern<CopyOpOperateOn::Target>(
-          objFifo.getCopyLikeConsumers(), splitDimSize / splitFactor,
-          objFifoSplitDim, splitFactor);
       LLVM_DEBUG(llvm::dbgs() << "sourceSplitDim: " << sourceSplitDim << "\n");
       LLVM_DEBUG(llvm::dbgs() << "targetSplitDim: " << targetSplitDim << "\n");
       LLVM_DEBUG(llvm::dbgs()
@@ -500,7 +424,6 @@ void AMDAIESplitLogicalObjFifosPass::runOnOperation() {
   for (auto &&[dmaOp, dmaSplitInfo] : dmaSplitInfoMap) {
     auto stridedOp =
         cast<AMDAIE::DoublyStridedOpInterface>(dmaOp.getOperation());
-    if (dmaSplitInfo.splitSize == 1) continue;
     if (failed(splitDoublyStridedOp(
             rewriter, stridedOp, dmaSplitInfo.sourceSplitDim,
             dmaSplitInfo.targetSplitDim, dmaSplitInfo.splitSize,
@@ -511,7 +434,6 @@ void AMDAIESplitLogicalObjFifosPass::runOnOperation() {
     }
   }
   for (auto &&[objFifo, splitInfo] : objFifoSplitInfoMap) {
-    if (splitInfo.splitSize == 1) continue;
     if (failed(splitLogicalObjectFifo(rewriter, objFifo, splitInfo.splitDim,
                                       splitInfo.splitSize,
                                       splitInfo.splitStride))) {
