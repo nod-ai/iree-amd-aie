@@ -93,6 +93,8 @@ iree_lit_test_suite(
     "tile_and_fuse_convolution_using_scf_forall.mlir"
     "tile_copy_using_scf_for.mlir"
     "add_no_alias_function_arguments.mlir"
+    "unroll_jam_aievec_matmul.mlir"
+    "unroll_jam_aievec_matmul_failures.mlir"
     "vectorization.mlir"
   TOOLS
     ${IREE_LLD_TARGET}

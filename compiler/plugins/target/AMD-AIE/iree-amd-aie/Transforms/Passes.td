@@ -10,6 +10,82 @@
 include "iree-amd-aie/IR/AMDAIEDialect.td"
 include "mlir/Pass/PassBase.td"
 
+def AMDAIEUnrollJamAIEVecMatmul :
+    Pass<"iree-amdaie-unroll-jam-aievec-matmul", ""> {
+ let summary = "Apply a sequence of unroll and unroll-and-jam operations.";
+
+ let description = [{
+
+  This pass takes a string `sequence` that looks something like
+
+  uj_0_2_uj_1_2_uj_2_2_u_0_1_u_1_2_u_2_2
+
+  This string defines a sequence of unroll and unroll-and-jams transformations to
+  apply to nested scf.for operation containing an aievec.matmul. In this case there
+  are 6 transformations:
+
+  uj_0_2_uj_1_2_uj_2_2_u_0_1_u_1_2_u_2_2.
+  ====== ====== ====== ===== ===== =====
+  (1)    (2)    (3)    (4)   (5)   (6)     <--- these are the 6 transformations.
+
+  Each letter fragment in the sequence:
+
+  uj_0_2_uj_1_2_uj_2_2_u_0_1_u_1_2_u_2_2
+  ==     ==     ==     =     =     =       <-- these define if it's an unroll or
+                                               unroll-and-jam.
+
+  defines what kind of unrolling to do. `uj` means unroll-and-jam and `u`
+  means unroll. The first number after the letter fragment
+
+  uj_0_2_uj_1_2_uj_2_2_u_0_1_u_1_2_u_2_2
+     =      =      =     =     =     =     <-- these define which scf.for operation
+                                               to unroll / jam.
+
+  defines which loop the transform is applied to. `0` denotes the most nested
+  loop, i.e. the fastest moving loop that a matmul is contained in. In other
+  words, the first parent scf.for of the aievec.matmul. `1` denotes the second
+  most nested loop, etc.
+
+  The final number
+
+  uj_0_2_uj_1_2_uj_2_2_u_0_1_u_1_2_u_2_2
+       =      =      =     =     =     =   <--- these are the unroll factors.
+
+  defines the factor of unrolling or jamming. For example if this is 1, then
+  there is no transformation (unrolling with unroll factor 1 does nothing).
+
+  The pass finds all aievec.matmul operations, and applies the sequence of
+  transformations to the scf.for loops that contain them. If the aievec.matmul
+  operation has an attribute `sequence` local to it, then that sequence is used
+  instead of the global sequence. This is useful for testing, and in theory
+  allows different matmuls to have different unrolling strategies.
+
+  All scf.for loops that remain after the transformation are optionally given an llvm
+  attribute ensuring that no later passes do further unrolling, which ensures complete
+  control over the unrolling in this pass. To ensure that the scf.for ops get this
+  attribute, the sequence string should have a suffix '_NOUNROLL', like
+
+  uj_0_2_uj_1_2_uj_2_2_u_0_1_u_1_2_u_2_2_NOUNROLL
+
+  If `sequence` is the empty string or `none` then no unrolling is applied.
+
+  If `sequence` is `auto` or `default`, then a default sequence is applied,
+  specific to the data type, the device, and the loop nesting before this pass. Note
+  that currently only bf16 -> f32 on aie2 has been tuned with a good default.
+
+  For more information on unroll & jam, see for example
+  https://www.cs.utexas.edu/~lin/cs380c/handout28.pdf
+
+  }];
+
+
+ let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEUnrollJamAIEVecMatmulPass()";
+  let options = [
+    Option<"sequence", "sequence", "std::string", /*default=*/"",
+      "The sequence of transformations to apply.">
+  ];
+
+}
 
 def AMDAIEAccessToAcquireRelease :
     Pass<"iree-amdaie-access-to-acquire-release", ""> {
@@ -309,7 +385,6 @@ def AMDAIELinalgFunctionOutlining :
     repeated codes.
   }];
 
-  // Better name: call-replication && callReplication
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELinalgFunctionOutliningPass()";
   let options = [
     Option<"callReplication", "call-replication", "int64_t", /*default=*/"1",

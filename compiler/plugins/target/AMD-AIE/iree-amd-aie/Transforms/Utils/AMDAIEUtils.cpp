@@ -458,21 +458,7 @@ bool sinkInto(Region &region, IRRewriter &rewriter,
   return regionChanged;
 }
 
-scf::ForOp createForOpWithUnrollingDisabled(OpBuilder &builder, Location loc,
-                                            int start, int end, int step) {
-  // RAII guard to reset the insertion point of the builder when destroyed.
-  OpBuilder::InsertionGuard guard(builder);
-
-  auto getConstant = [&](int64_t v) {
-    return builder.create<arith::ConstantIndexOp>(loc, v);
-  };
-
-  Value cStart = getConstant(start);
-  Value cEnd = getConstant(end);
-  Value cStep = getConstant(step);
-
-  scf::ForOp forOp = builder.create<scf::ForOp>(loc, cStart, cEnd, cStep);
-
+void addNoUnrollAttribute(scf::ForOp forOp, OpBuilder &builder) {
   mlir::LLVM::LoopUnrollAttr unrollAttr;
   mlir::LLVM::LoopAnnotationAttr loopAnnotationAttr;
   BoolAttr disableAttr = builder.getBoolAttr(true);
@@ -492,6 +478,24 @@ scf::ForOp createForOpWithUnrollingDisabled(OpBuilder &builder, Location loc,
 
   // Add the llvm.loop_annotation attribute to the loop.
   forOp->setAttr("loop_annotation", loopAnnotationAttr);
+}
+
+scf::ForOp createForOpWithUnrollingDisabled(OpBuilder &builder, Location loc,
+                                            int start, int end, int step) {
+  // RAII guard to reset the insertion point of the builder when destroyed.
+  OpBuilder::InsertionGuard guard(builder);
+
+  auto getConstant = [&](int64_t v) {
+    return builder.create<arith::ConstantIndexOp>(loc, v);
+  };
+
+  Value cStart = getConstant(start);
+  Value cEnd = getConstant(end);
+  Value cStep = getConstant(step);
+
+  scf::ForOp forOp = builder.create<scf::ForOp>(loc, cStart, cEnd, cStep);
+
+  addNoUnrollAttribute(forOp, builder);
 
   return forOp;
 }

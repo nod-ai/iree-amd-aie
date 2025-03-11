@@ -135,6 +135,10 @@ std::string getConstantIntValuesString(ArrayRef<OpFoldResult> opFoldResults);
 bool sinkInto(Region &, IRRewriter &,
               std::function<bool(Operation *)> shouldSink);
 
+/// Annotate `forOp` with the llvm.loop_annotation attribute specifying that
+/// it should never be unrolled.
+void addNoUnrollAttribute(scf::ForOp forOp, OpBuilder &builder);
+
 /// Create an scf.for operation with an attribute specifying that LLVM
 /// must not unroll it. The for loop will iterate from `start` to `end` with
 /// `step` increment, and have debug location `loc`. The body of the loop will
