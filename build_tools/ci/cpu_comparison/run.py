@@ -2220,6 +2220,31 @@ class Tests:
                 }
             )
 
+            # Like the above except with pipeline pack-peel-4-level-tiling. 
+            # Pack-peel-4-level-tiling segfaults with 1x1 AIE array, so using 2x2, 
+            # and so increasing the call replication to 400 so that we're comparing 
+            # apples to apples.
+            performance_tests.append(
+                {
+                    "M": 512,
+                    "N": 512,
+                    "K": 512,
+                    "use_ukernel": False,
+                    "peano_opt_level": opt_level,
+                    "additional_labels": ["CorePerformance", "CorePerformance4Level"],
+                    "aie_compilation_flags": [
+                        "--iree-amdaie-num-rows=2",
+                        "--iree-amdaie-num-cols=2",
+                    ],
+                    "outline_call_replication": 400,
+                    "n_performance_repeats": 3,
+                    "n_performance_kernel_runs": 1,
+                    "tile_pipeline": "pack-peel-4-level-tiling",
+                }
+            )
+
+
+
         performance_tests += [
             {
                 "M": 512,
