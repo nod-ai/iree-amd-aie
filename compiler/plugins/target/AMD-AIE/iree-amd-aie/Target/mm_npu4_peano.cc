@@ -7,6 +7,14 @@
 R"peano(
 
 template<int M, int N, int r>
+void trunci_vectorized(v32int32 *__restrict in, int64_t offsetIn, int64_t shift,
+                       v32int8 *__restrict out, int64_t offsetOut) {
+  for (unsigned i = 0; i < M * N / r; i++) {
+    out[offsetOut + i] = ssrs((v32acc32)in[offsetIn + i], shift, 0);
+  }
+}
+
+template<int M, int N, int r>
 void zero_vectorized(v16int32 *__restrict pC, unsigned offsetC)
 {
   v16int32 zeros = broadcast_zero_to_v16int32();
@@ -267,6 +275,9 @@ extern "C" {
 #define zero_fill_combos_f32(X, M, N)  \
   X(v16float, f32, M, N, 16)
 
+#define trunci_combos_i32_i8(X, M, N)  \
+  X(v32int32, i32, v32int8, i8, M, N, 32)
+
 #define matmul_vectorized_c_func(lhs_ctype_in, lhs_mlir_type_in,                                                 \
                                  rhs_ctype_in, rhs_mlir_type_in,                                                 \
                                  acc_ctype_out, acc_mlir_type_out, M, N, K, r, s, t)                             \
@@ -282,10 +293,18 @@ extern "C" {
     zero_vectorized<M, N, r>(c_out, offsetC);                      \
   }
 
+#define trunci_c_func(ctype_in, mlir_type_in, ctype_out, mlir_type_out, M, N, r)                  \
+  void trunci_##mlir_type_in##_##mlir_type_out##_##M##x##N(                                       \
+      ctype_in *in, int64_t offsetIn, int64_t shift, ctype_out *out, int64_t offsetOut) {         \
+    trunci_vectorized<M, N, r>(in, offsetIn, shift, out, offsetOut);                              \
+  }
+
 matmul_combos_i8(matmul_vectorized_c_func, 32, 32, 32)
 matmul_combos_i8(matmul_vectorized_c_func, 32, 32, 64)
 
 zero_fill_combos_i32(zero_vectorized_c_func, 32, 32)
+
+trunci_combos_i32_i8(trunci_c_func, 32, 32)
 
 matmul_combos_bfp16(matmul_vectorized_c_func, 16, 8, 32)
 matmul_combos_bfp16(matmul_vectorized_c_func, 16, 8, 64)

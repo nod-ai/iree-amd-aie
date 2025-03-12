@@ -340,3 +340,57 @@ module {
 // CHECK-SAME:       fn_def_attrs {link_with = "{{.*}}mm_npu4.o"}
 // CHECK-SAME:       strided_outer_dims(0)
 //      CHECK:   return %[[MICRO_KERNEL]]
+
+// -----
+
+func.func @shift_trunci(%arg0 : tensor<16x16x4x4xi32>) -> tensor<16x16x4x4xi8> attributes {
+  hal.executable.target = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu4", ukernels = "all"}>
+} {
+  %cst_shift = arith.constant 5 : i32
+  %0 = tensor.empty() : tensor<16x16x4x4xi8>
+  %1 = linalg.generic {indexing_maps = [affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>, affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>],
+                       iterator_types = ["parallel", "parallel", "parallel", "parallel"]
+                      } ins(%arg0 : tensor<16x16x4x4xi32>) outs(%0 : tensor<16x16x4x4xi8>) {
+      ^bb0(%in: i32, %out: i8):
+        %2 = arith.shrsi %in, %cst_shift : i32
+        %3 = arith.trunci %2 : i32 to i8
+        linalg.yield %3 : i8
+    } -> tensor<16x16x4x4xi8>
+  return %1 : tensor<16x16x4x4xi8>
+}
+// CHECK-LABEL:  func @shift_trunci
+// CHECK-SAME:     %[[ARG0:[a-zA-Z0-9]+]]: tensor<16x16x4x4xi32>)
+// CHECK:        %[[C5:.+]] = arith.constant 5 : i32
+// CHECK-NOT:    linalg.generic
+// CHECK:        %[[MICRO_KERNEL:.+]] = iree_codegen.ukernel.generic "trunci_i32_i8_64x64"
+// CHECK-SAME:       ins(%[[ARG0]], %[[C5]] : tensor<16x16x4x4xi32>, i32
+// CHECK-SAME:       fn_def_attrs {link_with = "{{.*}}mm_npu4.o"}
+// CHECK-SAME:       strided_outer_dims(0)
+// CHECK-SAME:       -> tensor<16x16x4x4xi8>
+// CHECK:        return %[[MICRO_KERNEL]]
+
+// -----
+
+func.func @trunci(%arg0 : tensor<16x16x4x4xi16>) -> tensor<16x16x4x4xi8> attributes {
+  hal.executable.target = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu4", ukernels = "all"}>
+} {
+  %0 = tensor.empty() : tensor<16x16x4x4xi8>
+  %1 = linalg.generic {indexing_maps = [affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>, affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>],
+                       iterator_types = ["parallel", "parallel", "parallel", "parallel"]
+                      } ins(%arg0 : tensor<16x16x4x4xi16>) outs(%0 : tensor<16x16x4x4xi8>) {
+      ^bb0(%in: i16, %out: i8):
+        %2 = arith.trunci %in : i16 to i8
+        linalg.yield %2 : i8
+    } -> tensor<16x16x4x4xi8>
+  return %1 : tensor<16x16x4x4xi8>
+}
+// CHECK-LABEL:  func @trunci
+// CHECK-SAME:     %[[ARG0:[a-zA-Z0-9]+]]: tensor<16x16x4x4xi16>)
+// CHECK:        %[[C0:.+]] = arith.constant 0 : i16
+// CHECK-NOT:    linalg.generic
+// CHECK:        %[[MICRO_KERNEL:.+]] = iree_codegen.ukernel.generic "trunci_i16_i8_64x64"
+// CHECK-SAME:       ins(%[[ARG0]], %[[C0]] : tensor<16x16x4x4xi16>, i16
+// CHECK-SAME:       fn_def_attrs {link_with = "{{.*}}mm_npu4.o"}
+// CHECK-SAME:       strided_outer_dims(0)
+// CHECK-SAME:       -> tensor<16x16x4x4xi8>
+// CHECK:        return %[[MICRO_KERNEL]]

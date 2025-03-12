@@ -2374,6 +2374,7 @@ class Tests:
                 "scale_trunc": True,
                 "tile_pipeline": "pack-peel-4-level-tiling",
                 "run_on_target": "npu4",
+                "use_chess_for_ukernel": False,
             },
             {
                 "M": 512,
