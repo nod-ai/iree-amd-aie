@@ -603,11 +603,11 @@ FailureOr<OffsetConfig> getNewOffsetConfig(
       // `splitDimSize == 2`, offsets 0 and 1 are mapped to objectFifo 0 and
       // offsets 2 and 3 are mapped to objectFifo 1.
       if (splitStride == 1) objFifoIndex /= splitDimSize;
-      // If the total no. of DMAs per split is greater than 1 it means that each
-      // new splits of the concerned LogicalObjFifo is going to span more than
-      // one row/column. We therefore account for that when figuring which split
-      // to use and what the corresponding offset at the split dimension should
-      // be. Eg:
+      // If the total number of DMAs per split is greater than 1, it means that
+      // each new split of the concerned LogicalObjFifo is going to span more
+      // than one row/column. Therefore, we account for this when determining
+      // which split to use and what the corresponding offset at the split
+      // dimension should be. Eg:
       //    Assume we inferred that 2 splits of a logicalObjFifo is required.
       //    Also assume the original logicalObjFifo was being used by 4 DMA
       //    producers/consumers. Therefore DMAs per split will be 2.
@@ -633,8 +633,9 @@ FailureOr<OffsetConfig> getNewOffsetConfig(
       //                L2.1 [affine_2]   : 32 x 32
       //
       //   Where, for the new affine expression :-
-      //        SCALE = Size of the dimension where splitting would occur / DMAs
-      //        per split BIAS  = Bias information extracted % DMAs per split
+      //        SCALE = Size of the dimension where splitting would occur /
+      //                DMAs per split
+      //        BIAS  = Bias information extracted % DMAs per split
       if (dmaPerSplit > 1) {
         OpBuilder::InsertionGuard guard(rewriter);
         rewriter.setInsertionPoint(applyOp);
