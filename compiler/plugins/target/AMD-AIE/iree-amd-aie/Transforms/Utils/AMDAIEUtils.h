@@ -15,6 +15,10 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
+/// Returns the BlockArgument that leads to `val`, if any. Traverses optional
+/// ext* ops.
+BlockArgument getBlockArgumentWithOptionalExtOps(Value val);
+
 /// Returns the target AMDAIE device.
 std::optional<AMDAIEDevice> getConfigAMDAIEDevice(
     IREE::HAL::ExecutableTargetAttr targetAttr);

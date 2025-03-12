@@ -114,9 +114,9 @@ static mlir::AffineExpr getAffineMapDim(ArrayAttr indexingMaps,
   return affineMap.getResult(nResults - 2 + mnkIndex);
 }
 
-/// Returns the BlockArgument that leads to `val`. Traverses optional ext*
-/// ops.
-static BlockArgument checkOptionalExtOps(Value val) {
+/// Returns the BlockArgument that leads to `val`, if any. Traverses optional
+/// ext* ops.
+BlockArgument getBlockArgumentWithOptionalExtOps(Value val) {
   BlockArgument blockArg;
   if (!(blockArg = dyn_cast<BlockArgument>(val))) {
     Operation *defOp = val.getDefiningOp();
@@ -138,9 +138,12 @@ static bool bodyMatcherForMatmulLikeOps(Value yieldVal, Block *body) {
   Operation *mulOp = addOp->getOperand(1).getDefiningOp();
   if (!isa_and_present<arith::MulIOp, arith::MulFOp>(mulOp)) return false;
 
-  BlockArgument lhsBlockArg = checkOptionalExtOps(mulOp->getOperand(0));
-  BlockArgument rhsBlockArg = checkOptionalExtOps(mulOp->getOperand(1));
-  BlockArgument outBlockArg = checkOptionalExtOps(addOp->getOperand(0));
+  BlockArgument lhsBlockArg =
+      getBlockArgumentWithOptionalExtOps(mulOp->getOperand(0));
+  BlockArgument rhsBlockArg =
+      getBlockArgumentWithOptionalExtOps(mulOp->getOperand(1));
+  BlockArgument outBlockArg =
+      getBlockArgumentWithOptionalExtOps(addOp->getOperand(0));
   if (!lhsBlockArg || !rhsBlockArg || !outBlockArg ||
       lhsBlockArg.getOwner() != body || rhsBlockArg.getOwner() != body ||
       outBlockArg.getOwner() != body || lhsBlockArg.getArgNumber() != 0 ||

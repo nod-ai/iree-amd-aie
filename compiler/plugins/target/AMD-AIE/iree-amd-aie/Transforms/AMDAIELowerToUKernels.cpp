@@ -229,6 +229,94 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchFillDAGForUKernel(
       genericMicroKernelOp.getOperation());
 }
 
+std::optional<Value> checkIsShiftTruncIAndReturnShift(
+    RewriterBase &rewriter, linalg::LinalgOp linalgOp) {
+  OpBuilder::InsertionGuard guard(rewriter);
+  if (!isa<linalg::GenericOp>(linalgOp)) return std::nullopt;
+  Block *body = linalgOp.getBlock();
+  auto yieldOp = cast<linalg::YieldOp>(body->getTerminator());
+  Value yieldVal = yieldOp.getOperand(0);
+  auto truncOp = dyn_cast_if_present<arith::TruncIOp>(yieldVal.getDefiningOp());
+  if (!truncOp) return std::nullopt;
+  auto shiftOp =
+      dyn_cast_if_present<arith::ShRSIOp>(truncOp.getIn().getDefiningOp());
+  // If no shift op, the shift value is zero.
+  if (!shiftOp) {
+    BlockArgument blockArg =
+        getBlockArgumentWithOptionalExtOps(truncOp->getOperand(0));
+    if (!blockArg || blockArg.getOwner() != body) return std::nullopt;
+    rewriter.setInsertionPoint(linalgOp);
+    IntegerAttr zeroAttr =
+        rewriter.getIntegerAttr(truncOp.getIn().getType(), 0);
+    auto zeroVal =
+        rewriter.create<arith::ConstantOp>(linalgOp.getLoc(), zeroAttr);
+    return zeroVal.getResult();
+  }
+  Value shiftVal = shiftOp.getRhs();
+  BlockArgument blockArg =
+      getBlockArgumentWithOptionalExtOps(shiftOp->getOperand(0));
+  if (!blockArg || blockArg.getOwner() != body) return std::nullopt;
+  return shiftVal;
+}
+
+static FailureOr<IREE::Codegen::UKernelOpInterface> matchTruncIDAGForUKernel(
+    RewriterBase &rewriter, Operation *op, const std::string &ukernelName,
+    const std::string &pathToUkernels) {
+  OpBuilder::InsertionGuard guard(rewriter);
+  auto linalgOp = dyn_cast<linalg::LinalgOp>(op);
+  if (!linalgOp) {
+    return rewriter.notifyMatchFailure(op, "is not a linalg operation");
+  }
+  auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(op);
+  if (!hasUkernel(targetAttr, ukernelName)) {
+    return rewriter.notifyMatchFailure(
+        op, "no ukernel found with name: " + ukernelName);
+  }
+  std::optional<Value> maybeShift =
+      checkIsShiftTruncIAndReturnShift(rewriter, linalgOp);
+  if (!maybeShift.has_value()) {
+    return rewriter.notifyMatchFailure(op,
+                                       "is not a shift followed by a trunci");
+  }
+  Value shiftVal = maybeShift.value();
+
+  FailureOr<std::string> maybeUkernelObjectName =
+      fetchUkernelObjectName(targetAttr);
+  if (failed(maybeUkernelObjectName)) {
+    return rewriter.notifyMatchFailure(
+        op, "no ukernel object name found for the target");
+  }
+
+  Value input = linalgOp.getDpsInputOperand(0)->get();
+  Value output = linalgOp.getDpsInitOperand(0)->get();
+  auto inType = llvm::cast<ShapedType>(input.getType());
+  auto outType = llvm::cast<ShapedType>(output.getType());
+  Type inElemType = inType.getElementType();
+  Type outElemType = outType.getElementType();
+
+  // Tiling for M x N as well as the corresponding inner tiling intrinsics r x
+  // t.
+  int M, N, r, t;
+  std::tie(M, N, r, t) = getTilingInfo(outType);
+  std::string elemTypeAndSize = typeToString(inElemType) + "_" +
+                                typeToString(outElemType) + "_" +
+                                std::to_string(M) + "x" + std::to_string(N);
+
+  FnNameAndDefAttrs fn =
+      getFnNameAndDefAttrs(rewriter, ukernelName, elemTypeAndSize,
+                           pathToUkernels, *maybeUkernelObjectName);
+
+  // Create UKernel for AMD-AIE.
+  Location loc = linalgOp.getLoc();
+  auto genericMicroKernelOp = rewriter.create<IREE::Codegen::UKernelGenericOp>(
+      loc, outType, fn.name, ValueRange{input, shiftVal}, output, ValueRange{},
+      /*fn_def_attrs=*/rewriter.getDictionaryAttr(fn.defAttrs),
+      /*strided_outer_dims=*/rewriter.getIndexAttr(0));
+
+  return cast<IREE::Codegen::UKernelOpInterface>(
+      genericMicroKernelOp.getOperation());
+}
+
 using TargetPredicate = std::function<bool(IREE::HAL::ExecutableTargetAttr)>;
 using MatchAndReplaceFunction =
     std::function<FailureOr<IREE::Codegen::UKernelOpInterface>(
@@ -273,6 +361,7 @@ struct LowerToUKernelPattern : OpRewritePattern<OpType> {
 
 static constexpr char kMatmulUKernelName[] = "matmul";
 static constexpr char kFillUKernelName[] = "zero";
+static constexpr char kTruncIUKernelName[] = "trunci";
 
 void AMDAIELowerToUKernelsPass::runOnOperation() {
   MLIRContext *context = &getContext();
@@ -298,6 +387,9 @@ void AMDAIELowerToUKernelsPass::runOnOperation() {
       pathToUkernels);
   patterns.insert<LowerToUKernelPattern<linalg::FillOp>>(
       context, allTargets, matchFillDAGForUKernel, kFillUKernelName,
+      pathToUkernels);
+  patterns.insert<LowerToUKernelPattern<linalg::GenericOp>>(
+      context, allTargets, matchTruncIDAGForUKernel, kTruncIUKernelName,
       pathToUkernels);
   if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
     return signalPassFailure();
