@@ -568,7 +568,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_pdi_fb} {
 
 // -----
 
-// Tests splitting of producer with loop dependency where the total consumer DMAs per splitted LOF is
+// Tests splitting of LOF with loop dependency where the total consumer DMAs per splitted LOF is
 // greater than 1.
 
 // CHECK-DAG:   #map = affine_map<(d0) -> (d0 * 2)>

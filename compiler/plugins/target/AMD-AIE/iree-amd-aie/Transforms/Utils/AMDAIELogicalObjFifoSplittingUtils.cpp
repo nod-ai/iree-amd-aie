@@ -725,9 +725,6 @@ LogicalResult splitLogicalObjectFifo(IRRewriter &rewriter,
       std::accumulate(memrefShape.begin() + splitDim + 1, memrefShape.end(), 1,
                       std::multiplies<>());
   // Update the producer dma ops.
-  assert(producers.size() % newObjFifos.size() == 0 &&
-         "the total no. of new objFifos after split and total producers don't "
-         "align");
   for (AMDAIE::DmaCpyNdOp producer : producers) {
     SmallVector<OpFoldResult> targetOffsets = producer.getTargetMixedOffsets();
     SmallVector<OpFoldResult> targetSizes = producer.getTargetMixedSizes();
@@ -767,9 +764,6 @@ LogicalResult splitLogicalObjectFifo(IRRewriter &rewriter,
   }
 
   // Update the consumer dma ops.
-  assert(consumers.size() % newObjFifos.size() == 0 &&
-         "the total no. of new objFifos after split and total consumers don't "
-         "align");
   int64_t dmaPerSplit = uniqueConsumerDMAs / newObjFifos.size();
   for (AMDAIE::DmaCpyNdOp consumer : consumers) {
     SmallVector<OpFoldResult> sourceOffsets = consumer.getSourceMixedOffsets();
