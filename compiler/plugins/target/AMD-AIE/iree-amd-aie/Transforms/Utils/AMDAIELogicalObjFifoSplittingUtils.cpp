@@ -689,7 +689,8 @@ LogicalResult splitLogicalObjectFifo(IRRewriter &rewriter,
                                      AMDAIE::LogicalObjectFifoFromMemrefOp op,
                                      size_t splitDim,
                                      std::optional<size_t> maybeSplitFactor,
-                                     int64_t splitStride) {
+                                     int64_t splitStride,
+                                     int64_t uniqueConsumerDMAs) {
   OpBuilder::InsertionGuard g(rewriter);
   SmallVector<int64_t> memrefShape =
       llvm::to_vector(op.getMemrefType().getShape());
@@ -727,14 +728,13 @@ LogicalResult splitLogicalObjectFifo(IRRewriter &rewriter,
   assert(producers.size() % newObjFifos.size() == 0 &&
          "the total no. of new objFifos after split and total producers don't "
          "align");
-  int64_t dmaPerSplit = producers.size() / newObjFifos.size();
   for (AMDAIE::DmaCpyNdOp producer : producers) {
     SmallVector<OpFoldResult> targetOffsets = producer.getTargetMixedOffsets();
     SmallVector<OpFoldResult> targetSizes = producer.getTargetMixedSizes();
     SmallVector<OpFoldResult> targetStrides = producer.getTargetMixedStrides();
     FailureOr<OffsetConfig> maybeOffsetConfig = getNewOffsetConfig(
         rewriter, targetOffsets, targetStrides, sizeAfterSplit, splitDimSize,
-        splitStride, splitFactor, dmaPerSplit,
+        splitStride, splitFactor, /*dmaPerSplit=*/1,
         [&]() { return producer.emitOpError(); });
     if (failed(maybeOffsetConfig)) {
       return producer.emitOpError()
@@ -770,7 +770,7 @@ LogicalResult splitLogicalObjectFifo(IRRewriter &rewriter,
   assert(consumers.size() % newObjFifos.size() == 0 &&
          "the total no. of new objFifos after split and total consumers don't "
          "align");
-  dmaPerSplit = consumers.size() / newObjFifos.size();
+  int64_t dmaPerSplit = uniqueConsumerDMAs / newObjFifos.size();
   for (AMDAIE::DmaCpyNdOp consumer : consumers) {
     SmallVector<OpFoldResult> sourceOffsets = consumer.getSourceMixedOffsets();
     SmallVector<OpFoldResult> sourceSizes = consumer.getSourceMixedSizes();
