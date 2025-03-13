@@ -2245,7 +2245,7 @@ class Tests:
         )
         # Test on the phoenix 4x4 array.
         self.register(MatmulConstBiasCtrlpkt(1024, 1024, 1024, "i8", "i32", 1, 2))
-        # Benchmark reconfguration time only, do not run the kernel.
+        # Benchmark reconfiguration time only, do not run the kernel.
         self.register(
             MatmulConstBiasCtrlpkt(
                 1024,
@@ -2256,6 +2256,7 @@ class Tests:
                 1,
                 2,
                 test_params=TestParams(run_benchmark=True, n_repeats=2),
+                additional_labels=["Performance"],
                 n_kernel_runs=0,
                 n_reconfigure_runs=50,
             )
