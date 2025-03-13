@@ -645,13 +645,9 @@ class MatmulConstBiasCtrlpkt(BaseMatmul):
         )
         self.labels.append("MatmulConstBiasCtrlPacket")
 
-        # TODO (zhewen): Test full array.
         self.aie_compilation_flags += [
-            "--iree-amdaie-num-rows=1",
-            "--iree-amdaie-num-cols=1",
             "--iree-amdaie-enable-input-packet-flow=true",
             "--iree-amdaie-emit-control-packet=true",
-            "--mlir-disable-threading",
         ]
 
         if additional_labels:
@@ -2200,7 +2196,26 @@ class Tests:
             )
 
         # Control packet test with constant biases 1 and 2.
-        self.register(MatmulConstBiasCtrlpkt(8, 8, 8, "i8", "i32", 1, 2))
+        # Test on a single core.
+        self.register(
+            MatmulConstBiasCtrlpkt(
+                8,
+                8,
+                8,
+                "i8",
+                "i32",
+                1,
+                2,
+                test_params=TestParams(
+                    aie_compilation_flags=[
+                        "--iree-amdaie-num-rows=1",
+                        "--iree-amdaie-num-cols=1",
+                    ],
+                    name_suffix="OneCore",
+                ),
+            )
+        )
+        # Test on the phoenix 4x4 array.
         self.register(MatmulConstBiasCtrlpkt(1024, 1024, 1024, "i8", "i32", 1, 2))
 
         performance_tests = []
