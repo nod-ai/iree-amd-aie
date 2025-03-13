@@ -32,6 +32,7 @@ struct ObjFifoSplitInfo {
   size_t splitDim{0};
   int64_t splitSize{1};
   int64_t splitStride{1};
+  int64_t numUniqueConsumerDMAs{1};
 };
 
 using DmaObjFifoPairT =
@@ -284,8 +285,8 @@ LogicalResult collectSplittingDims(
       LLVM_DEBUG(llvm::dbgs() << "splitFactor: " << splitFactor << "\n");
       dmaSplitInfoMap[dmaOp] = {sourceSplitDim, newSourceStride, targetSplitDim,
                                 1, splitFactor};
-      objFifoSplitInfoMap[objFifo] = {objFifoSplitDim, splitFactor,
-                                      splitStride};
+      objFifoSplitInfoMap[objFifo] = {objFifoSplitDim, splitFactor, splitStride,
+                                      *maybeNumUniqueConsumers};
     } else if (dmaOp.getSourceObjectFifo() == objFifo) {
       // Find outermost dimension in the access pattern that has stride ==
       // sizeAfterSplit and size != 1.
@@ -434,9 +435,9 @@ void AMDAIESplitLogicalObjFifosPass::runOnOperation() {
     }
   }
   for (auto &&[objFifo, splitInfo] : objFifoSplitInfoMap) {
-    if (failed(splitLogicalObjectFifo(rewriter, objFifo, splitInfo.splitDim,
-                                      splitInfo.splitSize,
-                                      splitInfo.splitStride))) {
+    if (failed(splitLogicalObjectFifo(
+            rewriter, objFifo, splitInfo.splitDim, splitInfo.splitSize,
+            splitInfo.splitStride, splitInfo.numUniqueConsumerDMAs))) {
       LLVM_DEBUG(llvm::dbgs()
                  << "Failed to perform splitting of objectFifo op");
       return signalPassFailure();
