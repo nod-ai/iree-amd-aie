@@ -149,6 +149,13 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_normal_run(
     shim_xdna::hw_q* hwq, shim_xdna::cuidx_t cu_idx, uint32_t n_kernel_runs,
     std::vector<uint32_t>& asm_inst) {
   IREE_TRACE_ZONE_BEGIN(z0);
+
+  // Check if the kernel should be executed.
+  if (n_kernel_runs == 0) {
+    IREE_TRACE_ZONE_END(z0);
+    return iree_ok_status();
+  }
+
   // Allocate a buffer object to hold the control code (`asm_inst`).
   size_t ctrl_code_size = asm_inst.size() * sizeof(uint32_t);
   auto bo_ctrl_code = command_buffer->device->shim_device->alloc_bo(
@@ -192,7 +199,8 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_normal_run(
 static iree_status_t iree_hal_xrt_lite_direct_command_buffer_reconfigure(
     iree_hal_xrt_lite_direct_command_buffer* command_buffer,
     shim_xdna::hw_q* hwq, shim_xdna::cuidx_t cu_idx,
-    std::vector<uint32_t>& ctrlpkt_inst, std::vector<uint32_t>& ctrlpkt_seq) {
+    uint32_t n_reconfigure_runs, std::vector<uint32_t>& ctrlpkt_inst,
+    std::vector<uint32_t>& ctrlpkt_seq) {
   IREE_TRACE_ZONE_BEGIN(z0);
   // Allocate a buffer object to hold the control packet instructions.
   size_t ctrlpkt_inst_size = ctrlpkt_inst.size() * sizeof(uint32_t);
@@ -219,10 +227,12 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_reconfigure(
   ebuf.add_arg_bo(*bo_ctrlpkt_inst);
   ebuf.add_arg_32(ctrlpkt_inst.size());
   ebuf.add_arg_bo(*bo_ctrlpkt_seq);
-  // Execute the reconfiguration.
-  ebuf.m_cmd_pkt->state = ERT_CMD_STATE_NEW;
-  hwq->issue_command(ebuf.get_exec_buf_bo());
-  hwq->wait_command(ebuf.get_exec_buf_bo(), 0);
+  // Execute the reconfiguration for `n_reconfigure_runs` times.
+  for (int i = 0; i < n_reconfigure_runs; ++i) {
+    ebuf.m_cmd_pkt->state = ERT_CMD_STATE_NEW;
+    hwq->issue_command(ebuf.get_exec_buf_bo());
+    hwq->wait_command(ebuf.get_exec_buf_bo(), 0);
+  }
 
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
@@ -269,7 +279,7 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_dispatch(
       // Reconfigure the device.
       IREE_RETURN_AND_END_ZONE_IF_ERROR(
           z0, iree_hal_xrt_lite_direct_command_buffer_reconfigure(
-                  command_buffer, hwq, cu_idx,
+                  command_buffer, hwq, cu_idx, kernel_params.n_reconfigure_runs,
                   kernel_params.asm_inst_runlist[2 * i],
                   kernel_params.reconf_data_runlist[i]));
       // Dispatch the new kernel.

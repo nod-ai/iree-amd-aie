@@ -23,6 +23,7 @@ struct iree_hal_xrt_lite_kernel_params {
   std::vector<std::vector<uint32_t>> reconf_data_runlist;
   std::string kernel_name;
   uint32_t n_kernel_runs{1};
+  uint32_t n_reconfigure_runs{1};
   IREE_TRACE(iree_string_view_t source_filename;)
   IREE_TRACE(uint32_t source_line;)
 };
