@@ -691,7 +691,7 @@ LogicalResult splitLogicalObjectFifo(IRRewriter &rewriter,
                                      size_t splitDim,
                                      std::optional<size_t> maybeSplitFactor,
                                      int64_t splitStride,
-                                     int64_t uniqueConsumerDMAs) {
+                                     int64_t numUniqueConsumerDMAs) {
   OpBuilder::InsertionGuard g(rewriter);
   SmallVector<int64_t> memrefShape =
       llvm::to_vector(op.getMemrefType().getShape());
@@ -765,7 +765,7 @@ LogicalResult splitLogicalObjectFifo(IRRewriter &rewriter,
   }
 
   // Update the consumer dma ops.
-  int64_t dmaPerSplit = uniqueConsumerDMAs / newObjFifos.size();
+  int64_t dmaPerSplit = numUniqueConsumerDMAs / newObjFifos.size();
   for (AMDAIE::DmaCpyNdOp consumer : consumers) {
     SmallVector<OpFoldResult> sourceOffsets = consumer.getSourceMixedOffsets();
     SmallVector<OpFoldResult> sourceSizes = consumer.getSourceMixedSizes();

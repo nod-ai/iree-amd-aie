@@ -32,7 +32,7 @@ struct ObjFifoSplitInfo {
   size_t splitDim{0};
   int64_t splitSize{1};
   int64_t splitStride{1};
-  int64_t uniqueConsumerDMAs{1};
+  int64_t numUniqueConsumerDMAs{1};
 };
 
 using DmaObjFifoPairT =
@@ -437,7 +437,7 @@ void AMDAIESplitLogicalObjFifosPass::runOnOperation() {
   for (auto &&[objFifo, splitInfo] : objFifoSplitInfoMap) {
     if (failed(splitLogicalObjectFifo(
             rewriter, objFifo, splitInfo.splitDim, splitInfo.splitSize,
-            splitInfo.splitStride, splitInfo.uniqueConsumerDMAs))) {
+            splitInfo.splitStride, splitInfo.numUniqueConsumerDMAs))) {
       LLVM_DEBUG(llvm::dbgs()
                  << "Failed to perform splitting of objectFifo op");
       return signalPassFailure();

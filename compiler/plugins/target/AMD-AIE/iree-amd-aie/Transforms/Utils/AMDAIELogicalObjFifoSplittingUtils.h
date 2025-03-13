@@ -35,7 +35,7 @@ LogicalResult splitLogicalObjectFifoForElementwiseOp(
 LogicalResult splitLogicalObjectFifo(
     IRRewriter &rewriter, AMDAIE::LogicalObjectFifoFromMemrefOp op,
     size_t splitDim = 0, std::optional<size_t> splitFactor = std::nullopt,
-    int64_t splitStride = 1, int64_t uniqueConsumerDMAs = 1);
+    int64_t splitStride = 1, int64_t numUniqueConsumerDMAs = 1);
 
 /// Split doubly strided operations on a source and target split dimension with
 /// the provided split factor.
