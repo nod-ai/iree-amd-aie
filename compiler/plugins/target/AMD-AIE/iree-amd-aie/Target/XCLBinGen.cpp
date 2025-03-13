@@ -14,10 +14,9 @@
 #include <random>
 #include <sstream>
 
-#include "AMDAIETargets.h"
-#include "aie/Passes.h"
 #include "air/Conversion/AIRToAIEPass.h"
 #include "iree-amd-aie/IR/AMDAIEOps.h"
+#include "iree-amd-aie/Target/AMDAIETargets.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-dialects/Dialect/LinalgTransform/Passes.h"
 #include "iree/compiler/Utils/ToolUtils.h"
@@ -43,7 +42,6 @@
 #include "mlir/IR/AsmState.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/IR/TypeUtilities.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Target/LLVMIR/Export.h"
@@ -302,25 +300,6 @@ std::string getUUIDString() {
 }
 }  // namespace uuid
 
-// This is a string that contains the wrapped chess intrinsics (see top of the
-// included file for deeper explanation).
-static const std::string _CHESS_INTRINSIC_WRAPPER_CPP{
-#include "chess_intrinsic_wrapper.cpp"
-};
-
-// This is a string that contains a mm kernel for npu1.
-static const std::string _MM_NPU1_CC{
-#include "mm_npu1.cc"
-};
-// This is a string that contains npu4 kernels for compilation by chess.
-static const std::string _MM_NPU4_CC{
-#include "mm_npu4.cc"
-};
-// This is a string that contains npu4 kernels for compilation by peano.
-static const std::string _MM_NPU4_PEANO_CC{
-#include "mm_npu4_peano.cc"
-};
-
 FailureOr<std::string> getTargetDir(const std::string &npuVersion) {
   if (npuVersion == "npu1") return std::string{"target_aie_ml"};
   if (npuVersion == "npu4") return std::string{"target_aie2p"};
@@ -431,7 +410,7 @@ FailureOr<Path> findAMDAIETool(std::string toolName,
 }
 
 std::pair<std::string, std::vector<std::string>> makeChessArgs(
-    Path &vitisDir, Path &tempDir, const std::string &npuVersion,
+    const Path &vitisDir, const Path &tempDir, const std::string &npuVersion,
     bool verbose) {
   std::string archVersion;
   std::string modelDir;
@@ -472,7 +451,7 @@ std::pair<std::string, std::vector<std::string>> makeChessArgs(
           flags};
 }
 
-std::vector<std::string> makeChessEnv(Path &vitisDir,
+std::vector<std::string> makeChessEnv(const Path &vitisDir,
                                       const std::string &npuVersion) {
   Path aieToolsPath = vitisDir / "aietools";
   Path chessccPath = aieToolsPath / "tps" / "lnx64" /
@@ -637,9 +616,9 @@ LogicalResult runTool(
 }
 
 static LogicalResult assembleFileUsingPeano(
-    const std::string &inputFile, const std::string &outputFile,
-    const std::vector<std::string> &extraArgs, Path &_tempDir, Path &peanoDir,
-    const std::string &npuVersion, bool verbose) {
+    const Path &inputFile, const Path &outputFile,
+    const std::vector<std::string> &extraArgs, const Path &_tempDir,
+    const Path &peanoDir, const std::string &npuVersion, bool verbose) {
   std::vector<std::string> args;
   args.reserve(args.size() + std::distance(extraArgs.begin(), extraArgs.end()));
   args.insert(args.end(), extraArgs.begin(), extraArgs.end());
@@ -652,18 +631,21 @@ static LogicalResult assembleFileUsingPeano(
   args.emplace_back(inputFile);
   args.emplace_back("-o");
   args.emplace_back(outputFile);
+  // TODO(newling) for emitting LLVM IR.
+  // args.emplace_back("-emit-llvm");
+  // args.emplace_back("-S");
   if (verbose) args.emplace_back("-v");
   if (failed(runTool((peanoDir / "bin" / "clang").string(), args, verbose))) {
-    llvm::errs() << "Failed to assemble " << outputFile << ".o with peano";
+    llvm::errs() << "Failed to assemble " << outputFile << " with peano\n";
     return failure();
   }
   return success();
 }
 
-LogicalResult assembleFileUsingChess(const std::string &inputFile,
-                                     const std::string &outputFile,
+LogicalResult assembleFileUsingChess(const Path &inputFile,
+                                     const Path &outputFile,
                                      const std::vector<std::string> &extraArgs,
-                                     Path &tempDir, Path &vitisDir,
+                                     const Path &tempDir, const Path &vitisDir,
                                      const std::string &npuVersion,
                                      bool verbose) {
   auto [xChessCCExe, args] =
@@ -675,45 +657,26 @@ LogicalResult assembleFileUsingChess(const std::string &inputFile,
   args.emplace_back("-o");
   args.emplace_back(outputFile);
   std::vector<std::string> env = makeChessEnv(vitisDir, npuVersion);
-  return runTool(xChessCCExe, args, verbose, env);
+  if (failed(runTool(xChessCCExe, args, verbose, env))) {
+    llvm::errs() << "Failed to assemble " << outputFile << " with chess\n";
+    return failure();
+  }
+  return success();
 }
 
 using FileAssemblerT = std::function<decltype(assembleFileUsingChess)>;
 
 FailureOr<Path> assembleStringUsing(
-    const FileAssemblerT &assembler, const std::string &inputFileStr,
-    const std::string &inputFileName, const std::string &outputFileName,
-    Path &outputDir, const std::vector<std::string> &extraArgs, Path &workDir,
-    Path &toolDir, const std::string &npuVersion, bool verbose = false) {
-  Path inputFile = workDir / inputFileName;
-  if (auto maybeErr = dumpStrToDisk(inputFileStr, inputFile.string());
-      maybeErr.has_value()) {
-    llvm::errs() << "Failed to dump to disk " << inputFile.string()
-                 << " because: " << maybeErr;
-    return failure();
-  }
-
-  Path outputFile;
-  if (!sys::path::is_absolute(outputFileName)) {
-    outputFile = Path(outputDir) / outputFileName;
-  } else {
-    outputFile = outputFileName;
-  }
+    const FileAssemblerT &assembler, const Path &inputFile,
+    const Path &outputFile, const std::vector<std::string> &extraArgs,
+    Path &workDir, Path &toolDir, const std::string &npuVersion, bool verbose) {
   if (failed(assembler(inputFile.string(), outputFile.string(), extraArgs,
                        workDir, toolDir, npuVersion, verbose))) {
-    llvm::errs() << "Failed to assemble " << outputFileName << ".o";
+    llvm::errs() << "Failed to assemble " << outputFile << "\n";
     return failure();
   }
   return outputFile;
 }
-
-static auto assembleStringUsingChess =
-    std::bind(assembleStringUsing, assembleFileUsingChess, _1, _2, _3, _4, _5,
-              _6, _7, _8, _9);
-
-static auto assembleStringUsingPeano =
-    std::bind(assembleStringUsing, assembleFileUsingPeano, _1, _2, _3, _4, _5,
-              _6, _7, _8, _9);
 
 // Generate the elf files for the core
 LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
@@ -726,21 +689,37 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
   auto tileOps = deviceOp.getOps<AIE::TileOp>();
   std::string errorMessage;
 
-  std::string ukernelFileContent;
-  std::string ukernelFileName;
-  std::string ukernelObjectName;
+  std::string base = "mm_";
   if (npuVersion == "npu1") {
-    ukernelFileContent = _MM_NPU1_CC;
-    ukernelFileName = "mm_npu1.cc";
-    ukernelObjectName = "mm_npu1.o";
+    base += "npu1_";
   } else if (npuVersion == "npu4") {
-    ukernelFileContent = useChessForUKernel ? _MM_NPU4_CC : _MM_NPU4_PEANO_CC;
-    ukernelFileName = "mm_npu4.cc";
-    ukernelObjectName = "mm_npu4.o";
+    base += "npu4_";
   } else {
     llvm::errs() << "unsupported NPU version: " << npuVersion;
     return failure();
   }
+  if (useChessForUKernel) {
+    base += "chess";
+  } else {
+    base += "peano";
+  }
+  if (base == "mm_npu1_peano") {
+    llvm::errs() << "npu1 ukernel with peano not supported yet";
+    return failure();
+  }
+
+  // The .cc file containing the micro-kernel, in the source tree.
+  Path fileDirectory = Path(__FILE__).parent_path();
+  Path ukernelSourceFilename = fileDirectory / (base + ".cc");
+
+  // The path to the object file for the micro-kernel, in the working directory.
+  Path currentDirectory = std::filesystem::current_path();
+  Path ukernelObjectFilename = currentDirectory / (base + ".o");
+
+  Path chessIntrinsicSourceFilename =
+      fileDirectory / "chess_intrinsic_wrapper.cpp";
+  Path chessIntrinsicObjectFilename =
+      currentDirectory / "chess_intrinsic_wrapper.o";
 
   SmallVector<AIE::CoreOp> coreOps;
   for (AIE::TileOp tileOp : tileOps) {
@@ -776,10 +755,9 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
 
     Path elfFile = tempDir / elfFileName;
 
-    Path cwd = std::filesystem::current_path();
     FailureOr<Path> mmObjectFilePath;
     if (ukernel && (ukernel == "mm" || ukernel == "all")) {
-      if (!std::filesystem::exists(cwd / ukernelObjectName)) {
+      if (!std::filesystem::exists(ukernelObjectFilename)) {
         if (useChessForUKernel) {
           FailureOr<Path> maybeVitisDir = findVitis(vitisDir, npuVersion);
           if (failed(maybeVitisDir)) {
@@ -787,11 +765,10 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
                             "be found";
             return failure();
           }
-          mmObjectFilePath = assembleStringUsingChess(
-              /*inputFileStr=*/ukernelFileContent,
-              /*inputFileName=*/ukernelFileName,
-              /*outputFileName=*/ukernelObjectName,
-              /*outputDir=*/cwd,
+          mmObjectFilePath = assembleStringUsing(
+              assembleFileUsingChess,
+              /*inputFileName=*/ukernelSourceFilename,
+              /*outputFileName=*/ukernelObjectFilename,
               /*extraArgs=*/std::vector<std::string>{},
               /*workDir=*/tempDir,
               /*vitisDir=*/*maybeVitisDir,
@@ -800,11 +777,10 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
           std::string targetLower = StringRef(targetArch).lower();
           std::vector<std::string> extraArgs{"--target=" + targetLower +
                                              "-none-unknown-elf"};
-          mmObjectFilePath = assembleStringUsingPeano(
-              /*inputFileStr=*/ukernelFileContent,
-              /*inputFileName=*/ukernelFileName,
-              /*outputFileName=*/ukernelObjectName,
-              /*outputDir=*/cwd,
+          mmObjectFilePath = assembleStringUsing(
+              assembleFileUsingPeano,
+              /*inputFileName=*/ukernelSourceFilename,
+              /*outputFileName=*/ukernelObjectFilename,
               /*extraArgs=*/extraArgs,
               /*workDir=*/tempDir,
               /*vitisDir=*/peanoDir,
@@ -812,7 +788,7 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
         }
         if (failed(mmObjectFilePath)) return failure();
       } else {
-        mmObjectFilePath = cwd / ukernelObjectName;
+        mmObjectFilePath = ukernelObjectFilename;
       }
     }
 
@@ -820,19 +796,18 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
       FailureOr<Path> maybeVitisDir = findVitis(vitisDir, npuVersion);
       if (failed(maybeVitisDir)) return failure();
       FailureOr<Path> chessIntrinsicsObjFile;
-      if (!std::filesystem::exists(cwd / "chess_intrinsic_wrapper.o")) {
-        chessIntrinsicsObjFile = assembleStringUsingChess(
-            /*inputFileStr=*/_CHESS_INTRINSIC_WRAPPER_CPP,
-            /*inputFileName=*/"chess_intrinsic_wrapper.cpp",
-            /*outputFileName=*/"chess_intrinsic_wrapper.o",
-            /*outputDir=*/tempDir,
+      if (!std::filesystem::exists(chessIntrinsicObjectFilename)) {
+        chessIntrinsicsObjFile = assembleStringUsing(
+            assembleFileUsingChess,
+            /*inputFileName=*/chessIntrinsicSourceFilename,
+            /*outputFileName=*/chessIntrinsicObjectFilename,
             /*extraArgs*/ std::vector<std::string>{},
             /*workDir=*/tempDir,
             /*vitisDir=*/*maybeVitisDir,
             /*npuVersion*/ npuVersion, verboseForThisIteration);
         if (failed(chessIntrinsicsObjFile)) return failure();
       } else {
-        chessIntrinsicsObjFile = cwd / "chess_intrinsic_wrapper.o";
+        chessIntrinsicsObjFile = currentDirectory / "chess_intrinsic_wrapper.o";
       }
 
       // Use xbridge (to remove any peano dependency with use-chess option)
@@ -897,11 +872,11 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
       flags.emplace_back("-Wl,--gc-sections");
 
       // Decision to use 'warn' for orphan sections: currently if the preceding
-      // call to llc has the flag --stack-size-section, an orphan section
-      // is created containing the stack sizes. The linker needs to know how to
+      // call to llc has the flag --stack-size-section, an orphan section is
+      // created containing the stack sizes. The linker needs to know how to
       // handle this: options are 'place' or 'warn' or 'error'. 'place' would
-      // result in larger binaries. The flag '--exclude-secion' should work
-      // but doesn't appear to supported with peano.
+      // result in larger binaries. The flag '--exclude-secion' should work but
+      // doesn't appear to supported with peano.
       flags.emplace_back("-Wl,--orphan-handling=warn");
       flags.emplace_back("-Wl,-T," + ldscriptPath.string());
       flags.emplace_back("-o");
@@ -1324,21 +1299,26 @@ LogicalResult generateUnifiedObject(
     return failure();
   }
 
-  std::string inputLLStr;
+  Path inputLLVMIRFilename = tempDir / "input.ll";
   {
+    std::string inputLLStr;
     llvm::raw_string_ostream rso(inputLLStr);
     llvmModule->print(rso, nullptr);
+    // write input.ll to the temp directory:
+    if (auto maybeErr = dumpStrToDisk(inputLLStr, inputLLVMIRFilename.string());
+        maybeErr.has_value()) {
+      llvm::errs() << "Failed to dump input.ll to disk because: " << maybeErr
+                   << ".\n";
+      return failure();
+    }
   }
 
   std::string errorMessage;
   if (useChess) {
     FailureOr<Path> maybeVitisDir = findVitis(vitisDir, npuVersion);
     if (failed(maybeVitisDir)) return failure();
-    FailureOr<Path> chessIntrinsicsObjFile = assembleStringUsingChess(
-        /*inputFileStr=*/inputLLStr,
-        /*inputFileName=*/"input.ll",
-        /*outputFileName=*/outputFile,
-        /*outputDir=*/tempDir,
+    FailureOr<Path> chessIntrinsicsObjFile = assembleStringUsing(
+        assembleFileUsingChess, inputLLVMIRFilename, outputFile,
         /*extraArgs*/ std::vector<std::string>{},
         /*workDir=*/tempDir,
         /*vitisDir=*/*maybeVitisDir,
@@ -1348,13 +1328,6 @@ LogicalResult generateUnifiedObject(
       return failure();
     }
   } else {
-    std::string LLVMIRFile = (tempDir / "input.ll").string();
-    if (auto maybeErr = dumpStrToDisk(inputLLStr, LLVMIRFile);
-        maybeErr.has_value()) {
-      llvm::errs() << "Failed to dump to disk input.ll"
-                   << " because: " << maybeErr;
-      return failure();
-    }
     Path peanoOptBin = peanoDir / "bin" / "opt";
     Path peanoLLCBin = peanoDir / "bin" / "llc";
     Path peanoReadElfBin = peanoDir / "bin" / "llvm-readelf";
@@ -1379,7 +1352,7 @@ LogicalResult generateUnifiedObject(
     std::vector<std::string> peanoArgs = maybePeanoArgs.value();
     // Source file, IR to optimize
     peanoArgs.emplace_back("-S");
-    peanoArgs.emplace_back(LLVMIRFile);
+    peanoArgs.emplace_back(inputLLVMIRFilename.string());
     // Output file, optimized IR
     peanoArgs.emplace_back("-o");
     peanoArgs.emplace_back(OptLLVMIRFile);
