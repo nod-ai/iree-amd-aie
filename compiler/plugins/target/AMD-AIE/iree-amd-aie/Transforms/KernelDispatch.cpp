@@ -271,8 +271,8 @@ FailureOr<ParameterSetting> ParameterSetting::create(
   // Develop a better way to select tile sizes to make the most use of
   // memory while taking all factors (double buffer, elementwise memory usage,
   // lhs/rhs element type, etc) into account.
-  uint32_t maxL1SizeM = 16 * scaleFactor;
-  uint32_t maxL1SizeN = 16 * scaleFactor;
+  uint32_t maxL1SizeM = 32 * scaleFactor;
+  uint32_t maxL1SizeN = 32 * scaleFactor;
   uint32_t M1 = findLargestFactor(M / m1Pack, maxL1SizeM / m1Pack, m1Pack);
   uint32_t N1 = findLargestFactor(N / n1Pack, maxL1SizeN / n1Pack, n1Pack);
 
@@ -285,7 +285,7 @@ FailureOr<ParameterSetting> ParameterSetting::create(
   // so set K1 = 0. The packed outer K dimension needs to be 1, so set K0 = 1.
   uint32_t K1 = 0;
   uint32_t K0 = 1;
-  uint32_t maxL1SizeK = 16 * scaleFactor;
+  uint32_t maxL1SizeK = 32 * scaleFactor;
   uint32_t k0Pack = findLargestFactor(K, kPackScaleL1 * maxL1SizeK);
 
   // Instead of directly packing to (1, 1, M0, N0), the new strategy is making
@@ -389,7 +389,7 @@ static LogicalResult setRootConfigForPackPeel4LevelTilingPipeline(
     return linalgOp.emitOpError("failed to fetch m/n/k dims.");
   }
 
-  AMDAIEDeviceModel deviceModel = getDeviceModel(targetDevice);
+  //AMDAIEDeviceModel deviceModel = getDeviceModel(targetDevice);
 
   // ------------------------------------------------------
   // --------------- Set packing config -------------------
@@ -483,16 +483,17 @@ static LogicalResult setRootConfigForPackPeel4LevelTilingPipeline(
   // ------------------------------------------------------
   // Check if we can scale L2 size of A and B with a factor of 2. TODO(jornt):
   // generalize to find largest scaling factor possible.
-  int64_t l2SizeA =
-      2 * packPeelTiling.M0 * packPeelTiling.K * packPeelTiling.nBitsLhs / 8;
-  int64_t l2SizeB =
-      2 * packPeelTiling.N0 * packPeelTiling.K * packPeelTiling.nBitsRhs / 8;
-  int64_t l2SizeInit =
-      4 * packPeelTiling.M0 * packPeelTiling.N0 * packPeelTiling.nBitsInit / 8;
+//  int64_t l2SizeA =
+//      2 * packPeelTiling.M0 * packPeelTiling.K * packPeelTiling.nBitsLhs / 8;
+//  int64_t l2SizeB =
+//      2 * packPeelTiling.N0 * packPeelTiling.K * packPeelTiling.nBitsRhs / 8;
+//  int64_t l2SizeInit =
+//      4 * packPeelTiling.M0 * packPeelTiling.N0 * packPeelTiling.nBitsInit / 8;
 
-  bool fitsInL2 = (l2SizeA + l2SizeB + l2SizeInit) <
-                  (deviceModel.getMemTileSizeInBytes() * numCols);
-  int64_t scaleL0 = !isBatchMatmul && fitsInL2 ? 2 : 1;
+//  bool fitsInL2 = (l2SizeA + l2SizeB + l2SizeInit) <
+//                  (deviceModel.getMemTileSizeInBytes() * numCols);
+  //int64_t scaleL0 = !isBatchMatmul && fitsInL2 ? 2 : 1;
+  int64_t scaleL0 = 2;
   int64_t m0Tile = packPeelTiling.M0 * scaleL0;
   int64_t n0Tile = packPeelTiling.N0 * scaleL0;
 
