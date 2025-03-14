@@ -30,7 +30,7 @@ iree_lit_test_suite(
     "controlcode_lowering.mlir"
     "controlcode_lowering_ctrlpkt.mlir"
     "controlcode_to_transaction.mlir"
-    "control_packet_to_half_dma_cpy_nd.mlir"
+    "control_packet_to_npu_dma.mlir"
     "convert_core_forall_to_for.mlir"
     "convert_device_to_control_packets.mlir"
     "create_aie_workgroup.mlir"

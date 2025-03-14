@@ -67,7 +67,7 @@ struct ControlPacketDmaBuilder {
     if (res.wasInterrupted()) return failure();
 
     std::vector<AMDAIE::NpuControlPacketOp> ctrlPktOps;
-    // Convert `NpuControlPacketOp` to `NpuHalfDmaCpyNdOp` + `NpuDmaWaitOp`.
+    // Convert `NpuControlPacketOp` to `NpuDmaCpyNdOp` + `NpuDmaWaitOp`.
     res = workgroupOp->walk([&](AMDAIE::NpuControlPacketOp ctrlPktOp) {
       ctrlPktOps.push_back(ctrlPktOp);
       // Get `ConnectionOp` for the `CTRL` port.
@@ -83,21 +83,17 @@ struct ControlPacketDmaBuilder {
       }
       AMDAIE::ConnectionOp connectionOp = tileLocToCtrlConnect[{col, row}];
 
-      // Get `sourceChannelOp`.
-      if (connectionOp.getSourceChannels().size() != 1) {
-        connectionOp.emitOpError() << "expected a single source channel";
-        return WalkResult::interrupt();
-      }
-      auto sourceChannelOp = dyn_cast<AMDAIE::ChannelOp>(
-          connectionOp.getSourceChannels()[0].getDefiningOp());
-
-      // Get `offsets`, `sizes`, and `strides`.
+      // Get the source offsets, sizes, and strides.
       uint32_t dataLength = ctrlPktOp.getLength();
       int64_t headerAndDataLength = dataLength + 1;
-      SmallVector<int64_t> offsets{0, 0, 0,
-                                   static_cast<long>(ctrlPktSequence.size())};
-      SmallVector<int64_t> sizes{1, 1, 1, headerAndDataLength};
-      SmallVector<int64_t> strides{0, 0, 0, 1};
+      SmallVector<int64_t> dmaSourceOffsets{
+          0, 0, 0, static_cast<long>(ctrlPktSequence.size())};
+      SmallVector<int64_t> dmaSourceSizes{1, 1, 1, headerAndDataLength};
+      SmallVector<int64_t> dmaSourceStrides{0, 0, 0, 1};
+      // Target offsets, sizes, and strides are left empty.
+      SmallVector<int64_t> dmaTargetOffsets;
+      SmallVector<int64_t> dmaTargetSizes;
+      SmallVector<int64_t> dmaTargetStrides;
 
       // Store the control packet header.
       llvm::MutableArrayRef<uint32_t> words =
@@ -124,22 +120,15 @@ struct ControlPacketDmaBuilder {
       rewriter.setInsertionPoint(ctrlPktOp);
       // Create token.
       SmallVector<Type> resultTypes = {
-          rewriter.getType<AMDAIE::AsyncTokenType>()};
+          rewriter.getType<AMDAIE::AsyncSourceTokenType>()};
       TypeRange sourceResultTypes = TypeRange{resultTypes};
 
-      // Get `bdId`, use `0` for now.
-      // TODO (zhewen): let `AMDAIEAssignNpuDmaBdIdsPass` decide?
-      auto constant = rewriter.create<arith::ConstantOp>(
-          rewriter.getUnknownLoc(), rewriter.getIndexAttr(0));
-      auto bdIdOp = rewriter.create<AMDAIE::BdIdOp>(rewriter.getUnknownLoc(),
-                                                    sourceChannelOp.getTileOp(),
-                                                    constant.getResult());
-
-      // Create `NpuHalfDmaCpyNdOp` and `NpuDmaWaitOp`.
-      auto dmaOp = rewriter.create<AMDAIE::NpuHalfDmaCpyNdOp>(
-          rewriter.getUnknownLoc(), sourceResultTypes, connectionOp,
-          connectionOp.getSource(), offsets, sizes, strides, bdIdOp,
-          sourceChannelOp);
+      // Create `NpuDmaCpyNdOp` and `NpuDmaWaitOp`.
+      auto dmaOp = rewriter.create<AMDAIE::NpuDmaCpyNdOp>(
+          rewriter.getUnknownLoc(), sourceResultTypes, connectionOp, nullptr,
+          dmaTargetOffsets, dmaTargetSizes, dmaTargetStrides,
+          /*target_bd_id=*/nullptr, connectionOp.getSource(), dmaSourceOffsets,
+          dmaSourceSizes, dmaSourceStrides, /*source_bd_id=*/nullptr);
       rewriter.create<AMDAIE::NpuDmaWaitOp>(rewriter.getUnknownLoc(),
                                             dmaOp.getResult(0));
 
@@ -163,13 +152,13 @@ struct ControlPacketDmaBuilder {
   }
 };
 
-class AMDAIEControlPacketToHalfDmaCpyNdPass
-    : public impl::AMDAIEControlPacketToHalfDmaCpyNdBase<
-          AMDAIEControlPacketToHalfDmaCpyNdPass> {
+class AMDAIEControlPacketToNpuDmaPass
+    : public impl::AMDAIEControlPacketToNpuDmaBase<
+          AMDAIEControlPacketToNpuDmaPass> {
  public:
-  AMDAIEControlPacketToHalfDmaCpyNdPass(
-      const AMDAIEControlPacketToHalfDmaCpyNdOptions &options)
-      : AMDAIEControlPacketToHalfDmaCpyNdBase(options) {}
+  AMDAIEControlPacketToNpuDmaPass(
+      const AMDAIEControlPacketToNpuDmaOptions &options)
+      : AMDAIEControlPacketToNpuDmaBase(options) {}
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<AMDAIEDialect>();
   }
@@ -177,7 +166,7 @@ class AMDAIEControlPacketToHalfDmaCpyNdPass
   void runOnOperation() override;
 };
 
-void AMDAIEControlPacketToHalfDmaCpyNdPass::runOnOperation() {
+void AMDAIEControlPacketToNpuDmaPass::runOnOperation() {
   Operation *parentOp = getOperation();
   IRRewriter rewriter(parentOp->getContext());
 
@@ -208,9 +197,9 @@ void AMDAIEControlPacketToHalfDmaCpyNdPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<Pass> createAMDAIEControlPacketToHalfDmaCpyNdPass(
-    AMDAIEControlPacketToHalfDmaCpyNdOptions options) {
-  return std::make_unique<AMDAIEControlPacketToHalfDmaCpyNdPass>(options);
+std::unique_ptr<Pass> createAMDAIEControlPacketToNpuDmaPass(
+    AMDAIEControlPacketToNpuDmaOptions options) {
+  return std::make_unique<AMDAIEControlPacketToNpuDmaPass>(options);
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE
