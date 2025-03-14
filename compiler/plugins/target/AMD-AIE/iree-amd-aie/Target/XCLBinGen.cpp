@@ -755,6 +755,25 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
       Path ukernelObjectFilename = currentDirectory / (filenamePrefix + ".o");
 
       if (!std::filesystem::exists(ukernelObjectFilename)) {
+        // Check that the ukernelSourceFilename exists:
+        if (!std::filesystem::exists(ukernelSourceFilename)) {
+          llvm::errs() << "Ukernel source file " << ukernelSourceFilename
+                       << " does not exist. \n";
+          // Print all the files in fileDirectory:
+          llvm::errs() << "Files in " << fileDirectory << ":\n";
+          for (const auto &entry :
+               std::filesystem::directory_iterator(fileDirectory)) {
+            llvm::errs() << entry.path() << "\n";
+          }
+          // Print all the files in currentDirectory:
+          llvm::errs() << "Files in " << currentDirectory << ":\n";
+          for (const auto &entry :
+               std::filesystem::directory_iterator(currentDirectory)) {
+            llvm::errs() << entry.path() << "\n";
+          }
+          return failure();
+        }
+
         if (useChessForUKernel) {
           FailureOr<Path> maybeVitisDir = findVitis(vitisDir, npuVersion);
           if (failed(maybeVitisDir)) {
