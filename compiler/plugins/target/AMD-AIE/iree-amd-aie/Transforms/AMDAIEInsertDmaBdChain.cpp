@@ -127,8 +127,21 @@ LogicalResult insertDmaBdChain(const AMDAIE::AMDAIEDeviceModel &deviceModel,
   res = controlCodeOp->walk<WalkOrder::PostOrder,
                             ReverseIterator>([&](Operation *op) {
     if (auto npuHalfDmaCpyNdOp = dyn_cast<AMDAIE::NpuHalfDmaCpyNdOp>(op)) {
-      // Not shim, will be erased at ControlcodeLowering, ignore.
-      if (npuHalfDmaCpyNdOp.getMemorySpaceAsUInt() != 0) {
+      // Get the channel op.
+      std::optional<AMDAIE::ChannelOp> maybeChannelOp =
+          npuHalfDmaCpyNdOp.getChannelOp();
+      if (!maybeChannelOp) {
+        npuHalfDmaCpyNdOp.emitOpError() << "found non-`amdaie.channel` channel";
+        return WalkResult::interrupt();
+      }
+
+      // If the half DMA op does not have its input originating from the shim,
+      // it will be erased later in the `ControlcodeLowering` pass, so we can
+      // ignore it. To determine this, we must check both the memory space and
+      // port type, as certain special ports (e.g., `CTRL`) have an undefined
+      // memory space (currently set to 0), and we still want to exclude them.
+      if (npuHalfDmaCpyNdOp.getMemorySpaceAsUInt() != 0 ||
+          maybeChannelOp->getPortType() != StrmSwPortType::DMA) {
         return WalkResult::advance();
       }
 

@@ -223,8 +223,15 @@ struct HalfDmaCpyNdToNpuConverter final
       }
       packetId = maybePacketId.value();
     }
-    // Only support Shim for now.
-    if (op.getMemorySpaceAsUInt() != 0) {
+    std::optional<AMDAIE::ChannelOp> maybeChannelOp = op.getChannelOp();
+    if (!maybeChannelOp)
+      return op.emitOpError() << "found non-`amdaie.channel` channel";
+    // Lower only the half DMA op if its input originates from the shim;
+    // otherwise, erase it. We must check both the memory space and port type,
+    // as certain special ports (e.g., `CTRL`) have an undefined memory space
+    // (currently set to 0), and we still want to exclude them.
+    if (op.getMemorySpaceAsUInt() != 0 ||
+        maybeChannelOp->getPortType() != StrmSwPortType::DMA) {
       rewriter.eraseOp(op);
       return success();
     }
@@ -233,9 +240,6 @@ struct HalfDmaCpyNdToNpuConverter final
       return op.emitOpError() << "must have a BD ID op to lower to "
                                  "`amdaie.npu.write_bd`";
     }
-    std::optional<AMDAIE::ChannelOp> maybeChannelOp = op.getChannelOp();
-    if (!maybeChannelOp)
-      return op.emitOpError() << "found non-`amdaie.channel` channel";
     std::optional<int64_t> maybeSize = op.getAccessStaticSize();
     if (!maybeSize)
       return op.emitOpError() << "could not compute a static size";

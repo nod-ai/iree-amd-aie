@@ -1,4 +1,4 @@
-// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-control-packet-to-half-dma-cpy-nd{dump-sequence=true})" --split-input-file --verify-diagnostics %s | FileCheck %s
+// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-control-packet-to-npu-dma{dump-sequence=true})" --split-input-file --verify-diagnostics %s | FileCheck %s
 
 // expected-error @+1 {{op has no AMDAIEDevice in the target attribute configuration}}
 module {
@@ -46,10 +46,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:         %[[PLACE_HOLDER_0:.*]] = amdaie.logicalobjectfifo.placeholder{%[[TILE_0_2]]} : !amdaie.logicalobjectfifo<memref<?xi32>>
 // CHECK:         %[[CONNECTION:.*]] = amdaie.connection(%[[PLACE_HOLDER_0]] {%[[CHANNEL_0]]}, %[[PLACE_HOLDER]] {%[[CHANNEL]]}) {connection_type = #amdaie<connection_type Packet>} : (!amdaie.logicalobjectfifo<memref<?xi32>>, !amdaie.logicalobjectfifo<memref<?xi32>>)
 // CHECK:         amdaie.controlcode {
-// CHECK:           %[[C0_1:.*]] = arith.constant 0 : index
-// CHECK:           %[[BD_ID:.*]] = amdaie.bd_id(%[[TILE_0_0]], %[[C0_1]])
-// CHECK:           %[[TOKEN:.*]] = amdaie.npu.half_dma_cpy_nd async %[[CONNECTION]](%[[PLACE_HOLDER]] [0, 0, 0, 0] [1, 1, 1, 2] [0, 0, 0, 1] bd_id = %[[BD_ID]] channel = %[[CHANNEL]]) : !amdaie.logicalobjectfifo<memref<?xi32>>
-// CHECK:           amdaie.npu.dma_wait(%[[TOKEN]] : !amdaie.async_token)
+// CHECK:           %[[TOKEN:.*]] = amdaie.npu.dma_cpy_nd async_source %[[CONNECTION]]([] [] [], %[[PLACE_HOLDER]][0, 0, 0, 0] [1, 1, 1, 2] [0, 0, 0, 1]) : source_type = !amdaie.logicalobjectfifo<memref<?xi32>>
+// CHECK:           amdaie.npu.dma_wait(%[[TOKEN]] : !amdaie.async_source_token)
 // CHECK:           amdaie.end
 // CHECK:         }
 // CHECK:       } {ctrlpkt_sequence = dense_resource<ctrlpkt_sequence> : tensor<2xui32>}
@@ -227,6 +225,6 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
   }
 }
 // CHECK-LABEL: @buffer_store_zero
-// CHECK-COUNT-21: amdaie.npu.half_dma_cpy_nd
-// CHECK-NOT:      amdaie.npu.half_dma_cpy_nd
+// CHECK-COUNT-21: amdaie.npu.dma_cpy_nd
+// CHECK-NOT:      amdaie.npu.dma_cpy_nd
 // CHECK:       {ctrlpkt_sequence = dense_resource<ctrlpkt_sequence> : tensor<69xui32>}

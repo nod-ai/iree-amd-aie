@@ -191,10 +191,10 @@ def AMDAIEControlCodeToTransaction :
   ];
 }
 
-def AMDAIEControlPacketToHalfDmaCpyNd :
-    Pass<"iree-amdaie-control-packet-to-half-dma-cpy-nd", ""> {
-  let summary = "Convert control packets to half DMA copy operations.";
-  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEControlPacketToHalfDmaCpyNdPass()";
+def AMDAIEControlPacketToNpuDma :
+    Pass<"iree-amdaie-control-packet-to-npu-dma", ""> {
+  let summary = "Convert control packets to DMA copy operations.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEControlPacketToNpuDmaPass()";
     let options = [
     Option<"dumpSequence", "dump-sequence", "bool", /*default=*/"false",
       "Dump the generated control packet sequence, including the header and data. (Used for tests)">
