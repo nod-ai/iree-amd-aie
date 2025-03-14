@@ -726,7 +726,7 @@ class MatmulConstBiasCtrlpkt(BaseMatmul):
                 self.n_repeats,
                 self.n_kernel_runs,
                 self.n_reconfigure_runs,
-                time_unit="ms",
+                time_unit="us",
             )
             return True
 
@@ -1241,13 +1241,23 @@ def benchmark_aie_kernel_time(
     """
     test_dir = config.get_test_dir(name)
     aie_bin = test_dir / f"{name}_aie.bin"
+
+    if n_kernel_runs > 0 and n_reconfigure_runs > 0:
+        raise ValueError(
+            "Cannot set both n_kernel_runs and n_reconfigure_runs simultaneously. "
+            "This will produce incorrect performance results. "
+            "To measure kernel execution time, set n_kernel_runs > 1 and n_reconfigure_runs == 0. "
+            "To measure reconfiguration time, set n_kernel_runs == 0 and n_reconfigure_runs > 0."
+        )
+    batch_size = max(n_kernel_runs, n_reconfigure_runs)
+
     run_args = [
         config.iree_benchmark_exe,
         f"--module={aie_vmfb}",
         *input_args,
         f"--device={config.device_hal}",
         f"--benchmark_repetitions={n_repeats}",
-        f"--batch_size={max(n_kernel_runs, n_reconfigure_runs)}",
+        f"--batch_size={batch_size}",
         f"--xrt_lite_n_kernel_runs={n_kernel_runs}",
         f"--xrt_lite_n_reconfigure_runs={n_reconfigure_runs}",
         f"--time_unit={time_unit}",
@@ -2232,8 +2242,8 @@ class Tests:
                 8,
                 "i8",
                 "i32",
-                1,
-                2,
+                constant_bias_C=1,
+                constant_bias_D=2,
                 test_params=TestParams(
                     aie_compilation_flags=[
                         "--iree-amdaie-num-rows=1",
@@ -2244,7 +2254,11 @@ class Tests:
             )
         )
         # Test on the phoenix 4x4 array.
-        self.register(MatmulConstBiasCtrlpkt(1024, 1024, 1024, "i8", "i32", 1, 2))
+        self.register(
+            MatmulConstBiasCtrlpkt(
+                1024, 1024, 1024, "i8", "i32", constant_bias_C=1, constant_bias_D=2
+            )
+        )
         # Benchmark reconfiguration time only, do not run the kernel.
         self.register(
             MatmulConstBiasCtrlpkt(
@@ -2253,8 +2267,8 @@ class Tests:
                 1024,
                 "i8",
                 "i32",
-                1,
-                2,
+                constant_bias_C=1,
+                constant_bias_D=2,
                 test_params=TestParams(run_benchmark=True, n_repeats=2),
                 additional_labels=["Performance"],
                 n_kernel_runs=0,
