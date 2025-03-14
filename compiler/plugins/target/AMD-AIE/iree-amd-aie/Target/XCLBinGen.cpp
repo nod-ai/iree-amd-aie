@@ -689,37 +689,8 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
   auto tileOps = deviceOp.getOps<AIE::TileOp>();
   std::string errorMessage;
 
-  std::string base = "mm_";
-  if (npuVersion == "npu1") {
-    base += "npu1_";
-  } else if (npuVersion == "npu4") {
-    base += "npu4_";
-  } else {
-    llvm::errs() << "unsupported NPU version: " << npuVersion;
-    return failure();
-  }
-  if (useChessForUKernel) {
-    base += "chess";
-  } else {
-    base += "peano";
-  }
-  if (base == "mm_npu1_peano") {
-    llvm::errs() << "npu1 ukernel with peano not supported yet";
-    return failure();
-  }
-
-  // The .cc file containing the micro-kernel, in the source tree.
   Path fileDirectory = Path(__FILE__).parent_path();
-  Path ukernelSourceFilename = fileDirectory / (base + ".cc");
-
-  // The path to the object file for the micro-kernel, in the working directory.
   Path currentDirectory = std::filesystem::current_path();
-  Path ukernelObjectFilename = currentDirectory / (base + ".o");
-
-  Path chessIntrinsicSourceFilename =
-      fileDirectory / "chess_intrinsic_wrapper.cpp";
-  Path chessIntrinsicObjectFilename =
-      currentDirectory / "chess_intrinsic_wrapper.o";
 
   SmallVector<AIE::CoreOp> coreOps;
   for (AIE::TileOp tileOp : tileOps) {
@@ -757,6 +728,32 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
 
     FailureOr<Path> mmObjectFilePath;
     if (ukernel && (ukernel == "mm" || ukernel == "all")) {
+      std::string filenamePrefix = "mm_";
+      if (npuVersion == "npu1") {
+        filenamePrefix += "npu1_";
+      } else if (npuVersion == "npu4") {
+        filenamePrefix += "npu4_";
+      } else {
+        llvm::errs() << "unsupported NPU version: " << npuVersion;
+        return failure();
+      }
+      if (useChessForUKernel) {
+        filenamePrefix += "chess";
+      } else {
+        filenamePrefix += "peano";
+      }
+      if (filenamePrefix == "mm_npu1_peano") {
+        llvm::errs() << "npu1 ukernel with peano not supported yet";
+        return failure();
+      }
+
+      // The .cc file containing the micro-kernel, in the source tree.
+      Path ukernelSourceFilename = fileDirectory / (filenamePrefix + ".cc");
+
+      // The path to the object file for the micro-kernel, in the working
+      // directory.
+      Path ukernelObjectFilename = currentDirectory / (filenamePrefix + ".o");
+
       if (!std::filesystem::exists(ukernelObjectFilename)) {
         if (useChessForUKernel) {
           FailureOr<Path> maybeVitisDir = findVitis(vitisDir, npuVersion);
@@ -793,6 +790,10 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
     }
 
     if (useChess) {
+      Path chessIntrinsicSourceFilename =
+          fileDirectory / "chess_intrinsic_wrapper.cpp";
+      Path chessIntrinsicObjectFilename =
+          currentDirectory / "chess_intrinsic_wrapper.o";
       FailureOr<Path> maybeVitisDir = findVitis(vitisDir, npuVersion);
       if (failed(maybeVitisDir)) return failure();
       FailureOr<Path> chessIntrinsicsObjFile;
@@ -807,7 +808,7 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
             /*npuVersion*/ npuVersion, verboseForThisIteration);
         if (failed(chessIntrinsicsObjFile)) return failure();
       } else {
-        chessIntrinsicsObjFile = currentDirectory / "chess_intrinsic_wrapper.o";
+        chessIntrinsicsObjFile = chessIntrinsicObjectFilename;
       }
 
       // Use xbridge (to remove any peano dependency with use-chess option)
