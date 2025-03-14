@@ -28,8 +28,19 @@ IREE_FLAG(int32_t, xrt_lite_n_kernel_runs, 1,
           "invocation through `iree-benchmark-module` (this still includes "
           "initialization overheads of the first run).");
 
+IREE_FLAG(
+    int32_t, xrt_lite_n_reconfigure_runs, 1,
+    "Number of reconfiguration invocations to be run per iteration. Can be "
+    "set together with `--batch_size=<xrt_lite_n_reconfigure_runs>` to get "
+    "semi-accurate reporting of average execution time per kernel "
+    "invocation through `iree-benchmark-module` (this still includes "
+    "initialization overheads of the first reconfiguration).");
+
 static const iree_string_view_t key_xrt_lite_n_kernel_runs =
     iree_string_view_literal("xrt_lite_n_kernel_runs");
+
+static const iree_string_view_t key_xrt_lite_n_reconfigure_runs =
+    iree_string_view_literal("xrt_lite_n_reconfigure_runs");
 
 static iree_status_t iree_hal_xrt_lite_executable_parse_flags(
     iree_string_pair_builder_t* builder) {
@@ -38,6 +49,10 @@ static iree_status_t iree_hal_xrt_lite_executable_parse_flags(
   IREE_RETURN_AND_END_ZONE_IF_ERROR(z0, iree_string_pair_builder_add_int32(
                                             builder, key_xrt_lite_n_kernel_runs,
                                             FLAG_xrt_lite_n_kernel_runs));
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(
+      z0, iree_string_pair_builder_add_int32(builder,
+                                             key_xrt_lite_n_reconfigure_runs,
+                                             FLAG_xrt_lite_n_reconfigure_runs));
 
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
@@ -45,7 +60,8 @@ static iree_status_t iree_hal_xrt_lite_executable_parse_flags(
 
 static iree_status_t iree_hal_xrt_lite_executable_populate_options(
     iree_allocator_t host_allocator, uint32_t& n_kernel_runs,
-    iree_host_size_t pairs_size, iree_string_pair_t* pairs) {
+    uint32_t& n_reconfigure_runs, iree_host_size_t pairs_size,
+    iree_string_pair_t* pairs) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
   for (iree_host_size_t i = 0; i < pairs_size; ++i) {
@@ -61,14 +77,32 @@ static iree_status_t iree_hal_xrt_lite_executable_populate_options(
             "Option 'xrt_lite_n_kernel_runs' expected to be int. Got: '%.*s'",
             (int)value.size, value.data);
       }
-      if (ivalue <= 0) {
+      if (ivalue < 0) {
         IREE_TRACE_ZONE_END(z0);
         return iree_make_status(
             IREE_STATUS_FAILED_PRECONDITION,
-            "Option 'xrt_lite_n_kernel_runs' expected to be > 0. Got: '%.*s'",
+            "Option 'xrt_lite_n_kernel_runs' expected to be >= 0. Got: '%.*s'",
             (int)value.size, value.data);
       }
       n_kernel_runs = ivalue;
+    } else if (iree_string_view_equal(key, key_xrt_lite_n_reconfigure_runs)) {
+      if (!iree_string_view_atoi_int32(value, &ivalue)) {
+        IREE_TRACE_ZONE_END(z0);
+        return iree_make_status(
+            IREE_STATUS_FAILED_PRECONDITION,
+            "Option 'xrt_lite_n_reconfigure_runs' expected to be int. Got: "
+            "'%.*s'",
+            (int)value.size, value.data);
+      }
+      if (ivalue < 0) {
+        IREE_TRACE_ZONE_END(z0);
+        return iree_make_status(
+            IREE_STATUS_FAILED_PRECONDITION,
+            "Option 'xrt_lite_n_reconfigure_runs' expected to be >= 0. Got: "
+            "'%.*s'",
+            (int)value.size, value.data);
+      }
+      n_reconfigure_runs = ivalue;
     } else {
       IREE_TRACE_ZONE_END(z0);
       return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
@@ -256,9 +290,10 @@ iree_status_t iree_hal_xrt_lite_native_executable_create(
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_hal_xrt_lite_executable_parse_flags(&flag_option_builder));
   uint32_t n_kernel_runs{1};
+  uint32_t n_reconfigure_runs{1};
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_hal_xrt_lite_executable_populate_options(
-              host_allocator, n_kernel_runs,
+              host_allocator, n_kernel_runs, n_reconfigure_runs,
               iree_string_pair_builder_size(&flag_option_builder),
               iree_string_pair_builder_pairs(&flag_option_builder)));
 
@@ -323,6 +358,7 @@ iree_status_t iree_hal_xrt_lite_native_executable_create(
     iree_hal_xrt_lite_kernel_params* params =
         &executable->entry_points[entry_ordinal];
     params->n_kernel_runs = n_kernel_runs;
+    params->n_reconfigure_runs = n_reconfigure_runs;
     params->kernel_name =
         flatbuffers_string_vec_at(entry_points_vec, entry_ordinal);
     uint32_t pdi_index =

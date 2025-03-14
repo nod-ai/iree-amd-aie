@@ -264,6 +264,7 @@ class BaseMatmul(BaseTest):
         self.input_type = input_type
         self.acc_type = acc_type
         self.n_kernel_runs = n_kernel_runs
+        self.n_reconfigure_runs = 0
 
         self.labels.append(self.tile_pipeline)
 
@@ -299,6 +300,7 @@ class BaseMatmul(BaseTest):
             function_name=self.function_name,
             n_repeats=self.n_repeats,
             n_kernel_runs=self.n_kernel_runs,
+            n_reconfigure_runs=self.n_reconfigure_runs,
         )
 
         return True
@@ -631,6 +633,7 @@ class MatmulConstBiasCtrlpkt(BaseMatmul):
         constant_bias_D,
         additional_labels=None,
         n_kernel_runs=1,
+        n_reconfigure_runs=1,
         test_params=None,
     ):
         super().__init__(
@@ -641,6 +644,7 @@ class MatmulConstBiasCtrlpkt(BaseMatmul):
             K=K,
             input_type=input_type,
             acc_type=acc_type,
+            function_name="matmul_constant_bias",
             n_kernel_runs=n_kernel_runs,
         )
         self.labels.append("MatmulConstBiasCtrlPacket")
@@ -660,6 +664,8 @@ class MatmulConstBiasCtrlpkt(BaseMatmul):
 
         self.constant_bias_C = constant_bias_C
         self.constant_bias_D = constant_bias_D
+
+        self.n_reconfigure_runs = n_reconfigure_runs
 
     def generate_vmfb_with_ctrlpkts(self, config, constant_bias, aie_ctrlpkt_flags=[]):
         # Make a copy of the original name, and append the bias value to differentiate test directories.
@@ -708,6 +714,22 @@ class MatmulConstBiasCtrlpkt(BaseMatmul):
         input_args = generate_inputs(
             test_file_D, config.get_test_dir(test_name_D), seed=1
         )
+
+        if self.run_benchmark:
+            print(f"Performance benchmark: {test_file_D}")
+            benchmark_aie_kernel_time(
+                config,
+                aie_vmfb_C,
+                input_args,
+                self.function_name,
+                test_name_C,
+                self.n_repeats,
+                self.n_kernel_runs,
+                self.n_reconfigure_runs,
+                time_unit="us",
+            )
+            return True
+
         output_type = get_output_type(test_file_D)
         cpu_output = generate_llvm_cpu_output(
             config,
@@ -1211,6 +1233,7 @@ def benchmark_aie_kernel_time(
     name,
     n_repeats,
     n_kernel_runs,
+    n_reconfigure_runs,
     time_unit,
 ):
     """
@@ -1218,14 +1241,25 @@ def benchmark_aie_kernel_time(
     """
     test_dir = config.get_test_dir(name)
     aie_bin = test_dir / f"{name}_aie.bin"
+
+    if n_kernel_runs > 0 and n_reconfigure_runs > 0:
+        raise ValueError(
+            "Cannot set both n_kernel_runs and n_reconfigure_runs simultaneously. "
+            "This will produce incorrect performance results. "
+            "To measure kernel execution time, set n_kernel_runs > 1 and n_reconfigure_runs == 0. "
+            "To measure reconfiguration time, set n_kernel_runs == 0 and n_reconfigure_runs > 0."
+        )
+    batch_size = max(n_kernel_runs, n_reconfigure_runs)
+
     run_args = [
         config.iree_benchmark_exe,
         f"--module={aie_vmfb}",
         *input_args,
         f"--device={config.device_hal}",
         f"--benchmark_repetitions={n_repeats}",
-        f"--batch_size={n_kernel_runs}",
+        f"--batch_size={batch_size}",
         f"--xrt_lite_n_kernel_runs={n_kernel_runs}",
+        f"--xrt_lite_n_reconfigure_runs={n_reconfigure_runs}",
         f"--time_unit={time_unit}",
     ]
     if function_name:
@@ -1595,6 +1629,7 @@ def benchmark_aie(
     function_name,
     n_repeats,
     n_kernel_runs,
+    n_reconfigure_runs,
     seed=1,
     time_unit="us",
 ):
@@ -1617,6 +1652,8 @@ def benchmark_aie(
         The number of repetitions to be used for getting statistics (mean, median, stddev)
     n_kernel_runs:
         The number of invocations of the kernel, for averaging.
+    n_reconfigure_runs:
+        The number of reconfiguration invocations, for averaging.
     function_name:
         The name of the function to run (the test file may contain multiple
         functions).
@@ -1663,6 +1700,7 @@ def benchmark_aie(
         name,
         n_repeats,
         n_kernel_runs,
+        n_reconfigure_runs,
         time_unit,
     )
 
@@ -2204,8 +2242,8 @@ class Tests:
                 8,
                 "i8",
                 "i32",
-                1,
-                2,
+                constant_bias_C=1,
+                constant_bias_D=2,
                 test_params=TestParams(
                     aie_compilation_flags=[
                         "--iree-amdaie-num-rows=1",
@@ -2216,7 +2254,27 @@ class Tests:
             )
         )
         # Test on the phoenix 4x4 array.
-        self.register(MatmulConstBiasCtrlpkt(1024, 1024, 1024, "i8", "i32", 1, 2))
+        self.register(
+            MatmulConstBiasCtrlpkt(
+                1024, 1024, 1024, "i8", "i32", constant_bias_C=1, constant_bias_D=2
+            )
+        )
+        # Benchmark reconfiguration time only, do not run the kernel.
+        self.register(
+            MatmulConstBiasCtrlpkt(
+                1024,
+                1024,
+                1024,
+                "i8",
+                "i32",
+                constant_bias_C=1,
+                constant_bias_D=2,
+                test_params=TestParams(run_benchmark=True, n_repeats=2),
+                additional_labels=["Performance"],
+                n_kernel_runs=0,
+                n_reconfigure_runs=50,
+            )
+        )
 
         performance_tests = []
 
