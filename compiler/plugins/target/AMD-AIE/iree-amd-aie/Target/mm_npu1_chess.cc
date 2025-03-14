@@ -4,10 +4,10 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-R"chess(
 #define NOCPP
 
 #include <stdint.h>
+
 #include <type_traits>
 
 #define REL_WRITE 0
@@ -267,10 +267,8 @@ template <typename T_in, typename T_out, unsigned rowA, unsigned colA,
 static inline void matmul_vectorized_4x2(const T_in *__restrict pA,
                                          unsigned offsetA,
                                          const T_in *__restrict pB,
-                                         unsigned offsetB,
-                                         T_out *__restrict pC,
+                                         unsigned offsetB, T_out *__restrict pC,
                                          unsigned offsetC) {
-
   using MMUL = aie::mmul<r, s, t, T_in, T_in, accauto>;
 
   event0();
@@ -278,22 +276,31 @@ static inline void matmul_vectorized_4x2(const T_in *__restrict pA,
   for (unsigned z = 0; z < rowA; z += 4)
     chess_prepare_for_pipelining chess_loop_range(4, ) {
       T_out *__restrict pC1 = pC + offsetC + (z * colB + 0) * MMUL::size_C;
-      T_out *__restrict pC2 = pC + offsetC + ((z + 1) * colB + 0) * MMUL::size_C;
-      T_out *__restrict pC3 = pC + offsetC + ((z + 2) * colB + 0) * MMUL::size_C;
-      T_out *__restrict pC4 = pC + offsetC + ((z + 3) * colB + 0) * MMUL::size_C;
+      T_out *__restrict pC2 =
+          pC + offsetC + ((z + 1) * colB + 0) * MMUL::size_C;
+      T_out *__restrict pC3 =
+          pC + offsetC + ((z + 2) * colB + 0) * MMUL::size_C;
+      T_out *__restrict pC4 =
+          pC + offsetC + ((z + 3) * colB + 0) * MMUL::size_C;
 
       for (unsigned j = 0; j < colB; j += 2)
 #ifdef OPT_PERF_ENABLED
         chess_flatten_loop
 #endif
         {
-          const T_in *__restrict pA1 = pA + offsetA + (z * colA + 0) * MMUL::size_A;
-          const T_in *__restrict pA2 = pA + offsetA + ((z + 1) * colA + 0) * MMUL::size_A;
-          const T_in *__restrict pA3 = pA + offsetA + ((z + 2) * colA + 0) * MMUL::size_A;
-          const T_in *__restrict pA4 = pA + offsetA + ((z + 3) * colA + 0) * MMUL::size_A;
+          const T_in *__restrict pA1 =
+              pA + offsetA + (z * colA + 0) * MMUL::size_A;
+          const T_in *__restrict pA2 =
+              pA + offsetA + ((z + 1) * colA + 0) * MMUL::size_A;
+          const T_in *__restrict pA3 =
+              pA + offsetA + ((z + 2) * colA + 0) * MMUL::size_A;
+          const T_in *__restrict pA4 =
+              pA + offsetA + ((z + 3) * colA + 0) * MMUL::size_A;
 
-          const T_in *__restrict pB1 = pB + offsetB + (0 * colB + j) * MMUL::size_B;
-          const T_in *__restrict pB2 = pB + offsetB + (0 * colB + (j + 1)) * MMUL::size_B;
+          const T_in *__restrict pB1 =
+              pB + offsetB + (0 * colB + j) * MMUL::size_B;
+          const T_in *__restrict pB2 =
+              pB + offsetB + (0 * colB + (j + 1)) * MMUL::size_B;
 
           aie::vector<T_in, MMUL::size_A> A01 = aie::load_v<MMUL::size_A>(pA1);
           pA1 += MMUL::size_A;
@@ -395,11 +402,11 @@ static inline void matmul_vectorized_4x2(const T_in *__restrict pA,
 
 template <unsigned m, unsigned k, unsigned n>
 void matmul_vectorized_4x8x4_bf16_bf16_bf16(const bfloat16 *__restrict pA,
-                                       unsigned offsetA,
-                                       const bfloat16 *__restrict pB,
-                                       unsigned offsetB,
-                                       bfloat16 *__restrict pC,
-                                       unsigned offsetC) {
+                                            unsigned offsetA,
+                                            const bfloat16 *__restrict pB,
+                                            unsigned offsetB,
+                                            bfloat16 *__restrict pC,
+                                            unsigned offsetC) {
   constexpr int r = 4;
   constexpr int s = 8;
   constexpr int t = 4;
@@ -412,10 +419,11 @@ void matmul_vectorized_4x8x4_bf16_bf16_bf16(const bfloat16 *__restrict pA,
 
 template <unsigned m, unsigned k, unsigned n>
 void matmul_vectorized_4x8x4_bf16_bf16_f32(const bfloat16 *__restrict pA,
-                                      unsigned offsetA,
-                                      const bfloat16 *__restrict pB,
-                                      unsigned offsetB, float *__restrict pC,
-                                      unsigned offsetC) {
+                                           unsigned offsetA,
+                                           const bfloat16 *__restrict pB,
+                                           unsigned offsetB,
+                                           float *__restrict pC,
+                                           unsigned offsetC) {
   constexpr int r = 4;
   constexpr int s = 8;
   constexpr int t = 4;
@@ -428,21 +436,23 @@ void matmul_vectorized_4x8x4_bf16_bf16_f32(const bfloat16 *__restrict pA,
 
 template <unsigned m, unsigned k, unsigned n>
 void matmul_vectorized_4x8x8_i8_i8_i32(const int8 *__restrict pA,
-                                      unsigned offsetA,
-                                      const int8 *__restrict pB,
-                                      unsigned offsetB, int32 *__restrict pC,
-                                      unsigned offsetC) {
+                                       unsigned offsetA,
+                                       const int8 *__restrict pB,
+                                       unsigned offsetB, int32 *__restrict pC,
+                                       unsigned offsetC) {
   constexpr int r = 4;
   constexpr int s = 8;
   constexpr int t = 8;
-  static_assert(m % (4 * r) == 0); // 'm' dimension
-  static_assert(k % s == 0);       // 'k' dimension
-  static_assert(n % (2 * t) == 0); // 'n' dimension
+  static_assert(m % (4 * r) == 0);  // 'm' dimension
+  static_assert(k % s == 0);        // 'k' dimension
+  static_assert(n % (2 * t) == 0);  // 'n' dimension
   return matmul_vectorized_4x2<int8, int32, m / r, k / s, n / t, r, s, t>(
       pA, offsetA, pB, offsetB, pC, offsetC);
 }
 
 extern "C" {
+
+// clang-format off
 
 #define matmul_combos(X, M, N, K)                                     \
   X(bfloat16, bf16, bfloat16, bf16, bfloat16, bf16, M, N, K, 4, 8, 4) \
@@ -486,5 +496,6 @@ zero_fill_combos(zero_vectorized_c_func, 16, 16)
 zero_fill_combos(zero_vectorized_c_func, 32, 32)
 zero_fill_combos(zero_vectorized_c_func, 64, 64)
 
+// clang-format on
+
 }  // extern "C"
-)chess"

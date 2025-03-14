@@ -4,9 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-R"peano(
-
-template<int M, int N, int r>
+template <int M, int N, int r>
 void trunci_vectorized(v32int32 *__restrict in, int64_t offsetIn, int64_t shift,
                        v32int8 *__restrict out, int64_t offsetOut) {
   for (unsigned i = 0; i < M * N / r; i++) {
@@ -14,18 +12,19 @@ void trunci_vectorized(v32int32 *__restrict in, int64_t offsetIn, int64_t shift,
   }
 }
 
-template<int M, int N, int r>
-void zero_vectorized(v16int32 *__restrict pC, unsigned offsetC)
-{
+template <int M, int N, int r>
+void zero_vectorized(v16int32 *__restrict pC, unsigned offsetC) {
   v16int32 zeros = broadcast_zero_to_v16int32();
   for (unsigned i = offsetC / r; i < offsetC / r + M * N / r; i++) {
     pC[i] = zeros;
   }
 }
 
-template<unsigned rowA, unsigned colA, unsigned colB, unsigned L0_M, unsigned L0_K, unsigned L0_N>
-void matmul_vectorized_i8_i32(const int8 * __restrict pA, unsigned offsetA, const int8 * __restrict pB, unsigned offsetB, int32 * __restrict pC, unsigned offsetC)
-{
+template <unsigned rowA, unsigned colA, unsigned colB, unsigned L0_M,
+          unsigned L0_K, unsigned L0_N>
+void matmul_vectorized_i8_i32(const int8 *__restrict pA, unsigned offsetA,
+                              const int8 *__restrict pB, unsigned offsetB,
+                              int32 *__restrict pC, unsigned offsetC) {
   const unsigned size_A = L0_M * L0_K;
   const unsigned size_B = L0_K * L0_N;
   const unsigned size_C = L0_M * L0_N;
@@ -45,10 +44,13 @@ void matmul_vectorized_i8_i32(const int8 * __restrict pA, unsigned offsetA, cons
 
     for (unsigned j = 0; j < colB; j += 2) {
       const v64int8 *__restrict pA0 = (v64int8 *)(pA + offsetA + (z)*size_A);
-      const v64int8 *__restrict pA1 = (v64int8 *)(pA + offsetA + ((z + 1)) * size_A);
+      const v64int8 *__restrict pA1 =
+          (v64int8 *)(pA + offsetA + ((z + 1)) * size_A);
 
-      const v64int8 *__restrict pB0 = (v64int8 *)(pB + offsetB + (j)*colA*size_B);
-      const v64int8 *__restrict pB1 = (v64int8 *)(pB + offsetB + ((j + 1))*colA * size_B);
+      const v64int8 *__restrict pB0 =
+          (v64int8 *)(pB + offsetB + (j)*colA * size_B);
+      const v64int8 *__restrict pB1 =
+          (v64int8 *)(pB + offsetB + ((j + 1)) * colA * size_B);
 
       A0 = *pA0;
       pA0 += rowA;
@@ -86,21 +88,21 @@ void matmul_vectorized_i8_i32(const int8 * __restrict pA, unsigned offsetA, cons
 
       // -----
 
-      v64acc32 * __restrict pOut00 = pC0;
+      v64acc32 *__restrict pOut00 = pC0;
       *pOut00 = acc_C00;
       pC0 += rowA;
 
-      v64acc32 * __restrict pOut01 = pC0;
+      v64acc32 *__restrict pOut01 = pC0;
       *pOut01 = acc_C01;
       pC0 += rowA;
 
       // -----
 
-      v64acc32 * __restrict pOut10 = pC1;
+      v64acc32 *__restrict pOut10 = pC1;
       *pOut10 = acc_C10;
       pC1 += rowA;
 
-      v64acc32 * __restrict pOut11 = pC1;
+      v64acc32 *__restrict pOut11 = pC1;
       *pOut11 = acc_C11;
       pC1 += rowA;
     }
@@ -109,18 +111,18 @@ void matmul_vectorized_i8_i32(const int8 * __restrict pA, unsigned offsetA, cons
 
 template <unsigned m, unsigned k, unsigned n>
 void matmul_vectorized_8x8x8_i8_i8_i32(const int8 *__restrict pA,
-                                      unsigned offsetA,
-                                      const int8 *__restrict pB,
-                                      unsigned offsetB, int32 *__restrict pC,
-                                      unsigned offsetC) {
+                                       unsigned offsetA,
+                                       const int8 *__restrict pB,
+                                       unsigned offsetB, int32 *__restrict pC,
+                                       unsigned offsetC) {
   constexpr int r = 8;
   constexpr int s = 8;
   constexpr int t = 8;
   static_assert(m / r > 0);
   static_assert(k / s > 0);
   static_assert(n / t > 0);
-  return matmul_vectorized_i8_i32<m / r, k / s, n / t, r, s, t>
-      (pA, offsetA, pB, offsetB, pC, offsetC);
+  return matmul_vectorized_i8_i32<m / r, k / s, n / t, r, s, t>(
+      pA, offsetA, pB, offsetB, pC, offsetC);
 }
 
 v64bfp16ebs8 load_v64bf16_as_bfp16(const bfloat16 *__restrict p) {
@@ -145,20 +147,19 @@ v64bfp16ebs8 load_v64bf16_as_bfp16_T(const bfloat16 *__restrict p) {
   return to_v64bfp16ebs8(accum);
 }
 
-template<int M, int N, int r>
-void zero_vectorized(v16float *__restrict pC, unsigned offsetC)
-{
+template <int M, int N, int r>
+void zero_vectorized(v16float *__restrict pC, unsigned offsetC) {
   v16float zeros = broadcast_zero_to_v16float();
   for (unsigned i = offsetC / r; i < offsetC / r + M * N / r; i++) {
     pC[i] = zeros;
   }
 }
 
-
-template<unsigned rowA, unsigned colA, unsigned colB, unsigned L0_M, unsigned L0_K, unsigned L0_N>
-void matmul_vectorized_bf16_f32(const bfloat16 * __restrict pA, unsigned offsetA, const bfloat16 * __restrict pB,
-                                unsigned offsetB, float * __restrict pC, unsigned offsetC)
-{
+template <unsigned rowA, unsigned colA, unsigned colB, unsigned L0_M,
+          unsigned L0_K, unsigned L0_N>
+void matmul_vectorized_bf16_f32(const bfloat16 *__restrict pA, unsigned offsetA,
+                                const bfloat16 *__restrict pB, unsigned offsetB,
+                                float *__restrict pC, unsigned offsetC) {
   const unsigned size_A = L0_M * L0_K;
   const unsigned size_B = L0_K * L0_N;
   const unsigned size_C = L0_M * L0_N;
@@ -174,14 +175,18 @@ void matmul_vectorized_bf16_f32(const bfloat16 * __restrict pA, unsigned offsetA
 
   for (unsigned z = 0; z < rowA; z += 2) {
     v64accfloat *__restrict pC0 = (v64accfloat *)(pC + offsetC + (z)*size_C);
-    v64accfloat *__restrict pC1 = (v64accfloat *)(pC + offsetC + ((z + 1)) * size_C);
+    v64accfloat *__restrict pC1 =
+        (v64accfloat *)(pC + offsetC + ((z + 1)) * size_C);
 
     for (unsigned j = 0; j < colB; j += 2) {
       const bfloat16 *__restrict pA0 = (bfloat16 *)(pA + offsetA + (z)*size_A);
-      const bfloat16 *__restrict pA1 = (bfloat16 *)(pA + offsetA + ((z + 1)) * size_A);
+      const bfloat16 *__restrict pA1 =
+          (bfloat16 *)(pA + offsetA + ((z + 1)) * size_A);
 
-      const bfloat16 *__restrict pB0 = (bfloat16 *)(pB + offsetB + (j)*colA*size_B);
-      const bfloat16 *__restrict pB1 = (bfloat16 *)(pB + offsetB + ((j + 1))*colA * size_B);
+      const bfloat16 *__restrict pB0 =
+          (bfloat16 *)(pB + offsetB + (j)*colA * size_B);
+      const bfloat16 *__restrict pB1 =
+          (bfloat16 *)(pB + offsetB + ((j + 1)) * colA * size_B);
 
       A0 = load_v64bf16_as_bfp16(pA0);
       pA0 += rowA * size_A;
@@ -199,11 +204,10 @@ void matmul_vectorized_bf16_f32(const bfloat16 * __restrict pA, unsigned offsetA
       acc_C10 = *pC1;
       acc_C11 = *(pC1 + rowA);
 
-      acc_C00 = mac_8x8_8x8T( A0, B0, acc_C00);
-      acc_C01 = mac_8x8_8x8T( A0, B1, acc_C01);
-      acc_C10 = mac_8x8_8x8T( A1, B0, acc_C10);
-      acc_C11 = mac_8x8_8x8T( A1, B1, acc_C11);
-
+      acc_C00 = mac_8x8_8x8T(A0, B0, acc_C00);
+      acc_C01 = mac_8x8_8x8T(A0, B1, acc_C01);
+      acc_C10 = mac_8x8_8x8T(A1, B0, acc_C10);
+      acc_C11 = mac_8x8_8x8T(A1, B1, acc_C11);
 
       for (unsigned i = 1; i < colA; ++i) {
         A0 = load_v64bf16_as_bfp16(pA0);
@@ -216,29 +220,29 @@ void matmul_vectorized_bf16_f32(const bfloat16 * __restrict pA, unsigned offsetA
         B1 = load_v64bf16_as_bfp16_T(pB1);
         pB1 += size_B;
 
-        acc_C00 = mac_8x8_8x8T( A0, B0, acc_C00);
-        acc_C01 = mac_8x8_8x8T( A0, B1, acc_C01);
-        acc_C10 = mac_8x8_8x8T( A1, B0, acc_C10);
-        acc_C11 = mac_8x8_8x8T( A1, B1, acc_C11);
+        acc_C00 = mac_8x8_8x8T(A0, B0, acc_C00);
+        acc_C01 = mac_8x8_8x8T(A0, B1, acc_C01);
+        acc_C10 = mac_8x8_8x8T(A1, B0, acc_C10);
+        acc_C11 = mac_8x8_8x8T(A1, B1, acc_C11);
       }
 
       // -----
 
-      v64accfloat * __restrict pOut00 = pC0;
+      v64accfloat *__restrict pOut00 = pC0;
       *pOut00 = acc_C00;
       pC0 += rowA;
 
-      v64accfloat * __restrict pOut01 = pC0;
+      v64accfloat *__restrict pOut01 = pC0;
       *pOut01 = acc_C01;
       pC0 += rowA;
 
       // -----
 
-      v64accfloat * __restrict pOut10 = pC1;
+      v64accfloat *__restrict pOut10 = pC1;
       *pOut10 = acc_C10;
       pC1 += rowA;
 
-      v64accfloat * __restrict pOut11 = pC1;
+      v64accfloat *__restrict pOut11 = pC1;
       *pOut11 = acc_C11;
       pC1 += rowA;
     }
@@ -247,21 +251,24 @@ void matmul_vectorized_bf16_f32(const bfloat16 * __restrict pA, unsigned offsetA
 
 template <unsigned m, unsigned k, unsigned n>
 void matmul_vectorized_8x8x8_bf16_bf16_f32(const bfloat16 *__restrict pA,
-                                      unsigned offsetA,
-                                      const bfloat16 *__restrict pB,
-                                      unsigned offsetB, float *__restrict pC,
-                                      unsigned offsetC) {
+                                           unsigned offsetA,
+                                           const bfloat16 *__restrict pB,
+                                           unsigned offsetB,
+                                           float *__restrict pC,
+                                           unsigned offsetC) {
   constexpr int r = 8;
   constexpr int s = 8;
   constexpr int t = 8;
   static_assert(m / r > 0);
   static_assert(k / s > 0);
   static_assert(n / t > 0);
-  return matmul_vectorized_bf16_f32<m / r, k / s, n / t, r, s, t>
-      (pA, offsetA, pB, offsetB, pC, offsetC);
+  return matmul_vectorized_bf16_f32<m / r, k / s, n / t, r, s, t>(
+      pA, offsetA, pB, offsetB, pC, offsetC);
 }
 
 extern "C" {
+
+// clang-format off
 
 #define matmul_combos_i8(X, M, N, K)                                  \
   X(int8, i8, int8, i8, int32, i32, M, N, K, 8, 8, 8)
@@ -316,5 +323,6 @@ zero_fill_combos_f32(zero_vectorized_c_func, 16, 8)
 zero_fill_combos_f32(zero_vectorized_c_func, 16, 16)
 zero_fill_combos_f32(zero_vectorized_c_func, 32, 32)
 
+// clang-format on
+
 }  // extern "C"
-)peano"
