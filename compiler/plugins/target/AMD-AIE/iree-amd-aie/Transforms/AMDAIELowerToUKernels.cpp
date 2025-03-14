@@ -121,25 +121,13 @@ static std::tuple<int, int, int, int> getTilingInfo(ShapedType shapedType) {
 /// that is later lowered into a call to the microkernel.
 static FailureOr<IREE::Codegen::UKernelOpInterface> matchMatmulDAGForUKernel(
     RewriterBase &rewriter, Operation *op, const std::string &ukernelName,
-    const std::string &pathToUkernels) {
+    const std::string &ukernelObjectName, const std::string &pathToUkernels) {
   auto linalgOp = dyn_cast<linalg::LinalgOp>(op);
   if (!linalgOp) {
     return rewriter.notifyMatchFailure(op, "is not a linalg operation");
   }
   if (!isMatmul(linalgOp)) {
     return rewriter.notifyMatchFailure(op, "is not a matmul-like operation");
-  }
-  auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(op);
-  if (!hasUkernel(targetAttr, ukernelName)) {
-    return rewriter.notifyMatchFailure(
-        op, "no ukernel found with name: " + ukernelName);
-  }
-
-  FailureOr<std::string> maybeUkernelObjectName =
-      fetchUkernelObjectName(targetAttr);
-  if (failed(maybeUkernelObjectName)) {
-    return rewriter.notifyMatchFailure(
-        op, "no ukernel object name found for the target");
   }
 
   Value lhs = linalgOp.getDpsInputOperand(0)->get();
@@ -165,7 +153,7 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchMatmulDAGForUKernel(
 
   FnNameAndDefAttrs fn =
       getFnNameAndDefAttrs(rewriter, ukernelName, inputOutputElemTypeAndSize,
-                           pathToUkernels, *maybeUkernelObjectName);
+                           pathToUkernels, ukernelObjectName);
 
   // Create UKernel for AMD-AIE.
   Location loc = linalgOp.getLoc();
@@ -180,22 +168,10 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchMatmulDAGForUKernel(
 
 static FailureOr<IREE::Codegen::UKernelOpInterface> matchFillDAGForUKernel(
     RewriterBase &rewriter, Operation *op, const std::string &ukernelName,
-    const std::string &pathToUkernels) {
+    const std::string &ukernelObjectName, const std::string &pathToUkernels) {
   auto fillOp = dyn_cast<linalg::FillOp>(op);
   if (!fillOp) {
     return rewriter.notifyMatchFailure(op, "is not a fill operation");
-  }
-  auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(op);
-  if (!hasUkernel(targetAttr, ukernelName)) {
-    return rewriter.notifyMatchFailure(
-        op, "no ukernel found with name: " + ukernelName);
-  }
-
-  FailureOr<std::string> maybeUkernelObjectName =
-      fetchUkernelObjectName(targetAttr);
-  if (failed(maybeUkernelObjectName)) {
-    return rewriter.notifyMatchFailure(
-        op, "no ukernel object name found for the target");
   }
 
   Value input = fillOp.getDpsInputOperand(0)->get();
@@ -216,7 +192,7 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchFillDAGForUKernel(
 
   FnNameAndDefAttrs fn =
       getFnNameAndDefAttrs(rewriter, ukernelName, elemTypeAndSize,
-                           pathToUkernels, *maybeUkernelObjectName);
+                           pathToUkernels, ukernelObjectName);
 
   // Create UKernel for AMD-AIE.
   Location loc = fillOp.getLoc();
@@ -261,16 +237,11 @@ std::optional<Value> checkIsShiftTruncIAndReturnShift(
 
 static FailureOr<IREE::Codegen::UKernelOpInterface> matchTruncIDAGForUKernel(
     RewriterBase &rewriter, Operation *op, const std::string &ukernelName,
-    const std::string &pathToUkernels) {
+    const std::string &ukernelObjectName, const std::string &pathToUkernels) {
   OpBuilder::InsertionGuard guard(rewriter);
   auto linalgOp = dyn_cast<linalg::LinalgOp>(op);
   if (!linalgOp) {
     return rewriter.notifyMatchFailure(op, "is not a linalg operation");
-  }
-  auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(op);
-  if (!hasUkernel(targetAttr, ukernelName)) {
-    return rewriter.notifyMatchFailure(
-        op, "no ukernel found with name: " + ukernelName);
   }
   std::optional<Value> maybeShift =
       checkIsShiftTruncIAndReturnShift(rewriter, linalgOp);
@@ -279,13 +250,6 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchTruncIDAGForUKernel(
                                        "is not a shift followed by a trunci");
   }
   Value shiftVal = maybeShift.value();
-
-  FailureOr<std::string> maybeUkernelObjectName =
-      fetchUkernelObjectName(targetAttr);
-  if (failed(maybeUkernelObjectName)) {
-    return rewriter.notifyMatchFailure(
-        op, "no ukernel object name found for the target");
-  }
 
   Value input = linalgOp.getDpsInputOperand(0)->get();
   Value output = linalgOp.getDpsInitOperand(0)->get();
@@ -304,7 +268,7 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchTruncIDAGForUKernel(
 
   FnNameAndDefAttrs fn =
       getFnNameAndDefAttrs(rewriter, ukernelName, elemTypeAndSize,
-                           pathToUkernels, *maybeUkernelObjectName);
+                           pathToUkernels, ukernelObjectName);
 
   // Create UKernel for AMD-AIE.
   Location loc = linalgOp.getLoc();
@@ -320,7 +284,8 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchTruncIDAGForUKernel(
 using TargetPredicate = std::function<bool(IREE::HAL::ExecutableTargetAttr)>;
 using MatchAndReplaceFunction =
     std::function<FailureOr<IREE::Codegen::UKernelOpInterface>(
-        RewriterBase &, Operation *, const std::string &, const std::string &)>;
+        RewriterBase &, Operation *, const std::string &, const std::string &,
+        const std::string &)>;
 
 template <typename OpType>
 struct LowerToUKernelPattern : OpRewritePattern<OpType> {
@@ -338,11 +303,24 @@ struct LowerToUKernelPattern : OpRewritePattern<OpType> {
                                 PatternRewriter &rewriter) const override {
     if (targetPredicate &&
         !targetPredicate(IREE::HAL::ExecutableTargetAttr::lookup(op))) {
-      return failure();
+      return rewriter.notifyMatchFailure(
+          op, "the target attribute fails the predicate");
+    }
+    auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(op);
+    if (!hasUkernel(targetAttr, ukernelName)) {
+      return rewriter.notifyMatchFailure(
+          op, "no ukernel found with name: " + ukernelName);
+    }
+    FailureOr<std::string> maybeUkernelObjectName =
+        fetchUkernelObjectName(targetAttr);
+    if (failed(maybeUkernelObjectName)) {
+      return rewriter.notifyMatchFailure(
+          op, "no ukernel object name found for the target");
     }
 
     FailureOr<IREE::Codegen::UKernelOpInterface> ukernelOp =
-        matchAndReplace(rewriter, op, ukernelName, pathToUkernels);
+        matchAndReplace(rewriter, op, ukernelName,
+                        maybeUkernelObjectName.value(), pathToUkernels);
     if (failed(ukernelOp)) {
       return rewriter.notifyMatchFailure(
           op, "failed to find microkernel op to replace with");
