@@ -604,7 +604,8 @@ void buildAMDAIETransformPassPipeline(
     bool enableInputPacketFlow, bool enableOutputPacketFlow,
     bool enableCoalescingLoops, bool enableCollapsingUnitDims,
     OutliningStrategy enableFunctionOutlining, int outliningCallReplication,
-    bool insertLoopAroundCoreBlock, bool emitCtrlPkt) {
+    bool insertLoopAroundCoreBlock, bool emitCtrlPkt,
+    const std::string &unrollJam) {
   OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
   {
     FunctionLikeNest funcPassManager(modulePassManager);
@@ -637,11 +638,11 @@ void buildAMDAIETransformPassPipeline(
         useTilePipeline, enableVectorizationPasses, enableCoalescingLoops,
         enableCollapsingUnitDims, enableFunctionOutlining,
         outliningCallReplication, insertLoopAroundCoreBlock, numCols,
-        emitCtrlPkt);
+        emitCtrlPkt, unrollJam);
   } else if (useLowerToAIEPipeline == LowerToAIEPassPipeline::AIR) {
     addMLIRAIRLoweringPasses(modulePassManager, device, useTilePipeline,
-                             matmulElementwiseFusion,
-                             enableVectorizationPasses);
+                             matmulElementwiseFusion, enableVectorizationPasses,
+                             unrollJam);
   } else {
     assert(
         false &&
@@ -663,7 +664,7 @@ void addAMDAIEObjectFifoLoweringPasses(
     bool enableVectorizationPasses, bool enableCoalescingLoops,
     bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
     int outliningCallReplication, bool insertLoopAroundCoreBlock,
-    uint32_t numCols, bool emitCtrlPkt) {
+    uint32_t numCols, bool emitCtrlPkt, const std::string &unrollJam) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
 
@@ -797,14 +798,20 @@ void addAMDAIEObjectFifoLoweringPasses(
   addAMDAIEToAIEPasses(passManager, insertLoopAroundCoreBlock);
 
   // Now lower using the AIE passes from MLIR-AIE.
-  addMLIRAIELoweringPasses(passManager);
+  addMLIRAIELoweringPasses(passManager, unrollJam);
 }
 
-void addMLIRAIELoweringPasses(OpPassManager &pm) {
+void addMLIRAIELoweringPasses(OpPassManager &pm, const std::string &unrollJam) {
   mlir::iree_compiler::aievec::buildConvertVectorToAIEVec(pm);
 
   {
     OpPassManager &devicePM = pm.nest<xilinx::AIE::DeviceOp>();
+
+    AMDAIEUnrollJamAIEVecMatmulOptions options;
+    options.sequence = unrollJam;
+    devicePM.addPass(createAMDAIEUnrollJamAIEVecMatmulPass(options));
+
+    // For now, we run the new pass here:
     devicePM.addPass(createCanonicalizerPass());
     devicePM.addPass(createAMDAIEAssignBufferDescriptorIDsPass());
     devicePM.addPass(createAMDAIEAssignBufferAddressesPass());
@@ -855,7 +862,8 @@ void addMLIRAIELoweringPasses(OpPassManager &pm) {
 void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
                               TilePassPipeline useTilePipeline,
                               bool matmulElementwiseFusion,
-                              bool enableVectorizationPasses) {
+                              bool enableVectorizationPasses,
+                              const std::string &unrollJam) {
   // Add passes for preparing for lowering to MLIR-AIR
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
@@ -1050,7 +1058,7 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
   }
 
   // Now lower using the AIE passes from MLIR-AIE.
-  addMLIRAIELoweringPasses(passManager);
+  addMLIRAIELoweringPasses(passManager, unrollJam);
 }
 
 // NOTE: this runs on the top-level program module containing all hal.executable
