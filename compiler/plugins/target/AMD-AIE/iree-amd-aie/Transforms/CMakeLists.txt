@@ -60,7 +60,7 @@ iree_cc_library(
     "AMDAIEControlCodeLowering.cpp"
     "AMDAIEControlCodeLoopUnroll.cpp"
     "AMDAIEControlCodeToTransaction.cpp"
-    "AMDAIEControlPacketToHalfDmaCpyNd.cpp"
+    "AMDAIEControlPacketToNpuDma.cpp"
     "AMDAIEConvertCoreForallToFor.cpp"
     "AMDAIEConvertDeviceToControlPackets.cpp"
     "AMDAIECreateAIEWorkgroup.cpp"

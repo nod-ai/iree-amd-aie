@@ -1456,9 +1456,14 @@ LogicalResult generateControlPackets(
   pm.addPass(createAMDAIEAssignPacketIdsPass());
   // Extract the DMA instructions and the DMA data from the control packets.
   pm.addPass(createAMDAIESplitControlPacketDataPass());
-  pm.addPass(createAMDAIEControlPacketToHalfDmaCpyNdPass());
+  pm.addPass(createAMDAIEControlPacketToNpuDmaPass());
+  pm.addPass(createAMDAIEAssignNpuDmaBdIdsPass());
   pm.addPass(createCSEPass());
   pm.addPass(createCanonicalizerPass());
+  // Optimize the controlcode size.
+  pm.addPass(createAMDAIENpuDmaToHalfDmaCpyNdPass());
+  pm.addPass(createAMDAIEInsertDmaBdChainPass());
+  pm.addPass(createAMDAIEFoldDmaWaitsPass());
   // Lower the DMA instructions for sending control packets.
   {
     AMDAIEControlCodeLoweringOptions options;
