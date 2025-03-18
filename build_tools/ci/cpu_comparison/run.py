@@ -649,6 +649,8 @@ class MatmulConstBiasCtrlpkt(BaseMatmul):
         )
         self.labels.append("MatmulConstBiasCtrlPacket")
 
+        # Only enable packet flows for kernel inputs to prevent potential deadlock.
+        # TODO (zhewen): Support kernel outputs.
         self.aie_compilation_flags += [
             "--iree-amdaie-enable-input-packet-flow=true",
             "--iree-amdaie-emit-control-packet=true",
@@ -2345,6 +2347,12 @@ class Tests:
             },
             {
                 "M": 512,
+                "N": 512,
+                "K": 4096,
+                "use_packet_flow": True,
+            },
+            {
+                "M": 512,
                 "N": 4096,
                 "K": 512,
             },
@@ -2359,6 +2367,12 @@ class Tests:
                 "N": 4096,
                 "K": 512,
                 "transpose_b": True,
+            },
+            {
+                "M": 512,
+                "N": 4096,
+                "K": 512,
+                "use_packet_flow": True,
             },
             {
                 "M": 4096,
@@ -2376,6 +2390,12 @@ class Tests:
                 "N": 512,
                 "K": 512,
                 "transpose_a": True,
+            },
+            {
+                "M": 4096,
+                "N": 512,
+                "K": 512,
+                "use_packet_flow": True,
             },
             {
                 "M": 4096,
@@ -2425,6 +2445,16 @@ class Tests:
                 "use_ukernel": True,
                 "outline": "all",
                 "run_on_target": "npu4",
+            },
+            {
+                "M": 512,
+                "N": 4096,
+                "K": 512,
+                "in_dtype": "i8",
+                "use_ukernel": True,
+                "outline": "all",
+                "run_on_target": "npu4",
+                "use_packet_flow": True,
             },
             {
                 "M": 512,
@@ -2509,6 +2539,7 @@ class Tests:
             run_on_target = test.get("run_on_target", "npu1_4col")
             in_dtype = test.get("in_dtype", "bf16")
             out_dtype = test.get("out_dtype", "f32")
+            use_packet_flow = test.get("use_packet_flow", False)
 
             # Default of 1 means that outlined functions are called once at each
             # call site (i.e. normal behaviour).
@@ -2554,6 +2585,14 @@ class Tests:
                 TestClass = MatmulTransposeB
             else:
                 raise ValueError("Transposing both LHS and RHS is not supported.")
+
+            if use_packet_flow:
+                # Only enable packet flows for kernel inputs to prevent potential deadlock.
+                # TODO (zhewen): Support kernel outputs.
+                aie_compilation_flags.append(
+                    "--iree-amdaie-enable-input-packet-flow=true"
+                )
+                name_suffix += "_packet_flow"
 
             # This should only be the case for benchmark tests which we expect
             # to not pass numerically.
