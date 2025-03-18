@@ -2236,6 +2236,25 @@ class Tests:
                 )
             )
 
+        self.register(
+            Matmul(
+                64,
+                128,
+                128,
+                "i32",
+                "i32",
+                test_params=TestParams(
+                    tile_pipeline="pack-peel-4-level-tiling",
+                    aie_compilation_flags=[
+                        "--iree-amdaie-num-rows=1",
+                        "--iree-amdaie-num-cols=1",
+                    ],
+                    name_suffix="1row_1col",
+                    run_on_target=["npu1_4col"],
+                ),
+            )
+        )
+
         # Control packet test with constant biases 1 and 2.
         # Test on a single core.
         self.register(

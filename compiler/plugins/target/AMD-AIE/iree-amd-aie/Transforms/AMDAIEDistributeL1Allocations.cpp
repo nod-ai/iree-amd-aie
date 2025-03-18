@@ -6,6 +6,7 @@
 
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/Transforms/Passes.h"
+#include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -49,7 +50,8 @@ FailureOr<DenseSet<Value>> getThreadIndVars(ModuleOp moduleOp) {
 /// return an empty memref type. Otherwise, return the memref type that the
 /// subviews are viewing.
 MemRefType getDistributedType(memref::AllocOp alloc,
-                              const DenseSet<Value> &indVars) {
+                              const DenseSet<Value> &indVars, int64_t numRows,
+                              int64_t numColumns) {
   MemRefType type;
   for (Operation *allocUser : alloc->getUsers()) {
     if (auto subview = dyn_cast<memref::SubViewOp>(allocUser)) {
@@ -73,11 +75,15 @@ MemRefType getDistributedType(memref::AllocOp alloc,
         }
 
         nIndVars += dependsOnIndVar;
-        if (!isConst && !dependsOnIndVar) return {};
+        // TODO(avarma): Handle case where the offset maybe some other
+        // non-constant.
+        if (!isConst && !dependsOnIndVar && numRows != 1 && numColumns != 1)
+          return {};
       }
 
-      // If there are no thread ids, this subview is not distributing.
-      if (nIndVars == 0) return {};
+      // If there are no thread ids and it's not a 1x1 core case, this subview
+      // is not distributing.
+      if (nIndVars == 0 && numRows != 1 && numColumns != 1) return {};
 
       auto nextType = cast<MemRefType>(subview.getResult().getType());
       if (!type) {
@@ -114,6 +120,21 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
   if (failed(maybeIndVars)) return failure();
   const DenseSet<Value> &indVars = maybeIndVars.value();
   IRRewriter rewriter(moduleOp.getContext());
+
+  // Retrieve the device model.
+  auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(moduleOp);
+  std::optional<int64_t> maybeNumRows = getConfigNumRows(targetAttr);
+  std::optional<int64_t> maybeNumColumns = getConfigNumColumns(targetAttr);
+  if (!(maybeNumRows && maybeNumColumns)) {
+    moduleOp.emitOpError() << "has no number of rows/columns specified in the "
+                              "target attribute configuration. This "
+                              "device-specific information is required to infer"
+                              "special case of 1x1 while distributing L1 alloc";
+    return failure();
+  }
+  int64_t numRows = maybeNumRows.value();
+  int64_t numColumns = maybeNumColumns.value();
+
   auto allocWalkResult = moduleOp->walk([&](memref::AllocOp oldAlloc)
                                             -> WalkResult {
     // Only consider local memory (L1).
@@ -126,7 +147,8 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
     if (auto scfForOp = oldAlloc->getParentOfType<scf::ForOp>())
       return WalkResult::advance();
 
-    MemRefType memRefType = getDistributedType(oldAlloc, indVars);
+    MemRefType memRefType =
+        getDistributedType(oldAlloc, indVars, numRows, numColumns);
 
     // Failed to find a memref.subview that looks like it is distributing.
     // This doesn't mean that we can't distribute (for example there might be
