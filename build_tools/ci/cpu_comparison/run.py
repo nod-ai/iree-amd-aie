@@ -2283,36 +2283,52 @@ class Tests:
         ##############
         # NPU1 Tests #
         ##############
-        for opt_level in [2, 3]:
-            # Test performance of core code generated with peano.
-            # A matmul of shape 512x512x512, run on a single core,  in a loop 100
-            # times without any data copy to/from core memory. Peak performance for
-            # the 4x4 phoenix array is 4 TFlops, so peak performace for single core
-            # is 4/16 = 0.25 TFlops. This matmul is 512x512x512*2 flops = 0.25 GFlops.
-            # So at peak performance, to run this 100 times should take
-            # 0.1 seconds (100'000 microseconds).
-            performance_tests.append(
-                {
-                    "M": 512,
-                    "N": 512,
-                    "K": 512,
-                    "use_ukernel": False,
-                    "peano_opt_level": opt_level,
-                    "additional_labels": ["CorePerformance"],
-                    "aie_compilation_flags": [
-                        "--iree-amdaie-num-rows=1",
-                        "--iree-amdaie-num-cols=1",
-                    ],
-                    # effectively this says:
-                    #   for 3 launches:
-                    #     for 1 copy of data to and from AIE:
-                    #       for 100 calls to the matmul function:
-                    #          compute
-                    "outline_call_replication": 100,
-                    "n_performance_repeats": 3,
-                    "n_performance_kernel_runs": 1,
-                }
-            )
+
+        performance_repl_base_dict = {
+            "M": 512,
+            "N": 512,
+            "K": 512,
+            "additional_labels": ["CorePerformance"],
+            "aie_compilation_flags": [
+                "--iree-amdaie-num-rows=1",
+                "--iree-amdaie-num-cols=1",
+            ],
+            # effectively this says:
+            #   for 3 launches:
+            #     for 1 copy of data to and from AIE:
+            #       for 100 calls to the matmul function:
+            #          compute
+            "call_replication": 100,
+            "n_performance_repeats": 3,
+            "n_performance_kernel_runs": 1,
+        }
+
+        # Test performance of core code generated with peano.
+        # A matmul of shape 512x512x512, run on a single core,  in a loop 100
+        # times without any data copy to/from core memory. Peak performance for
+        # the 4x4 phoenix array is 4 TFlops, so peak performace for single core
+        # is 4/16 = 0.25 TFlops. This matmul is 512x512x512*2 flops = 0.25 GFlops.
+        # So at peak performance, to run this 100 times should take
+        # 0.1 seconds (100'000 microseconds).
+
+        for opt_level, target in [[2, "npu1_4col"], [3, "npu1_4col"]]:
+            performance_dict = performance_repl_base_dict.copy()
+            performance_dict["peano_opt_level"] = opt_level
+            performance_dict["run_on_target"] = target
+            performance_dict["use_ukernel"] = False
+            performance_tests.append(performance_dict)
+
+        for target, chess_for_ukernel, in_type in [
+            ["npu1_4col", True, "bf16"],
+            ["npu4", True, "i8"],
+            ["npu4", False, "i8"],
+        ]:
+            performance_dict = performance_repl_base_dict.copy()
+            performance_dict["in_dtype"] = in_type
+            performance_dict["run_on_target"] = target
+            performance_dict["use_ukernel"] = True
+            performance_dict["use_chess_for_ukernel"] = chess_for_ukernel
+            performance_tests.append(performance_dict)
 
         performance_tests += [
             {
@@ -2401,10 +2417,10 @@ class Tests:
                 "M": 4096,
                 "N": 512,
                 "K": 512,
-                # outline_call_replication = 0 means the compute is omitted, this should
+                # call_replication = 0 means the compute is omitted, this should
                 # help triangulate how much performance gain can be obtained with better
                 # matmul on core vs data movement.
-                "outline_call_replication": 0,
+                "call_replication": 0,
             },
             {
                 "M": 512,
@@ -2431,7 +2447,7 @@ class Tests:
                 "M": 512,
                 "N": 4096,
                 "K": 512,
-                "outline_call_replication": 0,
+                "call_replication": 0,
                 "tile_pipeline": "pack-peel-4-level-tiling",
             },
             ##############
@@ -2462,7 +2478,7 @@ class Tests:
                 "K": 512,
                 "in_dtype": "i8",
                 "outline": "all",
-                "outline_call_replication": 0,
+                "call_replication": 0,
                 "run_on_target": "npu4",
             },
             {
@@ -2504,7 +2520,7 @@ class Tests:
                 "K": 512,
                 "in_dtype": "i8",
                 "outline": "all",
-                "outline_call_replication": 0,
+                "call_replication": 0,
                 "tile_pipeline": "pack-peel-4-level-tiling",
                 "run_on_target": "npu4",
             },
@@ -2543,7 +2559,7 @@ class Tests:
 
             # Default of 1 means that outlined functions are called once at each
             # call site (i.e. normal behaviour).
-            outline_call_replication = test.get("outline_call_replication", 1)
+            call_replication = test.get("call_replication", 1)
 
             if in_dtype == "i8" and out_dtype == "f32":
                 out_dtype = "i32"
@@ -2552,7 +2568,7 @@ class Tests:
             n_performance_kernel_runs = test.get("n_performance_kernel_runs", 100)
             additional_labels = test.get("additional_labels", [])
 
-            skip_numerics = outline_call_replication != 1
+            skip_numerics = call_replication != 1
 
             outlining_string = "--iree-amdaie-enable-function-outlining=" + outline
 
@@ -2566,11 +2582,11 @@ class Tests:
                 f"--iree-amd-aie-additional-peano-opt-flags={peano_opt_level_string}",
             ]
 
-            if outline_call_replication != 1:
+            if call_replication != 1:
                 aie_compilation_flags.append(
-                    f"--iree-amdaie-outlining-call-replication={outline_call_replication}"
+                    f"--iree-amdaie-call-replication={call_replication}"
                 )
-                name_suffix += "_callrepl_" + str(outline_call_replication)
+                name_suffix += "_callrepl_" + str(call_replication)
 
             if outline != "none":
                 name_suffix += "_outline"
