@@ -244,7 +244,7 @@ LogicalResult configureLocksAndBd(Block &block, const TileLoc &tileLoc,
 }
 
 LogicalResult addInitConfig(const AMDAIEDeviceModel &deviceModel,
-                            DeviceOp &device) {
+                            DeviceOp &device, bool configureSwitches) {
   // Reset and unreset all cores.
   for (auto tileOp : device.getOps<TileOp>()) {
     TileLoc tileLoc = {tileOp.getCol(), tileOp.getRow()};
@@ -308,6 +308,8 @@ LogicalResult addInitConfig(const AMDAIEDeviceModel &deviceModel,
   }
 
   // StreamSwitch (switchbox) configuration.
+  if (!configureSwitches) return success();
+
   for (auto switchboxOp : device.getOps<SwitchboxOp>()) {
     TileOp t = xilinx::AIE::getTileOp(*switchboxOp.getOperation());
     TileLoc tileLoc = {t.getCol(), t.getRow()};

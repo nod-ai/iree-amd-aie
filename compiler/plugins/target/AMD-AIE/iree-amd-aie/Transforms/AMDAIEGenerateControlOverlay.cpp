@@ -46,9 +46,66 @@ LogicalResult initializeChannelsGenerators(
   return success();
 }
 
+/// Establishes a packet-mode connection between the source tile DMA and the
+/// target tile CTRL ports. If multiple target tiles are provided, the
+/// connection is configured as a broadcast.
+LogicalResult buildShimTileToCtrlConnection(
+    IRRewriter &rewriter, AMDAIE::ControlCodeOp controlCodeOp,
+    AMDAIE::TileOp srcTileOp, ArrayRef<TileOp> targetTileOps,
+    DenseMap<Value, ChannelGenerator> &shimTileToGeneratorMap) {
+  // Get the available DMA channel for the shim tile, and assign it for the
+  // packet flow.
+  std::optional<uint8_t> maybeChannel =
+      shimTileToGeneratorMap[srcTileOp.getResult()]
+          .getAndAssignProducerDMAChannel(
+              ChannelAssignmentMode::RoundRobinPacketFlow);
+  if (!maybeChannel)
+    return srcTileOp.emitOpError() << "no producer DMA channel available";
+  rewriter.setInsertionPoint(controlCodeOp);
+  auto sourceChannelOp = rewriter.create<AMDAIE::ChannelOp>(
+      rewriter.getUnknownLoc(), srcTileOp, maybeChannel.value(),
+      StrmSwPortType::DMA, AMDAIE::DMAChannelDir::MM2S);
+
+  // The target is always the CTRL port of the tile.
+  SmallVector<Value> targetChannels;
+  SmallVector<Value> targetTiles;
+  for (TileOp targetTileOp : targetTileOps) {
+    auto targetChannelOp = rewriter.create<AMDAIE::ChannelOp>(
+        rewriter.getUnknownLoc(), targetTileOp, 0, StrmSwPortType::CTRL,
+        AMDAIE::DMAChannelDir::S2MM);
+    targetChannels.push_back(targetChannelOp.getResult());
+    targetTiles.push_back(targetTileOp.getResult());
+  }
+
+  // Get the objectfifo placeholder for both the source and target.
+  MemRefType elementType =
+      MemRefType::get(ShapedType::kDynamic, rewriter.getI32Type());
+  auto sourcePlaceholder =
+      rewriter.create<AMDAIE::LogicalObjectFifoPlaceholderOp>(
+          rewriter.getUnknownLoc(), LogicalObjectFifoType::get(elementType),
+          ValueRange(srcTileOp));
+  auto targetPlaceholder =
+      rewriter.create<AMDAIE::LogicalObjectFifoPlaceholderOp>(
+          rewriter.getUnknownLoc(), LogicalObjectFifoType::get(elementType),
+          targetTiles);
+
+  auto connectionOp = rewriter.create<AMDAIE::ConnectionOp>(
+      rewriter.getUnknownLoc(), targetPlaceholder, targetChannels,
+      sourcePlaceholder, ValueRange(sourceChannelOp),
+      ConnectionTypeAttr::get(rewriter.getContext(), ConnectionType::Packet),
+      /*flow=*/nullptr);
+
+  rewriter.setInsertionPoint(controlCodeOp.getBody()->getTerminator());
+  rewriter.create<AMDAIE::NpuDmaPlaceHolderOp>(rewriter.getUnknownLoc(),
+                                               connectionOp.getResult());
+
+  return success();
+}
+
 LogicalResult generateControlOverlay(AMDAIE::WorkgroupOp workgroupOp,
                                      bool routeShimToTileCtrl,
-                                     bool routeShimCtrlToTct) {
+                                     bool routeShimCtrlToTct,
+                                     bool broadcastShimToTileCtrl) {
   // Get the device model.
   std::optional<AMDAIEDevice> device = getConfigAMDAIEDevice(workgroupOp);
   if (!device) {
@@ -97,49 +154,42 @@ LogicalResult generateControlOverlay(AMDAIE::WorkgroupOp workgroupOp,
     // Sort for deterministic output IR.
     llvm::sort(tileOps.begin(), tileOps.end(),
                AMDAIE::TileOp::tileValueColumnAndRowComparator);
+
+    // Create one-to-one connections from the shim tile to the tile CTRL
+    // ports.
+    SmallVector<TileOp> coreTileOpsToBroadcast;
     for (TileOp tileOp : tileOps) {
       uint32_t col = getConstantIndexOrAssert(tileOp.getCol());
+      uint32_t row = getConstantIndexOrAssert(tileOp.getRow());
       TileOp shimTileOp = columnToShimTile[col];
-      // Get the available DMA channel for the shim tile, and assign it for the
-      // packet flow.
-      std::optional<uint8_t> maybeChannel =
-          shimTileToGeneratorMap[shimTileOp.getResult()]
-              .getAndAssignProducerDMAChannel(
-                  ChannelAssignmentMode::RoundRobinPacketFlow);
-      if (!maybeChannel)
-        return shimTileOp.emitOpError() << "no producer DMA channel available";
+      if (broadcastShimToTileCtrl && deviceModel.isCoreTile(col, row)) {
+        // If broadcasting is enabled and it is a core tile, defer its
+        // connection for later batch processing.
+        coreTileOpsToBroadcast.push_back(tileOp);
+      } else {
+        // Directly establish a one-to-one connection.
+        if (failed(buildShimTileToCtrlConnection(rewriter, controlCodeOp,
+                                                 shimTileOp, {tileOp},
+                                                 shimTileToGeneratorMap))) {
+          return failure();
+        }
+      }
+    }
 
-      rewriter.setInsertionPoint(controlCodeOp);
-      auto sourceChannelOp = rewriter.create<AMDAIE::ChannelOp>(
-          rewriter.getUnknownLoc(), shimTileOp, maybeChannel.value(),
-          StrmSwPortType::DMA, AMDAIE::DMAChannelDir::MM2S);
-      auto targetChannelOp = rewriter.create<AMDAIE::ChannelOp>(
-          rewriter.getUnknownLoc(), tileOp, 0, StrmSwPortType::CTRL,
-          AMDAIE::DMAChannelDir::S2MM);
-
-      // Get the objectfifo placeholder for both the source and target.
-      MemRefType elementType =
-          MemRefType::get(ShapedType::kDynamic, rewriter.getI32Type());
-      auto sourcePlaceholder =
-          rewriter.create<AMDAIE::LogicalObjectFifoPlaceholderOp>(
-              rewriter.getUnknownLoc(), LogicalObjectFifoType::get(elementType),
-              ValueRange(shimTileOp));
-      auto targetPlaceholder =
-          rewriter.create<AMDAIE::LogicalObjectFifoPlaceholderOp>(
-              rewriter.getUnknownLoc(), LogicalObjectFifoType::get(elementType),
-              ValueRange(tileOp));
-
-      auto connectionOp = rewriter.create<AMDAIE::ConnectionOp>(
-          rewriter.getUnknownLoc(), targetPlaceholder,
-          ValueRange{targetChannelOp}, sourcePlaceholder,
-          ValueRange{sourceChannelOp},
-          ConnectionTypeAttr::get(rewriter.getContext(),
-                                  ConnectionType::Packet),
-          /*flow=*/nullptr);
-
-      rewriter.setInsertionPoint(controlCodeOp.getBody()->getTerminator());
-      rewriter.create<AMDAIE::NpuDmaPlaceHolderOp>(rewriter.getUnknownLoc(),
-                                                   connectionOp.getResult());
+    // If required, create a broadcast connection from the shim tile DMA to all
+    // core tile CTRL ports.
+    if (!coreTileOpsToBroadcast.empty()) {
+      // TODO (zhewen): Currently, only a single shim tile and a single DMA
+      // channel are used. Consider utilizing multiple shim tiles and DMA
+      // channels to fully utilize the bandwidth.
+      uint32_t col =
+          getConstantIndexOrAssert(coreTileOpsToBroadcast[0].getCol());
+      TileOp shimTileOp = columnToShimTile[col];
+      if (failed(buildShimTileToCtrlConnection(
+              rewriter, controlCodeOp, shimTileOp, coreTileOpsToBroadcast,
+              shimTileToGeneratorMap))) {
+        return failure();
+      }
     }
   }
 
@@ -205,7 +255,8 @@ void AMDAIEGenerateControlOverlayPass::runOnOperation() {
   Operation *parentOp = getOperation();
   WalkResult res = parentOp->walk([&](AMDAIE::WorkgroupOp workgroupOp) {
     if (failed(generateControlOverlay(workgroupOp, routeShimToTileCtrl,
-                                      routeShimCtrlToTct))) {
+                                      routeShimCtrlToTct,
+                                      broadcastShimToTileCtrl))) {
       return WalkResult::interrupt();
     }
     return WalkResult::advance();
