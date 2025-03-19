@@ -25,6 +25,24 @@ def append_history(results_json_path: str, results_history_path: str):
         json.dump(results_history, f, indent=2)
 
 
+def get_total_ops(name):
+    """
+    where name is a string,
+    1) split it on "_"
+    2) return the product of all values in the list that are integers.
+    """
+    fragments = name.split("_")
+    if (fragments[0] is not "matmul") return None
+    if ("empty" in fragments) return 0
+    total_ops = 1
+    for fragment in fragments:
+        if fragment.isdigit():
+            total_ops *= int(fragment)
+    return total_ops
+
+
+
+
 def get_canonical_name(name):
     """
     Test names might change with commits, even though the test is unchanged.
@@ -46,7 +64,10 @@ def generate_html(results_history_path: str, results_html_path: str):
     for entry in results_history:
         for test in entry["tests"]:
             name = get_canonical_name(test["name"])
-            graph_data[name] = {"commit_hashes": [], "durations": []}
+            graph_data[name] = {"commit_hashes": [], "durations": [], "ops" : get_total_ops(name), "note" : None}
+
+    if "callrepl_100" in name:
+        graph_data[name]["note"] = "This test is run on a single AIE core."
 
     time_unit = "us"
     for entry in results_history:
@@ -88,7 +109,14 @@ def generate_html(results_history_path: str, results_html_path: str):
     for test_name, data in graph_data.items():
         html_content += f"""
         <div class="chart-container">
-            <h2>Performance for {test_name}</h2>
+            <h2>Performance for {test_name}</h2>"""
+        if data["ops"] is not None:
+            html_content += f"""
+            Total ops: {data["ops"]}"""
+        if data["note"] is not None:
+            html_content += f"""
+            Note: {data["note"]}"""
+        html_content += f"""
             <canvas id="chart-{test_name.replace(' ', '-')}"></canvas>
         </div>
         <script>

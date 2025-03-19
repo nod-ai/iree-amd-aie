@@ -2284,25 +2284,6 @@ class Tests:
         # NPU1 Tests #
         ##############
 
-        performance_repl_base_dict = {
-            "M": 512,
-            "N": 512,
-            "K": 512,
-            "additional_labels": ["CorePerformance"],
-            "aie_compilation_flags": [
-                "--iree-amdaie-num-rows=1",
-                "--iree-amdaie-num-cols=1",
-            ],
-            # effectively this says:
-            #   for 3 launches:
-            #     for 1 copy of data to and from AIE:
-            #       for 100 calls to the matmul function:
-            #          compute
-            "call_replication": 100,
-            "n_performance_repeats": 3,
-            "n_performance_kernel_runs": 1,
-        }
-
         # Test performance of core code generated with peano.
         # A matmul of shape 512x512x512, run on a single core,  in a loop 100
         # times without any data copy to/from core memory. Peak performance for
@@ -2313,10 +2294,27 @@ class Tests:
         # 1 GHz, so at peak, less than 0.1 seconds.
 
         for opt_level, target in [[2, "npu1_4col"], [3, "npu1_4col"]]:
-            performance_dict = performance_repl_base_dict.copy()
-            performance_dict["peano_opt_level"] = opt_level
-            performance_dict["run_on_target"] = target
-            performance_dict["use_ukernel"] = False
+            performance_dict = {
+                "M": 512,
+                "N": 512,
+                "K": 512,
+                "additional_labels": ["CorePerformance"],
+                "aie_compilation_flags": [
+                    "--iree-amdaie-num-rows=1",
+                    "--iree-amdaie-num-cols=1",
+                ],
+                # effectively this says:
+                #   for 3 launches:
+                #     for 1 copy of data to and from AIE:
+                #       for 100 calls to the matmul function:
+                #          compute
+                "call_replication": 100,
+                "n_performance_repeats": 3,
+                "n_performance_kernel_runs": 1,
+                "peano_opt_level": opt_level,
+                "run_on_target": target,
+                "use_ukernel": False,
+            }
             performance_tests.append(performance_dict)
 
         for target, chess_for_ukernel, in_type in [
@@ -2324,11 +2322,23 @@ class Tests:
             ["npu4", True, "i8"],
             ["npu4", False, "i8"],
         ]:
-            performance_dict = performance_repl_base_dict.copy()
-            performance_dict["in_dtype"] = in_type
-            performance_dict["run_on_target"] = target
-            performance_dict["use_ukernel"] = True
-            performance_dict["use_chess_for_ukernel"] = chess_for_ukernel
+            performance_dict = {
+                "M": 512,
+                "N": 512,
+                "K": 512,
+                "additional_labels": ["CorePerformance"],
+                "aie_compilation_flags": [
+                    "--iree-amdaie-num-rows=1",
+                    "--iree-amdaie-num-cols=1",
+                ],
+                "call_replication": 100,
+                "n_performance_repeats": 3,
+                "n_performance_kernel_runs": 1,
+                "in_dtype": in_type,
+                "run_on_target": target,
+                "use_ukernel": True,
+                "use_chess_for_ukernel": chess_for_ukernel,
+            }
             performance_tests.append(performance_dict)
 
         performance_tests += [
