@@ -9,6 +9,7 @@
 
 #include "iree-amd-aie/aie_runtime/AMDAIEEnums.h"
 #include "iree/compiler/Dialect/HAL/IR/HALTypes.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Types.h"
@@ -146,6 +147,11 @@ bool sinkInto(Region &, IRRewriter &,
 /// function.
 scf::ForOp createForOpWithUnrollingDisabled(OpBuilder &builder, Location loc,
                                             int start, int end, int step);
+
+/// Find all func.func operations that are nested inside `rootOp`, and all
+/// func.call operations inside `rootOp` that call the func.func ops.
+SmallVector<std::pair<func::FuncOp, SmallVector<func::CallOp>>>
+getFunctionsAndTheirCallers(Operation *rootOp);
 
 }  // namespace mlir::iree_compiler::AMDAIE
 

@@ -309,15 +309,8 @@ def AMDAIELinalgFunctionOutlining :
     repeated codes.
   }];
 
-  // Better name: call-replication && callReplication
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELinalgFunctionOutliningPass()";
   let options = [
-    Option<"callReplication", "call-replication", "int64_t", /*default=*/"1",
-      "The number of times the outlined function is called inside a loop. "
-      "This is a 'developer-only' feature that may result in incorrect numerics. "
-      "Useful for measuring the performance of AIE core code. "
-      "Every outlined function, instead of being called once at each call site, "
-      "is called `call-replication` times.">,
     Option<"outliningStrategy", "outlining-strategy",
       "mlir::iree_compiler::AMDAIE::OutliningStrategy",
       /*default=*/"mlir::iree_compiler::AMDAIE::OutliningStrategy::Balanced",
@@ -776,6 +769,27 @@ def AMDAIERemoveMemorySpace : Pass<"iree-amdaie-remove-memoryspace"> {
     should be run somewhere between tiling and lowering to the aie dialect.
   }];
   let constructor =  "mlir::iree_compiler::AMDAIE::createAMDAIERemoveMemorySpacePass()";
+}
+
+def AMDAIEReplicateCalls :
+    Pass<"iree-amdaie-replicate-calls", ""> {
+ let summary = "Duplicate (replication > 1) or remove (replication = 0) function calls. ";
+ let description = [{
+   This pass is for analysing performance. When replication > 1, more relative time is
+   spent performing core operations. When replication = 0, the core performs no work
+   and so all the time is spent in date movement. When replication != 1, the semantics
+   of the original program are changed and so numerical errors are expected.
+
+   When replication > 1, each function call is wrapped in an scf.for with trip count
+   of `replication`. When replication = 0, the function call is replaced with a call
+   to an empty function. The reason we don't just remove the call entirely is to
+   prevent ensuing overly aggressive dead code elimination.
+ }];
+ let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEReplicateCallsPass()";
+ let options = [
+   Option<"replication", "replication", "int64_t", /*default=*/"1",
+     "The number of times each function call is replicated">
+   ];
 }
 
 def AMDAIESinkIntoCore :

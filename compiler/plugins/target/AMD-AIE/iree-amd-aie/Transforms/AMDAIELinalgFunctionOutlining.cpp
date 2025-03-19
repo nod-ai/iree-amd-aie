@@ -158,21 +158,11 @@ class AMDAIELinalgFunctionOutliningPass
 };
 
 void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
+  if (outliningStrategy == OutliningStrategy::None) return;
+
   ModuleOp moduleOp = getOperation();
   MLIRContext *context = &getContext();
   IRRewriter rewriter(context);
-
-  if (outliningStrategy == OutliningStrategy::None) {
-    if (callReplication != 1) {
-      moduleOp.emitWarning()
-          << "The option to call the outlined function " << callReplication
-          << " times instead of once is enabled, while the outlining strategy "
-             "specifies to not outline any functions, so no transformation "
-             "will happen. This combination might not result in "
-             "the intended behaviour.";
-    }
-    return;
-  }
 
   SmallVector<Operation *> toBeErased;
   moduleOp.walk([&](linalg::LinalgOp computeOp) {
@@ -188,12 +178,6 @@ void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
 
     rewriter.setInsertionPoint(computeOp);
 
-    if (callReplication > 1) {
-      scf::ForOp loop = createForOpWithUnrollingDisabled(
-          rewriter, computeOp.getLoc(), 0, callReplication, 1);
-      rewriter.setInsertionPointToStart(loop.getBody());
-    }
-
     rewriter.create<func::CallOp>(computeOp.getLoc(), func,
                                   computeOp->getOperands());
 
@@ -205,21 +189,6 @@ void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
   for (Operation *op : toBeErased) {
     op->dropAllUses();
     rewriter.eraseOp(op);
-  }
-
-  // Instead of 0 calls, we call into a function that does nothing. We do this
-  // because having no calls can result in DCE that removes more than we want.
-  if (callReplication == 0) {
-    for (auto &&nameAndFuncOp : computeOpToOutlinedFuncMap) {
-      Region &region = nameAndFuncOp.second.getBody();
-      Block &block = region.front();
-      uint64_t nOperations = block.getOperations().size();
-      assert(nOperations > 0 && "expected terminator");
-      for (uint64_t i = 0; i < nOperations - 1; ++i) {
-        Operation *frontOp = &block.front();
-        rewriter.eraseOp(frontOp);
-      }
-    }
   }
 }
 

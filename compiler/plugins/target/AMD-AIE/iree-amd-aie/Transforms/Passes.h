@@ -302,6 +302,10 @@ std::unique_ptr<Pass> createAMDAIEPeelForLoopPass(
 /// Create a pass to remove memory space annotation from all types.
 std::unique_ptr<Pass> createAMDAIERemoveMemorySpacePass();
 
+/// Create a pass for function outlining.
+std::unique_ptr<Pass> createAMDAIEReplicateCallsPass(
+    AMDAIEReplicateCallsOptions = {});
+
 /// Create a pass to sink all dependencies into `amdaie.core` operations.
 std::unique_ptr<Pass> createAMDAIESinkIntoCorePass();
 

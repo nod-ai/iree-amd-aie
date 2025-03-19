@@ -240,7 +240,7 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
         options.pathToUkernels, options.enableInputPacketFlow,
         options.enableOutputPacketFlow, options.enableCoalescingLoops,
         options.enableCollapsingUnitDims, options.enableFunctionOutlining,
-        options.outliningCallReplication, options.insertLoopAroundCoreBlock,
+        options.callReplication, options.insertLoopAroundCoreBlock,
         options.emitCtrlPkt);
   }
 
