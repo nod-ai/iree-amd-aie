@@ -786,10 +786,10 @@ def AMDAIEReplicateCalls :
    prevent ensuing overly aggressive dead code elimination.
  }];
  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEReplicateCallsPass()";
-  let options = [
-    Option<"replication", "replication", "int64_t", /*default=*/"1",
-      "The number of times each function call is replicated">
-    ];
+ let options = [
+   Option<"replication", "replication", "int64_t", /*default=*/"1",
+     "The number of times each function call is replicated">
+   ];
 }
 
 def AMDAIESinkIntoCore :

@@ -2306,10 +2306,11 @@ class Tests:
         # Test performance of core code generated with peano.
         # A matmul of shape 512x512x512, run on a single core,  in a loop 100
         # times without any data copy to/from core memory. Peak performance for
-        # the 4x4 phoenix array is 4 TFlops, so peak performace for single core
+        # the 4x4 phoenix array is 4 TFlops (at 1GHz), so peak performace for single core
         # is 4/16 = 0.25 TFlops. This matmul is 512x512x512*2 flops = 0.25 GFlops.
         # So at peak performance, to run this 100 times should take
-        # 0.1 seconds (100'000 microseconds).
+        # 0.1 seconds (100'000 microseconds). Hawk point is clocked faster than
+        # 1 GHz, so at peak, less than 0.1 seconds.
 
         for opt_level, target in [[2, "npu1_4col"], [3, "npu1_4col"]]:
             performance_dict = performance_repl_base_dict.copy()

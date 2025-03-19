@@ -62,7 +62,7 @@ void AMDAIEReplicateCallsPass::runOnOperation() {
     // because having no calls can result in DCE that removes more than we want.
     if (replication == 0) {
       rewriter.setInsertionPoint(funcOp);
-      auto funcType = funcOp.getFunctionType();
+      FunctionType funcType = funcOp.getFunctionType();
 
       // Create a new function with the same type, derived name, and empty body.
       // Replace all calls to the empty function.
@@ -71,7 +71,7 @@ void AMDAIEReplicateCallsPass::runOnOperation() {
           rewriter.create<func::FuncOp>(funcOp.getLoc(), newName, funcType);
       emptyReplacement.setSymName(newName);
       emptyReplacement.setPrivate();
-      auto &entryBlock = *emptyReplacement.addEntryBlock();
+      Block &entryBlock = *emptyReplacement.addEntryBlock();
       rewriter.setInsertionPointToEnd(&entryBlock);
       rewriter.create<func::ReturnOp>(funcOp.getLoc());
       for (func::CallOp callOp : callers) {

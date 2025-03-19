@@ -509,14 +509,14 @@ getFunctionsAndTheirCallers(Operation *rootOp) {
   // `functionsAndCallers`.
   DenseMap<StringRef, uint32_t> funcOpIndex;
 
-  // Find all the function ops
+  // Final all the function ops.
   rootOp->walk([&](func::FuncOp funcOp) {
     funcOpIndex.insert({funcOp.getSymName(), functionsAndCallers.size()});
     SmallVector<func::CallOp> callers;
     functionsAndCallers.push_back({funcOp, callers});
   });
 
-  // Add the callers to the mapping `functionsAndCallers`
+  // Find all the call ops.
   rootOp->walk([&](func::CallOp callOp) {
     StringRef callee = callOp.getCallee();
     auto iter = funcOpIndex.find(callee);
