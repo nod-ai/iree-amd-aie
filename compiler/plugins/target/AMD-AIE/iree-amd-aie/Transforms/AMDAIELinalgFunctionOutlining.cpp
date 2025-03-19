@@ -158,6 +158,8 @@ class AMDAIELinalgFunctionOutliningPass
 };
 
 void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
+  if (outliningStrategy == OutliningStrategy::None) return;
+
   ModuleOp moduleOp = getOperation();
   MLIRContext *context = &getContext();
   IRRewriter rewriter(context);

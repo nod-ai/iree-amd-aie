@@ -4,12 +4,10 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
-#include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 
 #define DEBUG_TYPE "iree-amdaie-replicate-calls"
@@ -35,17 +33,22 @@ class AMDAIEReplicateCallsPass
 };
 
 void AMDAIEReplicateCallsPass::runOnOperation() {
+  if (replication == 1) return;
+
   Operation *parentOp = getOperation();
   IRRewriter rewriter(parentOp);
-  // parentOp->walk([&](func::FuncOp funcOp) { /* do something */ });
-
-  auto functionsAndCallers = getFunctionsAndTheirCallers(parentOp);
-  for (auto [funcOp, callers] : functionsAndCallers) {
-    if (funcOp.getNumArguments() == 0) continue;
+  SmallVector<std::pair<func::FuncOp, SmallVector<func::CallOp>>>
+      functionsAndCallers = getFunctionsAndTheirCallers(parentOp);
+  for (auto &&[funcOp, callers] : functionsAndCallers) {
     if (callers.empty()) continue;
 
+    // We currently only modify functions with operands.
+    if (funcOp.getNumArguments() == 0) continue;
+
+    // If replication > 1, then wrap the call in a scf.for loop with trip count
+    // of `replication`.
     if (replication > 1) {
-      for (auto caller : callers) {
+      for (func::CallOp caller : callers) {
         rewriter.setInsertionPoint(caller);
         scf::ForOp loop = createForOpWithUnrollingDisabled(
             rewriter, caller.getLoc(), 0, replication, 1);
@@ -56,24 +59,21 @@ void AMDAIEReplicateCallsPass::runOnOperation() {
     }
 
     // Instead of 0 calls, we call into a function that does nothing. We do this
-    // because having no calls can result in DCE that removes more than we want
+    // because having no calls can result in DCE that removes more than we want.
     if (replication == 0) {
       rewriter.setInsertionPoint(funcOp);
       auto funcType = funcOp.getFunctionType();
 
+      // Create a new function with the same type, derived name, and empty body.
+      // Replace all calls to the empty function.
       std::string newName = funcOp.getName().str() + "_empty";
-      // Create a new function with the same type but an empty body.
       auto emptyReplacement =
           rewriter.create<func::FuncOp>(funcOp.getLoc(), newName, funcType);
-
       emptyReplacement.setSymName(newName);
       emptyReplacement.setPrivate();
-
-      // Add a single block to it and insert a return op.
       auto &entryBlock = *emptyReplacement.addEntryBlock();
       rewriter.setInsertionPointToEnd(&entryBlock);
       rewriter.create<func::ReturnOp>(funcOp.getLoc());
-
       for (func::CallOp callOp : callers) {
         rewriter.setInsertionPoint(callOp);
         rewriter.replaceOpWithNewOp<func::CallOp>(

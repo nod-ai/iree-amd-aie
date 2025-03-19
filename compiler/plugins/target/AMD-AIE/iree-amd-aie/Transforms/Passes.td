@@ -773,14 +773,22 @@ def AMDAIERemoveMemorySpace : Pass<"iree-amdaie-remove-memoryspace"> {
 
 def AMDAIEReplicateCalls :
     Pass<"iree-amdaie-replicate-calls", ""> {
- let summary = "TODO";
+ let summary = "Duplicate (replication > 1) or remove (replication = 0) function calls. ";
+ let description = [{
+   This pass is for analysing performance. When replication > 1, more relative time is
+   spent performing core operations. When replication = 0, the core performs no work
+   and so all the time is spent in date movement. When replication != 1, the semantics
+   of the original program are changed and so numerical errors are expected.
+
+   When replication > 1, each function call is wrapped in an scf.for with trip count
+   of `replication`. When replication = 0, the function call is replaced with a call
+   to an empty function. The reason we don't just remove the call entirely is to
+   prevent ensuing overly aggressive dead code elimination.
+ }];
  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEReplicateCallsPass()";
   let options = [
     Option<"replication", "replication", "int64_t", /*default=*/"1",
-      "The number of times the outlined function is called inside a loop. "
-      "Useful for measuring the performance of AIE core code. "
-      "Every outlined function, instead of being called once at each call site, "
-      "is called `replication` times.">
+      "The number of times each function call is replicated">
     ];
 }
 
