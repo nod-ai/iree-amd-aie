@@ -32,15 +32,17 @@ def get_total_ops(name):
     2) return the product of all values in the list that are integers.
     """
     fragments = name.split("_")
-    if (fragments[0] is not "matmul") return None
-    if ("empty" in fragments) return 0
+    if len(fragments) == 0:
+        return None
+    if fragments[0] != "matmul":
+        return None
+    if "empty" in fragments:
+        return 0
     total_ops = 1
     for fragment in fragments:
         if fragment.isdigit():
             total_ops *= int(fragment)
     return total_ops
-
-
 
 
 def get_canonical_name(name):
@@ -64,10 +66,15 @@ def generate_html(results_history_path: str, results_html_path: str):
     for entry in results_history:
         for test in entry["tests"]:
             name = get_canonical_name(test["name"])
-            graph_data[name] = {"commit_hashes": [], "durations": [], "ops" : get_total_ops(name), "note" : None}
+            graph_data[name] = {
+                "commit_hashes": [],
+                "durations": [],
+                "ops": get_total_ops(name),
+                "note": None,
+            }
 
-    if "callrepl_100" in name:
-        graph_data[name]["note"] = "This test is run on a single AIE core."
+            if "callrepl_100" in name:
+                graph_data[name]["note"] = "This test is run on a single AIE core."
 
     time_unit = "us"
     for entry in results_history:
@@ -177,6 +184,4 @@ if __name__ == "__main__":
     results_json_path = sys.argv[1]
     results_history_path = sys.argv[2]
     results_html_path = sys.argv[3]
-
-    append_history(results_json_path, results_history_path)
     generate_html(results_history_path, results_html_path)
