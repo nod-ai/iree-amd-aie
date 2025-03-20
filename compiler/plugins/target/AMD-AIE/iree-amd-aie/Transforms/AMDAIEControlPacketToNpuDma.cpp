@@ -51,7 +51,8 @@ struct ControlPacketDmaBuilder {
         AMDAIE::ChannelOp targetChannelOp =
             dyn_cast<AMDAIE::ChannelOp>(target.getDefiningOp());
         if (!targetChannelOp) {
-          connectionOp.emitOpError() << "expected a `amdaie.channel` op target";
+          connectionOp.emitOpError()
+              << "expected an `amdaie.channel` op target";
           return WalkResult::interrupt();
         }
         if (targetChannelOp.getPortType() == StrmSwPortType::CTRL) {

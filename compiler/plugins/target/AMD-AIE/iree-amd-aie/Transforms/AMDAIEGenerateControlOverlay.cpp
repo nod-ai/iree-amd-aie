@@ -50,15 +50,23 @@ LogicalResult initializeChannelsGenerators(
 /// target tile CTRL ports. If multiple target tiles are provided, the
 /// connection is configured as a broadcast.
 LogicalResult buildShimTileToCtrlConnection(
-    IRRewriter &rewriter, AMDAIE::ControlCodeOp controlCodeOp,
-    AMDAIE::TileOp srcTileOp, ArrayRef<TileOp> targetTileOps,
+    IRRewriter &rewriter, const AMDAIEDeviceModel &deviceModel,
+    AMDAIE::ControlCodeOp controlCodeOp, AMDAIE::TileOp srcTileOp,
+    ArrayRef<TileOp> targetTileOps,
     DenseMap<Value, ChannelGenerator> &shimTileToGeneratorMap) {
+  uint32_t col = getConstantIndexOrAssert(srcTileOp.getCol());
+  uint32_t row = getConstantIndexOrAssert(srcTileOp.getRow());
+  if (!deviceModel.isShimNOCTile(col, row))
+    return srcTileOp.emitOpError() << "source tile is not a shim tile";
+  Value srcTile = srcTileOp.getResult();
+  if (!shimTileToGeneratorMap.count(srcTile))
+    return srcTileOp.emitOpError() << "source tile has no channel generator";
+
   // Get the available DMA channel for the shim tile, and assign it for the
   // packet flow.
   std::optional<uint8_t> maybeChannel =
-      shimTileToGeneratorMap[srcTileOp.getResult()]
-          .getAndAssignProducerDMAChannel(
-              ChannelAssignmentMode::RoundRobinPacketFlow);
+      shimTileToGeneratorMap[srcTile].getAndAssignProducerDMAChannel(
+          ChannelAssignmentMode::RoundRobinPacketFlow);
   if (!maybeChannel)
     return srcTileOp.emitOpError() << "no producer DMA channel available";
   rewriter.setInsertionPoint(controlCodeOp);
@@ -168,9 +176,9 @@ LogicalResult generateControlOverlay(AMDAIE::WorkgroupOp workgroupOp,
         coreTileOpsToBroadcast.push_back(tileOp);
       } else {
         // Directly establish a one-to-one connection.
-        if (failed(buildShimTileToCtrlConnection(rewriter, controlCodeOp,
-                                                 shimTileOp, {tileOp},
-                                                 shimTileToGeneratorMap))) {
+        if (failed(buildShimTileToCtrlConnection(
+                rewriter, deviceModel, controlCodeOp, shimTileOp, {tileOp},
+                shimTileToGeneratorMap))) {
           return failure();
         }
       }
@@ -186,8 +194,8 @@ LogicalResult generateControlOverlay(AMDAIE::WorkgroupOp workgroupOp,
           getConstantIndexOrAssert(coreTileOpsToBroadcast[0].getCol());
       TileOp shimTileOp = columnToShimTile[col];
       if (failed(buildShimTileToCtrlConnection(
-              rewriter, controlCodeOp, shimTileOp, coreTileOpsToBroadcast,
-              shimTileToGeneratorMap))) {
+              rewriter, deviceModel, controlCodeOp, shimTileOp,
+              coreTileOpsToBroadcast, shimTileToGeneratorMap))) {
         return failure();
       }
     }

@@ -22,14 +22,22 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
-/// Recursively erase an operation and all its users.
-void recursiveErase(Operation *op) {
-  // Save the users in a separate vector to avoid iterator invalidation.
-  SmallVector<Operation *> users(op->getUsers());
-  // Recursively erase all users first.
-  for (Operation *userOp : users) recursiveErase(userOp);
-  // Now erase this operation.
-  op->erase();
+/// Erase an operation and all its direct and indirect users.
+void eraseWithAllUsers(Operation *op) {
+  llvm::SmallSetVector<Operation *, 16> toErase;
+  toErase.insert(op);
+  while (!toErase.empty()) {
+    Operation *currentOp = toErase.pop_back_val();
+    if (currentOp->getUsers().empty()) {
+      // Leaf node, erase it.
+      currentOp->erase();
+    } else {
+      // Add all users to the erase list.
+      for (Operation *userOp : currentOp->getUsers()) {
+        if (toErase.count(userOp) == 0) toErase.insert(userOp);
+      }
+    }
+  }
 }
 
 /// Use aie-rt to generate transactions for the given device operation.
@@ -39,20 +47,19 @@ LogicalResult generateTransactions(const AMDAIEDeviceModel &deviceModel,
                                    bool broadcastCoreConfig) {
   if (broadcastCoreConfig) {
     // Find all core tiles.
-    SmallVector<xilinx::AIE::TileOp> coreTileOps;
-    llvm::copy_if(
-        deviceOp.getOps<xilinx::AIE::TileOp>(), std::back_inserter(coreTileOps),
+    SmallVector<xilinx::AIE::TileOp> coreTileOps = llvm::filter_to_vector(
+        deviceOp.getOps<xilinx::AIE::TileOp>(),
         [&](xilinx::AIE::TileOp tileOp) {
           return deviceModel.isCoreTile(tileOp.getCol(), tileOp.getRow());
         });
-    // Broadcast means we only need to generate transactions for one core tile.
-    // Keep one core tile and erase the rest.
+    // Broadcast means we only need to generate transactions for one core
+    // tile. Keep one core tile and erase the rest.
     if (coreTileOps.empty()) {
       return deviceOp.emitOpError()
              << "no core tiles found in the device operation";
     }
     coreTileOps.erase(coreTileOps.begin());
-    for (xilinx::AIE::TileOp tileOp : coreTileOps) recursiveErase(tileOp);
+    for (xilinx::AIE::TileOp tileOp : coreTileOps) eraseWithAllUsers(tileOp);
   }
 
   if (failed(addAllAieElfs(deviceModel, deviceOp, Path{pathToElfs},
@@ -121,8 +128,8 @@ LogicalResult convertDeviceToControlPacket(IRRewriter &rewriter,
   DenseMap<uint64_t, uint32_t> emulationBuffer;
 
   // Set the opcode to `write`, indicating data is written only
-  // to the `CTRL` port with no return data expected. The `stream_id` is set to
-  // 0, as it is irrelevant in this case.
+  // to the `CTRL` port with no return data expected. The `stream_id` is set
+  // to 0, as it is irrelevant in this case.
   CtrlPktOpcode opcode = CtrlPktOpcode::write;
   uint32_t stream_id = 0;
 
