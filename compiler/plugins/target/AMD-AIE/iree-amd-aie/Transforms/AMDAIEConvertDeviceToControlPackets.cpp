@@ -21,21 +21,74 @@ using Path = std::filesystem::path;
 namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
+
+/// Erase an operation and all its direct and indirect users.
+void eraseWithAllUsers(Operation *op) {
+  llvm::SmallSetVector<Operation *, 16> toErase;
+  toErase.insert(op);
+  while (!toErase.empty()) {
+    Operation *currentOp = toErase.pop_back_val();
+    if (currentOp->getUsers().empty()) {
+      // Leaf node, erase it.
+      currentOp->erase();
+    } else {
+      // Add all users to the erase list.
+      for (Operation *userOp : currentOp->getUsers()) {
+        if (toErase.count(userOp) == 0) toErase.insert(userOp);
+      }
+    }
+  }
+}
+
+/// Use aie-rt to generate transactions for the given device operation.
+LogicalResult generateTransactions(const AMDAIEDeviceModel &deviceModel,
+                                   xilinx::AIE::DeviceOp deviceOp,
+                                   const std::string &pathToElfs,
+                                   bool broadcastCoreConfig) {
+  if (broadcastCoreConfig) {
+    // Find all core tiles.
+    SmallVector<xilinx::AIE::TileOp> coreTileOps = llvm::filter_to_vector(
+        deviceOp.getOps<xilinx::AIE::TileOp>(),
+        [&](xilinx::AIE::TileOp tileOp) {
+          return deviceModel.isCoreTile(tileOp.getCol(), tileOp.getRow());
+        });
+    // Broadcast means we only need to generate transactions for one core
+    // tile. Keep one core tile and erase the rest.
+    if (coreTileOps.empty()) {
+      return deviceOp.emitOpError()
+             << "no core tiles found in the device operation";
+    }
+    coreTileOps.erase(coreTileOps.begin());
+    for (xilinx::AIE::TileOp tileOp : coreTileOps) eraseWithAllUsers(tileOp);
+  }
+
+  if (failed(addAllAieElfs(deviceModel, deviceOp, Path{pathToElfs},
+                           /*aieSim=*/false))) {
+    return failure();
+  }
+  // Switchboxes configuration cannot be broadcasted.
+  if (failed(addInitConfig(deviceModel, deviceOp,
+                           /*configureSwitches=*/!broadcastCoreConfig)))
+    return failure();
+  if (failed(addAllCoreEnable(deviceModel, deviceOp))) return failure();
+
+  return success();
+}
+
 LogicalResult convertDeviceToControlPacket(IRRewriter &rewriter,
                                            xilinx::AIE::DeviceOp deviceOp,
-                                           const std::string &pathToElfs) {
+                                           const std::string &pathToElfs,
+                                           bool broadcastCoreConfig) {
   AMDAIEDeviceModel deviceModel = getDeviceModel(deviceOp.getDevice());
 
   // Start collecting transations.
   TRY_XAIE_API_LOGICAL_RESULT(XAie_StartTransaction, &deviceModel.devInst,
                               XAIE_TRANSACTION_DISABLE_AUTO_FLUSH);
-  if (failed(addAllAieElfs(deviceModel, deviceOp, Path{pathToElfs},
-                           /*aieSim=*/false))) {
+  // Make a copy of the device operation to avoid modifying the original.
+  if (failed(generateTransactions(
+          deviceModel, cast<xilinx::AIE::DeviceOp>(deviceOp->clone()),
+          pathToElfs, broadcastCoreConfig)))
     return failure();
-  }
-  if (failed(addInitConfig(deviceModel, deviceOp))) return failure();
-  if (failed(addAllCoreEnable(deviceModel, deviceOp))) return failure();
-
   // Export the transactions to a binary buffer.
   uint8_t *txn_ptr =
       XAie_ExportSerializedTransaction(&deviceModel.devInst, 0, 0);
@@ -75,8 +128,8 @@ LogicalResult convertDeviceToControlPacket(IRRewriter &rewriter,
   DenseMap<uint64_t, uint32_t> emulationBuffer;
 
   // Set the opcode to `write`, indicating data is written only
-  // to the `CTRL` port with no return data expected. The `stream_id` is set to
-  // 0, as it is irrelevant in this case.
+  // to the `CTRL` port with no return data expected. The `stream_id` is set
+  // to 0, as it is irrelevant in this case.
   CtrlPktOpcode opcode = CtrlPktOpcode::write;
   uint32_t stream_id = 0;
 
@@ -192,7 +245,8 @@ void AMDAIEConvertDeviceToControlPacketsPass::runOnOperation() {
   }
 
   // Start the conversion.
-  if (failed(convertDeviceToControlPacket(rewriter, deviceOps[0], pathToElfs)))
+  if (failed(convertDeviceToControlPacket(rewriter, deviceOps[0], pathToElfs,
+                                          broadcastCoreConfig)))
     return signalPassFailure();
 }
 
