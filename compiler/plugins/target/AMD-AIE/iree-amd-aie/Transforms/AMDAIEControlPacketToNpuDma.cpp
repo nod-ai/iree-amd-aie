@@ -47,20 +47,22 @@ struct ControlPacketDmaBuilder {
     DenseMap<TileLoc, AMDAIE::ConnectionOp> tileLocToCtrlConnect;
     DenseMap<TileLoc, AMDAIE::TileOp> tileLocToTileOp;
     auto res = workgroupOp->walk([&](AMDAIE::ConnectionOp connectionOp) {
-      if (connectionOp.getTargetChannels().size() != 1) {
-        connectionOp.emitOpError() << "expected a single target channel";
-        return WalkResult::interrupt();
-      }
-
-      auto targetChannelOp = dyn_cast<AMDAIE::ChannelOp>(
-          connectionOp.getTargetChannels()[0].getDefiningOp());
-      if (targetChannelOp.getPortType() == StrmSwPortType::CTRL) {
-        TileOp tileOp = targetChannelOp.getTileOp();
-        TileLoc tileLoc = {
-            static_cast<int>(getConstantIndexOrAssert(tileOp.getCol())),
-            static_cast<int>(getConstantIndexOrAssert(tileOp.getRow()))};
-        tileLocToCtrlConnect[tileLoc] = connectionOp;
-        tileLocToTileOp[tileLoc] = tileOp;
+      for (Value target : connectionOp.getTargetChannels()) {
+        AMDAIE::ChannelOp targetChannelOp =
+            dyn_cast<AMDAIE::ChannelOp>(target.getDefiningOp());
+        if (!targetChannelOp) {
+          connectionOp.emitOpError()
+              << "expected an `amdaie.channel` op target";
+          return WalkResult::interrupt();
+        }
+        if (targetChannelOp.getPortType() == StrmSwPortType::CTRL) {
+          TileOp tileOp = targetChannelOp.getTileOp();
+          TileLoc tileLoc = {
+              static_cast<int>(getConstantIndexOrAssert(tileOp.getCol())),
+              static_cast<int>(getConstantIndexOrAssert(tileOp.getRow()))};
+          tileLocToCtrlConnect[tileLoc] = connectionOp;
+          tileLocToTileOp[tileLoc] = tileOp;
+        }
       }
       return WalkResult::advance();
     });

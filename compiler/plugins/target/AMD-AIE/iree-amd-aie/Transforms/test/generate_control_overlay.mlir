@@ -1,4 +1,5 @@
-// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-generate-control-overlay{route-shim-to-tct=true route-shim-to-tile-ctrl=true}, canonicalize, cse))" --split-input-file --verify-diagnostics %s | FileCheck %s
+// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-generate-control-overlay{route-shim-to-tct=true route-shim-to-tile-ctrl=true broadcast-shim-to-tile-ctrl=false}, canonicalize, cse))" --split-input-file --verify-diagnostics %s | FileCheck %s
+// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-generate-control-overlay{route-shim-to-tct=true route-shim-to-tile-ctrl=true broadcast-shim-to-tile-ctrl=true}, canonicalize, cse))" --split-input-file --verify-diagnostics %s | FileCheck --check-prefix=CHECK-BC %s
 
 // Device attribute is required for route-shim-to-tile-ctrl.
 module {
@@ -65,20 +66,54 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:      %[[CHANNEL_2:.*]] = amdaie.channel(%[[TILE_0_0]], 1, port_type = DMA, direction = MM2S)
 // CHECK:      %[[CHANNEL_3:.*]] = amdaie.channel(%[[TILE_0_1]], 0, port_type = CTRL, direction = S2MM)
 // CHECK:      %[[CONNECT_1:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_3]]}, %{{.+}} {%[[CHANNEL_2]]}) {connection_type = #amdaie<connection_type Packet>}
-// CHECK:      %[[CHANNEL_5:.*]] = amdaie.channel(%[[TILE_0_2]], 0, port_type = CTRL, direction = S2MM)
-// CHECK:      %[[CONNECT_2:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_5]]}, %{{.+}} {%[[CHANNEL_0]]}) {connection_type = #amdaie<connection_type Packet>}
-// CHECK:      %[[CHANNEL_7:.*]] = amdaie.channel(%[[TILE_0_3]], 0, port_type = CTRL, direction = S2MM)
-// CHECK:      %[[CONNECT_3:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_7]]}, %{{.+}} {%[[CHANNEL_2]]}) {connection_type = #amdaie<connection_type Packet>}
-// CHECK:      %[[CHANNEL_9:.*]] = amdaie.channel(%[[TILE_0_4]], 0, port_type = CTRL, direction = S2MM)
-// CHECK:      %[[CONNECT_4:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_9]]}, %{{.+}} {%[[CHANNEL_0]]}) {connection_type = #amdaie<connection_type Packet>}
-// CHECK:      %[[CHANNEL_11:.*]] = amdaie.channel(%[[TILE_0_5]], 0, port_type = CTRL, direction = S2MM)
-// CHECK:      %[[CONNECT_5:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_11]]}, %{{.+}} {%[[CHANNEL_2]]}) {connection_type = #amdaie<connection_type Packet>}
-// CHECK:      %[[CHANNEL_12:.*]] = amdaie.channel(%[[TILE_0_0]], 0, port_type = CTRL, direction = MM2S)
-// CHECK:      %[[CHANNEL_13:.*]] = amdaie.channel(%[[TILE_0_0]], 0, port_type = SOUTH, direction = S2MM)
-// CHECK:      %[[CONNECT_6:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_13]]}, %{{.+}} {%[[CHANNEL_12]]}) {connection_type = #amdaie<connection_type Circuit>}
+// CHECK:      %[[CHANNEL_4:.*]] = amdaie.channel(%[[TILE_0_2]], 0, port_type = CTRL, direction = S2MM)
+// CHECK:      %[[CONNECT_2:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_4]]}, %{{.+}} {%[[CHANNEL_0]]}) {connection_type = #amdaie<connection_type Packet>}
+// CHECK:      %[[CHANNEL_5:.*]] = amdaie.channel(%[[TILE_0_3]], 0, port_type = CTRL, direction = S2MM)
+// CHECK:      %[[CONNECT_3:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_5]]}, %{{.+}} {%[[CHANNEL_2]]}) {connection_type = #amdaie<connection_type Packet>}
+// CHECK:      %[[CHANNEL_6:.*]] = amdaie.channel(%[[TILE_0_4]], 0, port_type = CTRL, direction = S2MM)
+// CHECK:      %[[CONNECT_4:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_6]]}, %{{.+}} {%[[CHANNEL_0]]}) {connection_type = #amdaie<connection_type Packet>}
+// CHECK:      %[[CHANNEL_7:.*]] = amdaie.channel(%[[TILE_0_5]], 0, port_type = CTRL, direction = S2MM)
+// CHECK:      %[[CONNECT_5:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_7]]}, %{{.+}} {%[[CHANNEL_2]]}) {connection_type = #amdaie<connection_type Packet>}
+// CHECK:      %[[CHANNEL_8:.*]] = amdaie.channel(%[[TILE_0_0]], 0, port_type = CTRL, direction = MM2S)
+// CHECK:      %[[CHANNEL_9:.*]] = amdaie.channel(%[[TILE_0_0]], 0, port_type = SOUTH, direction = S2MM)
+// CHECK:      %[[CONNECT_6:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_9]]}, %{{.+}} {%[[CHANNEL_8]]}) {connection_type = #amdaie<connection_type Circuit>}
 // CHECK:      amdaie.controlcode {
-// CHECK-COUNT-6:amdaie.npu.dma_placeholder
+// CHECK-COUNT-7:amdaie.npu.dma_placeholder
+// CHECK-NOT:    amdaie.npu.dma_placeholder
 // CHECK:        amdaie.end
+
+// CHECK-BC-LABEL: @column_control_overlay
+// CHECK-BC: %[[C0:.*]] = arith.constant 0 : index
+// CHECK-BC: %[[C1:.*]] = arith.constant 1 : index
+// CHECK-BC: %[[C2:.*]] = arith.constant 2 : index
+// CHECK-BC: %[[C3:.*]] = arith.constant 3 : index
+// CHECK-BC: %[[C4:.*]] = arith.constant 4 : index
+// CHECK-BC: %[[C5:.*]] = arith.constant 5 : index
+// CHECK-BC: amdaie.workgroup {
+// CHECK-BC:   %[[TILE_0_0:.*]] = amdaie.tile(%[[C0]], %[[C0]])
+// CHECK-BC:   %[[TILE_0_1:.*]] = amdaie.tile(%[[C0]], %[[C1]])
+// CHECK-BC:   %[[TILE_0_2:.*]] = amdaie.tile(%[[C0]], %[[C2]])
+// CHECK-BC:   %[[TILE_0_3:.*]] = amdaie.tile(%[[C0]], %[[C3]])
+// CHECK-BC:   %[[TILE_0_4:.*]] = amdaie.tile(%[[C0]], %[[C4]])
+// CHECK-BC:   %[[TILE_0_5:.*]] = amdaie.tile(%[[C0]], %[[C5]])
+// CHECK-BC:   %[[CHANNEL_0:.*]] = amdaie.channel(%[[TILE_0_0]], 0, port_type = DMA, direction = MM2S)
+// CHECK-BC:   %[[CHANNEL_1:.*]] = amdaie.channel(%[[TILE_0_0]], 0, port_type = CTRL, direction = S2MM)
+// CHECK-BC:   %[[CONNECT_0:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_1]]}, %{{.+}} {%[[CHANNEL_0]]}) {connection_type = #amdaie<connection_type Packet>}
+// CHECK-BC:   %[[CHANNEL_2:.*]] = amdaie.channel(%[[TILE_0_0]], 1, port_type = DMA, direction = MM2S)
+// CHECK-BC:   %[[CHANNEL_3:.*]] = amdaie.channel(%[[TILE_0_1]], 0, port_type = CTRL, direction = S2MM)
+// CHECK-BC:   %[[CONNECT_1:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_3]]}, %{{.+}} {%[[CHANNEL_2]]}) {connection_type = #amdaie<connection_type Packet>}
+// CHECK-BC:   %[[CHANNEL_4:.*]] = amdaie.channel(%[[TILE_0_2]], 0, port_type = CTRL, direction = S2MM)
+// CHECK-BC:   %[[CHANNEL_5:.*]] = amdaie.channel(%[[TILE_0_3]], 0, port_type = CTRL, direction = S2MM)
+// CHECK-BC:   %[[CHANNEL_6:.*]] = amdaie.channel(%[[TILE_0_4]], 0, port_type = CTRL, direction = S2MM)
+// CHECK-BC:   %[[CHANNEL_7:.*]] = amdaie.channel(%[[TILE_0_5]], 0, port_type = CTRL, direction = S2MM)
+// CHECK-BC:   %[[CONNECT_2:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_4]], %[[CHANNEL_5]], %[[CHANNEL_6]], %[[CHANNEL_7]]}, %{{.+}} {%[[CHANNEL_0]]}) {connection_type = #amdaie<connection_type Packet>}
+// CHECK-BC:   %[[CHANNEL_8:.*]] = amdaie.channel(%[[TILE_0_0]], 0, port_type = CTRL, direction = MM2S)
+// CHECK-BC:   %[[CHANNEL_9:.*]] = amdaie.channel(%[[TILE_0_0]], 0, port_type = SOUTH, direction = S2MM)
+// CHECK-BC:   %[[CONNECT_3:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_9]]}, %{{.+}} {%[[CHANNEL_8]]}) {connection_type = #amdaie<connection_type Circuit>}
+// CHECK-BC:   amdaie.controlcode {
+// CHECK-BC-COUNT-4: amdaie.npu.dma_placeholder
+// CHECK-BC-NOT:     amdaie.npu.dma_placeholder
+// CHECK-BC:     amdaie.end
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @column_control_overlay() {
@@ -132,20 +167,54 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:      %[[CHANNEL_2:.*]] = amdaie.channel(%[[TILE_0_0]], 1, port_type = DMA, direction = MM2S)
 // CHECK:      %[[CHANNEL_3:.*]] = amdaie.channel(%[[TILE_0_1]], 0, port_type = CTRL, direction = S2MM)
 // CHECK:      %[[CONNECT_1:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_3]]}, %{{.+}} {%[[CHANNEL_2]]}) {connection_type = #amdaie<connection_type Packet>}
-// CHECK:      %[[CHANNEL_5:.*]] = amdaie.channel(%[[TILE_0_2]], 0, port_type = CTRL, direction = S2MM)
-// CHECK:      %[[CONNECT_2:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_5]]}, %{{.+}} {%[[CHANNEL_0]]}) {connection_type = #amdaie<connection_type Packet>}
-// CHECK:      %[[CHANNEL_7:.*]] = amdaie.channel(%[[TILE_0_3]], 0, port_type = CTRL, direction = S2MM)
-// CHECK:      %[[CONNECT_3:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_7]]}, %{{.+}} {%[[CHANNEL_2]]}) {connection_type = #amdaie<connection_type Packet>}
-// CHECK:      %[[CHANNEL_9:.*]] = amdaie.channel(%[[TILE_0_4]], 0, port_type = CTRL, direction = S2MM)
-// CHECK:      %[[CONNECT_4:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_9]]}, %{{.+}} {%[[CHANNEL_0]]}) {connection_type = #amdaie<connection_type Packet>}
-// CHECK:      %[[CHANNEL_11:.*]] = amdaie.channel(%[[TILE_0_5]], 0, port_type = CTRL, direction = S2MM)
-// CHECK:      %[[CONNECT_5:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_11]]}, %{{.+}} {%[[CHANNEL_2]]}) {connection_type = #amdaie<connection_type Packet>}
-// CHECK:      %[[CHANNEL_12:.*]] = amdaie.channel(%[[TILE_0_0]], 0, port_type = CTRL, direction = MM2S)
-// CHECK:      %[[CHANNEL_13:.*]] = amdaie.channel(%[[TILE_0_0]], 0, port_type = SOUTH, direction = S2MM)
-// CHECK:      %[[CONNECT_6:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_13]]}, %{{.+}} {%[[CHANNEL_12]]}) {connection_type = #amdaie<connection_type Circuit>}
+// CHECK:      %[[CHANNEL_4:.*]] = amdaie.channel(%[[TILE_0_2]], 0, port_type = CTRL, direction = S2MM)
+// CHECK:      %[[CONNECT_2:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_4]]}, %{{.+}} {%[[CHANNEL_0]]}) {connection_type = #amdaie<connection_type Packet>}
+// CHECK:      %[[CHANNEL_5:.*]] = amdaie.channel(%[[TILE_0_3]], 0, port_type = CTRL, direction = S2MM)
+// CHECK:      %[[CONNECT_3:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_5]]}, %{{.+}} {%[[CHANNEL_2]]}) {connection_type = #amdaie<connection_type Packet>}
+// CHECK:      %[[CHANNEL_6:.*]] = amdaie.channel(%[[TILE_0_4]], 0, port_type = CTRL, direction = S2MM)
+// CHECK:      %[[CONNECT_4:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_6]]}, %{{.+}} {%[[CHANNEL_0]]}) {connection_type = #amdaie<connection_type Packet>}
+// CHECK:      %[[CHANNEL_7:.*]] = amdaie.channel(%[[TILE_0_5]], 0, port_type = CTRL, direction = S2MM)
+// CHECK:      %[[CONNECT_5:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_7]]}, %{{.+}} {%[[CHANNEL_2]]}) {connection_type = #amdaie<connection_type Packet>}
+// CHECK:      %[[CHANNEL_8:.*]] = amdaie.channel(%[[TILE_0_0]], 0, port_type = CTRL, direction = MM2S)
+// CHECK:      %[[CHANNEL_9:.*]] = amdaie.channel(%[[TILE_0_0]], 0, port_type = SOUTH, direction = S2MM)
+// CHECK:      %[[CONNECT_6:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_9]]}, %{{.+}} {%[[CHANNEL_8]]}) {connection_type = #amdaie<connection_type Circuit>}
 // CHECK:      amdaie.controlcode {
-// CHECK-COUNT-6:amdaie.npu.dma_placeholder
+// CHECK-COUNT-7:amdaie.npu.dma_placeholder
+// CHECK-NOT:    amdaie.npu.dma_placeholder
 // CHECK:        amdaie.end
+
+// CHECK_BC-LABEL: @shuffled_tiles
+// CHECK-BC: %[[C0:.*]] = arith.constant 0 : index
+// CHECK-BC: %[[C1:.*]] = arith.constant 1 : index
+// CHECK-BC: %[[C2:.*]] = arith.constant 2 : index
+// CHECK-BC: %[[C3:.*]] = arith.constant 3 : index
+// CHECK-BC: %[[C4:.*]] = arith.constant 4 : index
+// CHECK-BC: %[[C5:.*]] = arith.constant 5 : index
+// CHECK-BC: amdaie.workgroup {
+// CHECK-BC:   %[[TILE_0_5:.*]] = amdaie.tile(%[[C0]], %[[C5]])
+// CHECK-BC:   %[[TILE_0_4:.*]] = amdaie.tile(%[[C0]], %[[C4]])
+// CHECK-BC:   %[[TILE_0_1:.*]] = amdaie.tile(%[[C0]], %[[C1]])
+// CHECK-BC:   %[[TILE_0_0:.*]] = amdaie.tile(%[[C0]], %[[C0]])
+// CHECK-BC:   %[[TILE_0_3:.*]] = amdaie.tile(%[[C0]], %[[C3]])
+// CHECK-BC:   %[[TILE_0_2:.*]] = amdaie.tile(%[[C0]], %[[C2]])
+// CHECK-BC:   %[[CHANNEL_0:.*]] = amdaie.channel(%[[TILE_0_0]], 0, port_type = DMA, direction = MM2S)
+// CHECK-BC:   %[[CHANNEL_1:.*]] = amdaie.channel(%[[TILE_0_0]], 0, port_type = CTRL, direction = S2MM)
+// CHECK-BC:   %[[CONNECT_0:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_1]]}, %{{.+}} {%[[CHANNEL_0]]}) {connection_type = #amdaie<connection_type Packet>}
+// CHECK-BC:   %[[CHANNEL_2:.*]] = amdaie.channel(%[[TILE_0_0]], 1, port_type = DMA, direction = MM2S)
+// CHECK-BC:   %[[CHANNEL_3:.*]] = amdaie.channel(%[[TILE_0_1]], 0, port_type = CTRL, direction = S2MM)
+// CHECK-BC:   %[[CONNECT_1:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_3]]}, %{{.+}} {%[[CHANNEL_2]]}) {connection_type = #amdaie<connection_type Packet>}
+// CHECK-BC:   %[[CHANNEL_4:.*]] = amdaie.channel(%[[TILE_0_2]], 0, port_type = CTRL, direction = S2MM)
+// CHECK-BC:   %[[CHANNEL_5:.*]] = amdaie.channel(%[[TILE_0_3]], 0, port_type = CTRL, direction = S2MM)
+// CHECK-BC:   %[[CHANNEL_6:.*]] = amdaie.channel(%[[TILE_0_4]], 0, port_type = CTRL, direction = S2MM)
+// CHECK-BC:   %[[CHANNEL_7:.*]] = amdaie.channel(%[[TILE_0_5]], 0, port_type = CTRL, direction = S2MM)
+// CHECK-BC:   %[[CONNECT_2:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_4]], %[[CHANNEL_5]], %[[CHANNEL_6]], %[[CHANNEL_7]]}, %{{.+}} {%[[CHANNEL_0]]}) {connection_type = #amdaie<connection_type Packet>}
+// CHECK-BC:   %[[CHANNEL_8:.*]] = amdaie.channel(%[[TILE_0_0]], 0, port_type = CTRL, direction = MM2S)
+// CHECK-BC:   %[[CHANNEL_9:.*]] = amdaie.channel(%[[TILE_0_0]], 0, port_type = SOUTH, direction = S2MM)
+// CHECK-BC:   %[[CONNECT_3:.*]] = amdaie.connection(%{{.+}} {%[[CHANNEL_9]]}, %{{.+}} {%[[CHANNEL_8]]}) {connection_type = #amdaie<connection_type Circuit>}
+// CHECK-BC:   amdaie.controlcode {
+// CHECK-BC-COUNT-4:amdaie.npu.dma_placeholder
+// CHECK-BC-NOT:    amdaie.npu.dma_placeholder
+// CHECK-BC:     amdaie.end
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @shuffled_tiles() {

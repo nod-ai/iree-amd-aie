@@ -212,6 +212,8 @@ def AMDAIEConvertDeviceToControlPackets: Pass<"iree-amdaie-convert-device-to-con
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEConvertDeviceToControlPacketsPass()";
   let options = [
     Option<"pathToElfs", "path-to-elfs", "std::string", /*default=*/"", "Path to ELF files.">,
+    Option<"broadcastCoreConfig", "broadcast-core-config", "bool", /*default=*/"true",
+      "Broadcast the core configuration to all cores.">,
   ];
 }
 
@@ -375,7 +377,10 @@ def AMDAIEGenerateControlOverlay : Pass<"iree-amdaie-generate-control-overlay"> 
     Option<"routeShimCtrlToTct", "route-shim-to-tct", "bool", /*default=*/"true",
       "Flag to generate TCT routing between tile CTRL and shim SOUTH ports.">,
     Option<"routeShimToTileCtrl", "route-shim-to-tile-ctrl", "bool", /*default=*/"false",
-      "Flag to generate routing between shim dma DMA and tile CTRL ports, for configuration.">
+      "Flag to generate routing between shim dma DMA and tile CTRL ports, for configuration.">,
+    Option<"broadcastShimToTileCtrl", "broadcast-shim-to-tile-ctrl", "bool", /*default=*/"true",
+      "Flag to indicate if the shim DMA is connected to all tile core CTRL ports in broadcast mode. "
+      "This option is only effective if `route-shim-to-tile-ctrl` is also enabled">
   ];
 }
 
