@@ -60,7 +60,7 @@ struct AMDAIEOptions {
   bool enableCoalescingLoops{false};
   bool enableCollapsingUnitDims{false};
   OutliningStrategy enableFunctionOutlining{OutliningStrategy::Balanced};
-  int outliningCallReplication{1};
+  int callReplication{1};
   bool insertLoopAroundCoreBlock{false};
   bool matmulElementwiseFusion{false};
   AMDAIEDevice AMDAIETargetDevice{AMDAIEDevice::npu1_4col};
@@ -236,7 +236,7 @@ struct AMDAIEOptions {
                                     "performance and program size.")));
 
     binder.opt<int>(
-        "iree-amdaie-outlining-call-replication", outliningCallReplication,
+        "iree-amdaie-call-replication", callReplication,
         llvm::cl::cat(category),
         llvm::cl::desc(
             "The number of calls to outlined function. n!=1 will result "

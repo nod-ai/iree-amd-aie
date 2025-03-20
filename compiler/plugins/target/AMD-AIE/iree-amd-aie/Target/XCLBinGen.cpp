@@ -393,12 +393,16 @@ FailureOr<Path> findVitis(std::optional<Path> &vitisDir,
   Path chessccPath = aieToolsPath / "tps" / "lnx64" /
                      *getTargetDir(npuVersion) / "bin" / "LNa64bin";
 
+  std::string chessccPathStr = chessccPath.string();
+
   if (!std::filesystem::exists(chessccPath / "chess-clang")) {
-    llvm::errs() << "ERROR: couldn't find chess-clang\n";
+    llvm::errs() << "Tried to find chess-clang at:\n  " << chessccPathStr
+                 << "\nERROR: couldn't find chess-clang\n";
     return failure();
   }
   if (!std::filesystem::exists(chessccPath / "chess-llvm-link")) {
-    llvm::errs() << "ERROR: couldn't find chess-llvm-link\n";
+    llvm::errs() << "Tried to find chess-llvm-link at:\n  " << chessccPathStr
+                 << "\nERROR: couldn't find chess-llvm-link\n";
     return failure();
   }
 
@@ -784,7 +788,8 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
           FailureOr<Path> maybeVitisDir = findVitis(vitisDir, npuVersion);
           if (failed(maybeVitisDir)) {
             llvm::errs() << "compiling ukernels with chess requires Vitis to "
-                            "be found";
+                            "be found"
+                         << '\n';
             return failure();
           }
           mmObjectFilePath = assembleStringUsingChess(

@@ -18,34 +18,6 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
-SmallVector<std::pair<func::FuncOp, SmallVector<func::CallOp>>>
-getFunctionsAndTheirCallers(Operation *rootOp) {
-  // A mapping from all the function ops in the root op, to their callers.
-  SmallVector<std::pair<func::FuncOp, SmallVector<func::CallOp>>>
-      functionsAndCallers;
-
-  // A mapping from function symbol names, to their index in
-  // `functionsAndCallers`.
-  DenseMap<StringRef, uint32_t> funcOpIndex;
-
-  // Find all the function ops
-  rootOp->walk([&](func::FuncOp funcOp) {
-    funcOpIndex.insert({funcOp.getSymName(), functionsAndCallers.size()});
-    SmallVector<func::CallOp> callers;
-    functionsAndCallers.push_back({funcOp, callers});
-  });
-
-  // Add the callers to the mapping `functionsAndCallers`
-  rootOp->walk([&](func::CallOp callOp) {
-    StringRef callee = callOp.getCallee();
-    auto iter = funcOpIndex.find(callee);
-    if (iter != funcOpIndex.end()) {
-      functionsAndCallers[iter->second].second.push_back(callOp);
-    }
-  });
-  return functionsAndCallers;
-}
-
 /// Traverse backwards through the definition chain of first operands
 /// starting from `initial`, until either a memref.alloc or a amdaie.buffer
 /// operation is found. If neither is found, return a failure.

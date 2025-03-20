@@ -31,7 +31,8 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
 
 /// Add lowering passes from MLIR-AIE. This is
 /// currently the default passes used for lowering from AIE dialect.
-void addMLIRAIELoweringPasses(OpPassManager &passManager);
+void addMLIRAIELoweringPasses(OpPassManager &passManager,
+                              TilePassPipeline useTilePipeline);
 
 /// Populates passes needed to lower linalg/arith/math ops to LLVM dialect via
 /// the structured ops path. The pass manager `pm` here operate on the module
@@ -300,6 +301,10 @@ std::unique_ptr<Pass> createAMDAIEPeelForLoopPass(
 
 /// Create a pass to remove memory space annotation from all types.
 std::unique_ptr<Pass> createAMDAIERemoveMemorySpacePass();
+
+/// Create a pass for function outlining.
+std::unique_ptr<Pass> createAMDAIEReplicateCallsPass(
+    AMDAIEReplicateCallsOptions = {});
 
 /// Create a pass to sink all dependencies into `amdaie.core` operations.
 std::unique_ptr<Pass> createAMDAIESinkIntoCorePass();

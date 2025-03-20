@@ -603,7 +603,7 @@ void buildAMDAIETransformPassPipeline(
     bool enableVectorizationPasses, const std::string &pathToUkernels,
     bool enableInputPacketFlow, bool enableOutputPacketFlow,
     bool enableCoalescingLoops, bool enableCollapsingUnitDims,
-    OutliningStrategy enableFunctionOutlining, int outliningCallReplication,
+    OutliningStrategy enableFunctionOutlining, int callReplication,
     bool insertLoopAroundCoreBlock, bool emitCtrlPkt) {
   OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
   {
@@ -635,9 +635,8 @@ void buildAMDAIETransformPassPipeline(
     addAMDAIEObjectFifoLoweringPasses(
         modulePassManager, enableInputPacketFlow, enableOutputPacketFlow,
         useTilePipeline, enableVectorizationPasses, enableCoalescingLoops,
-        enableCollapsingUnitDims, enableFunctionOutlining,
-        outliningCallReplication, insertLoopAroundCoreBlock, numCols,
-        emitCtrlPkt);
+        enableCollapsingUnitDims, enableFunctionOutlining, callReplication,
+        insertLoopAroundCoreBlock, numCols, emitCtrlPkt);
   } else if (useLowerToAIEPipeline == LowerToAIEPassPipeline::AIR) {
     addMLIRAIRLoweringPasses(modulePassManager, device, useTilePipeline,
                              matmulElementwiseFusion,
@@ -662,8 +661,8 @@ void addAMDAIEObjectFifoLoweringPasses(
     bool enableOutputPacketFlow, TilePassPipeline useTilePipeline,
     bool enableVectorizationPasses, bool enableCoalescingLoops,
     bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
-    int outliningCallReplication, bool insertLoopAroundCoreBlock,
-    uint32_t numCols, bool emitCtrlPkt) {
+    int callReplication, bool insertLoopAroundCoreBlock, uint32_t numCols,
+    bool emitCtrlPkt) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
 
@@ -690,10 +689,16 @@ void addAMDAIEObjectFifoLoweringPasses(
   passManager.addPass(createAMDAIEInsertCoresPass());
 
   // Create function outlining options object, etc.
-  AMDAIELinalgFunctionOutliningOptions options;
-  options.outliningStrategy = enableFunctionOutlining;
-  options.callReplication = outliningCallReplication;
-  passManager.addPass(createAMDAIELinalgFunctionOutliningPass(options));
+  {
+    AMDAIELinalgFunctionOutliningOptions options;
+    options.outliningStrategy = enableFunctionOutlining;
+    passManager.addPass(createAMDAIELinalgFunctionOutliningPass(options));
+  }
+  {
+    AMDAIEReplicateCallsOptions options;
+    options.replication = callReplication;
+    passManager.addPass(createAMDAIEReplicateCallsPass(options));
+  }
 
   {
     // Vectorization passes
@@ -797,17 +802,25 @@ void addAMDAIEObjectFifoLoweringPasses(
   addAMDAIEToAIEPasses(passManager, insertLoopAroundCoreBlock);
 
   // Now lower using the AIE passes from MLIR-AIE.
-  addMLIRAIELoweringPasses(passManager);
+  addMLIRAIELoweringPasses(passManager, useTilePipeline);
 }
 
-void addMLIRAIELoweringPasses(OpPassManager &pm) {
+void addMLIRAIELoweringPasses(OpPassManager &pm,
+                              TilePassPipeline useTilePipeline) {
   mlir::iree_compiler::aievec::buildConvertVectorToAIEVec(pm);
 
   {
     OpPassManager &devicePM = pm.nest<xilinx::AIE::DeviceOp>();
     devicePM.addPass(createCanonicalizerPass());
     devicePM.addPass(createAMDAIEAssignBufferDescriptorIDsPass());
-    devicePM.addPass(createAMDAIEAssignBufferAddressesPass());
+    {
+      // For Conv ops use basic sequential scheme to avoid numerical error.
+      // TODO: Find a better working scheme for Conv ops
+      AMDAIEAssignBufferAddressesOptions options;
+      if (useTilePipeline == TilePassPipeline::ConvDecomposePipeline)
+        options.allocScheme = AllocScheme::Sequential;
+      devicePM.addPass(createAMDAIEAssignBufferAddressesPass(options));
+    }
     {
       // Route control and data flows separately, prioritizing control flows
       // first to ensure their deterministic routing results.
@@ -1050,7 +1063,7 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
   }
 
   // Now lower using the AIE passes from MLIR-AIE.
-  addMLIRAIELoweringPasses(passManager);
+  addMLIRAIELoweringPasses(passManager, useTilePipeline);
 }
 
 // NOTE: this runs on the top-level program module containing all hal.executable
