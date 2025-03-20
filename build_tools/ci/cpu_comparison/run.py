@@ -3,6 +3,7 @@
 # Copyright 2024 The IREE Authors
 
 from abc import ABC, abstractmethod
+import copy
 import argparse
 import os
 import platform
@@ -2313,7 +2314,7 @@ class Tests:
         # 1 GHz, so at peak, less than 0.1 seconds.
 
         for opt_level, target in [[2, "npu1_4col"], [3, "npu1_4col"]]:
-            performance_dict = performance_repl_base_dict.copy()
+            performance_dict = copy.deepcopy(performance_repl_base_dict)
             performance_dict["peano_opt_level"] = opt_level
             performance_dict["run_on_target"] = target
             performance_dict["use_ukernel"] = False
@@ -2324,7 +2325,7 @@ class Tests:
             ["npu4", True, "i8"],
             ["npu4", False, "i8"],
         ]:
-            performance_dict = performance_repl_base_dict.copy()
+            performance_dict = copy.deepcopy(performance_repl_base_dict)
             performance_dict["in_dtype"] = in_type
             performance_dict["run_on_target"] = target
             performance_dict["use_ukernel"] = True
