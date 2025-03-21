@@ -2250,7 +2250,7 @@ class Tests:
                         "--iree-amdaie-num-cols=1",
                     ],
                     name_suffix="1row_1col",
-                    run_on_target=["npu1_4col"],
+                    run_on_target=["npu4"],
                 ),
             )
         )

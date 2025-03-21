@@ -44,11 +44,13 @@ FailureOr<DenseSet<Value>> getThreadIndVars(ModuleOp moduleOp) {
   return threadIndVars;
 }
 
-/// Try to detect subview(s) that look like they're 'distributing' L1 memory.
-/// That is: they slice the L1 memory along thread/tile dimensions. If the
-/// allocation `alloc` does not look like it's distributed across threads/tiles,
-/// return an empty memref type. Otherwise, return the memref type that the
-/// subviews are viewing.
+/// For a given alloc the distributed type is fetched by looking at each of its
+/// subview users. For each subview, we check if their users are within the
+/// innermost scf.forall(s). We look at the uses in innermost scf.forall ops
+/// because they comprise the entire computation that each core will perform.
+/// We return empty memref type if :-
+///   a. Any subview's user is NOT within the innermost scf.forall.
+///   b. The result type of two subviews do not match.
 MemRefType getDistributedType(memref::AllocOp alloc,
                               DenseSet<Operation *> &innermostForallOps) {
   MemRefType type;
