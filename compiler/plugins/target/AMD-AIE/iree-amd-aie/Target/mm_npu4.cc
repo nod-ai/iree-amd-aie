@@ -306,11 +306,14 @@ matmul_combos_i8(matmul_vectorized_c_func, 32, 32, 8)
 matmul_combos_i8(matmul_vectorized_c_func, 32, 32, 32)
 matmul_combos_i8(matmul_vectorized_c_func, 32, 32, 64)
 matmul_combos_i8(matmul_vectorized_c_func, 64, 64, 64)
+matmul_combos_i8(matmul_vectorized_c_func, 64, 32, 128)
+matmul_combos_i8(matmul_vectorized_c_func, 64, 64, 128)
 
 zero_fill_combos(zero_vectorized_c_func, 16, 8)
 zero_fill_combos(zero_vectorized_c_func, 16, 16)
 zero_fill_combos(zero_vectorized_c_func, 32, 16)
 zero_fill_combos(zero_vectorized_c_func, 32, 32)
+zero_fill_combos(zero_vectorized_c_func, 64, 32)
 zero_fill_combos(zero_vectorized_c_func, 64, 64)
 
 }  // extern "C"

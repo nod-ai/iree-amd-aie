@@ -246,6 +246,21 @@ FailureOr<ParameterSetting> ParameterSetting::create(
 
   unsigned scaleFactor = maybeScaleFactor.value();
 
+  // Consider trunci op that converts i32 to i8 after matmul ops, then the scale
+  // factor can be doubled to make the most use of L1 memory.
+  if (isMatmulWithElementwiseConsumer(linalgOp)) {
+    for (Operation *userOp : linalgOp->getUsers()) {
+      if (auto linalgUser = dyn_cast<linalg::LinalgOp>(userOp)) {
+        auto outputType = llvm::cast<ShapedType>(
+            linalgUser.getDpsInitOperand(0)->get().getType());
+        unsigned nBitsOutput = outputType.getElementTypeBitWidth();
+        if (nBitsInit == 32 && nBitsOutput == 8) {
+          scaleFactor *= 2;
+        }
+      }
+    }
+  }
+
   auto maybePackedSize = getPackedSize(linalgOp, M, N, K, targetDevice);
   if (failed(maybePackedSize)) return failure();
   auto [m1Pack, n1Pack, k1Pack] = maybePackedSize.value();
