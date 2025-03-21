@@ -4,6 +4,7 @@
 
 import json
 import sys
+import functools
 
 
 def append_history(results_json_path: str, results_history_path: str):
@@ -25,6 +26,24 @@ def append_history(results_json_path: str, results_history_path: str):
         json.dump(results_history, f, indent=2)
 
 
+def get_total_ops(name: str):
+    """
+    Determine the number of operations performed by a matmul test, based on its name.
+    Edge cases:
+    - name doesn't contain 'matmul' or name doesn't contain 3+ digits: return None
+    - name contains 'empty': return 0
+    """
+    fragments = name.split("_")
+    digit_fragments = [int(fragment) for fragment in fragments if fragment.isdigit()]
+    if len(digit_fragments) < 3:
+        return None
+    if fragments[0] != "matmul":
+        return None
+    if "empty" in fragments:
+        return 0
+    return functools.reduce(lambda x, y: x * y, digit_fragments)
+
+
 def get_canonical_name(name):
     """
     Test names might change with commits, even though the test is unchanged.
@@ -37,16 +56,16 @@ def get_canonical_name(name):
     return name
 
 
-def generate_html(results_history_path: str, results_html_path: str):
-    results_history = []
-    with open(results_history_path, "r") as f:
-        results_history = json.load(f)
-
+def generate_html(results_history: list):
     graph_data = {}
     for entry in results_history:
         for test in entry["tests"]:
             name = get_canonical_name(test["name"])
-            graph_data[name] = {"commit_hashes": [], "durations": []}
+            graph_data[name] = {
+                "commit_hashes": [],
+                "durations": [],
+                "ops": get_total_ops(name),
+            }
 
     time_unit = "us"
     for entry in results_history:
@@ -88,7 +107,11 @@ def generate_html(results_history_path: str, results_html_path: str):
     for test_name, data in graph_data.items():
         html_content += f"""
         <div class="chart-container">
-            <h2>Performance for {test_name}</h2>
+            <h2>Performance for {test_name}</h2>"""
+        if data["ops"] is not None:
+            html_content += f"""
+            Total ops: {data["ops"]}"""
+        html_content += f"""
             <canvas id="chart-{test_name.replace(' ', '-')}"></canvas>
         </div>
         <script>
@@ -133,9 +156,7 @@ def generate_html(results_history_path: str, results_html_path: str):
     </html>
     """
 
-    # Save the HTML file
-    with open(results_html_path, "w") as f:
-        f.write(html_content)
+    return html_content
 
 
 if __name__ == "__main__":
@@ -149,6 +170,12 @@ if __name__ == "__main__":
     results_json_path = sys.argv[1]
     results_history_path = sys.argv[2]
     results_html_path = sys.argv[3]
-
     append_history(results_json_path, results_history_path)
-    generate_html(results_history_path, results_html_path)
+
+    # Generate and save the HTML file
+    results_history = []
+    with open(results_history_path, "r") as f:
+        results_history = json.load(f)
+    html_content = generate_html(results_history)
+    with open(results_html_path, "w") as f:
+        f.write(html_content)
