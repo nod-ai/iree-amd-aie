@@ -50,41 +50,13 @@ FailureOr<DenseSet<Value>> getThreadIndVars(ModuleOp moduleOp) {
 /// return an empty memref type. Otherwise, return the memref type that the
 /// subviews are viewing.
 MemRefType getDistributedType(memref::AllocOp alloc,
-                              const DenseSet<Value> &indVars, int64_t numRows,
-                              int64_t numColumns) {
+                              DenseSet<Operation *> &innermostForallOps) {
   MemRefType type;
   for (Operation *allocUser : alloc->getUsers()) {
     if (auto subview = dyn_cast<memref::SubViewOp>(allocUser)) {
-      // Check that all offsets are either constants or depending on thread ids.
-      // We assume that if a subview has an offset which is not a constant and
-      // does not depend on thread id, it's not 'distributing'.
-      Operation::operand_range offsets = subview.getOffsets();
-      int nIndVars{0};
-      for (Value offset : offsets) {
-        bool isConst = matchPattern(offset, m_Constant());
-        bool dependsOnIndVar = false;
-        if (!isConst &&
-            isa_and_present<affine::AffineApplyOp>(offset.getDefiningOp())) {
-          auto applyOp = cast<affine::AffineApplyOp>(offset.getDefiningOp());
-          for (auto operand : applyOp.getSymbolOperands()) {
-            dependsOnIndVar = llvm::is_contained(indVars, operand);
-            if (dependsOnIndVar) break;
-          }
-        } else {
-          dependsOnIndVar = llvm::is_contained(indVars, offset);
-        }
-
-        nIndVars += dependsOnIndVar;
-        // TODO(avarma): Handle case where the offset maybe some other
-        // non-constant.
-        if (!isConst && !dependsOnIndVar && numRows != 1 && numColumns != 1)
-          return {};
+      for (Operation *subviewUser : subview->getUsers()) {
+        if (!innermostForallOps.contains(subviewUser->getParentOp())) return {};
       }
-
-      // If there are no thread ids and it's not a 1x1 core case, this subview
-      // is not distributing.
-      if (nIndVars == 0 && numRows != 1 && numColumns != 1) return {};
-
       auto nextType = cast<MemRefType>(subview.getResult().getType());
       if (!type) {
         type = nextType;
@@ -121,19 +93,15 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
   const DenseSet<Value> &indVars = maybeIndVars.value();
   IRRewriter rewriter(moduleOp.getContext());
 
-  // Retrieve the device model.
-  auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(moduleOp);
-  std::optional<int64_t> maybeNumRows = getConfigNumRows(targetAttr);
-  std::optional<int64_t> maybeNumColumns = getConfigNumColumns(targetAttr);
-  if (!(maybeNumRows && maybeNumColumns)) {
-    moduleOp.emitOpError() << "has no number of rows/columns specified in the "
-                              "target attribute configuration. This "
-                              "device-specific information is required to infer"
-                              "special case of 1x1 while distributing L1 alloc";
-    return failure();
-  }
-  int64_t numRows = maybeNumRows.value();
-  int64_t numColumns = maybeNumColumns.value();
+  // Fetch all innermost scf.forall op.
+  DenseSet<Operation *> innermostForallOps;
+  moduleOp->walk([&](scf::ForallOp forallOp) {
+    bool isInnermost = true;
+    forallOp.walk([&](scf::ForallOp innerForallOp) {
+      if (innerForallOp != forallOp) isInnermost = false;
+    });
+    if (isInnermost) innermostForallOps.insert(forallOp);
+  });
 
   auto allocWalkResult = moduleOp->walk([&](memref::AllocOp oldAlloc)
                                             -> WalkResult {
@@ -147,8 +115,7 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
     if (auto scfForOp = oldAlloc->getParentOfType<scf::ForOp>())
       return WalkResult::advance();
 
-    MemRefType memRefType =
-        getDistributedType(oldAlloc, indVars, numRows, numColumns);
+    MemRefType memRefType = getDistributedType(oldAlloc, innermostForallOps);
 
     // Failed to find a memref.subview that looks like it is distributing.
     // This doesn't mean that we can't distribute (for example there might be
