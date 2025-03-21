@@ -26,10 +26,11 @@ using namespace mlir;
 
 namespace {
 
-/// Find all induction variables of all `scf.forall` ops that are mapped to
-/// gpu thread dimensions (as opposed to gpu block dimensions etc).
-FailureOr<DenseSet<Value>> getThreadIndVars(ModuleOp moduleOp) {
-  DenseSet<Value> threadIndVars;
+/// Find all `scf.forall` ops that are mapped to gpu thread dimensions (as
+/// opposed to gpu block dimensions etc) i.e. the ones which will be mapped to
+/// cores.
+DenseSet<Operation *> getCoreForallOps(ModuleOp moduleOp) {
+  DenseSet<Operation *> coreForallOps;
   moduleOp.walk([&](scf::ForallOp forallOp) {
     std::optional<ArrayAttr> maybeMapping = forallOp.getMapping();
     if (!maybeMapping) return WalkResult::advance();
@@ -37,27 +38,25 @@ FailureOr<DenseSet<Value>> getThreadIndVars(ModuleOp moduleOp) {
     if (mapping.empty()) return WalkResult::advance();
     if (!isa<gpu::GPUThreadMappingAttr>(*mapping.begin()))
       return WalkResult::advance();
-    for (Value indVar : forallOp.getInductionVars())
-      threadIndVars.insert(indVar);
+    coreForallOps.insert(forallOp);
     return WalkResult::advance();
   });
-  return threadIndVars;
+  return coreForallOps;
 }
 
-/// For a given alloc the distributed type is fetched by looking at each of its
+/// For a given alloc, the distributed type is fetched by looking at each of its
 /// subview users. For each subview, we check if their users are within the
-/// innermost scf.forall(s). We look at the uses in innermost scf.forall ops
-/// because they comprise the entire computation that each core will perform.
-/// We return empty memref type if :-
+/// scf.forall(s) which are mapped to GPU thread IDs (i.e. will be mapped to
+/// core). We return an empty memref type if :-
 ///   a. Any subview's user is NOT within the innermost scf.forall.
-///   b. The result type of two subviews do not match.
+///   b. The result types of two subviews do not match.
 MemRefType getDistributedType(memref::AllocOp alloc,
-                              DenseSet<Operation *> &innermostForallOps) {
+                              DenseSet<Operation *> &coreForallOps) {
   MemRefType type;
   for (Operation *allocUser : alloc->getUsers()) {
     if (auto subview = dyn_cast<memref::SubViewOp>(allocUser)) {
       for (Operation *subviewUser : subview->getUsers()) {
-        if (!innermostForallOps.contains(subviewUser->getParentOp())) return {};
+        if (!coreForallOps.contains(subviewUser->getParentOp())) return {};
       }
       auto nextType = cast<MemRefType>(subview.getResult().getType());
       if (!type) {
@@ -90,9 +89,12 @@ SmallVector<Value> substitute(Container toUpdate,
 /// smaller memory. This is ultimately needed because cores can't operate on
 /// one shared L1 memory.
 LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
-  FailureOr<DenseSet<Value>> maybeIndVars = getThreadIndVars(moduleOp);
-  if (failed(maybeIndVars)) return failure();
-  const DenseSet<Value> &indVars = maybeIndVars.value();
+  DenseSet<Operation *> coreForallOps = getCoreForallOps(moduleOp);
+  DenseSet<Value> indVars;
+  for (Operation *op : coreForallOps) {
+    auto forallOp = cast<scf::ForallOp>(op);
+    for (Value indVar : forallOp.getInductionVars()) indVars.insert(indVar);
+  }
   IRRewriter rewriter(moduleOp.getContext());
 
   // Fetch all innermost scf.forall op.
@@ -117,7 +119,7 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
     if (auto scfForOp = oldAlloc->getParentOfType<scf::ForOp>())
       return WalkResult::advance();
 
-    MemRefType memRefType = getDistributedType(oldAlloc, innermostForallOps);
+    MemRefType memRefType = getDistributedType(oldAlloc, coreForallOps);
 
     // Failed to find a memref.subview that looks like it is distributing.
     // This doesn't mean that we can't distribute (for example there might be

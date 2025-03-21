@@ -2249,9 +2249,10 @@ class Tests:
                         "--iree-amdaie-num-rows=1",
                         "--iree-amdaie-num-cols=1",
                     ],
-                    name_suffix="1row_1col",
+                    name_suffix="OneCore_npu4",
                     run_on_target=["npu4"],
                 ),
+                additional_labels=["OneCore"],
             )
         )
 
