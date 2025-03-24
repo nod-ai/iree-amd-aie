@@ -6,7 +6,6 @@
 
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/Transforms/Passes.h"
-#include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -29,8 +28,8 @@ namespace {
 /// Find all `scf.forall` ops that are mapped to gpu thread dimensions (as
 /// opposed to gpu block dimensions etc) i.e. the ones which will be mapped to
 /// cores.
-DenseSet<Operation *> getCoreForallOps(ModuleOp moduleOp) {
-  DenseSet<Operation *> coreForallOps;
+DenseSet<scf::ForallOp> getCoreForallOps(ModuleOp moduleOp) {
+  DenseSet<scf::ForallOp> coreForallOps;
   moduleOp.walk([&](scf::ForallOp forallOp) {
     std::optional<ArrayAttr> maybeMapping = forallOp.getMapping();
     if (!maybeMapping) return WalkResult::advance();
@@ -51,12 +50,13 @@ DenseSet<Operation *> getCoreForallOps(ModuleOp moduleOp) {
 ///   a. Any subview's user is NOT within the innermost scf.forall.
 ///   b. The result types of two subviews do not match.
 MemRefType getDistributedType(memref::AllocOp alloc,
-                              DenseSet<Operation *> &coreForallOps) {
+                              DenseSet<scf::ForallOp> &coreForallOps) {
   MemRefType type;
   for (Operation *allocUser : alloc->getUsers()) {
     if (auto subview = dyn_cast<memref::SubViewOp>(allocUser)) {
       for (Operation *subviewUser : subview->getUsers()) {
-        if (!coreForallOps.contains(subviewUser->getParentOp())) return {};
+        auto parentOp = dyn_cast<scf::ForallOp>(subviewUser->getParentOp());
+        if (!parentOp || !coreForallOps.contains(parentOp)) return {};
       }
       auto nextType = cast<MemRefType>(subview.getResult().getType());
       if (!type) {
@@ -89,23 +89,12 @@ SmallVector<Value> substitute(Container toUpdate,
 /// smaller memory. This is ultimately needed because cores can't operate on
 /// one shared L1 memory.
 LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
-  DenseSet<Operation *> coreForallOps = getCoreForallOps(moduleOp);
+  DenseSet<scf::ForallOp> coreForallOps = getCoreForallOps(moduleOp);
   DenseSet<Value> indVars;
-  for (Operation *op : coreForallOps) {
-    auto forallOp = cast<scf::ForallOp>(op);
+  for (scf::ForallOp forallOp : coreForallOps) {
     for (Value indVar : forallOp.getInductionVars()) indVars.insert(indVar);
   }
   IRRewriter rewriter(moduleOp.getContext());
-
-  // Fetch all innermost scf.forall op.
-  DenseSet<Operation *> innermostForallOps;
-  moduleOp->walk([&](scf::ForallOp forallOp) {
-    bool isInnermost = true;
-    forallOp.walk([&](scf::ForallOp innerForallOp) {
-      if (innerForallOp != forallOp) isInnermost = false;
-    });
-    if (isInnermost) innermostForallOps.insert(forallOp);
-  });
 
   auto allocWalkResult = moduleOp->walk([&](memref::AllocOp oldAlloc)
                                             -> WalkResult {
