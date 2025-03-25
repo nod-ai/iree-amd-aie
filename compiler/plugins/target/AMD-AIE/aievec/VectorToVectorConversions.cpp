@@ -1430,7 +1430,7 @@ FailureOr<Value> getAlignedTransferRead(
 
   // If the offset is constant and zero, the read is already aligned.
   if (auto offsetConstantOp = offset.getDefiningOp<arith::ConstantIndexOp>())
-    if (offsetConstantOp.getValue() == 0) return readOp.getVector();
+    if (offsetConstantOp.value() == 0) return readOp.getVector();
 
   // Verify that we can load a vector 2x as long as the original vector.
   int64_t longBits = 2 * shortBits;
