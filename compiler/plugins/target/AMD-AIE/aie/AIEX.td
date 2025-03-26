@@ -44,9 +44,7 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
   ]> {
   let summary = "half DMA operator";
   let arguments = (
-    ins I64Attr:$x,
-        I64Attr:$y,
-        AnyMemRef:$memref,
+    ins AnyMemRef:$memref,
         // NOTE: these are in reverse order: offset3, offset2, ...
         Variadic<I64>:$offsets,
         Variadic<I64>:$sizes,
@@ -67,7 +65,7 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
   );
 
   let assemblyFormat = [{
-    `(` $x `,` $y `,` $memref ``
+    `(` $memref ``
     custom<DynamicIndexList>($offsets, $static_offsets) ``
     custom<DynamicIndexList>($sizes, $static_sizes) ``
     custom<DynamicIndexList>($strides, $static_strides) ``

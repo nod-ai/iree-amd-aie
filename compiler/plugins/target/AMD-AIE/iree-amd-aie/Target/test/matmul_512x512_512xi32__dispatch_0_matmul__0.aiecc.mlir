@@ -1428,30 +1428,30 @@ aie.device(npu1_4col) {
     memref.assume_alignment %arg0, 64 : memref<512x512xi32>
     memref.assume_alignment %arg1, 64 : memref<512x512xi32>
     memref.assume_alignment %arg2, 64 : memref<512x512xi32>
-    aiex.npu.dma_memcpy_nd(0, 0, %arg0[0, 0, 0, 0][4, 2, 32, 256][0, 256, 512, 1]) {id = 0 : i64, metadata = @airMemcpyId13} : memref<512x512xi32>
-    aiex.npu.dma_memcpy_nd(0, 0, %arg0[0, 0, 128, 0][4, 2, 32, 256][0, 256, 512, 1]) {id = 1 : i64, metadata = @airMemcpyId13} : memref<512x512xi32>
-    aiex.npu.dma_memcpy_nd(0, 0, %arg0[0, 0, 256, 0][4, 2, 32, 256][0, 256, 512, 1]) {id = 2 : i64, metadata = @airMemcpyId13} : memref<512x512xi32>
-    aiex.npu.dma_memcpy_nd(0, 0, %arg0[0, 0, 384, 0][4, 2, 32, 256][0, 256, 512, 1]) {id = 3 : i64, metadata = @airMemcpyId13} : memref<512x512xi32>
-    aiex.npu.dma_memcpy_nd(0, 0, %arg0[0, 0, 32, 0][4, 2, 32, 256][0, 256, 512, 1]) {id = 4 : i64, metadata = @airMemcpyId15} : memref<512x512xi32>
-    aiex.npu.dma_memcpy_nd(0, 0, %arg0[0, 0, 160, 0][4, 2, 32, 256][0, 256, 512, 1]) {id = 5 : i64, metadata = @airMemcpyId15} : memref<512x512xi32>
-    aiex.npu.dma_memcpy_nd(0, 0, %arg0[0, 0, 288, 0][4, 2, 32, 256][0, 256, 512, 1]) {id = 6 : i64, metadata = @airMemcpyId15} : memref<512x512xi32>
-    aiex.npu.dma_memcpy_nd(0, 0, %arg0[0, 0, 416, 0][4, 2, 32, 256][0, 256, 512, 1]) {id = 7 : i64, metadata = @airMemcpyId15} : memref<512x512xi32>
-    aiex.npu.dma_memcpy_nd(0, 0, %arg0[0, 0, 64, 0][4, 2, 32, 256][0, 256, 512, 1]) {id = 0 : i64, metadata = @airMemcpyId17} : memref<512x512xi32>
-    aiex.npu.dma_memcpy_nd(0, 0, %arg0[0, 0, 192, 0][4, 2, 32, 256][0, 256, 512, 1]) {id = 1 : i64, metadata = @airMemcpyId17} : memref<512x512xi32>
-    aiex.npu.dma_memcpy_nd(0, 0, %arg0[0, 0, 320, 0][4, 2, 32, 256][0, 256, 512, 1]) {id = 2 : i64, metadata = @airMemcpyId17} : memref<512x512xi32>
-    aiex.npu.dma_memcpy_nd(0, 0, %arg0[0, 0, 448, 0][4, 2, 32, 256][0, 256, 512, 1]) {id = 3 : i64, metadata = @airMemcpyId17} : memref<512x512xi32>
-    aiex.npu.dma_memcpy_nd(0, 0, %arg0[0, 0, 96, 0][4, 2, 32, 256][0, 256, 512, 1]) {id = 4 : i64, metadata = @airMemcpyId19} : memref<512x512xi32>
-    aiex.npu.dma_memcpy_nd(0, 0, %arg0[0, 0, 224, 0][4, 2, 32, 256][0, 256, 512, 1]) {id = 5 : i64, metadata = @airMemcpyId19} : memref<512x512xi32>
-    aiex.npu.dma_memcpy_nd(0, 0, %arg0[0, 0, 352, 0][4, 2, 32, 256][0, 256, 512, 1]) {id = 6 : i64, metadata = @airMemcpyId19} : memref<512x512xi32>
-    aiex.npu.dma_memcpy_nd(0, 0, %arg0[0, 0, 480, 0][4, 2, 32, 256][0, 256, 512, 1]) {id = 7 : i64, metadata = @airMemcpyId19} : memref<512x512xi32>
-    aiex.npu.dma_memcpy_nd(0, 0, %arg1[0, 0, 0, 0][4, 4, 512, 32][0, 128, 512, 1]) {id = 0 : i64, metadata = @airMemcpyId21} : memref<512x512xi32>
-    aiex.npu.dma_memcpy_nd(0, 0, %arg1[0, 0, 0, 32][4, 4, 512, 32][0, 128, 512, 1]) {id = 1 : i64, metadata = @airMemcpyId23} : memref<512x512xi32>
-    aiex.npu.dma_memcpy_nd(0, 0, %arg1[0, 0, 0, 64][4, 4, 512, 32][0, 128, 512, 1]) {id = 0 : i64, metadata = @airMemcpyId25} : memref<512x512xi32>
-    aiex.npu.dma_memcpy_nd(0, 0, %arg1[0, 0, 0, 96][4, 4, 512, 32][0, 128, 512, 1]) {id = 1 : i64, metadata = @airMemcpyId27} : memref<512x512xi32>
-    aiex.npu.dma_memcpy_nd(0, 0, %arg2[0, 0, 0, 0][4, 4, 32, 128][65536, 128, 512, 1]) {id = 8 : i64, metadata = @airMemcpyId78} : memref<512x512xi32>
-    aiex.npu.dma_memcpy_nd(0, 0, %arg2[0, 0, 32, 0][4, 4, 32, 128][65536, 128, 512, 1]) {id = 9 : i64, metadata = @airMemcpyId79} : memref<512x512xi32>
-    aiex.npu.dma_memcpy_nd(0, 0, %arg2[0, 0, 64, 0][4, 4, 32, 128][65536, 128, 512, 1]) {id = 8 : i64, metadata = @airMemcpyId80} : memref<512x512xi32>
-    aiex.npu.dma_memcpy_nd(0, 0, %arg2[0, 0, 96, 0][4, 4, 32, 128][65536, 128, 512, 1]) {id = 9 : i64, metadata = @airMemcpyId81} : memref<512x512xi32>
+    aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][4, 2, 32, 256][0, 256, 512, 1]) {id = 0 : i64, metadata = @airMemcpyId13} : memref<512x512xi32>
+    aiex.npu.dma_memcpy_nd(%arg0[0, 0, 128, 0][4, 2, 32, 256][0, 256, 512, 1]) {id = 1 : i64, metadata = @airMemcpyId13} : memref<512x512xi32>
+    aiex.npu.dma_memcpy_nd(%arg0[0, 0, 256, 0][4, 2, 32, 256][0, 256, 512, 1]) {id = 2 : i64, metadata = @airMemcpyId13} : memref<512x512xi32>
+    aiex.npu.dma_memcpy_nd(%arg0[0, 0, 384, 0][4, 2, 32, 256][0, 256, 512, 1]) {id = 3 : i64, metadata = @airMemcpyId13} : memref<512x512xi32>
+    aiex.npu.dma_memcpy_nd(%arg0[0, 0, 32, 0][4, 2, 32, 256][0, 256, 512, 1]) {id = 4 : i64, metadata = @airMemcpyId15} : memref<512x512xi32>
+    aiex.npu.dma_memcpy_nd(%arg0[0, 0, 160, 0][4, 2, 32, 256][0, 256, 512, 1]) {id = 5 : i64, metadata = @airMemcpyId15} : memref<512x512xi32>
+    aiex.npu.dma_memcpy_nd(%arg0[0, 0, 288, 0][4, 2, 32, 256][0, 256, 512, 1]) {id = 6 : i64, metadata = @airMemcpyId15} : memref<512x512xi32>
+    aiex.npu.dma_memcpy_nd(%arg0[0, 0, 416, 0][4, 2, 32, 256][0, 256, 512, 1]) {id = 7 : i64, metadata = @airMemcpyId15} : memref<512x512xi32>
+    aiex.npu.dma_memcpy_nd(%arg0[0, 0, 64, 0][4, 2, 32, 256][0, 256, 512, 1]) {id = 0 : i64, metadata = @airMemcpyId17} : memref<512x512xi32>
+    aiex.npu.dma_memcpy_nd(%arg0[0, 0, 192, 0][4, 2, 32, 256][0, 256, 512, 1]) {id = 1 : i64, metadata = @airMemcpyId17} : memref<512x512xi32>
+    aiex.npu.dma_memcpy_nd(%arg0[0, 0, 320, 0][4, 2, 32, 256][0, 256, 512, 1]) {id = 2 : i64, metadata = @airMemcpyId17} : memref<512x512xi32>
+    aiex.npu.dma_memcpy_nd(%arg0[0, 0, 448, 0][4, 2, 32, 256][0, 256, 512, 1]) {id = 3 : i64, metadata = @airMemcpyId17} : memref<512x512xi32>
+    aiex.npu.dma_memcpy_nd(%arg0[0, 0, 96, 0][4, 2, 32, 256][0, 256, 512, 1]) {id = 4 : i64, metadata = @airMemcpyId19} : memref<512x512xi32>
+    aiex.npu.dma_memcpy_nd(%arg0[0, 0, 224, 0][4, 2, 32, 256][0, 256, 512, 1]) {id = 5 : i64, metadata = @airMemcpyId19} : memref<512x512xi32>
+    aiex.npu.dma_memcpy_nd(%arg0[0, 0, 352, 0][4, 2, 32, 256][0, 256, 512, 1]) {id = 6 : i64, metadata = @airMemcpyId19} : memref<512x512xi32>
+    aiex.npu.dma_memcpy_nd(%arg0[0, 0, 480, 0][4, 2, 32, 256][0, 256, 512, 1]) {id = 7 : i64, metadata = @airMemcpyId19} : memref<512x512xi32>
+    aiex.npu.dma_memcpy_nd(%arg1[0, 0, 0, 0][4, 4, 512, 32][0, 128, 512, 1]) {id = 0 : i64, metadata = @airMemcpyId21} : memref<512x512xi32>
+    aiex.npu.dma_memcpy_nd(%arg1[0, 0, 0, 32][4, 4, 512, 32][0, 128, 512, 1]) {id = 1 : i64, metadata = @airMemcpyId23} : memref<512x512xi32>
+    aiex.npu.dma_memcpy_nd(%arg1[0, 0, 0, 64][4, 4, 512, 32][0, 128, 512, 1]) {id = 0 : i64, metadata = @airMemcpyId25} : memref<512x512xi32>
+    aiex.npu.dma_memcpy_nd(%arg1[0, 0, 0, 96][4, 4, 512, 32][0, 128, 512, 1]) {id = 1 : i64, metadata = @airMemcpyId27} : memref<512x512xi32>
+    aiex.npu.dma_memcpy_nd(%arg2[0, 0, 0, 0][4, 4, 32, 128][65536, 128, 512, 1]) {id = 8 : i64, metadata = @airMemcpyId78} : memref<512x512xi32>
+    aiex.npu.dma_memcpy_nd(%arg2[0, 0, 32, 0][4, 4, 32, 128][65536, 128, 512, 1]) {id = 9 : i64, metadata = @airMemcpyId79} : memref<512x512xi32>
+    aiex.npu.dma_memcpy_nd(%arg2[0, 0, 64, 0][4, 4, 32, 128][65536, 128, 512, 1]) {id = 8 : i64, metadata = @airMemcpyId80} : memref<512x512xi32>
+    aiex.npu.dma_memcpy_nd(%arg2[0, 0, 96, 0][4, 4, 32, 128][65536, 128, 512, 1]) {id = 9 : i64, metadata = @airMemcpyId81} : memref<512x512xi32>
     aiex.npu.sync {channel = 0 : i32, column = 1 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
     aiex.npu.sync {channel = 1 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
     aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
