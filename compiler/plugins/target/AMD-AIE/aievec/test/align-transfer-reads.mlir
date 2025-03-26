@@ -215,3 +215,22 @@ func.func @multi_align_test(%arg0: index) -> (vector<32xi8>, vector<32xi8>, vect
   return %1, %2, %3, %4 : vector<32xi8>, vector<32xi8>, vector<32xi8>, vector<32xi8>
 }
 }
+
+
+// -----
+
+// If a `transfer_read` has the offset as constant and zero,
+// then the read is already aligned and the IR should be unchanged.
+
+// CHECK-LABEL: @test_i8_64bytes_offset_const_zero
+// CHECK-NOT: aievec.ext
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @test_i8_64bytes_offset_const_zero(%arg0: index) -> vector<64xi8> {
+    %cst = arith.constant 0 : i8
+    %cst_offset = arith.constant 0 : index
+    %alloc = memref.alloc() : memref<64xi8>
+    %1 = vector.transfer_read %alloc[%cst_offset], %cst {in_bounds = [true]} : memref<64xi8>, vector<64xi8>
+    return %1 : vector<64xi8>
+  }
+}

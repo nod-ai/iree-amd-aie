@@ -25,10 +25,11 @@ using namespace mlir;
 
 namespace {
 
-/// Find all induction variables of all `scf.forall` ops that are mapped to
-/// gpu thread dimensions (as opposed to gpu block dimensions etc).
-FailureOr<DenseSet<Value>> getThreadIndVars(ModuleOp moduleOp) {
-  DenseSet<Value> threadIndVars;
+/// Find all `scf.forall` ops that are mapped to gpu thread dimensions (as
+/// opposed to gpu block dimensions etc) i.e. the ones which will be mapped to
+/// cores.
+DenseSet<scf::ForallOp> getCoreForallOps(ModuleOp moduleOp) {
+  DenseSet<scf::ForallOp> coreForallOps;
   moduleOp.walk([&](scf::ForallOp forallOp) {
     std::optional<ArrayAttr> maybeMapping = forallOp.getMapping();
     if (!maybeMapping) return WalkResult::advance();
@@ -36,49 +37,27 @@ FailureOr<DenseSet<Value>> getThreadIndVars(ModuleOp moduleOp) {
     if (mapping.empty()) return WalkResult::advance();
     if (!isa<gpu::GPUThreadMappingAttr>(*mapping.begin()))
       return WalkResult::advance();
-    for (Value indVar : forallOp.getInductionVars())
-      threadIndVars.insert(indVar);
+    coreForallOps.insert(forallOp);
     return WalkResult::advance();
   });
-  return threadIndVars;
+  return coreForallOps;
 }
 
-/// Try to detect subview(s) that look like they're 'distributing' L1 memory.
-/// That is: they slice the L1 memory along thread/tile dimensions. If the
-/// allocation `alloc` does not look like it's distributed across threads/tiles,
-/// return an empty memref type. Otherwise, return the memref type that the
-/// subviews are viewing.
+/// For a given alloc, the distributed type is fetched by looking at each of its
+/// subview users. For each subview, we check if their users are within the
+/// scf.forall(s) which are mapped to GPU thread IDs (i.e. will be mapped to
+/// core). We return an empty memref type if :-
+///   a. Any subview's user is NOT within the innermost scf.forall.
+///   b. The result types of two subviews do not match.
 MemRefType getDistributedType(memref::AllocOp alloc,
-                              const DenseSet<Value> &indVars) {
+                              DenseSet<scf::ForallOp> &coreForallOps) {
   MemRefType type;
   for (Operation *allocUser : alloc->getUsers()) {
     if (auto subview = dyn_cast<memref::SubViewOp>(allocUser)) {
-      // Check that all offsets are either constants or depending on thread ids.
-      // We assume that if a subview has an offset which is not a constant and
-      // does not depend on thread id, it's not 'distributing'.
-      Operation::operand_range offsets = subview.getOffsets();
-      int nIndVars{0};
-      for (Value offset : offsets) {
-        bool isConst = matchPattern(offset, m_Constant());
-        bool dependsOnIndVar = false;
-        if (!isConst &&
-            isa_and_present<affine::AffineApplyOp>(offset.getDefiningOp())) {
-          auto applyOp = cast<affine::AffineApplyOp>(offset.getDefiningOp());
-          for (auto operand : applyOp.getSymbolOperands()) {
-            dependsOnIndVar = llvm::is_contained(indVars, operand);
-            if (dependsOnIndVar) break;
-          }
-        } else {
-          dependsOnIndVar = llvm::is_contained(indVars, offset);
-        }
-
-        nIndVars += dependsOnIndVar;
-        if (!isConst && !dependsOnIndVar) return {};
+      for (Operation *subviewUser : subview->getUsers()) {
+        auto parentOp = dyn_cast<scf::ForallOp>(subviewUser->getParentOp());
+        if (!parentOp || !coreForallOps.contains(parentOp)) return {};
       }
-
-      // If there are no thread ids, this subview is not distributing.
-      if (nIndVars == 0) return {};
-
       auto nextType = cast<MemRefType>(subview.getResult().getType());
       if (!type) {
         type = nextType;
@@ -110,10 +89,13 @@ SmallVector<Value> substitute(Container toUpdate,
 /// smaller memory. This is ultimately needed because cores can't operate on
 /// one shared L1 memory.
 LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
-  FailureOr<DenseSet<Value>> maybeIndVars = getThreadIndVars(moduleOp);
-  if (failed(maybeIndVars)) return failure();
-  const DenseSet<Value> &indVars = maybeIndVars.value();
+  DenseSet<scf::ForallOp> coreForallOps = getCoreForallOps(moduleOp);
+  DenseSet<Value> indVars;
+  for (scf::ForallOp forallOp : coreForallOps) {
+    for (Value indVar : forallOp.getInductionVars()) indVars.insert(indVar);
+  }
   IRRewriter rewriter(moduleOp.getContext());
+
   auto allocWalkResult = moduleOp->walk([&](memref::AllocOp oldAlloc)
                                             -> WalkResult {
     // Only consider local memory (L1).
@@ -126,7 +108,7 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
     if (auto scfForOp = oldAlloc->getParentOfType<scf::ForOp>())
       return WalkResult::advance();
 
-    MemRefType memRefType = getDistributedType(oldAlloc, indVars);
+    MemRefType memRefType = getDistributedType(oldAlloc, coreForallOps);
 
     // Failed to find a memref.subview that looks like it is distributing.
     // This doesn't mean that we can't distribute (for example there might be
