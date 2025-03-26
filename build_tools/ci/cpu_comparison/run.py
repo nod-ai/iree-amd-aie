@@ -2238,6 +2238,26 @@ class Tests:
 
         self.register(
             Matmul(
+                32,
+                32,
+                128,
+                "i32",
+                "i32",
+                test_params=TestParams(
+                    tile_pipeline="pack-peel-4-level-tiling",
+                    aie_compilation_flags=[
+                        "--iree-amdaie-num-rows=1",
+                        "--iree-amdaie-num-cols=1",
+                    ],
+                    name_suffix="OneCore_npu4",
+                    run_on_target=["npu4"],
+                ),
+                additional_labels=["OneCore"],
+            )
+        )
+
+        self.register(
+            Matmul(
                 64,
                 128,
                 128,
