@@ -407,3 +407,50 @@ func.func @pack_without_slice(%arg0: tensor<1x1x32x512xi32>, %arg1: tensor<1x1x3
 // DEPTH-1-DAG:   %[[PACK_2:.*]] = linalg.pack %{{.*}} into %{{.*}} : tensor<1x1x32x32xi32> -> tensor<1x1x4x8x4x8xi32>
 // DEPTH-1:       linalg.generic
 // DEPTH-1-SAME:  ins(%[[PACK_2]], %[[PACK_1]]
+
+// -----
+
+// A test with linalg.pack in a different block compared to the linalg.generic.
+
+#map = affine_map<(d0, d1, d2, d3, d4, d5) -> (d0, d2, d3, d5)>
+#map1 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d2, d5, d4)>
+#map2 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d0, d1, d3, d4)>
+module {
+  func.func @fuse_diff_block_pack_into_forall(%arg0: tensor<8x16xi32>, %arg1: tensor<16x8xi32>) -> tensor<4x4x2x2xi32> {
+    %c4 = arith.constant 4 : index
+    %c16 = arith.constant 16 : index
+    %c0_i32 = arith.constant 0 : i32
+    %c0 = arith.constant 0 : index
+    %0 = bufferization.alloc_tensor() : tensor<4x4x2x2xi32>
+    %1 = linalg.fill ins(%c0_i32 : i32) outs(%0 : tensor<4x4x2x2xi32>) -> tensor<4x4x2x2xi32>
+    %2 = tensor.empty() : tensor<4x1x2x4xi32>
+    %3 = tensor.empty() : tensor<4x1x4x2xi32>
+    %4 = scf.for %arg2 = %c0 to %c16 step %c4 iter_args(%arg3 = %1) -> (tensor<4x4x2x2xi32>) {
+      %extracted_slice = tensor.extract_slice %arg0[0, %arg2] [8, 4] [1, 1] : tensor<8x16xi32> to tensor<8x4xi32>
+      %pack = linalg.pack %extracted_slice outer_dims_perm = [0, 1] inner_dims_pos = [0, 1] inner_tiles = [2, 4] into %2 : tensor<8x4xi32> -> tensor<4x1x2x4xi32>
+      %extracted_slice_0 = tensor.extract_slice %arg1[%arg2, 0] [4, 8] [1, 1] : tensor<16x8xi32> to tensor<4x8xi32>
+      %pack_1 = linalg.pack %extracted_slice_0 outer_dims_perm = [1, 0] inner_dims_pos = [0, 1] inner_tiles = [4, 2] into %3 : tensor<4x8xi32> -> tensor<4x1x4x2xi32>
+      %5 = scf.forall (%arg4, %arg5) in (1, 1) shared_outs(%arg6 = %arg3) -> (tensor<4x4x2x2xi32>) {
+        %6 = linalg.generic {indexing_maps = [#map, #map1, #map2], iterator_types = ["parallel", "parallel", "reduction", "parallel", "parallel", "reduction"]} ins(%pack, %pack_1 : tensor<4x1x2x4xi32>, tensor<4x1x4x2xi32>) outs(%arg6 : tensor<4x4x2x2xi32>) {
+        ^bb0(%in: i32, %in_2: i32, %out: i32):
+          %7 = arith.muli %in, %in_2 : i32
+          %8 = arith.addi %out, %7 : i32
+          linalg.yield %8 : i32
+        } -> tensor<4x4x2x2xi32>
+        scf.forall.in_parallel {
+          tensor.parallel_insert_slice %6 into %arg6[0, 0, 0, 0] [4, 4, 2, 2] [1, 1, 1, 1] : tensor<4x4x2x2xi32> into tensor<4x4x2x2xi32>
+        }
+      }
+      scf.yield %5 : tensor<4x4x2x2xi32>
+    }
+    return %4 : tensor<4x4x2x2xi32>
+  }
+}
+
+// FORALL-DEPTH-1-LABEL: @fuse_diff_block_pack_into_forall
+// FORALL-DEPTH-1:          scf.for
+// FORALL-DEPTH-1:              scf.forall
+// FORALL-DEPTH-1:                  %[[PACK_0:.*]] = linalg.pack
+// FORALL-DEPTH-1:                  %[[PACK_1:.*]] = linalg.pack
+// FORALL-DEPTH-1:                  linalg.generic
+// FORALL-DEPTH-1-SAME:                  ins(%[[PACK_1]], %[[PACK_0]] :
