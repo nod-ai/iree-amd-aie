@@ -622,3 +622,34 @@ module attributes {hal.executable.target = #executable_target_amdaie_pdi_fb} {
     return
   }
 }
+
+// -----
+
+// Test reuse of the affine.apply SSA value when the L2 buffer is NOT split.
+
+// CHECK-DAG: #map = affine_map<(d0) -> (d0 * 4)>
+// CHECK:     @reuse_offset_on_no_split
+// CHECK-DAG:   %[[LOF_L3:.*]] = amdaie.logicalobjectfifo.from_memref %{{.+}}, {} : memref<256x128xi32> -> !amdaie.logicalobjectfifo<memref<256x128xi32>>
+// CHECK-DAG:   %[[LOF_L2:.*]] = amdaie.logicalobjectfifo.from_memref %{{.+}}, {} : memref<8x1x32x32xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<8x1x32x32xi32, 1 : i32>>
+// CHECK-DAG:   amdaie.dma_cpy_nd(%[[LOF_L2]][0, 0, 0, 0] [8, 32, 1, 32] [1024, 32, 1024, 1], %[[LOF_L3]][0, 0, 0] [2, 128, 32] [16384, 128, 1])
+// CHECK:       scf.forall (%[[IV:.*]]) in (2) {
+// CHECK-DAG:      %[[MAP_APPLY:.*]] = affine.apply #map(%[[IV]])
+// CHECK-DAG:      %[[LOF_L1:.*]] = amdaie.logicalobjectfifo.from_memref %{{.+}}, {} : memref<1x1x4x8x4x8xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<1x1x4x8x4x8xi32, 2 : i32>>
+// CHECK-DAG:      amdaie.dma_cpy_nd(%[[LOF_L1]][0, 0, 0, 0, 0, 0] [1, 1, 8, 4, 4, 8] [1024, 1024, 32, 8, 256, 1], %[[LOF_L2]][%[[MAP_APPLY]], 0, 0, 0] [1, 1, 32, 32] [1024, 1024, 32, 1])
+#executable_target_amdaie_pdi_fb = #hal.executable.target<"amd-aie", "amdaie-pdi-fb", {num_cols = 1 : i32, num_rows = 1 : i32, target_device = "npu4", ukernels = "none"}>
+#map = affine_map<(d0) -> (d0 * 4)>
+module attributes {hal.executable.target = #executable_target_amdaie_pdi_fb} {
+  func.func @reuse_offset_on_no_split(%arg0: memref<256x128xi32>) {
+    %alloc = memref.alloc() : memref<1x1x4x8x4x8xi32, 2 : i32>
+    %alloc_0 = memref.alloc() : memref<8x1x32x32xi32, 1 : i32>
+    %lof = amdaie.logicalobjectfifo.from_memref %arg0, {} : memref<256x128xi32> -> !amdaie.logicalobjectfifo<memref<256x128xi32>>
+    %lof_1 = amdaie.logicalobjectfifo.from_memref %alloc_0, {} : memref<8x1x32x32xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<8x1x32x32xi32, 1 : i32>>
+    %0 = amdaie.dma_cpy_nd(%lof_1[0, 0, 0, 0] [8, 32, 1, 32] [1024, 32, 1024, 1], %lof[0, 0] [256, 32] [128, 1]) : (!amdaie.logicalobjectfifo<memref<8x1x32x32xi32, 1 : i32>>, !amdaie.logicalobjectfifo<memref<256x128xi32>>)
+    scf.forall (%arg1) in (2) {
+      %1 = affine.apply #map(%arg1)
+      %lof_2 = amdaie.logicalobjectfifo.from_memref %alloc, {} : memref<1x1x4x8x4x8xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<1x1x4x8x4x8xi32, 2 : i32>>
+      %2 = amdaie.dma_cpy_nd(%lof_2[0, 0, 0, 0, 0, 0] [1, 1, 8, 4, 4, 8] [1024, 1024, 32, 8, 256, 1], %lof_1[%1, 0, 0, 0] [1, 1, 32, 32] [1024, 1024, 32, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x4x8x4x8xi32, 2 : i32>>, !amdaie.logicalobjectfifo<memref<8x1x32x32xi32, 1 : i32>>)
+    } {mapping = [#gpu.block<y>]}
+    return
+  }
+}
