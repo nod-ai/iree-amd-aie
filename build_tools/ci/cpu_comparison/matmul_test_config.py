@@ -1,4 +1,6 @@
-# NPU1_4COL matmul test(s):
+# Copyright 2025 The IREE Authors
+
+# # NPU1_4COL matmul test(s):
 npu1_4col_matmul_tests = [
     # 1x1 core tests.
     {
