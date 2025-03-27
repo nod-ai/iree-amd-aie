@@ -1804,89 +1804,56 @@ class Tests:
         self.tests = []
 
         # Tests Matmul + Trunci with Scaling.
-        # Phoenix : Ukernel + Peano.
-        self.register(
-            MatmulScaleTrunci(
-                256,
-                256,
-                128,
-                "i8",
-                "i32",
-                2 * np.ones([256, 128], dtype=np.int8),
-                3 * np.ones([128, 256], dtype=np.int8),
-                60 * np.ones([256, 256], dtype=np.int8),
-                test_params=TestParams(
-                    name_suffix="scaling",
-                    tile_pipeline="pack-peel-4-level-tiling",
-                    run_on_target=["npu1_4col"],
-                    use_ukernel=True,
-                ),
-            )
-        )
-        # Phoenix : Vectorization + Peano.
-        self.register(
-            MatmulScaleTrunci(
-                256,
-                256,
-                128,
-                "i8",
-                "i32",
-                2 * np.ones([256, 128], dtype=np.int8),
-                3 * np.ones([128, 256], dtype=np.int8),
-                60 * np.ones([256, 256], dtype=np.int8),
-                test_params=TestParams(
-                    tile_pipeline="pack-peel-4-level-tiling",
-                    run_on_target=["npu1_4col"],
-                ),
-            )
-        )
-        # Strix : Ukernel + Peano.
-        self.register(
-            MatmulScaleTrunci(
-                256,
-                256,
-                128,
-                "i8",
-                "i32",
-                2 * np.ones([256, 128], dtype=np.int8),
-                3 * np.ones([128, 256], dtype=np.int8),
-                60 * np.ones([256, 256], dtype=np.int8),
-                test_params=TestParams(
-                    tile_pipeline="pack-peel-4-level-tiling",
-                    run_on_target=["npu4"],
-                    use_chess=False,
-                    use_ukernel=True,
-                    use_chess_for_ukernel=False,
-                ),
-            )
-        )
-        # Matmul with truncf test(s):
-        for tile_pipeline in ["pack-peel", "pack-peel-4-level-tiling"]:
+        matmul_scale_trunci_tests = [
+            # Phoenix : Ukernel + Peano.
+            {"run_on_target": ["npu1_4col"]},
+            # Phoenix : Vectorization + Peano.
+            {"run_on_target": ["npu1_4col"], "use_ukernel": True},
+            # Strix : Ukernel + Peano.
+            {"run_on_target": ["npu4"], "use_chess": False, "use_ukernel": True, "use_chess_for_ukernel": False},
+        ]
+        for test in matmul_scale_trunci_tests:
+            test_params = TestParams(tile_pipeline="pack-peel-4-level-tiling", run_on_target=test["run_on_target"],)
+            if "use_ukernel" in test:
+                test_params.use_ukernel = test["use_ukernel"]
+            if "use_chess" in test:
+                test_params.use_chess = test["use_chess"]
+            if "use_chess_for_ukernel" in test:
+                test_params.use_chess_for_ukernel = test["use_chess_for_ukernel"]
             self.register(
-                MatmulTruncf(
-                    16,
-                    16,
-                    "bf16",
-                    "f32",
-                    101 * np.ones([16, 16]),
-                    3 * np.eye(16),
-                    302 * np.ones([16, 16]),
-                    test_params=TestParams(tile_pipeline=tile_pipeline),
-                )
-            )
-            self.register(
-                MatmulTruncf(
-                    128,
+                MatmulScaleTrunci(
                     256,
-                    "bf16",
-                    "f32",
-                    2 * np.ones([128, 256]),
-                    3 * np.ones([256, 128]),
-                    1536 * np.ones([128, 128]),
-                    test_params=TestParams(tile_pipeline=tile_pipeline),
+                    256,
+                    128,
+                    "i8",
+                    "i32",
+                    2 * np.ones([256, 128], dtype=np.int8),
+                    3 * np.ones([128, 256], dtype=np.int8),
+                    60 * np.ones([256, 256], dtype=np.int8),
+                    test_params=test_params,
                 )
             )
-
+        
+        # Tests Matmul + Truncf
+        matmul_truncf_tests = [
+            {"M": 16, "K": 16, "lhs": 101 * np.ones([16, 16]), "rhs": 3 * np.eye(16), "expected_out": 302 * np.ones([16, 16])},
+            {"M": 128, "K": 256, "lhs": 2 * np.ones([128, 256]), "rhs": 3 * np.ones([256, 128]), "expected_out": 1536 * np.ones([128, 128])},
+        ]
+        for tile_pipeline in ["pack-peel", "pack-peel-4-level-tiling"]:
+            for test in matmul_truncf_tests:
+                self.register(
+                    MatmulTruncf(
+                        test["M"],
+                        test["K"],
+                        "bf16",
+                        "f32",
+                        test["lhs"],
+                        test["rhs"],
+                        test["expected_out"],
+                        test_params=TestParams(tile_pipeline=tile_pipeline),
+                    )
+                )
+        
         # BatchMatmul test(s):
         # TODO(jornt): BatchMatmul tests with the pack-peel-4-level-tiling pipeline result in intermittent
         # numerics issues. Re-enable.
@@ -1997,284 +1964,99 @@ class Tests:
             self.register(MatmulTransposeA(128, 256, 128, input_type, acc_type))
             self.register(MatmulTransposeA(1536, 1536, 2048, input_type, acc_type))
 
-        # NPU4 matmul test(s):
-        for use_chess in [True, False]:
-            self.register(
-                Matmul(
-                    32,
-                    32,
-                    32,
-                    "i32",
-                    "i32",
-                    test_params=TestParams(run_on_target=["npu4"], use_chess=use_chess),
-                )
-            )
-
-        self.register(
-            Matmul(
-                32,
-                128,
-                128,
-                "i32",
-                "i32",
-                test_params=TestParams(
-                    run_on_target=["npu4"],
-                    use_chess=False,
-                    tile_pipeline="pack-peel-4-level-tiling",
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=4",
-                        "--iree-amdaie-num-cols=2",
-                    ],
-                ),
-            )
-        )
-
-        self.register(
-            Matmul(
-                256,
-                32,
-                32,
-                "i32",
-                "i32",
-                test_params=TestParams(
-                    run_on_target=["npu4"],
-                    use_chess=False,
-                    tile_pipeline="pack-peel-4-level-tiling",
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=4",
-                        "--iree-amdaie-num-cols=2",
-                    ],
-                ),
-            )
-        )
-
-        self.register(
-            Matmul(
-                1024,
-                1024,
-                1024,
-                "i32",
-                "i32",
-                test_params=TestParams(
-                    name_suffix="4rows_8cols_npu4",
-                    run_on_target=["npu4"],
-                    use_chess=False,
-                ),
-            )
-        )
-        self.register(
-            Matmul(
-                512,
-                512,
-                256,
-                "i32",
-                "i32",
-                test_params=TestParams(
-                    name_suffix="4rows_8cols_npu4_pack_peel_4_level_tiling",
-                    tile_pipeline="pack-peel-4-level-tiling",
-                    run_on_target=["npu4"],
-                ),
-            )
-        )
-
-        for target in ["npu1_4col", "npu4"]:
-            self.register(
-                Matmul(
-                    32,
-                    32,
-                    32,
-                    "i32",
-                    "i32",
-                    test_params=TestParams(
-                        name_suffix="infinite_loop_" + target,
-                        run_on_target=[target],
-                        use_chess=False,
-                        aie_compilation_flags=[
-                            "--iree-amdaie-enable-infinite-loop-around-core-block=true"
-                        ],
-                    ),
-                )
-            )
-
-        self.register(
-            Matmul(
-                64,
-                64,
-                64,
-                "bf16",
-                "f32",
-                test_params=TestParams(
-                    use_ukernel=True,
-                    use_chess=False,
-                    use_chess_for_ukernel=False,
-                    run_on_target=["npu4"],
-                ),
-            )
-        )
-        self.register(
-            Matmul(
-                64,
-                64,
-                64,
-                "bf16",
-                "f32",
-                test_params=TestParams(
-                    name_suffix="npu4_4x8",
-                    use_ukernel=True,
-                    use_chess=False,
-                    use_chess_for_ukernel=False,
-                    run_on_target=["npu4"],
-                ),
-            )
-        )
-        self.register(
-            Matmul(
-                512,
-                512,
-                512,
-                "i8",
-                "i32",
-                test_params=TestParams(
-                    use_ukernel=True,
-                    use_chess=False,
-                    use_chess_for_ukernel=False,
-                    run_on_target=["npu4"],
-                    tile_pipeline="pack-peel-4-level-tiling",
-                ),
-                additional_labels=["I8UKernel"],
-            )
-        )
-        self.register(
-            Matmul(
-                64,
-                64,
-                64,
-                "bf16",
-                "f32",
-                test_params=TestParams(
-                    name_suffix="4rows_8cols_npu4",
-                    use_ukernel=True,
-                    tile_pipeline="pack-peel-4-level-tiling",
-                    run_on_target=["npu4"],
-                    use_chess=False,
-                    use_chess_for_ukernel=False,
-                ),
-            )
-        )
-        self.register(
-            Matmul(
-                512,
-                512,
-                512,
-                "bf16",
-                "f32",
-                test_params=TestParams(
-                    name_suffix="4rows_8cols_npu4",
-                    use_ukernel=True,
-                    tile_pipeline="pack-peel-4-level-tiling",
-                    run_on_target=["npu4"],
-                    use_chess=False,
-                    use_chess_for_ukernel=False,
-                ),
-            )
-        )
-
-        # Matmul test on 2(rows)x2(cols) cores
-        self.register(
-            Matmul(
-                32,
-                32,
-                32,
-                "bf16",
-                "f32",
-                test_params=TestParams(
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=2",
-                        "--iree-amdaie-num-cols=2",
-                    ],
-                    name_suffix="2rows_2cols",
-                ),
-            )
-        )
-
-        # Matmul test on 4(rows)x2(cols) cores
-        self.register(
-            Matmul(
-                32,
-                32,
-                32,
-                "bf16",
-                "f32",
-                test_params=TestParams(
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=4",
-                        "--iree-amdaie-num-cols=2",
-                    ],
-                    name_suffix="4rows_2cols",
-                ),
-            )
-        )
-
-        # Matmul tests on a single core.
-        for device in ["npu1_4col", "npu4"]:
-            self.register(
-                Matmul(
-                    128,
-                    128,
-                    128,
-                    "i8",
-                    "i32",
-                    test_params=TestParams(
-                        aie_compilation_flags=[
+        # NPU1_4COL matmul test(s):
+        npu1_4col_matmul_tests = [
+            # 1x1 core tests.
+            {"M": 128, "N": 128, "K": 128, "input_type": "i8", "acc_type": "i32", "name_suffix": "OneCore_npu1_4col", "additional_labels": ["OneCore"], "aie_compilation_flags": [
                             "--iree-amdaie-num-rows=1",
                             "--iree-amdaie-num-cols=1",
-                        ],
-                        name_suffix="OneCore_" + device,
-                        run_on_target=[device],
-                    ),
-                    additional_labels=["OneCore"],
+                        ],},
+            # 2x2 core tests.
+            {"M": 32, "N": 32, "K": 32, "input_type": "bf16", "acc_type": "f32", "name_suffix": "2rows_2cols", "aie_compilation_flags": [
+                            "--iree-amdaie-num-rows=2",
+                            "--iree-amdaie-num-cols=2",
+                        ],},
+            # 4x2 core tests.
+            {"M": 32, "N": 32, "K": 32, "input_type": "bf16", "acc_type": "f32", "name_suffix": "4rows_2cols", "aie_compilation_flags": [
+                            "--iree-amdaie-num-rows=4",
+                            "--iree-amdaie-num-cols=2",
+                        ],},
+            # 4x4 core tests.
+            {"M": 32, "N": 32, "K": 32, "input_type": "i32", "acc_type": "i32", "name_suffix": "infinite_loop_npu1_4col", "aie_compilation_flags": [
+                            "--iree-amdaie-enable-infinite-loop-around-core-block=true"
+                        ],},
+        ]
+        # NPU4 matmul test(s):
+        npu4_matmul_tests = [
+            # 1x1 core tests.
+            {"M": 128, "N": 128, "K": 128, "input_type": "i8", "acc_type": "i32", "name_suffix": "OneCore_npu4", "additional_labels": ["OneCore"], "aie_compilation_flags": [
+                            "--iree-amdaie-num-rows=1",
+                            "--iree-amdaie-num-cols=1",
+                        ],},
+            {"M": 32, "N": 32, "K": 128, "input_type": "i32", "acc_type": "i32", "tile_pipeline": "pack-peel-4-level-tiling", "name_suffix": "OneCore_npu4", "additional_labels": ["OneCore"], "aie_compilation_flags": [
+                            "--iree-amdaie-num-rows=1",
+                            "--iree-amdaie-num-cols=1",
+                        ],},
+            {"M": 64, "N": 128, "K": 128, "input_type": "i32", "acc_type": "i32", "tile_pipeline": "pack-peel-4-level-tiling", "name_suffix": "OneCore_npu4", "additional_labels": ["OneCore"], "aie_compilation_flags": [
+                            "--iree-amdaie-num-rows=1",
+                            "--iree-amdaie-num-cols=1",
+                        ],},
+            # 4x2 core tests.
+            {"M": 32, "N": 128, "K": 128, "input_type": "i32", "acc_type": "i32", "tile_pipeline": "pack-peel-4-level-tiling", "aie_compilation_flags": [
+                        "--iree-amdaie-num-rows=4",
+                        "--iree-amdaie-num-cols=2",
+                    ],},
+            {"M": 256, "N": 32, "K": 32, "input_type": "i32", "acc_type": "i32", "tile_pipeline": "pack-peel-4-level-tiling", "aie_compilation_flags": [
+                        "--iree-amdaie-num-rows=4",
+                        "--iree-amdaie-num-cols=2",
+                    ],},
+            
+            # 4x8 core tests.
+            {"M": 32, "N": 32, "K": 32, "input_type": "i32", "acc_type": "i32"},
+            {"M": 32, "N": 32, "K": 32, "input_type": "i32", "acc_type": "i32", "use_chess": True},
+            
+            {"M": 1024, "N": 1024, "K": 1024, "input_type": "i32", "acc_type": "i32", "name_suffix":"4rows_8cols_npu4"},
+            {"M": 512, "N": 512, "K": 256, "input_type": "i32", "acc_type": "i32", "tile_pipeline": "pack-peel-4-level-tiling", "name_suffix":"4rows_8cols_npu4_pack_peel_4_level_tiling"},
+            {"M": 32, "N": 32, "K": 32, "input_type": "i32", "acc_type": "i32", "name_suffix": "infinite_loop_npu4", "aie_compilation_flags": [
+                            "--iree-amdaie-enable-infinite-loop-around-core-block=true"
+                        ],},
+            {"M": 64, "N": 64, "K": 64, "input_type": "bf16", "acc_type": "f32", "use_ukernel": True, "use_chess_for_ukernel": False},
+            {"M": 512, "N": 512, "K": 512, "input_type": "i8", "acc_type": "i32", "use_ukernel": True, "use_chess_for_ukernel": False, "tile_pipeline": "pack-peel-4-level-tiling", "additional_labels": ["I8UKernel"],},
+            {"M": 64, "N": 64, "K": 64, "input_type": "bf16", "acc_type": "f32", "use_ukernel": True, "use_chess_for_ukernel": False, "tile_pipeline": "pack-peel-4-level-tiling", "name_suffix":"4rows_8cols_npu4",},
+            {"M": 512, "N": 512, "K": 512, "input_type": "bf16", "acc_type": "f32", "use_ukernel": True, "use_chess_for_ukernel": False, "tile_pipeline": "pack-peel-4-level-tiling", "name_suffix":"4rows_8cols_npu4",},
+            
+        ]
+        matmul_tests_for_each_device = {
+            "npu1_4col": npu1_4col_matmul_tests,
+            "npu4": npu4_matmul_tests
+        }
+        for device in matmul_tests_for_each_device:
+            for test in matmul_tests_for_each_device[device]:
+                test_params = TestParams(run_on_target=[device])
+                if "use_ukernel" in test:
+                    test_params.use_ukernel = test["use_ukernel"]
+                if "use_chess" in test:
+                    test_params.use_chess = test["use_chess"]
+                if "use_chess_for_ukernel" in test:
+                    test_params.use_chess_for_ukernel = test["use_chess_for_ukernel"]
+                if "name_suffix" in test:
+                    test_params.name_suffix = test["name_suffix"]
+                if "tile_pipeline" in test:
+                    test_params.tile_pipeline = test["tile_pipeline"]
+                if "aie_compilation_flags" in test:
+                    test_params.aie_compilation_flags = test["aie_compilation_flags"]
+                additional_labels= test["additional_labels"] if "additional_labels" in test else None
+                self.register(
+                    Matmul(
+                        test["M"],
+                        test["N"],
+                        test["K"],
+                        test["input_type"],
+                        test["acc_type"],
+                        test_params=test_params,
+                        additional_labels=additional_labels,
+                    )
                 )
-            )
-
-        self.register(
-            Matmul(
-                32,
-                32,
-                128,
-                "i32",
-                "i32",
-                test_params=TestParams(
-                    tile_pipeline="pack-peel-4-level-tiling",
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=1",
-                        "--iree-amdaie-num-cols=1",
-                    ],
-                    name_suffix="OneCore_npu4",
-                    run_on_target=["npu4"],
-                ),
-                additional_labels=["OneCore"],
-            )
-        )
-
-        self.register(
-            Matmul(
-                64,
-                128,
-                128,
-                "i32",
-                "i32",
-                test_params=TestParams(
-                    tile_pipeline="pack-peel-4-level-tiling",
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=1",
-                        "--iree-amdaie-num-cols=1",
-                    ],
-                    name_suffix="OneCore_npu4",
-                    run_on_target=["npu4"],
-                ),
-                additional_labels=["OneCore"],
-            )
-        )
 
         # Control packet test with constant biases 1 and 2.
         # Test on a single core.
