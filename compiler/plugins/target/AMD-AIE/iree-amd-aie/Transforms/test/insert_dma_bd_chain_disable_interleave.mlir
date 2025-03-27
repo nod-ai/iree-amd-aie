@@ -1,7 +1,7 @@
 // RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-insert-dma-bd-chain{enable-interleave=false})" --split-input-file --verify-diagnostics %s | FileCheck %s
 
-// Even when the `enable-interleave` flag is false, there is only a single BD chain anyway.
-// As a result, the outcome remains the same as when `enable-interleave` is true. 
+// There is only a single BD chain anyway.
+// Same results no matter `enable-interleave` is true or false.
 // CHECK-LABEL: @single_bd_chain
 // CHECK-COUNT-1: amdaie.npu.dma_wait
 // CHECK-NOT: amdaie.npu.dma_wait
@@ -43,7 +43,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
-// Two BD chains are inserted without any interleaving. Same results no matter `enable-interleave` is true or false.
+// Two BD chains are inserted without any interleaving. 
+// Same results no matter `enable-interleave` is true or false.
 // CHECK-LABEL: @duplicate_bd_id
 // CHECK-COUNT-2: amdaie.npu.dma_wait
 // CHECK-NOT: amdaie.npu.dma_wait
@@ -93,7 +94,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
-// There could be two interleaved BD chains. However, since the `enable-interleave` flag is false, no chain can be finally inserted.
+// There could be two interleaved BD chains. 
+// However, since the `enable-interleave` flag is false, no chain can be finally inserted.
 // CHECK-LABEL: @two_connections
 // CHECK-COUNT-4: amdaie.npu.dma_wait
 // CHECK-NOT: amdaie.npu.dma_wait
