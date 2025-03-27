@@ -43,7 +43,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
-// Two BD chains are inserted without any interleaving. 
+// Two BD chains are inserted without any interleaving.
 // Same results no matter `enable-interleave` is true or false.
 // CHECK-LABEL: @duplicate_bd_id
 // CHECK-COUNT-2: amdaie.npu.dma_wait
@@ -94,7 +94,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
-// There could be two interleaved BD chains. 
+// There could be two interleaved BD chains.
 // However, since the `enable-interleave` flag is false, no chain can be finally inserted.
 // CHECK-LABEL: @two_connections
 // CHECK-COUNT-4: amdaie.npu.dma_wait
