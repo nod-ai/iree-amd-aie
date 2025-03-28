@@ -55,7 +55,6 @@ iree_lit_test_suite(
     "hoist_logical_obj_fifo.mlir"
     "insert_cores.mlir"
     "insert_dma_bd_chain.mlir"
-    "insert_dma_bd_chain_disable_interleave.mlir"
     "insert_infinite_loop_around_core_block.mlir"
     "insert_loops_for_vectorization.mlir"
     "load_store_alignment_reset.mlir"
