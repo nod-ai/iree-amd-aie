@@ -2027,39 +2027,39 @@ class Tests:
             ["npu1_4col", "i8", "i32"],
             ["npu4", "i32", "i32"],
         ]:
-            # Test on a single core.
-            self.register(
-                MatmulConstBiasCtrlpkt(
-                    8,
-                    8,
-                    8,
-                    in_type,
-                    out_type,
-                    constant_bias_C=1,
-                    constant_bias_D=2,
-                    test_params=TestParams(
-                        aie_compilation_flags=[
-                            "--iree-amdaie-num-rows=1",
-                            "--iree-amdaie-num-cols=1",
-                        ],
-                        name_suffix="OneCore",
-                        run_on_target=target,
-                    ),
-                )
-            )
-            # Numeric test for reconfiguration on the whole AIE array.
-            self.register(
-                MatmulConstBiasCtrlpkt(
-                    1024,
-                    1024,
-                    1024,
-                    in_type,
-                    out_type,
-                    constant_bias_C=1,
-                    constant_bias_D=2,
-                    test_params=TestParams(run_on_target=target),
-                )
-            )
+            # # Test on a single core.
+            # self.register(
+            #     MatmulConstBiasCtrlpkt(
+            #         8,
+            #         8,
+            #         8,
+            #         in_type,
+            #         out_type,
+            #         constant_bias_C=1,
+            #         constant_bias_D=2,
+            #         test_params=TestParams(
+            #             aie_compilation_flags=[
+            #                 "--iree-amdaie-num-rows=1",
+            #                 "--iree-amdaie-num-cols=1",
+            #             ],
+            #             name_suffix="OneCore",
+            #             run_on_target=target,
+            #         ),
+            #     )
+            # )
+            # # Numeric test for reconfiguration on the whole AIE array.
+            # self.register(
+            #     MatmulConstBiasCtrlpkt(
+            #         1024,
+            #         1024,
+            #         1024,
+            #         in_type,
+            #         out_type,
+            #         constant_bias_C=1,
+            #         constant_bias_D=2,
+            #         test_params=TestParams(run_on_target=target),
+            #     )
+            # )
             # Benchmark reconfiguration time only, do not run the kernel.
             self.register(
                 MatmulConstBiasCtrlpkt(

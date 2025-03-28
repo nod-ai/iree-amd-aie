@@ -62,14 +62,14 @@ LogicalResult generateTransactions(const AMDAIEDeviceModel &deviceModel,
     for (xilinx::AIE::TileOp tileOp : coreTileOps) eraseWithAllUsers(tileOp);
   }
 
-  if (failed(addAllAieElfs(deviceModel, deviceOp, Path{pathToElfs},
-                           /*aieSim=*/false))) {
-    return failure();
-  }
-  // Switchboxes configuration cannot be broadcasted.
-  if (failed(addInitConfig(deviceModel, deviceOp,
-                           /*configureSwitches=*/!broadcastCoreConfig)))
-    return failure();
+  // if (failed(addAllAieElfs(deviceModel, deviceOp, Path{pathToElfs},
+  //                          /*aieSim=*/false))) {
+  //   return failure();
+  // }
+  // // Switchboxes configuration cannot be broadcasted.
+  // if (failed(addInitConfig(deviceModel, deviceOp,
+  //                          /*configureSwitches=*/!broadcastCoreConfig)))
+  //   return failure();
   if (failed(addAllCoreEnable(deviceModel, deviceOp))) return failure();
 
   return success();
