@@ -125,3 +125,13 @@ iree_cc_test(
     iree::compiler::Dialect::HAL::IR
     iree::compiler::Dialect::HAL::IR::HALDialect
 )
+
+iree_cc_test(
+  NAME
+    AMDAIETileSizeSelectionUtilsCppTest
+  SRCS
+    "AMDAIETileSizeSelectionUtilsTest.cpp"
+  DEPS
+    gtest
+    iree::target::amd-aie::Transforms
+)

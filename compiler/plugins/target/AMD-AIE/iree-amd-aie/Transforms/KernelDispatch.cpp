@@ -7,6 +7,7 @@
 #include "iree-amd-aie/Transforms/KernelDispatch.h"
 
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
+#include "iree-amd-aie/Transforms/Utils/AMDAIETileSizeSelectionUtils.h"
 #include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenAttrs.h"
@@ -156,9 +157,9 @@ class ParameterSetting {
   uint32_t M;
   uint32_t N;
   uint32_t K;
-  uint32_t nBitsLhs;
-  uint32_t nBitsRhs;
-  uint32_t nBitsInit;
+  uint32_t nBytesLhs;
+  uint32_t nBytesRhs;
+  uint32_t nBytesInit;
 
   SmallVector<int64_t> getPackSizeL0() const {
     return {m0Pack, n0Pack, k0Pack};
@@ -178,7 +179,7 @@ class ParameterSetting {
                    uint32_t N1, uint32_t K1, uint32_t m0Pack, uint32_t n0Pack,
                    uint32_t k0Pack, uint32_t m1Pack, uint32_t n1Pack,
                    uint32_t k1Pack, uint32_t M, uint32_t N, uint32_t K,
-                   uint32_t nBitsLhs, uint32_t nBitsRhs, uint32_t nBitsInit)
+                   uint32_t nBytesLhs, uint32_t nBytesRhs, uint32_t nBytesInit)
       : M0(M0),
         N0(N0),
         K0(K0),
@@ -194,9 +195,9 @@ class ParameterSetting {
         M(M),
         N(N),
         K(K),
-        nBitsLhs(nBitsLhs),
-        nBitsRhs(nBitsRhs),
-        nBitsInit(nBitsInit) {}
+        nBytesLhs(nBytesLhs),
+        nBytesRhs(nBytesRhs),
+        nBytesInit(nBytesInit) {}
 };
 
 FailureOr<ParameterSetting> ParameterSetting::create(
@@ -204,13 +205,13 @@ FailureOr<ParameterSetting> ParameterSetting::create(
     uint32_t numRows, uint32_t numCols, uint32_t kPackScaleL1) {
   auto initType =
       llvm::cast<ShapedType>(linalgOp.getDpsInitOperand(0)->get().getType());
-  unsigned nBitsInit = initType.getElementTypeBitWidth();
+  unsigned nBytesInit = initType.getElementTypeBitWidth() / 8;
   auto lhsType =
       llvm::cast<ShapedType>(linalgOp.getDpsInputOperand(0)->get().getType());
-  unsigned nBitsLhs = lhsType.getElementTypeBitWidth();
+  unsigned nBytesLhs = lhsType.getElementTypeBitWidth() / 8;
   auto rhsType =
       llvm::cast<ShapedType>(linalgOp.getDpsInputOperand(1)->get().getType());
-  unsigned nBitsRhs = rhsType.getElementTypeBitWidth();
+  unsigned nBytesRhs = rhsType.getElementTypeBitWidth() / 8;
 
   auto getTotalSize = [](ArrayRef<int64_t> sizes) {
     return std::accumulate(sizes.begin(), sizes.end(), 1,
@@ -224,43 +225,40 @@ FailureOr<ParameterSetting> ParameterSetting::create(
   int64_t N = getTotalSize(maybeInputDimsAndSizes.value().nSizes);
   int64_t K = getTotalSize(maybeInputDimsAndSizes.value().kSizes);
 
-  // If we are conservative with ensuring that tiles A, B, and C fit at the
-  // different memory levels, we should choose the scale factor based
-  // on the largest of the types of A, B, and C, which is the type of C, as
-  // accumulation always happens in an element type with at least as may bits as
-  // the operand types. We currently choose the scale factor based on the
-  // element type of the lhs operand, which works with the current workloads (we
-  // have not seen OOM errors).
-  //
-  // Long-term we should use a different approach, one which takes into account
-  // the element types of all tensors which need to be allocated in memory
-  // simultaneously.
-  FailureOr<unsigned> maybeScaleFactor =
-      isObjectFifo ? getTilingScaleFactor(initType.getElementType())
-                   : getTilingScaleFactor(lhsType.getElementType());
-  if (failed(maybeScaleFactor)) {
-    return linalgOp.emitOpError(
-        "does not have the expected bitwidth (64, 32, 16, or 8), could not "
-        "determine scale factor.");
-  }
-
-  unsigned scaleFactor = maybeScaleFactor.value();
-
-  // Consider trunci op that converts i32 to i8 after matmul ops, then the scale
-  // factor can be doubled to make the most use of L1 memory.
+  // MLIR-AIR disable double buffering in L1 memory.
+  unsigned isDoubleBufferA = isObjectFifo ? 2 : 1;
+  unsigned isDoubleBufferB = isObjectFifo ? 2 : 1;
+  unsigned isDoubleBufferAcc = isObjectFifo ? 2 : 1;
+  // Currently only consider elementwise op that does truncations, i.e.
+  // trunci/truncf ops.
+  unsigned nBytesElemOut{0};
   if (isMatmulWithElementwiseConsumer(linalgOp)) {
     for (Operation *userOp : linalgOp->getUsers()) {
       if (auto linalgUser = dyn_cast<linalg::LinalgOp>(userOp)) {
         auto outputType = llvm::cast<ShapedType>(
             linalgUser.getDpsInitOperand(0)->get().getType());
-        unsigned nBitsOutput = outputType.getElementTypeBitWidth();
-        if (nBitsInit == 32 && nBitsOutput == 8) {
-          scaleFactor *= 2;
-        }
+        nBytesElemOut = outputType.getElementTypeBitWidth() / 8;
+        isDoubleBufferAcc = 1;
       }
     }
   }
 
+  // Get the largest tile sizes that can fit in L1 memory.
+  TileParams tileParams{/*memoryLimit=*/65536,
+                        /*numBytesA=*/nBytesLhs,
+                        /*numBytesB=*/nBytesRhs,
+                        /*numBytesC=*/nBytesElemOut,
+                        /*numBytesAcc=*/nBytesInit,
+                        /*isDoubleBufferA=*/isDoubleBufferA,
+                        /*isDoubleBufferB=*/isDoubleBufferB,
+                        /*isDoubleBufferC=*/1,
+                        /*isDoubleBufferAcc=*/isDoubleBufferAcc,
+                        /*inputM=*/M,
+                        /*inputN=*/N,
+                        /*inputK=*/K};
+  TileSize maxL1Size = selectL1TileSizes(tileParams);
+
+  // Get the level 1 pack size.
   auto maybePackedSize = getPackedSize(linalgOp, M, N, K, targetDevice);
   if (failed(maybePackedSize)) return failure();
   auto [m1Pack, n1Pack, k1Pack] = maybePackedSize.value();
@@ -277,22 +275,11 @@ FailureOr<ParameterSetting> ParameterSetting::create(
   // Tiling in the K-dimension is done differently TODO(newling)
   // document/reconsider.
 
-  // Assume working on a (numRows, numCols) AIE array, so the ideal level 1
-  // tile sizes should be (tileM0/numRows, tileN0/numCols). Since packing
-  // happens before tiling, and an extra step is performed to fuse pack ops
-  // into the loops, the adjusted level 1 tile sizes should be
-  // (tileM0/numRows/packedM1, tileN0/numCols/packedN1).
-  // TODO (vivian): Refactor the codes with the following aspect:
-  // Develop a better way to select tile sizes to make the most use of
-  // memory while taking all factors (double buffer, elementwise memory usage,
-  // lhs/rhs element type, etc) into account.
-  uint32_t maxL1SizeM = 16 * scaleFactor;
-  uint32_t maxL1SizeN = 16 * scaleFactor;
-  uint32_t M1 = findLargestFactor(M / m1Pack, maxL1SizeM / m1Pack, m1Pack);
-  uint32_t N1 = findLargestFactor(N / n1Pack, maxL1SizeN / n1Pack, n1Pack);
+  uint32_t M1 = findLargestFactor(M / m1Pack, maxL1Size.M / m1Pack, m1Pack);
+  uint32_t N1 = findLargestFactor(N / n1Pack, maxL1Size.N / n1Pack, n1Pack);
 
-  uint32_t maxL0SizeM = numRows * maxL1SizeM;
-  uint32_t maxL0SizeN = numCols * maxL1SizeM;
+  uint32_t maxL0SizeM = numRows * maxL1Size.M;
+  uint32_t maxL0SizeN = numCols * maxL1Size.N;
   uint32_t M0 = findLargestFactor(M, maxL0SizeM, m1Pack * M1);
   uint32_t N0 = findLargestFactor(N, maxL0SizeN, n1Pack * N1);
 
@@ -300,8 +287,8 @@ FailureOr<ParameterSetting> ParameterSetting::create(
   // so set K1 = 0. The packed outer K dimension needs to be 1, so set K0 = 1.
   uint32_t K1 = 0;
   uint32_t K0 = 1;
-  uint32_t maxL1SizeK = 16 * scaleFactor;
-  uint32_t k0Pack = findLargestFactor(K, kPackScaleL1 * maxL1SizeK);
+  uint32_t maxL1SizeK = isObjectFifo ? maxL1Size.K / kPackScaleL1 : maxL1Size.K;
+  uint32_t k0Pack = findLargestFactor(K, maxL1SizeK);
 
   // Instead of directly packing to (1, 1, M0, N0), the new strategy is making
   // the pack size as (numRows, numCols, M0/numRows, N0/numCols) to avoid the
@@ -312,8 +299,8 @@ FailureOr<ParameterSetting> ParameterSetting::create(
   uint32_t n0Pack = (N0 / numCols) % n1Pack == 0 ? (N0 / numCols) : N0;
 
   return ParameterSetting(M0, N0, K0, M1, N1, K1, m0Pack, n0Pack, k0Pack,
-                          m1Pack, n1Pack, k1Pack, M, N, K, nBitsLhs, nBitsRhs,
-                          nBitsInit);
+                          m1Pack, n1Pack, k1Pack, M, N, K, nBytesLhs, nBytesRhs,
+                          nBytesInit);
 }
 }  // namespace
 
@@ -386,9 +373,8 @@ static LogicalResult setRootConfigForPackPeel4LevelTilingPipeline(
   // N to increase the L1 memory usage.
   bool isObjectFifo =
       useLowerToAIEPipeline == LowerToAIEPassPipeline::ObjectFifo;
-  auto maybePackPeelTiling =
-      ParameterSetting::create(linalgOp, isObjectFifo, targetDevice, numRows,
-                               numCols, /*kPackScaleL1=*/2);
+  auto maybePackPeelTiling = ParameterSetting::create(
+      linalgOp, isObjectFifo, targetDevice, numRows, numCols);
   if (failed(maybePackPeelTiling)) return failure();
   auto packPeelTiling = maybePackPeelTiling.value();
 
@@ -499,11 +485,11 @@ static LogicalResult setRootConfigForPackPeel4LevelTilingPipeline(
   // Check if we can scale L2 size of A and B with a factor of 2. TODO(jornt):
   // generalize to find largest scaling factor possible.
   int64_t l2SizeA =
-      2 * packPeelTiling.M0 * packPeelTiling.K * packPeelTiling.nBitsLhs / 8;
+      2 * packPeelTiling.M0 * packPeelTiling.K * packPeelTiling.nBytesLhs;
   int64_t l2SizeB =
-      2 * packPeelTiling.N0 * packPeelTiling.K * packPeelTiling.nBitsRhs / 8;
+      2 * packPeelTiling.N0 * packPeelTiling.K * packPeelTiling.nBytesRhs;
   int64_t l2SizeInit =
-      4 * packPeelTiling.M0 * packPeelTiling.N0 * packPeelTiling.nBitsInit / 8;
+      4 * packPeelTiling.M0 * packPeelTiling.N0 * packPeelTiling.nBytesInit;
 
   bool fitsInL2 = (l2SizeA + l2SizeB + l2SizeInit) <
                   (deviceModel.getMemTileSizeInBytes() * numCols);
@@ -552,8 +538,9 @@ static LogicalResult setRootConfigForPackPeelPipeline(
     uint32_t numRows, uint32_t numCols) {
   bool isObjectFifo =
       useLowerToAIEPipeline == LowerToAIEPassPipeline::ObjectFifo;
-  auto maybePackPeelTiling = ParameterSetting::create(
-      linalgOp, isObjectFifo, targetDevice, numRows, numCols);
+  auto maybePackPeelTiling =
+      ParameterSetting::create(linalgOp, isObjectFifo, targetDevice, numRows,
+                               numCols, /*kPackScaleL1=*/2);
   if (failed(maybePackPeelTiling)) return failure();
   auto packPeelTiling = maybePackPeelTiling.value();
 
