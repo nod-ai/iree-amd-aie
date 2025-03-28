@@ -316,6 +316,62 @@ uint32_t AMDAIEDeviceModel::getCoreTileLocalMemorySize() const {
   return devInst.DevProp.DevMod[XAIEGBL_TILE_TYPE_AIETILE].CoreMod->DataMemSize;
 }
 
+/// Given a 32-bit word, set its most significant bit for odd parity.
+void setOddParityBit(uint32_t &word) {
+  // Mask to keep the lower 31 bits (bits 30:0).
+  uint32_t lower31Bits = word & 0x7FFFFFFF;
+  // Compute the odd parity bit. It is set to 1 if the number of 1's in
+  // lower31Bits is even, ensuring the total count (including this bit) becomes
+  // odd. Otherwise, it is set to 0.
+  uint32_t parity = (llvm::popcount(lower31Bits) + 1) % 2;
+  // Set the parity bit in the most significant bit (bit 31).
+  word = (parity << 31) | lower31Bits;
+}
+
+FailureOr<uint32_t> AMDAIEDeviceModel::getPacketHeader(uint32_t streamId,
+                                                       uint32_t packetType,
+                                                       uint32_t srcRow,
+                                                       uint32_t srcCol) const {
+  if (srcRow >= rows() || srcCol >= columns()) {
+    llvm::errs() << "source tile out of range\n";
+    return failure();
+  }
+  if (streamId > getPacketIdMaxIdx()) {
+    llvm::errs() << "streamId out of range\n";
+    return failure();
+  }
+  if (packetType > getPacketTypeMax()) {
+    llvm::errs() << "packetType out of range\n";
+    return failure();
+  }
+  // Construct the header by shifting and combining the individual fields.
+  uint32_t header = (srcCol << packetHeaderFormat.srcColShift) |
+                    (srcRow << packetHeaderFormat.srcRowShift) |
+                    (packetType << packetHeaderFormat.packetTypeShift) |
+                    (streamId << packetHeaderFormat.streamIdShift);
+  setOddParityBit(header);
+  return header;
+}
+
+uint32_t AMDAIEDeviceModel::getPacketTypeMax() const {
+  return (1 << (packetHeaderFormat.reservedShift1 -
+                packetHeaderFormat.packetTypeShift)) -
+         1;
+}
+
+FailureOr<bool> AMDAIEDeviceModel::hasCtrlPktTlastErrorEnabled() const {
+  switch (configPtr.AieGen) {
+    case XAIE_DEV_GEN_AIE:
+      return true;
+    case XAIE_DEV_GEN_AIE2IPU:
+      return true;
+    case XAIE_DEV_GEN_AIE2P_STRIX_B0:
+      return false;
+    default:
+      return failure();
+  }
+}
+
 FailureOr<uint32_t> AMDAIEDeviceModel::getCtrlPktHeader(
     uint32_t address, uint32_t length, uint32_t opcode,
     uint32_t streamId) const {
@@ -331,7 +387,7 @@ FailureOr<uint32_t> AMDAIEDeviceModel::getCtrlPktHeader(
     llvm::errs() << "opcode out of range\n";
     return failure();
   }
-  if (streamId > getCtrlPktMaxStreamId()) {
+  if (streamId > getPacketIdMaxIdx()) {
     llvm::errs() << "streamId out of range\n";
     return failure();
   }
@@ -341,14 +397,8 @@ FailureOr<uint32_t> AMDAIEDeviceModel::getCtrlPktHeader(
                     (opcode << ctrlPktHeaderFormat.operationShift) |
                     ((length - 1) << ctrlPktHeaderFormat.beatShift) |
                     (address << ctrlPktHeaderFormat.addressShift);
-  // Mask to keep the lower 31 bits (bits 30:0).
-  uint32_t lower31Bits = header & 0x7FFFFFFF;
-  // Compute the odd parity bit. It is set to 1 if the number of 1's in
-  // lower31Bits is even, ensuring the total count (including this bit) becomes
-  // odd. Otherwise, it is set to 0.
-  uint32_t parity = (llvm::popcount(lower31Bits) + 1) % 2;
-  // Set the parity bit in the most significant bit (bit 31).
-  return (parity << 31) | lower31Bits;
+  setOddParityBit(header);
+  return header;
 }
 
 uint32_t AMDAIEDeviceModel::getCtrlPktMaxAddress() const {
@@ -365,12 +415,6 @@ uint32_t AMDAIEDeviceModel::getCtrlPktMaxLength() const {
 uint32_t AMDAIEDeviceModel::getCtrlPktMaxOpcode() const {
   return (1 << (ctrlPktHeaderFormat.streamIdShift -
                 ctrlPktHeaderFormat.operationShift)) -
-         1;
-}
-
-uint32_t AMDAIEDeviceModel::getCtrlPktMaxStreamId() const {
-  return (1 << (ctrlPktHeaderFormat.reservedShift -
-                ctrlPktHeaderFormat.streamIdShift)) -
          1;
 }
 

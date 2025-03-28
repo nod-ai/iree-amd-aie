@@ -321,13 +321,34 @@ struct AMDAIEDeviceModel {
     AMDAIEDeviceConfig() = default;
   };
 
+  /// Struct representing the format of the packet header, which includes the
+  /// following fields:
+  /// - [4:0] Stream ID,
+  /// - [11:5] Reserved, should be 0,
+  /// - [14:12] Packet type,
+  /// - [15] Reserved, should be 0,
+  /// - [20:16] Source Row,
+  /// - [27:21] Source Column,
+  /// - [30:28] Reserved, should be 0,
+  /// - [31] Odd parity bit.
+  struct AMDAIEPacketHeaderFormat {
+    uint8_t streamIdShift{0};
+    uint8_t reservedShift0{5};
+    uint8_t packetTypeShift{12};
+    uint8_t reservedShift1{15};
+    uint8_t srcRowShift{16};
+    uint8_t srcColShift{21};
+    uint8_t reservedShift2{28};
+    uint8_t parityShift{31};
+  };
+
   /// Struct representing the format of the control packet header, which
   /// includes the following fields:
   /// - [19:0] Address,
   /// - [21:20] Beat, the number of 32-bit words data in the packet,
   /// - [23:22] Operation,
   /// - [28:24] Stream ID, for return packet,
-  /// - [30:29] Reserved,
+  /// - [30:29] Reserved, should be 0,
   /// - [31] Odd parity bit.
   struct AMDAIECtrlPktHeaderFormat {
     uint8_t addressShift{0};
@@ -341,6 +362,7 @@ struct AMDAIEDeviceModel {
   XAie_Config configPtr;
   XAie_DevInst devInst;
   AMDAIEDeviceConfig deviceConfig;
+  AMDAIEPacketHeaderFormat packetHeaderFormat;
   AMDAIECtrlPktHeaderFormat ctrlPktHeaderFormat;
 
   explicit AMDAIEDeviceModel(uint8_t aieGen, uint64_t baseAddr,
@@ -406,6 +428,19 @@ struct AMDAIEDeviceModel {
   bool hasLegalMemAffinity(uint8_t coreCol, uint8_t coreRow, uint8_t memCol,
                            uint8_t memRow) const;
 
+  /// Construct a packet header from the specified fields.
+  FailureOr<uint32_t> getPacketHeader(uint32_t packetId, uint32_t packetType,
+                                      uint32_t srcRow, uint32_t srcCol) const;
+
+  /// Get the maximum for the `packetType` field in the packet header.
+  uint32_t getPacketTypeMax() const;
+
+  /// Check if the device has the control packet TLAST error enabled.
+  /// When enabled, shim DMA can only issue one control packet per BD transfer.
+  /// When disabled, shim DMA can issue multiple control packets with the same
+  /// BD transfer for better performance.
+  FailureOr<bool> hasCtrlPktTlastErrorEnabled() const;
+
   /// Construct a control packet header from the specified fields.
   FailureOr<uint32_t> getCtrlPktHeader(uint32_t address, uint32_t beat,
                                        uint32_t opcode,
@@ -420,8 +455,6 @@ struct AMDAIEDeviceModel {
   uint32_t getCtrlPktMaxLength() const;
   /// Get the maximum for the `opcode` field in the control packet header.
   uint32_t getCtrlPktMaxOpcode() const;
-  /// Get the maximum for the `streamId` field in the control packet header.
-  uint32_t getCtrlPktMaxStreamId() const;
 
   uint32_t getMemInternalBaseAddress() const;
   uint32_t getMemSouthBaseAddress() const;
