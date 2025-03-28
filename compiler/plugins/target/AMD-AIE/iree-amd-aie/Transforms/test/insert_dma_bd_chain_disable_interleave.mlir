@@ -2,9 +2,9 @@
 
 // There is only a single BD chain anyway.
 // Same results no matter `enable-interleave` is true or false.
-// CHECK-LABEL: @single_bd_chain
+// CHECK-LABEL:   @single_bd_chain
 // CHECK-COUNT-1: amdaie.npu.dma_wait
-// CHECK-NOT: amdaie.npu.dma_wait
+// CHECK-NOT:     amdaie.npu.dma_wait
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 #pipeline_layout = #hal.pipeline.layout<bindings = [#hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, Indirect>], flags = Indirect>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
@@ -45,9 +45,9 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // Two BD chains are inserted without any interleaving.
 // Same results no matter `enable-interleave` is true or false.
-// CHECK-LABEL: @duplicate_bd_id
+// CHECK-LABEL:   @duplicate_bd_id
 // CHECK-COUNT-2: amdaie.npu.dma_wait
-// CHECK-NOT: amdaie.npu.dma_wait
+// CHECK-NOT:     amdaie.npu.dma_wait
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 #pipeline_layout = #hal.pipeline.layout<bindings = [#hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, Indirect>], flags = Indirect>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
@@ -96,9 +96,9 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // There could be two interleaved BD chains.
 // However, since the `enable-interleave` flag is false, no chain can be finally inserted.
-// CHECK-LABEL: @two_connections
+// CHECK-LABEL:   @two_connections
 // CHECK-COUNT-4: amdaie.npu.dma_wait
-// CHECK-NOT: amdaie.npu.dma_wait
+// CHECK-NOT:     amdaie.npu.dma_wait
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 #pipeline_layout = #hal.pipeline.layout<bindings = [#hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, Indirect>], flags = Indirect>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {

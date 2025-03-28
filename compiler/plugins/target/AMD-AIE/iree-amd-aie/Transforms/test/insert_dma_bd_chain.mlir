@@ -1,4 +1,5 @@
-// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-insert-dma-bd-chain)" --split-input-file --verify-diagnostics %s | FileCheck %s
+// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-insert-dma-bd-chain{enable-interleave=true})" --split-input-file --verify-diagnostics %s | FileCheck %s
+// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-insert-dma-bd-chain{enable-interleave=false})" --split-input-file --verify-diagnostics %s | FileCheck %s --check-prefix=DISABLE-INTERLEAVE
 
 // Expect a single DMA BD chain, containing the IDs: [0, 1].
 // CHECK-LABEL: @single_bd_chain
@@ -11,6 +12,12 @@
 // CHECK:         amdaie.npu.half_dma_cpy_nd  %[[CONNECTION]](%[[OBJECT_FIFO]] [] [] [] bd_id = %[[BD_ID_0]] channel = %[[CHANNEL]] next_bd = %[[BD_ID_1]] start_bd = %[[BD_ID_0]])
 // CHECK:         %[[TOKEN_0:.+]] = amdaie.npu.half_dma_cpy_nd async %[[CONNECTION]](%[[OBJECT_FIFO]] [] [] [] bd_id = %[[BD_ID_1]] channel = %[[CHANNEL]] start_bd = %[[BD_ID_0]])
 // CHECK:         amdaie.npu.dma_wait(%[[TOKEN_0]] : !amdaie.async_token)
+
+// There is only a single BD chain anyway.
+// Same results no matter `enable-interleave` is true or false.
+// DISABLE-INTERLEAVE-LABEL:   @single_bd_chain
+// DISABLE-INTERLEAVE-COUNT-1: amdaie.npu.dma_wait
+// DISABLE-INTERLEAVE-NOT:     amdaie.npu.dma_wait
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 #pipeline_layout = #hal.pipeline.layout<bindings = [#hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, Indirect>], flags = Indirect>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
@@ -60,6 +67,12 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:         amdaie.npu.half_dma_cpy_nd  %[[CONNECTION]](%[[OBJECT_FIFO]] [] [] [] bd_id = %[[BD_ID_0]] channel = %[[CHANNEL]] next_bd = %[[BD_ID_1]] start_bd = %[[BD_ID_0]])
 // CHECK:         %[[TOKEN_0:.+]] = amdaie.npu.half_dma_cpy_nd async %[[CONNECTION]](%[[OBJECT_FIFO]] [] [] [] bd_id = %[[BD_ID_1]] channel = %[[CHANNEL]] start_bd = %[[BD_ID_0]])
 // CHECK:         amdaie.npu.dma_wait(%[[TOKEN_0]] : !amdaie.async_token)
+
+// There is only a single BD chain anyway.
+// Same results no matter `enable-interleave` is true or false.
+// DISABLE-INTERLEAVE-LABEL:   @single_bd_chain_pktflow
+// DISABLE-INTERLEAVE-COUNT-1: amdaie.npu.dma_wait
+// DISABLE-INTERLEAVE-NOT:     amdaie.npu.dma_wait
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 #pipeline_layout = #hal.pipeline.layout<bindings = [#hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, Indirect>], flags = Indirect>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
@@ -110,6 +123,12 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:         amdaie.npu.dma_wait(%[[TOKEN_0]] : !amdaie.async_token)
 // CHECK:         %[[TOKEN_1:.+]] = amdaie.npu.half_dma_cpy_nd async %[[CONNECTION]](%[[OBJECT_FIFO]] [0, 0] [2, 1] [0, 1] bd_id = %[[BD_ID_1]] channel = %[[CHANNEL]] start_bd = %[[BD_ID_1]])
 // CHECK:         amdaie.npu.dma_wait(%[[TOKEN_1]] : !amdaie.async_token)
+
+// There is no BD chain inserted.
+// Same results no matter `enable-interleave` is true or false.
+// DISABLE-INTERLEAVE-LABEL:   @no_bd_chain_repeat_count
+// DISABLE-INTERLEAVE-COUNT-2: amdaie.npu.dma_wait
+// DISABLE-INTERLEAVE-NOT:     amdaie.npu.dma_wait
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 #pipeline_layout = #hal.pipeline.layout<bindings = [#hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, Indirect>], flags = Indirect>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
@@ -208,6 +227,12 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:         amdaie.npu.half_dma_cpy_nd  %[[CONNECTION]](%[[OBJECT_FIFO]] [] [] [] bd_id = %[[BD_ID_1]] channel = %[[CHANNEL]]  next_bd = %[[BD_ID_2]] start_bd = %[[BD_ID_1]])
 // CHECK:         %[[TOKEN_1:.+]] = amdaie.npu.half_dma_cpy_nd async %[[CONNECTION]](%[[OBJECT_FIFO]] [] [] [] bd_id = %[[BD_ID_2]] channel = %[[CHANNEL]] start_bd = %[[BD_ID_1]])
 // CHECK:         amdaie.npu.dma_wait(%[[TOKEN_1]] : !amdaie.async_token)
+
+// Two BD chains are inserted without any interleaving.
+// Same results no matter `enable-interleave` is true or false.
+// DISABLE-INTERLEAVE-LABEL:   @duplicate_bd_id
+// DISABLE-INTERLEAVE-COUNT-2: amdaie.npu.dma_wait
+// DISABLE-INTERLEAVE-NOT:     amdaie.npu.dma_wait
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 #pipeline_layout = #hal.pipeline.layout<bindings = [#hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, Indirect>], flags = Indirect>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
@@ -276,6 +301,12 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:         %[[TOKEN_1:.+]] = amdaie.npu.half_dma_cpy_nd async %[[CONNECTION_1]](%[[OBJECT_FIFO_1]] [] [] [] bd_id = %[[BD_ID_3]] channel = %[[CHANNEL_2]] start_bd = %[[BD_ID_1]])
 // CHECK:         amdaie.npu.dma_wait(%[[TOKEN_0]] : !amdaie.async_token)
 // CHECK:         amdaie.npu.dma_wait(%[[TOKEN_1]] : !amdaie.async_token)
+
+// There could be two interleaved BD chains.
+// However, when the `enable-interleave` flag is false, no chain can be finally inserted.
+// DISABLE-INTERLEAVE-LABEL:   @two_connections
+// DISABLE-INTERLEAVE-COUNT-4: amdaie.npu.dma_wait
+// DISABLE-INTERLEAVE-NOT:     amdaie.npu.dma_wait
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 #pipeline_layout = #hal.pipeline.layout<bindings = [#hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, Indirect>], flags = Indirect>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
