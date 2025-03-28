@@ -653,6 +653,10 @@ FailureOr<OffsetConfig> getNewOffsetConfig(
                                  applyOp.getLoc(), newAffineMap, operand)
                              .getResult();
         objFifoIndex /= dmaPerSplit;
+      } else if (splitFactor == 1) {
+        // In case of no split, we reuse the affine.apply SSA value for the
+        // offset.
+        newOffsetValue = offsetValue;
       } else {
         newOffsetValue = operand;
       }

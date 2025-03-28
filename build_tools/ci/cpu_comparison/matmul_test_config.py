@@ -73,6 +73,20 @@ npu4_matmul_tests = [
         ],
     },
     {
+        "M": 32,
+        "N": 32,
+        "K": 256,
+        "input_type": "i32",
+        "acc_type": "i32",
+        "tile_pipeline": "pack-peel-4-level-tiling",
+        "name_suffix": "OneCore_npu4",
+        "additional_labels": ["OneCore"],
+        "aie_compilation_flags": [
+            "--iree-amdaie-num-rows=1",
+            "--iree-amdaie-num-cols=1",
+        ],
+    },
+    {
         "M": 64,
         "N": 128,
         "K": 128,
