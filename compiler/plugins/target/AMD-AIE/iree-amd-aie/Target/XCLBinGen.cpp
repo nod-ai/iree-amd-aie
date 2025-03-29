@@ -1467,7 +1467,14 @@ LogicalResult generateControlPackets(
   pm.addPass(createCanonicalizerPass());
   // Optimize the controlcode size.
   pm.addPass(createAMDAIENpuDmaToHalfDmaCpyNdPass());
-  pm.addPass(createAMDAIEInsertDmaBdChainPass());
+  {
+    // Building multple BD chains in an interleaved way can disrupt the ordering
+    // of the reconfiguration data. Disabled for now.
+    // TODO (zhewen): check if possible to (partially) enable this.
+    AMDAIEInsertDmaBdChainOptions options;
+    options.enableInterleave = false;
+    pm.addPass(createAMDAIEInsertDmaBdChainPass(options));
+  }
   pm.addPass(createAMDAIEFoldDmaWaitsPass());
   // Lower the DMA instructions for sending control packets.
   {

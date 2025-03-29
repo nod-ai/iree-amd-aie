@@ -64,7 +64,7 @@ LogicalResult updateChainOperands(
 }
 
 /// Utility function to determine if chains can grow further
-/// or require breaking.
+/// or require breaking, depending on whether there is any duplicate BD ID.
 ///
 /// Example:
 /// - Chain X currently holds BD IDs: [4, 5, 6, 7]
@@ -82,18 +82,16 @@ LogicalResult updateChainOperands(
 /// - Break both chains X and Y.
 ///   - Chain X: [0] (the newly added BD ID).
 ///   - Chain Y: [] (emptied after breaking).
-void checkForChainsToBeBroken(
+void checkForChainsWithDuplicateBdId(
     uint32_t currBdId, const DmaChain &currDmaChain,
     const DenseMap<DmaChain, DenseSet<uint32_t>> &dmaChainToBdIds,
-    SmallVector<DmaChain> &chainsToBreak) {
+    llvm::SmallSetVector<DmaChain, 4> &chainsToBreak) {
   for (auto &[entry, bdIds] : dmaChainToBdIds) {
     if (entry.first == currDmaChain.first && bdIds.contains(currBdId)) {
       // Break the chain that contains the duplicate BD ID.
-      chainsToBreak.push_back(entry);
-      if (entry != currDmaChain) {
-        // Break the current chain as well.
-        chainsToBreak.push_back(currDmaChain);
-      }
+      chainsToBreak.insert(entry);
+      // Break the current chain as well.
+      if (entry != currDmaChain) chainsToBreak.insert(currDmaChain);
       break;
     }
   }
@@ -103,7 +101,8 @@ void checkForChainsToBeBroken(
 /// traversal simplifies handling duplicate BD IDs, preventing the need to
 /// revisit and modify earlier operations after processing later ones.
 LogicalResult insertDmaBdChain(const AMDAIE::AMDAIEDeviceModel &deviceModel,
-                               AMDAIE::ControlCodeOp controlCodeOp) {
+                               AMDAIE::ControlCodeOp controlCodeOp,
+                               bool enableInterleave) {
   IRRewriter rewriter(controlCodeOp->getContext());
 
   // Move all BdIdOps to the beginning of the control code.
@@ -184,13 +183,19 @@ LogicalResult insertDmaBdChain(const AMDAIE::AMDAIEDeviceModel &deviceModel,
         return WalkResult::interrupt();
       }
 
+      llvm::SmallSetVector<DmaChain, 4> chainsToBreak;
+      DmaChain currDmaChain = {tileOp, connectionOp};
+      // Check if there are other chains being built in an interleaved way.
+      if (!enableInterleave) {
+        for (auto &entry : dmaChainToBdIds) {
+          if (entry.first != currDmaChain) chainsToBreak.insert(entry.first);
+        }
+      }
       // Any duplicate BD ID from the same tile indicates that the chain
       // cannot grow further and requires breaking to release the
       // conflicting BD ID.
-      SmallVector<DmaChain> chainsToBreak;
-      DmaChain currDmaChain = {tileOp, connectionOp};
-      checkForChainsToBeBroken(bdId, currDmaChain, dmaChainToBdIds,
-                               chainsToBreak);
+      checkForChainsWithDuplicateBdId(bdId, currDmaChain, dmaChainToBdIds,
+                                      chainsToBreak);
 
       // If the chains are not to be continued, update DMA operands using
       // the `updateChainOperands` function.
@@ -202,8 +207,8 @@ LogicalResult insertDmaBdChain(const AMDAIE::AMDAIEDeviceModel &deviceModel,
                        dmaChainToDmaOps[entry].end());
           if (failed(updateChainOperands(rewriter, dmaChainToDmaOps[entry])))
             WalkResult::interrupt();
-          dmaChainToBdIds[entry].clear();
-          dmaChainToDmaOps[entry].clear();
+          dmaChainToBdIds.erase(entry);
+          dmaChainToDmaOps.erase(entry);
         }
       }
       dmaChainToBdIds[currDmaChain].insert(bdId);
@@ -235,6 +240,8 @@ class AMDAIEInsertDmaBdChainPass
 
   AMDAIEInsertDmaBdChainPass() = default;
   AMDAIEInsertDmaBdChainPass(const AMDAIEInsertDmaBdChainPass &pass){};
+  AMDAIEInsertDmaBdChainPass(const AMDAIEInsertDmaBdChainOptions &options)
+      : AMDAIEInsertDmaBdChainBase(options) {}
   void runOnOperation() override;
 };
 
@@ -255,7 +262,8 @@ void AMDAIEInsertDmaBdChainPass::runOnOperation() {
 
   WalkResult res = parentOp->walk([&](AMDAIE::WorkgroupOp workgroupOp) {
     AMDAIE::ControlCodeOp controlCodeOp = workgroupOp.getControlCode();
-    if (failed(insertDmaBdChain(deviceModel, controlCodeOp))) {
+    if (failed(
+            insertDmaBdChain(deviceModel, controlCodeOp, enableInterleave))) {
       return WalkResult::interrupt();
     }
     return WalkResult::advance();
@@ -265,8 +273,9 @@ void AMDAIEInsertDmaBdChainPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<Pass> createAMDAIEInsertDmaBdChainPass() {
-  return std::make_unique<AMDAIEInsertDmaBdChainPass>();
+std::unique_ptr<Pass> createAMDAIEInsertDmaBdChainPass(
+    AMDAIEInsertDmaBdChainOptions options) {
+  return std::make_unique<AMDAIEInsertDmaBdChainPass>(options);
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE
