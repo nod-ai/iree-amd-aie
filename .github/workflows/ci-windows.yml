@@ -194,3 +194,10 @@ jobs:
             --target_device "npu1_4col" \
             --device_hal=xrt \
             --skip_tests "Performance"
+
+      - name: Clean up system temp directory
+        run: |
+            Get-ChildItem "$env:TEMP" -Recurse | Where-Object {
+              -not $_.PSIsContainer -and
+              ($_.LastWriteTime -lt (Get-Date).AddDays(-30))
+            } | Remove-Item -ErrorAction SilentlyContinue
