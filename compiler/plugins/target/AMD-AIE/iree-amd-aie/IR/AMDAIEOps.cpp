@@ -501,8 +501,10 @@ ConnectionOp::getNpuCircularDmaCpyNdUser() {
   return npuDmaUsers[0];
 }
 
-std::optional<FlowOp> ConnectionOp::getFlowOp() {
-  return dyn_cast_if_present<AMDAIE::FlowOp>(getFlow().getDefiningOp());
+std::optional<AMDAIE::FlowOp> ConnectionOp::getFlowOp() {
+  Value flow = getFlow();
+  if (!flow) return std::nullopt;
+  return dyn_cast<AMDAIE::FlowOp>(flow.getDefiningOp());
 }
 
 //===----------------------------------------------------------------------===//

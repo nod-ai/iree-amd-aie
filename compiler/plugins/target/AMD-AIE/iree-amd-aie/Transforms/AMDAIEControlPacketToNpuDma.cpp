@@ -114,20 +114,13 @@ struct ControlPacketDmaBuilder {
       // Plus one for the control header, which is always present.
       int64_t headerAndDataLength = dataLength + 1;
 
-      // If the AIE device has the control packet TLAST error enabled,
-      // shim DMA can only issue one control packet per BD transfer. Otherwise,
-      // we may pack multiple control packets into a single BD transfer.
-      FailureOr<bool> tlastErrorEnabled =
-          deviceModel.hasCtrlPktTlastErrorEnabled();
-      if (failed(tlastErrorEnabled)) {
-        ctrlPktOp.emitOpError()
-            << "failed to check if the control packet TLAST "
-               "error is enabled.";
-        return WalkResult::interrupt();
-      }
-      // Check if the packing is feasible.
+      // If the AIE device has the control packet TLAST error disabled,
+      // multiple control packets can be packeted into a single BD transfer to
+      // improve throughput. Otherwise, shim DMA can only issue one control
+      // packet per BD transfer.
       bool packIntoLastBdTransfer = false;
-      if (!(*tlastErrorEnabled) && ctrlPktBdTransfers.size() > 0) {
+      if (deviceModel.getCtrlPktTlastErrorDisabled() &&
+          ctrlPktBdTransfers.size() > 0) {
         const CtrlPktBdTransfer &lastBdTransfer = ctrlPktBdTransfers.back();
         // Check if the same connection is used.
         if (lastBdTransfer.connectionOp == connectionOp) {
@@ -154,6 +147,7 @@ struct ControlPacketDmaBuilder {
         ctrlPktBdTransfers.back().sizes.back() += headerAndDataLength;
       } else {
         // Create a new BD transfer.
+        // TODO(zhewen): use all dimensions available.
         ctrlPktBdTransfers.push_back(
             {connectionOp,
              /*offsets=*/
@@ -191,14 +185,14 @@ struct ControlPacketDmaBuilder {
         words[idx++] = *packetHeader;
       }
       // Store the control header.
-      FailureOr<uint32_t> ctrlPktHeader = deviceModel.getCtrlPktHeader(
+      FailureOr<uint32_t> controlHeader = deviceModel.getControlHeader(
           addrOffset, dataLength, static_cast<uint32_t>(ctrlPktOp.getOpcode()),
           ctrlPktOp.getStreamId());
-      if (failed(ctrlPktHeader)) {
+      if (failed(controlHeader)) {
         ctrlPktOp.emitOpError() << "failed to get control header.";
         return WalkResult::interrupt();
       }
-      words[idx++] = *ctrlPktHeader;
+      words[idx++] = *controlHeader;
       // Store the control packet data.
       std::optional<ArrayRef<int32_t>> maybeData =
           ctrlPktOp.getDataFromArrayOrResource();
