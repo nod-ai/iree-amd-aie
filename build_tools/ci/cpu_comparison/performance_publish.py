@@ -26,24 +26,6 @@ def append_history(results_json_path: str, results_history_path: str):
         json.dump(results_history, f, indent=2)
 
 
-def get_total_ops(name: str):
-    """
-    Determine the number of operations performed by a matmul test, based on its name.
-    Edge cases:
-    - name doesn't contain 'matmul' or name doesn't contain 3+ digits: return None
-    - name contains 'empty': return 0
-    """
-    fragments = name.split("_")
-    digit_fragments = [int(fragment) for fragment in fragments if fragment.isdigit()]
-    if len(digit_fragments) < 3:
-        return None
-    if fragments[0] != "matmul":
-        return None
-    if "empty" in fragments:
-        return 0
-    return functools.reduce(lambda x, y: x * y, digit_fragments)
-
-
 def get_canonical_name(name):
     """
     Test names might change with commits, even though the test is unchanged.
@@ -61,11 +43,18 @@ def generate_html(results_history: list):
     for entry in results_history:
         for test in entry["tests"]:
             name = get_canonical_name(test["name"])
-            graph_data[name] = {
-                "commit_hashes": [],
-                "durations": [],
-                "ops": get_total_ops(name),
-            }
+            if name not in graph_data:
+                graph_data[name] = {
+                    "commit_hashes": [],
+                    "durations": [],
+                    "n_cores": None,
+                    "total_ops": None,
+                }
+            if "n_cols" in test and "n_rows" in test:
+                n_cores = int(test["n_rows"]) * int(test["n_cols"])
+                graph_data[name]["n_cores"] = n_cores
+            if "total_ops" in test:
+                graph_data[name]["total_ops"] = int(test["total_ops"])
 
     time_unit = "us"
     for entry in results_history:
@@ -108,9 +97,12 @@ def generate_html(results_history: list):
         html_content += f"""
         <div class="chart-container">
             <h2>Performance for {test_name}</h2>"""
-        if data["ops"] is not None:
+        if data["total_ops"] is not None:
             html_content += f"""
-            Total ops: {data["ops"]}"""
+            Total ops: {data["total_ops"]}"""
+        if data["n_cores"] is not None:
+            html_content += f"""
+            Number of cores: {data["n_cores"]}"""
         html_content += f"""
             <canvas id="chart-{test_name.replace(' ', '-')}"></canvas>
         </div>

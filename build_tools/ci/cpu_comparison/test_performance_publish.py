@@ -42,25 +42,23 @@ def test_common_x_axis():
     assert html.count("labels: ['3a6aa4a', 'a666937']") == 2
 
 
-def test_ops_and_note():
+def test_n_cores():
+    """ """
+
     results_history = [
         {
-            "commit_hash": "20082027ded7c14c33e447748e2695f14d746ac4",
+            "commit_hash": "3a6aa4af21f807331a065edf80c5e0a7677f5764",
             "cpu": "AMD Ryzen 7 8845HS w/ Radeon 780M Graphics",
             "tests": [
                 {
-                    "name": "matmul_512_512_512_bf16_f32_O2_npu1_4col_callrepl_100_outline_benchmark",
-                    "time_mean": "272526",
+                    "name": "matmul_512_512_4096_bf16_f32_O2_npu1_4col_benchmark",
+                    "time_mean": "2660",
                     "time_mean_unit": "us",
-                }
+                    "n_rows": 4,
+                    "n_cols": 2,
+                },
             ],
-        }
+        },
     ]
-
     html = generate_html(results_history)
-    expected_successive_lines = [
-        "<h2>Performance for matmul_512_512_512_bf16_f32_O2_npu1_4col_callrepl_100_outline_benchmark</h2>",
-        "Total ops: 13421772800",
-    ]
-    for line in expected_successive_lines:
-        assert line in html
+    assert html.count("Number of cores: 8") == 1
