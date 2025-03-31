@@ -297,6 +297,7 @@ matmul_combos(matmul_vectorized_c_func, 16, 8, 64)
 matmul_combos(matmul_vectorized_c_func, 16, 16, 32)
 matmul_combos(matmul_vectorized_c_func, 32, 32, 32)
 matmul_combos(matmul_vectorized_c_func, 32, 32, 64)
+matmul_combos(matmul_vectorized_c_func, 32, 16, 128)
 matmul_combos(matmul_vectorized_c_func, 64, 64, 64)
 
 matmul_combos_i8(matmul_vectorized_c_func, 16, 16, 32)

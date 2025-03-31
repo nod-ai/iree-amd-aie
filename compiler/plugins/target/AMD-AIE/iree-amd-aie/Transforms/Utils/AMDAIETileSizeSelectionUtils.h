@@ -9,19 +9,18 @@
 
 #include <stdint.h>
 
-#include <iostream>
-
 namespace mlir::iree_compiler::AMDAIE {
 
 struct TileParams {
   int64_t memoryLimit;
   uint32_t numBytesA, numBytesB, numBytesC, numBytesAcc;
   uint32_t isDoubleBufferA, isDoubleBufferB, isDoubleBufferC, isDoubleBufferAcc;
-  int64_t inputM, inputN, inputK;
+  uint32_t inputM, inputN, inputK;
+  uint32_t vectorM, vectorN, vectorK;
 };
 
 struct TileSize {
-  int64_t M, N, K;
+  uint32_t M, N, K;
   bool operator==(const TileSize& tileSize) const {
     return M == tileSize.M && N == tileSize.N && K == tileSize.K;
   }

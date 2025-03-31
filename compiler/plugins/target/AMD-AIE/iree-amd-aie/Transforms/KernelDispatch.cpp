@@ -175,17 +175,14 @@ class ParameterSetting {
                                             uint32_t kPackScaleL1 = 1);
 
  private:
-  ParameterSetting(uint32_t M0, uint32_t N0, uint32_t K0, uint32_t M1,
-                   uint32_t N1, uint32_t K1, uint32_t m0Pack, uint32_t n0Pack,
-                   uint32_t k0Pack, uint32_t m1Pack, uint32_t n1Pack,
-                   uint32_t k1Pack, uint32_t M, uint32_t N, uint32_t K,
-                   uint32_t nBytesLhs, uint32_t nBytesRhs, uint32_t nBytesInit)
+  ParameterSetting(uint32_t M0, uint32_t N0, uint32_t K0, uint32_t m0Pack,
+                   uint32_t n0Pack, uint32_t k0Pack, uint32_t m1Pack,
+                   uint32_t n1Pack, uint32_t k1Pack, uint32_t M, uint32_t N,
+                   uint32_t K, uint32_t nBytesLhs, uint32_t nBytesRhs,
+                   uint32_t nBytesInit)
       : M0(M0),
         N0(N0),
         K0(K0),
-        M1(M1),
-        N1(N1),
-        K1(K1),
         m0Pack(m0Pack),
         n0Pack(n0Pack),
         k0Pack(k0Pack),
@@ -225,6 +222,28 @@ FailureOr<ParameterSetting> ParameterSetting::create(
   int64_t N = getTotalSize(maybeInputDimsAndSizes.value().nSizes);
   int64_t K = getTotalSize(maybeInputDimsAndSizes.value().kSizes);
 
+  // The current ad-hoc algorithm for determining the tiling at level 0 and
+  // level 1 is as follows:
+  //
+  // Step 1: Find the largest tiling for M and N on the AIE core, subject to
+  // constraints.
+  //
+  // Step 2: Find the largest tiling for M and N in AIE shared memory,
+  // subject to constraints.
+  //
+  // Assume working on a (numRows, numCols) AIE array, then the data layout in
+  // L2 is as (numRows, numCols, M0/numRows, N0/numCols), where M0 and N0 are
+  // the first level tile sizes. We choose the second level tile sizes the same
+  // as the first level pack size, i.e.,
+  // M1 = M0Pack = M0 / numRows and N1 = N0Pack = N0 / numCols.
+  // Also we should make sure the first level inner pack size is divisible by
+  // the second level of inner pack size (vector instruction size).
+
+  // Get the level 1 pack size, i.e., vector instruction size.
+  auto maybePackedSize = getPackedSize(linalgOp, M, N, K, targetDevice);
+  if (failed(maybePackedSize)) return failure();
+  auto [m1Pack, n1Pack, k1Pack] = maybePackedSize.value();
+
   // MLIR-AIR disable double buffering in L1 memory.
   unsigned isDoubleBufferA = isObjectFifo ? 2 : 1;
   unsigned isDoubleBufferB = isObjectFifo ? 2 : 1;
@@ -253,54 +272,28 @@ FailureOr<ParameterSetting> ParameterSetting::create(
                         /*isDoubleBufferB=*/isDoubleBufferB,
                         /*isDoubleBufferC=*/1,
                         /*isDoubleBufferAcc=*/isDoubleBufferAcc,
-                        /*inputM=*/M,
-                        /*inputN=*/N,
-                        /*inputK=*/K};
+                        /*inputM=*/static_cast<uint32_t>(M),
+                        /*inputN=*/static_cast<uint32_t>(N),
+                        /*inputK=*/static_cast<uint32_t>(K),
+                        /*vectorM=*/m1Pack,
+                        /*vectorN=*/n1Pack,
+                        /*vectorK=*/k1Pack};
   TileSize maxL1Size = selectL1TileSizes(tileParams);
-
-  // Get the level 1 pack size.
-  auto maybePackedSize = getPackedSize(linalgOp, M, N, K, targetDevice);
-  if (failed(maybePackedSize)) return failure();
-  auto [m1Pack, n1Pack, k1Pack] = maybePackedSize.value();
-
-  // The current ad-hoc algorithm for determining the tiling at level 0 and
-  // level 1 is as follows:
-  //
-  // Step 1: Find the largest tiling for M and N on the AIE core, subject to
-  // constraints.
-  //
-  // Step 2: Find the largest tiling for M and N in AIE shared memory,
-  // subject to constraints.
-  //
-  // Tiling in the K-dimension is done differently TODO(newling)
-  // document/reconsider.
-
-  uint32_t M1 = findLargestFactor(M / m1Pack, maxL1Size.M / m1Pack, m1Pack);
-  uint32_t N1 = findLargestFactor(N / n1Pack, maxL1Size.N / n1Pack, n1Pack);
 
   uint32_t maxL0SizeM = numRows * maxL1Size.M;
   uint32_t maxL0SizeN = numCols * maxL1Size.N;
-  uint32_t M0 = findLargestFactor(M, maxL0SizeM, m1Pack * M1);
-  uint32_t N0 = findLargestFactor(N, maxL0SizeN, n1Pack * N1);
-
-  // In pack-peel pipeline there is only one level of tiling for K dimension,
-  // so set K1 = 0. The packed outer K dimension needs to be 1, so set K0 = 1.
-  uint32_t K1 = 0;
-  uint32_t K0 = 1;
-  uint32_t maxL1SizeK = isObjectFifo ? maxL1Size.K / kPackScaleL1 : maxL1Size.K;
-  uint32_t k0Pack = findLargestFactor(K, maxL1SizeK);
-
-  // Instead of directly packing to (1, 1, M0, N0), the new strategy is making
-  // the pack size as (numRows, numCols, M0/numRows, N0/numCols) to avoid the
-  // large allocation in L1. Also we should make sure the first level inner
-  // pack size is divisible by the second level of inner pack size (vector
-  // instruction size).
+  uint32_t M0 = findLargestFactor(M, maxL0SizeM, maxL1Size.M);
+  uint32_t N0 = findLargestFactor(N, maxL0SizeN, maxL1Size.N);
   uint32_t m0Pack = (M0 / numRows) % m1Pack == 0 ? (M0 / numRows) : M0;
   uint32_t n0Pack = (N0 / numCols) % n1Pack == 0 ? (N0 / numCols) : N0;
 
-  return ParameterSetting(M0, N0, K0, M1, N1, K1, m0Pack, n0Pack, k0Pack,
-                          m1Pack, n1Pack, k1Pack, M, N, K, nBytesLhs, nBytesRhs,
-                          nBytesInit);
+  // In pack-peel pipeline there is only one level of tiling for K dimension,
+  // so set K1 = 0. The packed outer K dimension needs to be 1, so set K0 = 1.
+  uint32_t K0 = 1;
+  uint32_t k0Pack = findLargestFactor(K, maxL1Size.K);
+
+  return ParameterSetting(M0, N0, K0, m0Pack, n0Pack, k0Pack, m1Pack, n1Pack,
+                          k1Pack, M, N, K, nBytesLhs, nBytesRhs, nBytesInit);
 }
 }  // namespace
 
