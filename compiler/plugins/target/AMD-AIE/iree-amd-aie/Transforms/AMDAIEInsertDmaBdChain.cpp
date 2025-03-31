@@ -64,7 +64,7 @@ LogicalResult updateChainOperands(
 }
 
 /// Utility function to determine if chains can grow further
-/// or require breaking, depending on if there is any duplicate BD ID.
+/// or require breaking, depending on whether there is any duplicate BD ID.
 ///
 /// Example:
 /// - Chain X currently holds BD IDs: [4, 5, 6, 7]
