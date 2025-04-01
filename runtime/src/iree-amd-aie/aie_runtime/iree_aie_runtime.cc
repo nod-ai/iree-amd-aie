@@ -316,14 +316,50 @@ uint32_t AMDAIEDeviceModel::getCoreTileLocalMemorySize() const {
   return devInst.DevProp.DevMod[XAIEGBL_TILE_TYPE_AIETILE].CoreMod->DataMemSize;
 }
 
-FailureOr<uint32_t> AMDAIEDeviceModel::getCtrlPktHeader(
+void setOddParityBit(uint32_t &word) {
+  // Mask to keep the lower 31 bits (bits 30:0).
+  uint32_t lower31Bits = word & 0x7FFFFFFF;
+  // Compute the odd parity bit. It is set to 1 if the number of 1's in
+  // lower31Bits is even, ensuring the total count (including this bit) becomes
+  // odd. Otherwise, it is set to 0.
+  uint32_t parity = (llvm::popcount(lower31Bits) + 1) % 2;
+  // Set the parity bit in the most significant bit (bit 31).
+  word = (parity << 31) | lower31Bits;
+}
+
+FailureOr<uint32_t> AMDAIEDeviceModel::getPacketHeader(uint32_t streamId,
+                                                       uint32_t packetType,
+                                                       uint32_t srcRow,
+                                                       uint32_t srcCol) const {
+  if (srcRow >= rows() || srcCol >= columns()) {
+    llvm::errs() << "source tile out of range\n";
+    return failure();
+  }
+  if (streamId > getPacketIdMaxIdx()) {
+    llvm::errs() << "streamId out of range\n";
+    return failure();
+  }
+  if (packetType > getpacketTypeMax()) {
+    llvm::errs() << "packetType out of range\n";
+    return failure();
+  }
+  // Construct the header by shifting and combining the individual fields.
+  uint32_t header = (srcCol << packetHeaderFormat.srcColShift) |
+                    (srcRow << packetHeaderFormat.srcRowShift) |
+                    (packetType << packetHeaderFormat.packetTypeShift) |
+                    (streamId << packetHeaderFormat.streamIdShift);
+  setOddParityBit(header);
+  return header;
+}
+
+FailureOr<uint32_t> AMDAIEDeviceModel::getControlHeader(
     uint32_t address, uint32_t length, uint32_t opcode,
     uint32_t streamId) const {
   if (address > getCtrlPktMaxAddress()) {
     llvm::errs() << "address out of range\n";
     return failure();
   }
-  if (length > getCtrlPktMaxLength()) {
+  if (length > getCtrlPktMaxLength() || length == 0) {
     llvm::errs() << "length out of range\n";
     return failure();
   }
@@ -331,46 +367,34 @@ FailureOr<uint32_t> AMDAIEDeviceModel::getCtrlPktHeader(
     llvm::errs() << "opcode out of range\n";
     return failure();
   }
-  if (streamId > getCtrlPktMaxStreamId()) {
+  if (streamId > getPacketIdMaxIdx()) {
     llvm::errs() << "streamId out of range\n";
     return failure();
   }
   // Construct the header by shifting and combining the individual fields.
   // Note that length `i` is encoded in the header as `i - 1`.
-  uint32_t header = (streamId << ctrlPktHeaderFormat.streamIdShift) |
-                    (opcode << ctrlPktHeaderFormat.operationShift) |
-                    ((length - 1) << ctrlPktHeaderFormat.beatShift) |
-                    (address << ctrlPktHeaderFormat.addressShift);
-  // Mask to keep the lower 31 bits (bits 30:0).
-  uint32_t lower31Bits = header & 0x7FFFFFFF;
-  // Compute the odd parity bit. It is set to 1 if the number of 1's in
-  // lower31Bits is even, ensuring the total count (including this bit) becomes
-  // odd. Otherwise, it is set to 0.
-  uint32_t parity = (llvm::popcount(lower31Bits) + 1) % 2;
-  // Set the parity bit in the most significant bit (bit 31).
-  return (parity << 31) | lower31Bits;
+  uint32_t header = (streamId << controlHeaderFormat.streamIdShift) |
+                    (opcode << controlHeaderFormat.operationShift) |
+                    ((length - 1) << controlHeaderFormat.beatShift) |
+                    (address << controlHeaderFormat.addressShift);
+  setOddParityBit(header);
+  return header;
 }
 
 uint32_t AMDAIEDeviceModel::getCtrlPktMaxAddress() const {
-  return (1 << (ctrlPktHeaderFormat.beatShift -
-                ctrlPktHeaderFormat.addressShift)) -
+  return (1 << (controlHeaderFormat.beatShift -
+                controlHeaderFormat.addressShift)) -
          1;
 }
 
 uint32_t AMDAIEDeviceModel::getCtrlPktMaxLength() const {
-  return (1 << (ctrlPktHeaderFormat.operationShift -
-                ctrlPktHeaderFormat.beatShift));
+  return (1 << (controlHeaderFormat.operationShift -
+                controlHeaderFormat.beatShift));
 }
 
 uint32_t AMDAIEDeviceModel::getCtrlPktMaxOpcode() const {
-  return (1 << (ctrlPktHeaderFormat.streamIdShift -
-                ctrlPktHeaderFormat.operationShift)) -
-         1;
-}
-
-uint32_t AMDAIEDeviceModel::getCtrlPktMaxStreamId() const {
-  return (1 << (ctrlPktHeaderFormat.reservedShift -
-                ctrlPktHeaderFormat.streamIdShift)) -
+  return (1 << (controlHeaderFormat.streamIdShift -
+                controlHeaderFormat.operationShift)) -
          1;
 }
 
@@ -614,6 +638,10 @@ uint8_t AMDAIEDeviceModel::getPacketIdMaxIdx() const {
   return deviceConfig.packetIdMaxIdx;
 }
 
+uint8_t AMDAIEDeviceModel::getpacketTypeMax() const {
+  return deviceConfig.packetTypeMax;
+}
+
 uint8_t AMDAIEDeviceModel::getPacketIdMaskWidth() const {
   return deviceConfig.packetIdMaskWidth;
 }
@@ -624,6 +652,10 @@ uint8_t AMDAIEDeviceModel::getNumPacketRuleSlots(uint8_t col,
   const XAie_StrmMod *strmMod =
       devInst.DevProp.DevMod[static_cast<uint8_t>(tileType)].StrmSw;
   return strmMod->NumSlaveSlots;
+}
+
+bool AMDAIEDeviceModel::getCtrlPktTlastErrorDisabled() const {
+  return deviceConfig.ctrlPktTlastErrorDisabled;
 }
 
 uint8_t AMDAIEDeviceModel::getStreamSwitchArbiterMax(uint8_t col,
@@ -676,6 +708,7 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
       AMDAIEDeviceModel::AMDAIEDeviceConfig deviceConfig;
       deviceConfig.shimTileNumRows = XAIE1_SHIM_NUM_ROWS;
       deviceConfig.packetIdMaxIdx = XAIE1_PACKET_ID_MAX;
+      deviceConfig.packetTypeMax = XAIE1_PACKET_TYPE_MAX;
       deviceConfig.streamSwitchCoreArbiterMax = XAIE1_SS_ARBITER_MAX;
       deviceConfig.streamSwitchCoreMSelMax = XAIE1_SS_MSEL_MAX;
       deviceConfig.streamSwitchMemTileArbiterMax = XAIE1_SS_ARBITER_MAX;
@@ -701,6 +734,7 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
       AMDAIEDeviceModel::AMDAIEDeviceConfig deviceConfig;
       deviceConfig.shimTileNumRows = XAIEML_SHIM_NUM_ROWS;
       deviceConfig.packetIdMaxIdx = XAIEML_PACKET_ID_MAX;
+      deviceConfig.packetTypeMax = XAIEML_PACKET_TYPE_MAX;
       deviceConfig.streamSwitchCoreArbiterMax = XAIEML_SS_ARBITER_MAX;
       deviceConfig.streamSwitchCoreMSelMax = XAIEML_SS_MSEL_MAX;
       deviceConfig.streamSwitchMemTileArbiterMax = XAIEML_SS_ARBITER_MAX;
@@ -725,6 +759,7 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
       AMDAIEDeviceModel::AMDAIEDeviceConfig deviceConfig;
       deviceConfig.shimTileNumRows = XAIEML_SHIM_NUM_ROWS;
       deviceConfig.packetIdMaxIdx = XAIEML_PACKET_ID_MAX;
+      deviceConfig.packetTypeMax = XAIEML_PACKET_TYPE_MAX;
       deviceConfig.streamSwitchCoreArbiterMax = XAIEML_SS_ARBITER_MAX;
       deviceConfig.streamSwitchCoreMSelMax = XAIEML_SS_MSEL_MAX;
       deviceConfig.streamSwitchMemTileArbiterMax = XAIEML_SS_ARBITER_MAX;
@@ -753,6 +788,7 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
       AMDAIEDeviceModel::AMDAIEDeviceConfig deviceConfig;
       deviceConfig.shimTileNumRows = XAIE2IPU_SHIM_NUM_ROWS;
       deviceConfig.packetIdMaxIdx = XAIE2IPU_PACKET_ID_MAX;
+      deviceConfig.packetTypeMax = XAIE2IPU_PACKET_TYPE_MAX;
       deviceConfig.streamSwitchCoreArbiterMax = XAIE2IPU_SS_ARBITER_MAX;
       deviceConfig.streamSwitchCoreMSelMax = XAIE2IPU_SS_MSEL_MAX;
       deviceConfig.streamSwitchMemTileArbiterMax = XAIE2IPU_SS_ARBITER_MAX;
@@ -800,6 +836,8 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
       AMDAIEDeviceModel::AMDAIEDeviceConfig deviceConfig;
       deviceConfig.shimTileNumRows = XAIE_STRIXB0_MEM_TILE_NUM_ROWS;
       deviceConfig.packetIdMaxIdx = XAIE_STRIXB0_PACKET_ID_MAX;
+      deviceConfig.packetTypeMax = XAIE_STRIXB0_PACKET_TYPE_MAX;
+      deviceConfig.ctrlPktTlastErrorDisabled = true;
       deviceConfig.streamSwitchCoreArbiterMax = XAIE_STRIXB0_SS_ARBITER_MAX;
       deviceConfig.streamSwitchCoreMSelMax = XAIE_STRIXB0_SS_MSEL_MAX;
       deviceConfig.streamSwitchMemTileArbiterMax = XAIE_STRIXB0_SS_ARBITER_MAX;

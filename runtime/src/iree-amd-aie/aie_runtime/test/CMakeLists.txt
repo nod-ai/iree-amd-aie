@@ -116,3 +116,13 @@ iree_cc_test(
     gtest
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
 )
+
+iree_cc_test(
+  NAME
+  ControlPacketHeaderTest
+  SRCS
+    "test_control_packet_header.cc"
+  DEPS
+    gtest
+    iree-amd-aie::aie_runtime::iree_aie_runtime_static
+)
