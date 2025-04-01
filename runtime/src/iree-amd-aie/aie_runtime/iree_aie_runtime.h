@@ -581,6 +581,9 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device);
 StrmSwPortType getConnectingBundle(StrmSwPortType dir);
 bool isNPUDevice(mlir::iree_compiler::AMDAIE::AMDAIEDevice d);
 
+/// Given a 32-bit word, set its most significant bit for odd parity.
+void setOddParityBit(uint32_t &word);
+
 /// ============================= BEGIN ==================================
 /// ================== stringification utils =============================
 /// ======================================================================

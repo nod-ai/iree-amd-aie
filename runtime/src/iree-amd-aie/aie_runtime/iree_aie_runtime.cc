@@ -316,7 +316,6 @@ uint32_t AMDAIEDeviceModel::getCoreTileLocalMemorySize() const {
   return devInst.DevProp.DevMod[XAIEGBL_TILE_TYPE_AIETILE].CoreMod->DataMemSize;
 }
 
-/// Given a 32-bit word, set its most significant bit for odd parity.
 void setOddParityBit(uint32_t &word) {
   // Mask to keep the lower 31 bits (bits 30:0).
   uint32_t lower31Bits = word & 0x7FFFFFFF;
@@ -360,7 +359,7 @@ FailureOr<uint32_t> AMDAIEDeviceModel::getControlHeader(
     llvm::errs() << "address out of range\n";
     return failure();
   }
-  if (length > getCtrlPktMaxLength()) {
+  if (length > getCtrlPktMaxLength() || length == 0) {
     llvm::errs() << "length out of range\n";
     return failure();
   }

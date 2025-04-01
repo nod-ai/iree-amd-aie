@@ -115,7 +115,7 @@ struct ControlPacketDmaBuilder {
       int64_t headerAndDataLength = dataLength + 1;
 
       // If the AIE device has the control packet TLAST error disabled,
-      // multiple control packets can be packeted into a single BD transfer to
+      // multiple control packets can be packaged into a single BD transfer to
       // improve throughput. Otherwise, shim DMA can only issue one control
       // packet per BD transfer.
       bool packIntoLastBdTransfer = false;
@@ -176,23 +176,23 @@ struct ControlPacketDmaBuilder {
           ctrlPktOp.emitOpError() << "expected a packet ID for the flow";
           return WalkResult::interrupt();
         }
-        FailureOr<uint32_t> packetHeader = deviceModel.getPacketHeader(
+        FailureOr<uint32_t> maybePacketHeader = deviceModel.getPacketHeader(
             *maybePacketId, /*packetType=*/0, srcRow, srcCol);
-        if (failed(packetHeader)) {
+        if (failed(maybePacketHeader)) {
           ctrlPktOp.emitOpError() << "failed to get packet header.";
           return WalkResult::interrupt();
         }
-        words[idx++] = *packetHeader;
+        words[idx++] = *maybePacketHeader;
       }
       // Store the control header.
-      FailureOr<uint32_t> controlHeader = deviceModel.getControlHeader(
+      FailureOr<uint32_t> maybeControlHeader = deviceModel.getControlHeader(
           addrOffset, dataLength, static_cast<uint32_t>(ctrlPktOp.getOpcode()),
           ctrlPktOp.getStreamId());
-      if (failed(controlHeader)) {
+      if (failed(maybeControlHeader)) {
         ctrlPktOp.emitOpError() << "failed to get control header.";
         return WalkResult::interrupt();
       }
-      words[idx++] = *controlHeader;
+      words[idx++] = *maybeControlHeader;
       // Store the control packet data.
       std::optional<ArrayRef<int32_t>> maybeData =
           ctrlPktOp.getDataFromArrayOrResource();
