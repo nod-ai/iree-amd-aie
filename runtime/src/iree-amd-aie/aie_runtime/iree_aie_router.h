@@ -71,33 +71,12 @@ struct SwitchSetting {
 
 using SwitchSettings = std::map<TileLoc, SwitchSetting>;
 
-struct PathEndPoint {
-  TileLoc tileLoc;
-  Port port;
-  PathEndPoint() = default;
-  PathEndPoint(int col, int row, Port port) : PathEndPoint({col, row}, port) {}
-  PathEndPoint(TileLoc tileLoc, Port port) : tileLoc(tileLoc), port(port) {}
-  using TupleType = std::tuple<TileLoc, Port>;
-  PathEndPoint(TupleType t) : PathEndPoint(std::get<0>(t), std::get<1>(t)) {}
-  operator TupleType() const { return {tileLoc, port}; }
-  TUPLE_LIKE_STRUCT_RELATIONAL_OPS(PathEndPoint)
-};
-ASSERT_STANDARD_LAYOUT(PathEndPoint);
-
-std::map<TileLoc, std::vector<Connect>> emitConnections(
-    const std::map<PathEndPoint, SwitchSettings> &flowSolutions,
-    const PathEndPoint &srcPoint, const AMDAIEDeviceModel &targetModel);
-
-bool existsPathToDest(const SwitchSettings &settings, TileLoc currTile,
-                      StrmSwPortType currDestBundle, int currDestChannel,
-                      TileLoc finalTile, StrmSwPortType finalDestBundle,
-                      int finalDestChannel);
-
 struct PhysPort {
   enum Direction { SRC, DST };
   TileLoc tileLoc;
   Port port;
   Direction direction;
+  PhysPort() = default;
   PhysPort(TileLoc t, Port p, Direction direction)
       : tileLoc(t), port(p), direction(direction) {}
   using TupleType = std::tuple<TileLoc, Port, Direction>;
@@ -117,6 +96,15 @@ struct PhysPortAndID {
   TUPLE_LIKE_STRUCT_RELATIONAL_OPS(PhysPortAndID)
 };
 
+std::map<TileLoc, std::vector<Connect>> emitConnections(
+    const std::map<PhysPort, SwitchSettings> &flowSolutions,
+    const PhysPort &srcPoint, const AMDAIEDeviceModel &targetModel);
+
+bool existsPathToDest(const SwitchSettings &settings, TileLoc currTile,
+                      StrmSwPortType currDestBundle, int currDestChannel,
+                      TileLoc finalTile, StrmSwPortType finalDestBundle,
+                      int finalDestChannel);
+
 struct RouterImpl;
 struct Router {
   RouterImpl *impl;
@@ -129,8 +117,8 @@ struct Router {
       int col, int row, const std::vector<std::tuple<Port, Port>> &connects);
   bool addFixedPacketConnection(const PhysPort &srcPhyPort,
                                 const PhysPort &destPhyPort);
-  std::map<PathEndPoint, PathEndPoint> dijkstraShortestPaths(PathEndPoint src);
-  std::optional<std::map<PathEndPoint, SwitchSettings>> findPaths(
+  std::map<PhysPort, PhysPort> dijkstraShortestPaths(PhysPort src);
+  std::optional<std::map<PhysPort, SwitchSettings>> findPaths(
       int maxIterations = 1000);
 };
 
@@ -165,7 +153,6 @@ FailureOr<std::tuple<MasterSetsT, SlaveAMSelsT>> emitPacketRoutingConfiguration(
 
 #define TO_STRINGS(_) \
   _(Connect)          \
-  _(PathEndPoint)     \
   _(Port)             \
   _(SwitchSetting)    \
   _(PhysPort)         \
@@ -176,7 +163,6 @@ TO_STRINGS(TO_STRING_DECL)
 
 #define BOTH_OSTREAM_OPS_FORALL_ROUTER_TYPES(OSTREAM_OP_, _) \
   _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::Connect)       \
-  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::PathEndPoint)  \
   _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::Port)          \
   _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::SwitchSetting) \
   _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::PhysPort)      \
@@ -216,16 +202,5 @@ struct DenseMapInfo<mlir::iree_compiler::AMDAIE::PhysPortAndID>
           mlir::iree_compiler::AMDAIE::PhysPortAndID::TupleType> {};
 
 }  // namespace llvm
-
-template <>
-struct std::hash<mlir::iree_compiler::AMDAIE::PathEndPoint> {
-  std::size_t operator()(
-      const mlir::iree_compiler::AMDAIE::PathEndPoint &pe) const noexcept {
-    std::size_t h1 = std::hash<mlir::iree_compiler::AMDAIE::Port>{}(pe.port);
-    std::size_t h2 =
-        std::hash<mlir::iree_compiler::AMDAIE::TileLoc>{}(pe.tileLoc);
-    return h1 ^ (h2 << 1);
-  }
-};
 
 #endif  // IREE_AIE_ROUTER_H
