@@ -176,8 +176,8 @@ def AMDAIEControlCodeLowering :
   let summary = "Lower control code ops to the most basic NPU write/sync/patch instructions";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEControlCodeLoweringPass()";
   let options = [
-    Option<"lowerCtrlpktDma", "lower-ctrlpkt-dma", "bool", /*default=*/"false",
-      "Enable the special handling for lowering the control packet DMA operations.">
+    Option<"argIdxOffset", "arg-idx-offset", "int32_t", /*default=*/"0",
+      "The offset to be added to the argument index.">,
   ];
 }
 
