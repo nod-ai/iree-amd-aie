@@ -719,8 +719,7 @@ static LogicalResult setRootConfigForConvDecomposePipeline(
   SmallVector<int64_t> packingSizes;
 
   // [N, OH, OW, OC, KH, KW, IC].
-  if (isa<linalg::Conv2DNhwcHwcfQOp>(linalgOp) ||
-      isa<linalg::Conv2DNhwcHwcfOp>(linalgOp)) {
+  if (isa<linalg::Conv2DNhwcHwcfOp>(linalgOp)) {
     // The goal is to pack the input image and kernel as follows, when moving
     // from L2 to L1 (example where there are 32 input channels):
     // Image: memref<1x3x6x32xbf16> ->  memref<1x3x4x6x8xbf16>
@@ -933,11 +932,10 @@ static LogicalResult setRootConfigImpl(
         // add support for them, this way we can verify our work.
         // TODO (vivian): add support for other conv interface ops
         .Case<linalg::Conv2DNhwcHwcfOp, linalg::Conv2DNchwFchwOp,
-              linalg::Conv2DNhwcHwcfQOp, linalg::DepthwiseConv2DNhwcHwcOp>(
-            [&](auto op) {
-              return setConvRootConfig(entryPointFn, op, passPipeline,
-                                       targetDevice);
-            })
+              linalg::DepthwiseConv2DNhwcHwcOp>([&](auto op) {
+          return setConvRootConfig(entryPointFn, op, passPipeline,
+                                   targetDevice);
+        })
         .Case<linalg::GenericOp>([&](auto op) {
           return setRootConfig(entryPointFn, op, passPipeline,
                                useLowerToAIEPipeline, targetDevice, numRows,
