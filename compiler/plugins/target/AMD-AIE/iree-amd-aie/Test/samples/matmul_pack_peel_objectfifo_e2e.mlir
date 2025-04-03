@@ -4,8 +4,8 @@
 
 // CHECK:       aie.device(npu1_4col) {
 // CHECK:       func.func private @generic_matmul_0_outlined
-// CHECK-SAME:    memref<1x1x8x8x4x8xi32> {llvm.noalias},
-// CHECK-SAME:    memref<1x1x8x8x8x4xi32> {llvm.noalias},
+// CHECK-SAME:    memref<1x1x4x8x4x8xi32> {llvm.noalias},
+// CHECK-SAME:    memref<1x1x8x4x8x4xi32> {llvm.noalias},
 // CHECK-SAME:    memref<1x1x8x8x4x4xi32> {llvm.noalias}) attributes {llvm.bareptr = true}
 // CHECK-DAG:   %[[TILE_0_2:.+]] = aie.tile(0, 2)
 // CHECK-DAG:   %[[TILE_0_3:.+]] = aie.tile(0, 3)

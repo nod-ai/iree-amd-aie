@@ -1900,17 +1900,17 @@ class Tests:
                     )
                 )
                 # Batch size = 2:
-                # self.register(
-                #     BatchMatmul(
-                #         2,
-                #         64,
-                #         64,
-                #         64,
-                #         input_type,
-                #         acc_type,
-                #         test_params=TestParams(tile_pipeline=tile_pipeline),
-                #     )
-                # )
+                self.register(
+                    BatchMatmul(
+                        2,
+                        64,
+                        64,
+                        64,
+                        input_type,
+                        acc_type,
+                        test_params=TestParams(tile_pipeline=tile_pipeline),
+                    )
+                )
         # Strix + pack-peel-4-level-tiling + 4x8 + i32->i32.
         # TODO(avarma): Currently bf16->f32 vectorization is not supported for npu4.
         #               Enable the same once it is.
@@ -1949,20 +1949,10 @@ class Tests:
         )
 
         # MatmulThinBias test(s):
-        # self.register(
-        #     MatmulThinBias(
-        #         1024,
-        #         1024,
-        #         512,
-        #         "bf16",
-        #         "f32",
-        #         test_params=TestParams(use_ukernel=True, lower_to_aie_pipeline="air"),
-        #     )
-        # )
-        # self.register(MatmulThinBias(1024, 1024, 512, "bf16", "f32"))
-        #
-        # # MatmulFullBias test:
-        # self.register(MatmulFullBias(128, 128, 256, "i32", "i32"))
+        self.register(MatmulThinBias(1024, 1024, 512, "bf16", "f32"))
+
+        # MatmulFullBias test:
+        self.register(MatmulFullBias(128, 128, 256, "bf16", "f32"))
 
         # MatmulTransposeB test(s):
         for input_type, acc_type in zip(["i8", "bf16"], ["i32", "f32"]):

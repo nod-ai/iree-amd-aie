@@ -237,11 +237,11 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
         options.getNumRows(deviceModel), options.getNumCols(deviceModel),
         options.useTilePipeline, options.useLowerToAIEPipeline,
         options.matmulElementwiseFusion, options.enableVectorizationPasses,
-        options.pathToUkernels, options.enableInputPacketFlow,
-        options.enableOutputPacketFlow, options.enableCoalescingLoops,
-        options.enableCollapsingUnitDims, options.enableFunctionOutlining,
-        options.callReplication, options.insertLoopAroundCoreBlock,
-        options.emitCtrlPkt);
+        options.enableAMDAIEUkernels, options.pathToUkernels,
+        options.enableInputPacketFlow, options.enableOutputPacketFlow,
+        options.enableCoalescingLoops, options.enableCollapsingUnitDims,
+        options.enableFunctionOutlining, options.callReplication,
+        options.insertLoopAroundCoreBlock, options.emitCtrlPkt);
   }
 
   void buildLinkingPassPipeline(OpPassManager &passManager) override {

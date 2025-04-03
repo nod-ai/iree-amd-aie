@@ -617,7 +617,7 @@ run_matmul_test_on_shapes ${i32_shapes_medium[@]} \
 # bf16 Matmul tests.
 
 bf16_i8_shapes_small=(
-  #'64x64x64'
+  '64x64x64'
   '128x256x128'
 )
 
