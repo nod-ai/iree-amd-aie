@@ -284,6 +284,7 @@ struct HalfDmaCpyNdToNpuConverter final
  private:
   const AMDAIE::AMDAIEDeviceModel &deviceModel;
   uint8_t minStrideBitWidth;
+  // Offset to be added to the `argIdx` field of the write BD operation.
   int32_t argIdxOffset;
 };
 
