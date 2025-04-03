@@ -4,6 +4,7 @@
 
 import json
 import sys
+import functools
 
 
 def append_history(results_json_path: str, results_history_path: str):
@@ -37,16 +38,23 @@ def get_canonical_name(name):
     return name
 
 
-def generate_html(results_history_path: str, results_html_path: str):
-    results_history = []
-    with open(results_history_path, "r") as f:
-        results_history = json.load(f)
-
+def generate_html(results_history: list):
     graph_data = {}
     for entry in results_history:
         for test in entry["tests"]:
             name = get_canonical_name(test["name"])
-            graph_data[name] = {"commit_hashes": [], "durations": []}
+            if name not in graph_data:
+                graph_data[name] = {
+                    "commit_hashes": [],
+                    "durations": [],
+                    "n_cores": None,
+                    "total_ops": None,
+                }
+            if "n_cols" in test and "n_rows" in test:
+                n_cores = int(test["n_rows"]) * int(test["n_cols"])
+                graph_data[name]["n_cores"] = n_cores
+            if "total_ops" in test:
+                graph_data[name]["total_ops"] = int(test["total_ops"])
 
     time_unit = "us"
     for entry in results_history:
@@ -88,7 +96,14 @@ def generate_html(results_history_path: str, results_html_path: str):
     for test_name, data in graph_data.items():
         html_content += f"""
         <div class="chart-container">
-            <h2>Performance for {test_name}</h2>
+            <h2>Performance for {test_name}</h2>"""
+        if data["total_ops"] is not None:
+            html_content += f"""
+            Total ops: {data["total_ops"]}"""
+        if data["n_cores"] is not None:
+            html_content += f"""
+            Number of cores: {data["n_cores"]}"""
+        html_content += f"""
             <canvas id="chart-{test_name.replace(' ', '-')}"></canvas>
         </div>
         <script>
@@ -133,9 +148,7 @@ def generate_html(results_history_path: str, results_html_path: str):
     </html>
     """
 
-    # Save the HTML file
-    with open(results_html_path, "w") as f:
-        f.write(html_content)
+    return html_content
 
 
 if __name__ == "__main__":
@@ -149,6 +162,12 @@ if __name__ == "__main__":
     results_json_path = sys.argv[1]
     results_history_path = sys.argv[2]
     results_html_path = sys.argv[3]
-
     append_history(results_json_path, results_history_path)
-    generate_html(results_history_path, results_html_path)
+
+    # Generate and save the HTML file
+    results_history = []
+    with open(results_history_path, "r") as f:
+        results_history = json.load(f)
+    html_content = generate_html(results_history)
+    with open(results_html_path, "w") as f:
+        f.write(html_content)
