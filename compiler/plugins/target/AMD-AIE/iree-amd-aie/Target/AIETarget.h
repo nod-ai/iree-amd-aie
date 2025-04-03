@@ -32,6 +32,9 @@ struct AMDAIEOptions {
   // Use the chess compiler. The default is to use peano.
   bool useChess{false};
 
+  // Use the chess compiler for ukernel. The default is to use chess.
+  bool useChessForUKernel{true};
+
   // Additional flags to run peano's opt with (if peano is the backend compiler
   // selected). These are mostly appended on the end of the default flags, but
   // some flags may replace existing flags if they conflict.
@@ -56,18 +59,39 @@ struct AMDAIEOptions {
   bool enableVectorizationPasses{true};
   bool enableCoalescingLoops{false};
   bool enableCollapsingUnitDims{false};
-  bool enableFunctionOutlining{true};
-  bool replaceOutlinedFunctionsWithEmpty{false};
+  OutliningStrategy enableFunctionOutlining{OutliningStrategy::Balanced};
+  int callReplication{1};
   bool insertLoopAroundCoreBlock{false};
   bool matmulElementwiseFusion{false};
   AMDAIEDevice AMDAIETargetDevice{AMDAIEDevice::npu1_4col};
-  unsigned AMDAIENumRows{getDeviceModel(AMDAIETargetDevice).getNumCoreRows()};
-  unsigned AMDAIENumCols{getDeviceModel(AMDAIETargetDevice).getNumCoreCols()};
+
+  // The number of rows for the compiler to target. '0' denotes 'all'.
+ private:
+  unsigned AMDAIENumRows{0};
+
+ public:
+  unsigned getNumRows(const AMDAIEDeviceModel &model) const {
+    return AMDAIENumRows == 0 ? model.getNumCoreRows() : AMDAIENumRows;
+  }
+
+  // The number of rows for the compiler to target. '0' denotes 'all'.
+ private:
+  unsigned AMDAIENumCols{0};
+
+ public:
+  unsigned getNumCols(const AMDAIEDeviceModel &model) const {
+    return AMDAIENumCols == 0 ? model.getNumCoreCols() : AMDAIENumCols;
+  }
+
   std::string enableAMDAIEUkernels{"none"};
-  bool enablePacketFlow{false};
+  bool enableInputPacketFlow{false};
+  bool enableOutputPacketFlow{false};
+  std::string dirToLoadCtrlPktFiles{""};
 
   enum class DeviceHAL { XRT, XRT_LITE };
   DeviceHAL deviceHal{DeviceHAL::XRT_LITE};
+
+  bool emitCtrlPkt{false};
 
   void bindOptions(OptionsBinder &binder) {
     static llvm::cl::OptionCategory category("AMD AIE Options");
@@ -125,6 +149,11 @@ struct AMDAIEOptions {
                      llvm::cl::cat(category),
                      llvm::cl::desc("Use the legacy chess compiler"));
 
+    binder.opt<bool>(
+        "iree-amd-aie-enable-chess-for-ukernel", useChessForUKernel,
+        llvm::cl::cat(category),
+        llvm::cl::desc("Use the chess compiler for compiling ukernels"));
+
     binder.opt<std::string>(
         "iree-amdaie-enable-ukernels", enableAMDAIEUkernels,
         llvm::cl::cat(category),
@@ -158,9 +187,6 @@ struct AMDAIEOptions {
                        "Use the pack-peel based lowering strategy with 4 "
                        "levels of tiling for "
                        "matmul-like ops"),
-            clEnumValN(
-                TilePassPipeline::PadPackPipeline, "pad-pack",
-                "Use the pad-pack based lowering strategy for matmul-like ops"),
             clEnumValN(TilePassPipeline::ConvDecomposePipeline,
                        "conv-decompose",
                        "Use the conv-decompose based lowering strategy for "
@@ -195,18 +221,28 @@ struct AMDAIEOptions {
             "unit dims of a tensor/memref depending on this pass flag. It is "
             "intended for development purposes only."));
 
-    binder.opt<bool>(
+    binder.opt<OutliningStrategy>(
         "iree-amdaie-enable-function-outlining", enableFunctionOutlining,
         llvm::cl::cat(category),
         llvm::cl::desc("Flag to enable/disable linalg-function-outlining pass."
-                       "It is intended for development purposes only."));
+                       "It is intended for development purposes only."),
+        llvm::cl::values(clEnumValN(OutliningStrategy::None, "none",
+                                    "No linalg ops will be outlined."),
+                         clEnumValN(OutliningStrategy::All, "all",
+                                    "All linalg ops will be outlined."),
+                         clEnumValN(OutliningStrategy::Balanced, "balanced",
+                                    "Will outline some ops, to try to achieve "
+                                    "a good balance between "
+                                    "performance and program size.")));
 
-    binder.opt<bool>(
-        "iree-amdaie-replace-outlined-functions-with-empty",
-        replaceOutlinedFunctionsWithEmpty, llvm::cl::cat(category),
+    binder.opt<int>(
+        "iree-amdaie-call-replication", callReplication,
+        llvm::cl::cat(category),
         llvm::cl::desc(
-            "Flag to enable/disable replacing outlined functions with "
-            "empty functions. For development purposes only."));
+            "The number of calls to outlined function. n!=1 will result "
+            "in numerical errors. Useful for benchmarking data movement "
+            "(n=0) and core performance (n>>1). For development purposes "
+            "only."));
 
     binder.opt<bool>(
         "iree-amdaie-enable-infinite-loop-around-core-block",
@@ -263,9 +299,17 @@ struct AMDAIEOptions {
             "columns. However, some workloads (like convolution) currently "
             "ignore this flag, and use a hardcoded number of cols."));
 
-    binder.opt<bool>("iree-amdaie-enable-packet-flow", enablePacketFlow,
-                     llvm::cl::cat(category),
-                     llvm::cl::desc("Enable packet routing data movement."));
+    binder.opt<bool>(
+        "iree-amdaie-enable-input-packet-flow", enableInputPacketFlow,
+        llvm::cl::cat(category),
+        llvm::cl::desc(
+            "Enable packet routing data movement for kernel inputs"));
+
+    binder.opt<bool>(
+        "iree-amdaie-enable-output-packet-flow", enableOutputPacketFlow,
+        llvm::cl::cat(category),
+        llvm::cl::desc(
+            "Enable packet routing data movement for kernel outputs"));
 
     binder.opt<DeviceHAL>(
         "iree-amdaie-device-hal", deviceHal, llvm::cl::cat(category),
@@ -273,6 +317,19 @@ struct AMDAIEOptions {
         llvm::cl::values(clEnumValN(DeviceHAL::XRT, "xrt", "xrt device HAL"),
                          clEnumValN(DeviceHAL::XRT_LITE, "xrt-lite",
                                     "xrt-lite device HAL")));
+
+    binder.opt<bool>(
+        "iree-amdaie-emit-control-packet", emitCtrlPkt, llvm::cl::cat(category),
+        llvm::cl::desc("Convert `aie.device` to `ctrlpkt_sequence.txt` and "
+                       "`ctrlpkt_instructions.txt`"));
+
+    binder.opt<std::string>(
+        "iree-amdaie-dir-to-load-control-packet", dirToLoadCtrlPktFiles,
+        llvm::cl::cat(category),
+        llvm::cl::desc(
+            "Directory to load control packet files. These files will be "
+            "added to the flatbuffer for device reconfiguration. "
+            "Empty string means no reconfiguration."));
   }
 };
 

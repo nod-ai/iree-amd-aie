@@ -20,11 +20,6 @@ func.func @logicalobjectfifo_tensor(!amdaie.logicalobjectfifo<tensor<8x16xi32>>)
 
 // -----
 
-// expected-error @+1 {{should encapsulate static memref}}
-func.func @logicalobjectfifo_dynamic(!amdaie.logicalobjectfifo<memref<?x8x16xi32>>)
-
-// -----
-
 func.func @circular_dma_cpy_nd_invalid_src_offsets() {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -484,6 +479,30 @@ func.func @npu_dma_cpy_nd_negative_source_stride(%arg0: !amdaie.logicalobjectfif
   %1 = amdaie.npu.dma_cpy_nd async_source %0([0, 0, 0, 0] [1, 1, 8, 16] [128, 128, 16, 1], [0, 0, 0, 0] [1, 1, 8, 16] [128, -16, 16, 1])
   return
 }
+
+// -----
+
+func.func @npu_control_packet_mismatched_length_dense_array() {
+  // expected-error @+1 {{data length does not match the specified `length` attribute}}
+  amdaie.npu.control_packet write {address = 0 : ui32, data = array<i32: 1, 2, 3, 4>, length = 1 : ui32, stream_id = 0 : ui32}
+  return
+}
+
+// -----
+
+func.func @npu_control_packet_mismatched_length_dense_resource() {
+  // expected-error @+1 {{data length does not match the specified `length` attribute}}
+  amdaie.npu.control_packet write {address = 1 : ui32, data = dense_resource<ctrlpkt_data> : tensor<16xi32>, length = 2 : ui32, stream_id = 1 : ui32}
+  return
+}
+{-#
+  dialect_resources: {
+    builtin: {
+      ctrlpkt_data: "0x040000000123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"
+    }
+  }
+#-}
+
 
 // -----
 

@@ -21,6 +21,7 @@
 #include "air/Transform/AffineLoopOptPass.h"
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
 #include "iree-amd-aie/Transforms/Passes.h"
+#include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 #include "iree-dialects/Dialect/LinalgTransform/Passes.h"
 #include "iree/compiler/Codegen/Common/Passes.h"
 #include "iree/compiler/Utils/ToolUtils.h"
@@ -33,6 +34,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
+#include "mlir/Dialect/SCF/Transforms/Passes.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 
@@ -120,15 +122,56 @@ void addAMDAIEToAIEPasses(OpPassManager &passManager,
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createAMDAIESinkIntoCorePass());
   passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createAMDAIEAddNoAliasFunctionArgumentsPass());
   passManager.addPass(createAMDAIELowerToAIEPass());
   passManager.addPass(createAMDAIERemoveMemorySpacePass());
   passManager.addPass(createCanonicalizerPass());
 }
 
+void addPeelAndFusePasses(OpPassManager &funcPassManager) {
+  // Hoist static allocations
+  funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
+  funcPassManager.addPass(createCanonicalizerPass());
+  funcPassManager.addPass(createCSEPass());
+
+  // Peel the first and last iteration. Note: Do not run CSE pass afterwards,
+  // because it may bring problem for bufferization.
+  funcPassManager.addPass(createAMDAIEPeelForLoopPass());
+  funcPassManager.addPass(createCanonicalizerPass());
+
+  // Fuse fill op into the first inner forall loop
+  funcPassManager.addPass(createAMDAIEFuseFillIntoForallPass());
+
+  // Fuse unpack/elementwise consumer ops into the last inner forall loop
+  funcPassManager.addPass(createAMDAIEFuseConsumerIntoLoopPass());
+
+  // Note: canonicalizer pass should not run starting from here until
+  // bufferization to avoid creating redundant allocation and data copy.
+  // TODO (vivian): solve the bufferization problem upstream
+
+  // Fuse pack ops into the last inner forall loop
+  {
+    AMDAIEFuseProducerIntoLoopOptions fuseProducerOptions;
+    fuseProducerOptions.fuseDepth = 1;
+    fuseProducerOptions.useSCFFor = false;
+    fuseProducerOptions.targetElementwise = true;
+    funcPassManager.addPass(
+        createAMDAIEFuseProducerIntoLoopPass(fuseProducerOptions));
+  }
+
+  // Promote the elementwise input to local memory
+  {
+    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
+    bufferizeOptions.memorySpace = 2;
+    bufferizeOptions.bufferizeElementwise = true;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgInput;
+    funcPassManager.addPass(
+        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
+  }
+}
+
 void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
-                                  TilingConfig &tilingConfig,
                                   const std::string &pathToUkernels,
-                                  bool enableVectorizationPasses,
                                   TilePassPipeline useTilePipeline) {
   // First level tiling using scf.forall
   {
@@ -199,10 +242,11 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
 
   // Fuse both levels of pack ops into for loop
   {
-    AMDAIEFusePackIntoLoopOptions fusePackOptions;
-    fusePackOptions.fusePackDepth = 2;
-    fusePackOptions.useSCFFor = true;
-    funcPassManager.addPass(createAMDAIEFusePackIntoLoopPass(fusePackOptions));
+    AMDAIEFuseProducerIntoLoopOptions fuseProducerOptions;
+    fuseProducerOptions.fuseDepth = 2;
+    fuseProducerOptions.useSCFFor = true;
+    funcPassManager.addPass(
+        createAMDAIEFuseProducerIntoLoopPass(fuseProducerOptions));
   }
   funcPassManager.addPass(createCanonicalizerPass());
   funcPassManager.addPass(createCSEPass());
@@ -212,8 +256,8 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   {
     AMDAIEBufferizeToAllocationOptions bufferizeOptions;
     bufferizeOptions.memorySpace = 1;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::PackInput;
-    bufferizeOptions.packDepth = 2;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::PackOrCopyInput;
+    bufferizeOptions.inputDepth = 2;
     funcPassManager.addPass(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }
@@ -233,10 +277,11 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
 
   // Fuse second level pack ops into forall loop
   {
-    AMDAIEFusePackIntoLoopOptions fusePackOptions;
-    fusePackOptions.fusePackDepth = 1;
-    fusePackOptions.useSCFFor = false;
-    funcPassManager.addPass(createAMDAIEFusePackIntoLoopPass(fusePackOptions));
+    AMDAIEFuseProducerIntoLoopOptions fuseProducerOptions;
+    fuseProducerOptions.fuseDepth = 1;
+    fuseProducerOptions.useSCFFor = false;
+    funcPassManager.addPass(
+        createAMDAIEFuseProducerIntoLoopPass(fuseProducerOptions));
   }
   funcPassManager.addPass(createCanonicalizerPass());
   funcPassManager.addPass(createCSEPass());
@@ -250,44 +295,8 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }
 
-  // Hoist static allocations
-  funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
-  funcPassManager.addPass(createCanonicalizerPass());
-  funcPassManager.addPass(createCSEPass());
-
-  // Peel the first and last iteration. Note: Do not run CSE pass afterwards,
-  // because it may bring problem for bufferization.
-  funcPassManager.addPass(createAMDAIEPeelForLoopPass());
-  funcPassManager.addPass(createCanonicalizerPass());
-
-  // Fuse fill op into the first inner forall loop
-  funcPassManager.addPass(createAMDAIEFuseFillIntoForallPass());
-
-  // Fuse unpack/elementwise consumer ops into the last inner forall loop
-  funcPassManager.addPass(createAMDAIEFuseConsumerIntoLoopPass());
-
-  // Note: canonicalizer pass should not run starting from here until
-  // bufferization to avoid creating redundant allocation and data copy.
-  // TODO (vivian): solve the bufferization problem upstream
-
-  // Fuse pack ops into the last inner forall loop
-  {
-    AMDAIEFusePackIntoLoopOptions fusePackOptions;
-    fusePackOptions.fusePackDepth = 1;
-    fusePackOptions.useSCFFor = false;
-    fusePackOptions.targetElementwise = true;
-    funcPassManager.addPass(createAMDAIEFusePackIntoLoopPass(fusePackOptions));
-  }
-
-  // Promote the elementwise input to local memory
-  {
-    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
-    bufferizeOptions.memorySpace = 2;
-    bufferizeOptions.bufferizeElementwise = true;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgInput;
-    funcPassManager.addPass(
-        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
-  }
+  // Peel the for loop and fuse ops into the loops
+  addPeelAndFusePasses(funcPassManager);
 
   // Lower to UKernels.
   {
@@ -302,10 +311,14 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
 }
 
-void addPackPeel4LevelTilingBasedPassPipeline(
-    OpPassManager &funcPassManager, TilingConfig &tilingConfig,
-    const std::string &pathToUkernels, bool enableVectorizationPasses,
-    TilePassPipeline useTilePipeline) {
+void addPackPeel4LevelTilingBasedPassPipeline(OpPassManager &funcPassManager,
+                                              const std::string &pathToUkernels,
+                                              TilePassPipeline useTilePipeline,
+                                              Operation *rootOp) {
+  // Check if the root op is a 4D matmul-like operation.
+  auto linalgRootOp = dyn_cast<linalg::LinalgOp>(rootOp);
+  bool is4DMatmulOp = is4DMatmulLikeOp(linalgRootOp);
+
   // First level tiling using scf.forall
   {
     AMDAIETileAndFuseOptions tileFuseOptions;
@@ -317,17 +330,50 @@ void addPackPeel4LevelTilingBasedPassPipeline(
   funcPassManager.addPass(createCanonicalizerPass());
   funcPassManager.addPass(createCSEPass());
 
-  // First level packing
-  {
-    AMDAIEPackAndTransposeOptions packOptions;
-    packOptions.packLevel = 0;
-    funcPassManager.addPass(createAMDAIEPackAndTransposePass(packOptions));
+  // Data movement from L3 to L2 memory space using pack or pad operation.
+  // For 2D matmul-like ops, pack operation is used to expand operands from 2D
+  // to 4D. For 4D matmul-like ops, pad operation is used to keep the original
+  // dimensions.
+  if (is4DMatmulOp) {
+    // First level pad
+    if (isMatmulWithElementwiseConsumer(linalgRootOp)) {
+      // For matmul-elementwise case, first pad the output of the elementwise op
+      // and then pad the inputs of matmul op.
+      {
+        AMDAIEPadOptions padOptions;
+        padOptions.padElementwise = true;
+        padOptions.padOperand = PadOperand::Output;
+        funcPassManager.addPass(createAMDAIEPadPass(padOptions));
+      }
+      {
+        AMDAIEPadOptions padOptions;
+        padOptions.padElementwise = false;
+        padOptions.padOperand = PadOperand::Input;
+        funcPassManager.addPass(createAMDAIEPadPass(padOptions));
+      }
+    } else {
+      // For matmul-like op, pad both inputs and output of the root operation.
+      {
+        AMDAIEPadOptions padOptions;
+        padOptions.padElementwise = false;
+        padOptions.padOperand = PadOperand::InputOutput;
+        funcPassManager.addPass(createAMDAIEPadPass(padOptions));
+      }
+    }
+    funcPassManager.addPass(createCanonicalizerPass());
+    funcPassManager.addPass(createCSEPass());
+  } else {
+    // First level packing
+    {
+      AMDAIEPackAndTransposeOptions packOptions;
+      packOptions.packLevel = 0;
+      funcPassManager.addPass(createAMDAIEPackAndTransposePass(packOptions));
+    }
+    // Propagate pack ops for the elementwise op
+    funcPassManager.addPass(createAMDAIEPropagateDataLayoutPass());
+    funcPassManager.addPass(createCanonicalizerPass());
+    funcPassManager.addPass(createCSEPass());
   }
-
-  // Propagate pack ops for the elementwise op
-  funcPassManager.addPass(createAMDAIEPropagateDataLayoutPass());
-  funcPassManager.addPass(createCanonicalizerPass());
-  funcPassManager.addPass(createCSEPass());
 
   // Promote the matmul output to shared memory
   {
@@ -348,10 +394,12 @@ void addPackPeel4LevelTilingBasedPassPipeline(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }
 
-  // Second level packing
+  // Data movement from L2 to L1 memory space using pack operation.
+  // If the input is 4D matmul-like op, this is the first level of packing.
+  // Otherwise for 2D matmul-like op, it is the second level.
   {
     AMDAIEPackAndTransposeOptions packOptions;
-    packOptions.packLevel = 1;
+    packOptions.packLevel = is4DMatmulOp ? 0 : 1;
     funcPassManager.addPass(createAMDAIEPackAndTransposePass(packOptions));
   }
 
@@ -365,6 +413,7 @@ void addPackPeel4LevelTilingBasedPassPipeline(
     AMDAIETileAndFuseOptions tileFuseOptions;
     tileFuseOptions.tilingLevel = 1;
     tileFuseOptions.useSCFFor = false;
+    tileFuseOptions.tileElementwise = false;
     funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
   }
   funcPassManager.addPass(createAMDAIECleanupPass());
@@ -373,10 +422,11 @@ void addPackPeel4LevelTilingBasedPassPipeline(
 
   // Fuse the second level of pack ops into forall loop
   {
-    AMDAIEFusePackIntoLoopOptions fusePackOptions;
-    fusePackOptions.fusePackDepth = 1;
-    fusePackOptions.useSCFFor = false;
-    funcPassManager.addPass(createAMDAIEFusePackIntoLoopPass(fusePackOptions));
+    AMDAIEFuseProducerIntoLoopOptions fuseProducerOptions;
+    fuseProducerOptions.fuseDepth = 1;
+    fuseProducerOptions.useSCFFor = false;
+    funcPassManager.addPass(
+        createAMDAIEFuseProducerIntoLoopPass(fuseProducerOptions));
   }
   funcPassManager.addPass(createCanonicalizerPass());
   funcPassManager.addPass(createCSEPass());
@@ -395,10 +445,11 @@ void addPackPeel4LevelTilingBasedPassPipeline(
 
   // Fuse the second level of pack ops into for loop
   {
-    AMDAIEFusePackIntoLoopOptions fusePackOptions;
-    fusePackOptions.fusePackDepth = 1;
-    fusePackOptions.useSCFFor = true;
-    funcPassManager.addPass(createAMDAIEFusePackIntoLoopPass(fusePackOptions));
+    AMDAIEFuseProducerIntoLoopOptions fuseProducerOptions;
+    fuseProducerOptions.fuseDepth = 1;
+    fuseProducerOptions.useSCFFor = true;
+    funcPassManager.addPass(
+        createAMDAIEFuseProducerIntoLoopPass(fuseProducerOptions));
   }
   funcPassManager.addPass(createCanonicalizerPass());
   funcPassManager.addPass(createCSEPass());
@@ -408,8 +459,8 @@ void addPackPeel4LevelTilingBasedPassPipeline(
   {
     AMDAIEBufferizeToAllocationOptions bufferizeOptions;
     bufferizeOptions.memorySpace = 1;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::PackInput;
-    bufferizeOptions.packDepth = 2;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::PackOrCopyInput;
+    bufferizeOptions.inputDepth = 2;
     funcPassManager.addPass(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }
@@ -429,10 +480,11 @@ void addPackPeel4LevelTilingBasedPassPipeline(
 
   // Fuse second level pack ops into forall loop
   {
-    AMDAIEFusePackIntoLoopOptions fusePackOptions;
-    fusePackOptions.fusePackDepth = 1;
-    fusePackOptions.useSCFFor = false;
-    funcPassManager.addPass(createAMDAIEFusePackIntoLoopPass(fusePackOptions));
+    AMDAIEFuseProducerIntoLoopOptions fuseProducerOptions;
+    fuseProducerOptions.fuseDepth = 1;
+    fuseProducerOptions.useSCFFor = false;
+    funcPassManager.addPass(
+        createAMDAIEFuseProducerIntoLoopPass(fuseProducerOptions));
   }
   funcPassManager.addPass(createCanonicalizerPass());
   funcPassManager.addPass(createCSEPass());
@@ -446,44 +498,8 @@ void addPackPeel4LevelTilingBasedPassPipeline(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }
 
-  // Hoist static allocations
-  funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
-  funcPassManager.addPass(createCanonicalizerPass());
-  funcPassManager.addPass(createCSEPass());
-
-  // Peel the first and last iteration. Note: Do not run CSE pass afterwards,
-  // because it may bring problem for bufferization.
-  funcPassManager.addPass(createAMDAIEPeelForLoopPass());
-  funcPassManager.addPass(createCanonicalizerPass());
-
-  // Fuse fill op into the first inner forall loop
-  funcPassManager.addPass(createAMDAIEFuseFillIntoForallPass());
-
-  // Fuse unpack/elementwise consumer ops into the last inner forall loop
-  funcPassManager.addPass(createAMDAIEFuseConsumerIntoLoopPass());
-
-  // Note: canonicalizer pass should not run starting from here until
-  // bufferization to avoid creating redundant allocation and data copy.
-  // TODO (vivian): solve the bufferization problem upstream
-
-  // Fuse pack ops into the last inner forall loop
-  {
-    AMDAIEFusePackIntoLoopOptions fusePackOptions;
-    fusePackOptions.fusePackDepth = 1;
-    fusePackOptions.useSCFFor = false;
-    fusePackOptions.targetElementwise = true;
-    funcPassManager.addPass(createAMDAIEFusePackIntoLoopPass(fusePackOptions));
-  }
-
-  // Promote the elementwise input to local memory
-  {
-    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
-    bufferizeOptions.memorySpace = 2;
-    bufferizeOptions.bufferizeElementwise = true;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgInput;
-    funcPassManager.addPass(
-        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
-  }
+  // Peel the for loop and fuse ops into the loops
+  addPeelAndFusePasses(funcPassManager);
 
   // Lower to UKernels.
   {
@@ -496,126 +512,9 @@ void addPackPeel4LevelTilingBasedPassPipeline(
   // Comprehensive bufferization
   addAMDAIEBufferizePasses(funcPassManager, useTilePipeline);
   funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
-  funcPassManager.addPass(createCanonicalizerPass());
-  funcPassManager.addPass(createCSEPass());
-  funcPassManager.addPass(createCanonicalizerPass());
-}
-
-void addPadPackBasedPassPipeline(OpPassManager &funcPassManager,
-                                 TilingConfig &tilingConfig,
-                                 const std::string &pathToUkernels,
-                                 bool enableVectorizationPasses,
-                                 TilePassPipeline useTilePipeline) {
-  // First level tiling using scf.forall
-  {
-    AMDAIETileAndFuseOptions tileFuseOptions;
-    tileFuseOptions.hardwareMapping = HardwareMapping::Block;
-    tileFuseOptions.tilingLevel = 0;
-    tileFuseOptions.useSCFFor = false;
-    funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
-  }
-  funcPassManager.addPass(createAMDAIECleanupPass());
-  funcPassManager.addPass(createCanonicalizerPass());
-  funcPassManager.addPass(createCSEPass());
-
-  // Pad the linalg operation
-  {
-    AMDAIEPadOptions padOptions;
-    padOptions.paddingLevel = 0;
-    funcPassManager.addPass(createAMDAIEPadPass(padOptions));
-  }
-
-  // Promote the input and result to shared memory
-  {
-    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
-    bufferizeOptions.memorySpace = 1;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgInputOutput;
-    funcPassManager.addPass(
-        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
-  }
-
-  // Tile linalg.copy ops using scf.for
-  {
-    AMDAIETileOptions tileOptions;
-    tileOptions.tilingLevel = 1;
-    funcPassManager.addPass(createAMDAIETilePass(tileOptions));
-  }
-  funcPassManager.addPass(createAMDAIECleanupPass());
-  funcPassManager.addPass(createCanonicalizerPass());
-  funcPassManager.addPass(createCSEPass());
-
-  // Second level tiling using scf.forall
-  {
-    AMDAIETileAndFuseOptions tileFuseOptions;
-    tileFuseOptions.hardwareMapping = HardwareMapping::Core;
-    tileFuseOptions.tilingLevel = 2;
-    tileFuseOptions.useSCFFor = false;
-    funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
-  }
-  funcPassManager.addPass(createAMDAIECleanupPass());
-  funcPassManager.addPass(createCanonicalizerPass());
-  funcPassManager.addPass(createCSEPass());
-
-  // Pack the linalg operation
-  {
-    AMDAIEPackAndTransposeOptions packOptions;
-    packOptions.packLevel = 0;
-    funcPassManager.addPass(createAMDAIEPackAndTransposePass(packOptions));
-  }
-
-  // Only promote the result to local memory
-  {
-    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
-    bufferizeOptions.memorySpace = 2;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgOutput;
-    funcPassManager.addPass(
-        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
-  }
-
-  // Tile the reduction dimension using scf.for
-  {
-    AMDAIETileAndFuseOptions tileFuseOptions;
-    tileFuseOptions.tilingLevel = 3;
-    tileFuseOptions.useSCFFor = true;
-    funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
-  }
-  funcPassManager.addPass(createAMDAIECleanupPass());
-  funcPassManager.addPass(createCanonicalizerPass());
-  funcPassManager.addPass(createCSEPass());
-
-  // Fuse pack ops into for loop
-  funcPassManager.addPass(createAMDAIEFusePackIntoLoopPass());
-  funcPassManager.addPass(createAMDAIECleanupPass());
-  funcPassManager.addPass(createCanonicalizerPass());
-  funcPassManager.addPass(createCSEPass());
-
-  // Promote the inputs to local memory
-  {
-    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
-    bufferizeOptions.memorySpace = 2;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgInput;
-    funcPassManager.addPass(
-        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
-  }
-
-  // Lower to UKernels
-  {
-    AMDAIELowerToUKernelsOptions options;
-    // windows
-    options.pathToUkernels = escapeCommandLineComponent(pathToUkernels);
-    funcPassManager.addPass(createAMDAIELowerToUKernelsPass(options));
-  }
-  // Vectorization passes
-  appendVectorizationToPipeline(funcPassManager, enableVectorizationPasses);
-  funcPassManager.addPass(createCanonicalizerPass());
-
-  // Comprehensive bufferization
-  addAMDAIEBufferizePasses(funcPassManager, useTilePipeline);
 }
 
 void addConvDecomposePassPipeline(OpPassManager &funcPassManager,
-                                  TilingConfig &tilingConfig,
-                                  bool enableVectorizationPasses,
                                   TilePassPipeline useTilePipeline) {
   auto addCleanups = [&]() {
     funcPassManager.addPass(createAMDAIECleanupPass());
@@ -636,7 +535,7 @@ void addConvDecomposePassPipeline(OpPassManager &funcPassManager,
   // Pad the linalg operation
   {
     AMDAIEPadOptions padOptions;
-    padOptions.paddingLevel = 0;
+    padOptions.padOperand = PadOperand::InputOutput;
     funcPassManager.addPass(createAMDAIEPadPass(padOptions));
   }
 
@@ -702,9 +601,10 @@ void buildAMDAIETransformPassPipeline(
     uint32_t numCols, TilePassPipeline useTilePipeline,
     LowerToAIEPassPipeline useLowerToAIEPipeline, bool matmulElementwiseFusion,
     bool enableVectorizationPasses, const std::string &pathToUkernels,
-    bool enablePacketFlow, bool enableCoalescingLoops,
-    bool enableCollapsingUnitDims, bool enableFunctionOutlining,
-    bool replaceOutlinedFunctionsWithEmpty, bool insertLoopAroundCoreBlock) {
+    bool enableInputPacketFlow, bool enableOutputPacketFlow,
+    bool enableCoalescingLoops, bool enableCollapsingUnitDims,
+    OutliningStrategy enableFunctionOutlining, int callReplication,
+    bool insertLoopAroundCoreBlock, bool emitCtrlPkt) {
   OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
   {
     FunctionLikeNest funcPassManager(modulePassManager);
@@ -733,10 +633,10 @@ void buildAMDAIETransformPassPipeline(
   modulePassManager.addPass(createLowerUKernelOpsToCallsPass());
   if (useLowerToAIEPipeline == LowerToAIEPassPipeline::ObjectFifo) {
     addAMDAIEObjectFifoLoweringPasses(
-        modulePassManager, enablePacketFlow, useTilePipeline,
-        enableVectorizationPasses, enableCoalescingLoops,
-        enableCollapsingUnitDims, enableFunctionOutlining,
-        replaceOutlinedFunctionsWithEmpty, insertLoopAroundCoreBlock, numCols);
+        modulePassManager, enableInputPacketFlow, enableOutputPacketFlow,
+        useTilePipeline, enableVectorizationPasses, enableCoalescingLoops,
+        enableCollapsingUnitDims, enableFunctionOutlining, callReplication,
+        insertLoopAroundCoreBlock, numCols, emitCtrlPkt);
   } else if (useLowerToAIEPipeline == LowerToAIEPassPipeline::AIR) {
     addMLIRAIRLoweringPasses(modulePassManager, device, useTilePipeline,
                              matmulElementwiseFusion,
@@ -757,11 +657,12 @@ void buildAMDAIETransformPassPipeline(
 }
 
 void addAMDAIEObjectFifoLoweringPasses(
-    OpPassManager &passManager, bool enablePacketFlow,
-    TilePassPipeline useTilePipeline, bool enableVectorizationPasses,
-    bool enableCoalescingLoops, bool enableCollapsingUnitDims,
-    bool enableFunctionOutlining, bool replaceOutlinedFunctionsWithEmpty,
-    bool insertLoopAroundCoreBlock, uint32_t numCols) {
+    OpPassManager &passManager, bool enableInputPacketFlow,
+    bool enableOutputPacketFlow, TilePassPipeline useTilePipeline,
+    bool enableVectorizationPasses, bool enableCoalescingLoops,
+    bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
+    int callReplication, bool insertLoopAroundCoreBlock, uint32_t numCols,
+    bool emitCtrlPkt) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
 
@@ -787,17 +688,16 @@ void addAMDAIEObjectFifoLoweringPasses(
   passManager.addPass(createAMDAIENormalizeLoopBoundsPass());
   passManager.addPass(createAMDAIEInsertCoresPass());
 
-  if (enableFunctionOutlining) {
-    // Create function outlining options object, etc.
+  // Create function outlining options object, etc.
+  {
     AMDAIELinalgFunctionOutliningOptions options;
-    if (replaceOutlinedFunctionsWithEmpty) {
-      options.emptyFunctions = true;
-    }
+    options.outliningStrategy = enableFunctionOutlining;
     passManager.addPass(createAMDAIELinalgFunctionOutliningPass(options));
-  } else {
-    assert(!replaceOutlinedFunctionsWithEmpty &&
-           "`replaceOutlinedFunctionsWithEmpty` is only valid when "
-           "`enableFunctionOutlining` is true.");
+  }
+  {
+    AMDAIEReplicateCallsOptions options;
+    options.replication = callReplication;
+    passManager.addPass(createAMDAIEReplicateCallsPass(options));
   }
 
   {
@@ -823,6 +723,7 @@ void addAMDAIEObjectFifoLoweringPasses(
 
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createAMDAIEAssignLogicalObjectFifoDepthPass());
 
   passManager.addPass(createAMDAIEAssignTilesPass());
   passManager.addPass(createCSEPass());
@@ -836,14 +737,17 @@ void addAMDAIEObjectFifoLoweringPasses(
   passManager.addPass(createAMDAIEHoistLogicalObjFifoPass());
   passManager.addPass(createAMDAIECanonicalizeDoublyStridedOpPass());
   passManager.addPass(createAMDAIEFlattenLogicalObjectFifoPass());
-  passManager.addPass(createAMDAIEAssignLogicalObjectFifoDepthPass());
   passManager.addPass(createAMDAIEAccessToAcquireReleasePass());
   passManager.addPass(createAMDAIENoneAccessToTemporaryBufferPass());
 
-  passManager.addPass(
-      createAMDAIEAssignConnectionTypesPass({enablePacketFlow}));
-  passManager.addPass(createCSEPass());
-  passManager.addPass(createCanonicalizerPass());
+  {
+    AMDAIEAssignConnectionTypesOptions options;
+    options.enableInputPacketFlow = enableInputPacketFlow;
+    options.enableOutputPacketFlow = enableOutputPacketFlow;
+    passManager.addPass(createAMDAIEAssignConnectionTypesPass(options));
+    passManager.addPass(createCSEPass());
+    passManager.addPass(createCanonicalizerPass());
+  }
 
   // Convert control code `scf.forall` ops to `scf.for` ops right before the DMA
   // composition optimization pass to enable more loop subsumption optimization
@@ -855,6 +759,14 @@ void addAMDAIEObjectFifoLoweringPasses(
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createAMDAIEDmaCSEPass());
+
+  {
+    AMDAIEGenerateControlOverlayOptions options;
+    options.routeShimToTileCtrl = emitCtrlPkt;
+    passManager.addPass(createAMDAIEGenerateControlOverlayPass(options));
+    passManager.addPass(createCSEPass());
+    passManager.addPass(createCanonicalizerPass());
+  }
 
   passManager.addPass(createAMDAIEAssignChannelsPass());
   passManager.addPass(createCSEPass());
@@ -877,12 +789,8 @@ void addAMDAIEObjectFifoLoweringPasses(
 
   passManager.addPass(createAMDAIEObjFifoBufferizationPass());
   passManager.addPass(createAMDAIETemporaryAllocBufferizationPass());
+
   passManager.addPass(createAMDAIEConnectionToFlowPass());
-
-  passManager.addPass(createAMDAIEGenerateControlOverlayPass());
-  passManager.addPass(createCSEPass());
-  passManager.addPass(createCanonicalizerPass());
-
   passManager.addPass(createAMDAIEAssignPacketIdsPass());
 
   passManager.addPass(createAMDAIENpuDmaToHalfDmaCpyNdPass());
@@ -894,24 +802,44 @@ void addAMDAIEObjectFifoLoweringPasses(
   addAMDAIEToAIEPasses(passManager, insertLoopAroundCoreBlock);
 
   // Now lower using the AIE passes from MLIR-AIE.
-  addMLIRAIELoweringPasses(passManager);
+  addMLIRAIELoweringPasses(passManager, useTilePipeline);
 }
 
-void addMLIRAIELoweringPasses(OpPassManager &pm) {
+void addMLIRAIELoweringPasses(OpPassManager &pm,
+                              TilePassPipeline useTilePipeline) {
   mlir::iree_compiler::aievec::buildConvertVectorToAIEVec(pm);
 
   {
     OpPassManager &devicePM = pm.nest<xilinx::AIE::DeviceOp>();
     devicePM.addPass(createCanonicalizerPass());
     devicePM.addPass(createAMDAIEAssignBufferDescriptorIDsPass());
-    devicePM.addPass(createAMDAIEAssignBufferAddressesBasicPass());
-    devicePM.addPass(createAMDAIEPathfinderPass());
+    {
+      // For Conv ops use basic sequential scheme to avoid numerical error.
+      // TODO: Find a better working scheme for Conv ops
+      AMDAIEAssignBufferAddressesOptions options;
+      if (useTilePipeline == TilePassPipeline::ConvDecomposePipeline)
+        options.allocScheme = AllocScheme::Sequential;
+      devicePM.addPass(createAMDAIEAssignBufferAddressesPass(options));
+    }
+    {
+      // Route control and data flows separately, prioritizing control flows
+      // first to ensure their deterministic routing results.
+      AMDAIERouteFlowsWithPathfinderOptions options;
+      // Route only control flows.
+      options.routeCtrl = true;
+      options.routeData = false;
+      devicePM.addPass(createAMDAIERouteFlowsWithPathfinderPass(options));
+      // Route only data flows.
+      options.routeCtrl = false;
+      options.routeData = true;
+      devicePM.addPass(createAMDAIERouteFlowsWithPathfinderPass(options));
+    }
   }
 
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createConvertLinalgToLoopsPass());
   pm.addPass(createLowerAffinePass());
-  pm.addPass(createConvertSCFToCFPass());
+  pm.addPass(createSCFToControlFlowPass());
 
   {
     OpPassManager &devicePM = pm.nest<xilinx::AIE::DeviceOp>();
@@ -930,7 +858,7 @@ void addMLIRAIELoweringPasses(OpPassManager &pm) {
   pm.addPass(createArithToLLVMConversionPass());
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
-  pm.addPass(createAMDAIELoadAlignmentResetPass());
+  pm.addPass(createAMDAIELoadStoreAlignmentResetPass());
   pm.addPass(createCanonicalizerPass());
 }
 
@@ -975,14 +903,16 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
   passManager.addPass(createCSEPass());
   {
     xilinx::air::ParallelToHerdOptions options;
-    options.clAssignDepth = 1;
+    options.clAssignDepth = -1;
     passManager.addPass(xilinx::air::createParallelToHerdPass(options));
   }
   {
     xilinx::air::ParallelToLaunchOptions options;
     options.clHasSegment = true;
+    options.clAssignDepth = 0;
     passManager.addPass(xilinx::air::createParallelToLaunchPass(options));
   }
+  passManager.addPass(mlir::createForallToForLoopPass());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
   passManager.addPass(xilinx::air::createCopyToDmaPass());
@@ -990,8 +920,7 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
   passManager.addPass(createCSEPass());
 
   passManager.addPass(xilinx::air::createAIRDependencyPass());
-  if (!((useTilePipeline == TilePassPipeline::PackPeelPipeline ||
-         useTilePipeline == TilePassPipeline::PackPeel4LevelTilingPipeline) &&
+  if (!(useTilePipeline == TilePassPipeline::PackPeelPipeline &&
         matmulElementwiseFusion)) {
     passManager.addPass(xilinx::air::createAIRDependencyScheduleOptPass());
     passManager.addPass(xilinx::air::createAIRSpecializeDmaBroadcast());
@@ -1007,8 +936,7 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
   passManager.addPass(createCSEPass());
   {
     xilinx::air::AIRFuseChannelsOptions options;
-    if ((useTilePipeline == TilePassPipeline::PackPeelPipeline ||
-         useTilePipeline == TilePassPipeline::PackPeel4LevelTilingPipeline) &&
+    if (useTilePipeline == TilePassPipeline::PackPeelPipeline &&
         matmulElementwiseFusion) {
       const static llvm::SmallVector<std::string> mode = {"L1"};
       options.clAggressiveMode = mode;
@@ -1019,26 +947,37 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
   passManager.addPass(createCSEPass());
   passManager.addNestedPass<func::FuncOp>(
       xilinx::air::createAIRSplitL2MemrefForBufferConstraintPass());
+  passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createCSEPass());
   passManager.addPass(xilinx::air::createAIRIsolateAsyncDmaLoopNests());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
+  passManager.addNestedPass<func::FuncOp>(
+      xilinx::air::createAIRFuseAllocDealloc());
+  passManager.addNestedPass<func::FuncOp>(
+      xilinx::air::createAIRShrinkMemrefSizesByAccess());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
-  passManager.addNestedPass<func::FuncOp>(xilinx::air::createAIRLoopFusion());
 
-  passManager.addPass(
-      xilinx::air::createAIRLabelScfForLoopForPingPongPattern());
-  {
-    xilinx::air::AIRPingPongTransformationPatternOptions options;
-    options.clKeepMemrefDealloc = true;
+  if (useTilePipeline != TilePassPipeline::PackPeel4LevelTilingPipeline) {
     passManager.addPass(
-        xilinx::air::createAIRPingPongTransformationPattern(options));
+        xilinx::air::createAIRLabelScfForLoopForPingPongPattern());
+    {
+      xilinx::air::AIRPingPongTransformationPatternOptions options;
+      options.clKeepMemrefDealloc = true;
+      passManager.addPass(
+          xilinx::air::createAIRPingPongTransformationPattern(options));
+    }
+    passManager.addPass(createCanonicalizerPass());
+    passManager.addPass(createCSEPass());
   }
-  passManager.addPass(createCanonicalizerPass());
-  passManager.addPass(createCSEPass());
+  {
+    xilinx::air::AIROptimizeMemtileDMABDsOptions options;
+    options.clDevice = stringifyEnum(device);
+    passManager.addNestedPass<func::FuncOp>(
+        xilinx::air::createAIROptimizeMemtileDMABDs(options));
+  }
 
-  passManager.addPass(
-      xilinx::air::createAIRSpecializeChannelWrapAndStridePattern());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
 
@@ -1094,9 +1033,6 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
         useTilePipeline == TilePassPipeline::PackPeel4LevelTilingPipeline) {
       const static llvm::SmallVector<unsigned> tile_sizes = {2, 2};
       options.clTileSizes = tile_sizes;
-    } else if (useTilePipeline == TilePassPipeline::PadPackPipeline) {
-      const static llvm::SmallVector<unsigned> tile_sizes = {4, 4};
-      options.clTileSizes = tile_sizes;
     }
     passManager.addNestedPass<func::FuncOp>(
         xilinx::air::createAffineLoopOptPass(options));
@@ -1127,7 +1063,7 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
   }
 
   // Now lower using the AIE passes from MLIR-AIE.
-  addMLIRAIELoweringPasses(passManager);
+  addMLIRAIELoweringPasses(passManager, useTilePipeline);
 }
 
 // NOTE: this runs on the top-level program module containing all hal.executable

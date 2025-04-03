@@ -15,41 +15,67 @@ table FileLineLocDef {
   line:int32;
 }
 
-// Assembly instructions.
-table AsmInstDef {
-  asm_inst:[uint32];
-}
-
 // PDIs.
 table PdiDef {
   pdi:string;
+}
+
+// Represents a 1D array of uint32 values.
+table UI32Array1dDef {
+  data:[uint32];
+}
+
+// Represents a 2D array of uint32 values.
+table UI32Array2dDef {
+  arrays:[UI32Array1dDef];
 }
 
 table ExecutableDef {
   // A map of entry point ordinals to string names as used in PDI(s)
   entry_points:[string];
 
-  // A map of entry point ordinals to the indices of the containing XCLBINs (the following field).
-  // This list has the same size as the entry_points list.
+  // A map of entry point ordinals to the indices of the containing PDI(s) (the following field).
+  // This list has the same size as the `entry_points` list.
   // This list currently is just a range (0, number of entry points] but will change when we start doing
   // kernel merging in the backend.
   pdi_indices:[uint32];
 
 
   // PDI strings of the entry points.
+  // This list has the same size as the `entry_points` list.
   pdis: [PdiDef];
 
-  // A map of entry point ordinals to the indices of the containing asm_instrs (the following field).
-  // This list has the same size as the entry_points list.
-  // This list currently is just a range (0, number of entry points] but can chnage if kernels decide to
-  // share the instruction streams.
-  asm_instr_indices:[uint32];
+  // A map of entry point ordinals to the indices of the containing `asm_instr_runlists` (the following field).
+  // This list has the same size as the `entry_points` list.
+  asm_instr_runlist_indices:[uint32];
 
-  // Assembly instructions stream for LX6 processor to run for each kernel
-  // The number of kernels and by extention the number of asm instruction streams
-  // are equal to the number of entry points. We access each kernel
-  // by giving the entry point name to the pdi and getting a kernel object from it.
-  asm_instrs:[AsmInstDef];
+  // Assembly instructions for the LX6 processor to execute.
+  // This is a 3D uint32 array:
+  //   - The first dimension corresponds to different entry points (same size as `entry_points`).
+  //   - The second dimension represents the number of kernel runs per entry point.
+  //     Its size is either 1 (for a standard run) or `2 * num_reconfiguration` (if reconfiguration is required).
+  //     In the case of reconfiguration:
+  //       - Each reconfiguration consists of two kernel runs:
+  //         - One for the configuration.
+  //         - One for the actual execution after reconfiguration.
+  //   - The third dimension is a uint32 array containing the instruction stream for a single kernel run.
+  asm_instr_runlists:[UI32Array2dDef];
+
+  // A map of entry point ordinals to the indices of the containing `reconf_data_runlists` (the following field).
+  // This list has the same size as the `entry_points` list.
+  // - The type is `int32` instead of `uint32` to allow `-1` as a special value.
+  // - If an index is `-1`, it indicates that no reconfiguration is required for the corresponding entry point.
+  //   This is a workaround, as `reconf_data_runlists` does not support null elements.
+  reconf_data_runlist_indices:[int32];
+
+  // Device reconfiguration data.
+  // This forms a 3D uint32 array:
+  //   - The first dimension corresponds to entry points that require reconfiguration.
+  //     - Its size is smaller than `entry_points` because not all entry points require reconfiguration.
+  //     - Null elements are not supported in flatbuffer, so only entries with reconfiguration are included.
+  //   - The second dimension represents the number of reconfiguration sequences per entry point.
+  //   - The third dimension contains a uint32 array with control packet data required for a single reconfiguration.
+  reconf_data_runlists: [UI32Array2dDef];
 
   source_locations:[FileLineLocDef];
 }

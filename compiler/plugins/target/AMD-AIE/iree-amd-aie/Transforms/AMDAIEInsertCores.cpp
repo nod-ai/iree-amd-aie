@@ -32,15 +32,14 @@ namespace {
 
 /// Utility which returns 'true' is the operation needs to be inserted with an
 /// `amdaie.core` op.
-/// Some ops are surrrounded by scf.for loop nests. Place the entire
+/// Some ops are surrounded by scf.for loop nests. Place the entire
 /// loop nest inside the amdaie.core op here. Currently look for a
 /// subset of ops which we know should be in the core.
 /// TODO(newling) improve this design.
 static bool isCoreComputeOp(Operation *op) {
   return isa<linalg::LinalgOp, vector::ContractionOp,
-             memref::ExtractStridedMetadataOp, func::CallOp, arith::ExtFOp,
-             arith::TruncFOp, vector::TransferReadOp, vector::TransferWriteOp>(
-      op);
+             memref::ExtractStridedMetadataOp, func::CallOp,
+             vector::TransferReadOp, vector::TransferWriteOp>(op);
 }
 
 /// Utility to map the parallel mapping attributes to the corresponding

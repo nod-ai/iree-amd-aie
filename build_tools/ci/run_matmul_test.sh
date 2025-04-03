@@ -161,7 +161,7 @@ function run_matmul_test() {
 
   # Options with defaults
   # =====================
-  local lower_to_aie_pipeline="air"
+  local lower_to_aie_pipeline="objectFifo"
 
   # name_prefix: A prefix for the name of the test. The full test name will be
   # extended with m,n,k if they are unique.
@@ -175,7 +175,7 @@ function run_matmul_test() {
 
   local amd_aie_install_path="${IREE_INSTALL_DIR}"
 
-  local tile_pipeline="pad-pack"
+  local tile_pipeline="pack-peel"
 
   # By default, the m,n,k provided are used, and there are no dynamic tensor
   # dimensions.
@@ -371,7 +371,7 @@ function run_matmul_test() {
                       --iree-amdaie-tile-pipeline=${tile_pipeline} \
                       --iree-amd-aie-peano-install-dir=${peano_install_path} \
                       --iree-amd-aie-install-dir=${amd_aie_install_path} \
-                      --iree-amdaie-enable-packet-flow=${enable_packet_flow} \
+                      --iree-amdaie-enable-input-packet-flow=${enable_packet_flow} \
                       --iree-hal-dump-executable-files-to=$PWD \
                       --iree-amdaie-device-hal=${DEVICE_HAL} \
                       --iree-hal-memoization=false \
@@ -441,11 +441,12 @@ function run_matmul_test() {
   total_num_runs=$(( num_repeat_runs * num_corruption_repeat_runs))
   echo "**** Running '${name}' matmul test ${total_num_runs} times (command ${COMMAND}) ****"
   for i in $(seq 1 $num_repeat_runs); do
+    # Disabled reset npu temporarily due to instability issues in CI.
     # Only reset NPU in CI to facilitate easier local testing without sudo access.
-    if [[ "$OSTYPE" == "linux-gnu"* ]] && [ "${GITHUB_ACTIONS}" = true ]; then
-      echo "Reset NPU"
-      bash $THIS_DIR/reset_npu.sh
-    fi
+#    if [[ "$OSTYPE" == "linux-gnu"* ]] && [ "${GITHUB_ACTIONS}" = true ]; then
+#      echo "Reset NPU"
+#      bash $THIS_DIR/reset_npu.sh
+#    fi
     for j in $(seq 1 $num_corruption_repeat_runs); do
       run_number=$(( (i - 1) * num_corruption_repeat_runs + j))
       echo "Run number ${run_number} / ${total_num_runs}"
@@ -505,7 +506,7 @@ run_matmul_test \
     --peano_install_path "${PEANO}" \
     --amd_aie_install_path "${IREE_INSTALL_DIR}" \
     --lower_to_aie_pipeline "air" \
-    --tile_pipeline "pad-pack" \
+    --tile_pipeline "pack-peel" \
     --m "64" \
     --n "64" \
     --k "64" \
@@ -515,31 +516,6 @@ run_matmul_test \
     --do_transpose_rhs "0" \
     --max_elements_to_check "0" \
     --num_repeat_runs "2"
-
-
-# Example of a run with a group of 2+ matmuls. Currently this test is passed
-# the flag '--num_repeat_runs 0" as there is currently an issue with the runtime if
-# multiple matmuls are run in the same test. TODO(newling/nmeshram): Document
-# this issue.
-run_matmul_test \
-    --name_prefix "multiple_matmuls" \
-    --lower_to_aie_pipeline "air" \
-    --tile_pipeline "pad-pack" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --m "512,8,16" \
-    --n "512,32,16" \
-    --k "256,16,8" \
-    --num_repeat_runs "0"
-
-run_matmul_test \
-  --name_prefix "transpose_i8_i32" \
-  --lower_to_aie_pipeline "air" \
-  --tile_pipeline "pad-pack" \
-  --lhs_rhs_type "i8" \
-  --acc_type "i32" \
-  --m "16" --n "32" --k "64" \
-  --do_transpose_rhs "1"
 
 run_matmul_test \
     --name_prefix "packPeel_i32" \
@@ -565,6 +541,15 @@ run_matmul_test \
   --acc_type "f32" \
   --m "128" --n "256" --k "512" \
   --do_transpose_rhs "1"
+
+run_matmul_test \
+  --name_prefix "packPeel4LvlBf16" \
+  --lower_to_aie_pipeline "air" \
+  --tile_pipeline "pack-peel-4-level-tiling" \
+  --lhs_rhs_type "bf16" \
+  --acc_type "f32" \
+  --m "512" --n "512" --k "512" \
+  --num_repeat_runs "1"
 
 ###################################################################
 # ObjectFifo Matmul tests
@@ -678,38 +663,39 @@ run_matmul_test_on_shapes ${bf16_i8_shapes_medium[@]} \
     --num_repeat_runs "2"
 
 
-# note this will not actually show any devices because --xrt_lite_n_core_rows --xrt_lite_n_core_cols are not passed
-# which i have omitted to make the conditional slightly more succinct
-if [[ $($IREE_INSTALL_DIR/bin/iree-benchmark-module --dump_devices | grep xrt-lite) ]]; then
+# TODO(jornt): Disabled turbo tests temporarily due to instability issues in CI. Locally, I have been able to crash the NPU in this mode.
+# # note this will not actually show any devices because --xrt_lite_n_core_rows --xrt_lite_n_core_cols are not passed
+# # which i have omitted to make the conditional slightly more succinct
+# if [[ $($IREE_INSTALL_DIR/bin/iree-benchmark-module --dump_devices | grep xrt-lite) ]]; then
 
-  $IREE_INSTALL_DIR/bin/iree-benchmark-module \
-    --module=$OUTPUT_DIR/mm_test1_bf16_f32_m64_n64_k64.vmfb \
-    --function=matmul_64x64_64xbf16_ \
-    --input=64x64xbf16 \
-    --input=64x64xbf16 \
-    --device=xrt-lite \
-    --benchmark_repetitions=10 \
-    --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
-    --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
+#   $IREE_INSTALL_DIR/bin/iree-benchmark-module \
+#     --module=$OUTPUT_DIR/mm_test1_bf16_f32_m64_n64_k64.vmfb \
+#     --function=matmul_64x64_64xbf16_ \
+#     --input=64x64xbf16 \
+#     --input=64x64xbf16 \
+#     --device=xrt-lite \
+#     --benchmark_repetitions=10 \
+#     --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
+#     --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
 
-  # TURBO POWER!!!!!!!!!!!!!!!!!
-  set +o pipefail
-  sudo -nv 2>&1 && has_sudo="true" || has_sudo="false"
-  set -o pipefail
-  if [ has_sudo == "true" ]; then
-    sudo $IREE_INSTALL_DIR/bin/iree-benchmark-module \
-      --module=$OUTPUT_DIR/mm_test1_bf16_f32_m64_n64_k64.vmfb \
-      --function=matmul_64x64_64xbf16_ \
-      --input=64x64xbf16 \
-      --input=64x64xbf16 \
-      --device=xrt-lite \
-      --benchmark_repetitions=10 \
-      --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
-      --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
-      --xrt_lite_power_mode=turbo
-  fi
+#   # TURBO POWER!!!!!!!!!!!!!!!!!
+#   set +o pipefail
+#   sudo -nv 2>&1 && has_sudo="true" || has_sudo="false"
+#   set -o pipefail
+#   if [ has_sudo == "true" ]; then
+#     sudo $IREE_INSTALL_DIR/bin/iree-benchmark-module \
+#       --module=$OUTPUT_DIR/mm_test1_bf16_f32_m64_n64_k64.vmfb \
+#       --function=matmul_64x64_64xbf16_ \
+#       --input=64x64xbf16 \
+#       --input=64x64xbf16 \
+#       --device=xrt-lite \
+#       --benchmark_repetitions=10 \
+#       --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
+#       --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
+#       --xrt_lite_power_mode=turbo
+#   fi
 
-fi
+# fi
 
 echo "$MATMUL_TESTS_RUN matmul tests run!"
 if [ $MATMUL_TESTS_FAILS -ne 0 ]; then

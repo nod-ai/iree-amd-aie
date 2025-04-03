@@ -12,6 +12,7 @@
 #include "iree-amd-aie/driver/xrt-lite/shim/linux/kmq/kernel.h"
 #include "iree-amd-aie/driver/xrt-lite/util.h"
 #include "iree/hal/utils/resource_set.h"
+#include "llvm/Support/raw_ostream.h"
 
 struct iree_hal_xrt_lite_direct_command_buffer {
   iree_hal_command_buffer_t base;
@@ -142,6 +143,101 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_copy_buffer(
   return iree_ok_status();
 }
 
+static iree_status_t iree_hal_xrt_lite_direct_command_buffer_normal_run(
+    iree_hal_buffer_ref_list_t& bindings,
+    iree_hal_xrt_lite_direct_command_buffer* command_buffer,
+    shim_xdna::hw_q* hwq, shim_xdna::cuidx_t cu_idx, uint32_t n_kernel_runs,
+    std::vector<uint32_t>& asm_inst) {
+  IREE_TRACE_ZONE_BEGIN(z0);
+
+  // Check if the kernel should be executed.
+  if (n_kernel_runs == 0) {
+    IREE_TRACE_ZONE_END(z0);
+    return iree_ok_status();
+  }
+
+  // Allocate a buffer object to hold the control code (`asm_inst`).
+  size_t ctrl_code_size = asm_inst.size() * sizeof(uint32_t);
+  auto bo_ctrl_code = command_buffer->device->shim_device->alloc_bo(
+      ctrl_code_size, XCL_BO_FLAGS_CACHEABLE);
+  uint32_t* instr_buffer = static_cast<uint32_t*>(bo_ctrl_code->map());
+  memcpy(instr_buffer, asm_inst.data(), ctrl_code_size);
+  bo_ctrl_code->sync(shim_xdna::direction::host2device);
+
+  shim_xdna::kernel ebuf(command_buffer->device->shim_device->get_pdev(),
+                         ERT_START_CU);
+  // Add the kernel arguments.
+  ebuf.set_cu_idx(cu_idx);
+  unsigned int opcode = 3;
+  ebuf.add_arg_64(opcode);
+  ebuf.add_arg_bo(*bo_ctrl_code);
+  ebuf.add_arg_32(asm_inst.size());
+  for (iree_host_size_t j = 0; j < bindings.count; ++j) {
+    shim_xdna::bo* bo = iree_hal_xrt_lite_buffer_handle(
+        iree_hal_buffer_allocated_buffer(bindings.values[j].buffer));
+    ebuf.add_arg_bo(*bo);
+  }
+  // Repeat the kernel execution `n_kernel_runs` times.
+  for (int i = 0; i < n_kernel_runs; i++) {
+    ebuf.m_cmd_pkt->state = ERT_CMD_STATE_NEW;
+    hwq->issue_command(ebuf.get_exec_buf_bo());
+    hwq->wait_command(ebuf.get_exec_buf_bo(), 0);
+  }
+  // Sync the bindings back to the host.
+  for (iree_host_size_t j = 0; j < bindings.count; ++j) {
+    shim_xdna::bo* bo = iree_hal_xrt_lite_buffer_handle(
+        iree_hal_buffer_allocated_buffer(bindings.values[j].buffer));
+    // TODO(max): this should be happening automatically via a call to some
+    // buffer API that performs the sync (maybe invalidate_range)
+    bo->sync(shim_xdna::direction::device2host);
+  }
+
+  IREE_TRACE_ZONE_END(z0);
+  return iree_ok_status();
+}
+
+static iree_status_t iree_hal_xrt_lite_direct_command_buffer_reconfigure(
+    iree_hal_xrt_lite_direct_command_buffer* command_buffer,
+    shim_xdna::hw_q* hwq, shim_xdna::cuidx_t cu_idx,
+    uint32_t n_reconfigure_runs, std::vector<uint32_t>& ctrlpkt_inst,
+    std::vector<uint32_t>& ctrlpkt_seq) {
+  IREE_TRACE_ZONE_BEGIN(z0);
+  // Allocate a buffer object to hold the control packet instructions.
+  size_t ctrlpkt_inst_size = ctrlpkt_inst.size() * sizeof(uint32_t);
+  auto bo_ctrlpkt_inst = command_buffer->device->shim_device->alloc_bo(
+      ctrlpkt_inst_size, XCL_BO_FLAGS_CACHEABLE);
+  uint32_t* ctrlpkt_inst_buffer =
+      static_cast<uint32_t*>(bo_ctrlpkt_inst->map());
+  memcpy(ctrlpkt_inst_buffer, ctrlpkt_inst.data(), ctrlpkt_inst_size);
+  bo_ctrlpkt_inst->sync(shim_xdna::direction::host2device);
+  // Allocate a buffer object to hold the control packet sequence (content).
+  size_t ctrlpkt_seq_size = ctrlpkt_seq.size() * sizeof(uint32_t);
+  auto bo_ctrlpkt_seq = command_buffer->device->shim_device->alloc_bo(
+      ctrlpkt_seq_size, XRT_BO_FLAGS_HOST_ONLY);
+  uint32_t* ctrlpkt_seq_buffer = static_cast<uint32_t*>(bo_ctrlpkt_seq->map());
+  memcpy(ctrlpkt_seq_buffer, ctrlpkt_seq.data(), ctrlpkt_seq_size);
+  bo_ctrlpkt_seq->sync(shim_xdna::direction::host2device);
+
+  shim_xdna::kernel ebuf(command_buffer->device->shim_device->get_pdev(),
+                         ERT_START_CU);
+  // Add the kernel arguments.
+  ebuf.set_cu_idx(cu_idx);
+  unsigned int opcode = 3;
+  ebuf.add_arg_64(opcode);
+  ebuf.add_arg_bo(*bo_ctrlpkt_inst);
+  ebuf.add_arg_32(ctrlpkt_inst.size());
+  ebuf.add_arg_bo(*bo_ctrlpkt_seq);
+  // Execute the reconfiguration for `n_reconfigure_runs` times.
+  for (int i = 0; i < n_reconfigure_runs; ++i) {
+    ebuf.m_cmd_pkt->state = ERT_CMD_STATE_NEW;
+    hwq->issue_command(ebuf.get_exec_buf_bo());
+    hwq->wait_command(ebuf.get_exec_buf_bo(), 0);
+  }
+
+  IREE_TRACE_ZONE_END(z0);
+  return iree_ok_status();
+}
+
 static iree_status_t iree_hal_xrt_lite_direct_command_buffer_dispatch(
     iree_hal_command_buffer_t* base_command_buffer,
     iree_hal_executable_t* base_executable, int32_t entry_point,
@@ -163,47 +259,36 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_dispatch(
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_hal_resource_set_insert(command_buffer->resource_set, 1,
                                        &executable));
-
-  size_t ctrl_code_size = kernel_params.asm_inst.size() * sizeof(uint32_t);
-  auto bo_ctrl_code = command_buffer->device->shim_device->alloc_bo(
-      ctrl_code_size, XCL_BO_FLAGS_CACHEABLE);
-  uint32_t* instr_buffer = static_cast<uint32_t*>(bo_ctrl_code->map());
-  memcpy(instr_buffer, kernel_params.asm_inst.data(), ctrl_code_size);
-  bo_ctrl_code->sync(shim_xdna::direction::host2device);
-
-  shim_xdna::kernel ebuf(command_buffer->device->shim_device->get_pdev(),
-                         ERT_START_CU);
   shim_xdna::hw_ctx context =
       command_buffer->device->shim_device->create_hw_context(
           kernel_params.pdi, kernel_params.kernel_name);
+  shim_xdna::hw_q* hwq = context.get_hw_queue();
   shim_xdna::cuidx_t cu_idx =
       context.open_cu_context(kernel_params.kernel_name);
 
-  ebuf.set_cu_idx(cu_idx);
-  unsigned int opcode = 3;
-  ebuf.add_arg_64(opcode);
-  ebuf.add_arg_bo(*bo_ctrl_code);
-  ebuf.add_arg_32(kernel_params.asm_inst.size());
-
-  for (iree_host_size_t j = 0; j < bindings.count; ++j) {
-    shim_xdna::bo* bo = iree_hal_xrt_lite_buffer_handle(
-        iree_hal_buffer_allocated_buffer(bindings.values[j].buffer));
-    ebuf.add_arg_bo(*bo);
-  }
-
-  shim_xdna::hw_q* hwq = context.get_hw_queue();
-  for (int i = 0; i < kernel_params.n_kernel_runs; i++) {
-    ebuf.m_cmd_pkt->state = ERT_CMD_STATE_NEW;
-    hwq->issue_command(ebuf.get_exec_buf_bo());
-    hwq->wait_command(ebuf.get_exec_buf_bo(), 0);
-  }
-
-  for (iree_host_size_t j = 0; j < bindings.count; ++j) {
-    shim_xdna::bo* bo = iree_hal_xrt_lite_buffer_handle(
-        iree_hal_buffer_allocated_buffer(bindings.values[j].buffer));
-    // TODO(max): this should be happening automatically via a call to some
-    // buffer API that performs the sync (maybe invalidate_range)
-    bo->sync(shim_xdna::direction::device2host);
+  size_t num_reconfigurations = kernel_params.reconf_data_runlist.size();
+  if (num_reconfigurations == 0) {
+    // Normal kernel dispatch.
+    IREE_RETURN_AND_END_ZONE_IF_ERROR(
+        z0,
+        iree_hal_xrt_lite_direct_command_buffer_normal_run(
+            bindings, command_buffer, hwq, cu_idx, kernel_params.n_kernel_runs,
+            kernel_params.asm_inst_runlist[0]));
+  } else {
+    for (size_t i = 0; i < num_reconfigurations; i++) {
+      // Reconfigure the device.
+      IREE_RETURN_AND_END_ZONE_IF_ERROR(
+          z0, iree_hal_xrt_lite_direct_command_buffer_reconfigure(
+                  command_buffer, hwq, cu_idx, kernel_params.n_reconfigure_runs,
+                  kernel_params.asm_inst_runlist[2 * i],
+                  kernel_params.reconf_data_runlist[i]));
+      // Dispatch the new kernel.
+      IREE_RETURN_AND_END_ZONE_IF_ERROR(
+          z0, iree_hal_xrt_lite_direct_command_buffer_normal_run(
+                  bindings, command_buffer, hwq, cu_idx,
+                  kernel_params.n_kernel_runs,
+                  kernel_params.asm_inst_runlist[2 * i + 1]));
+    }
   }
 
   IREE_TRACE_ZONE_END(z0);

@@ -46,7 +46,7 @@ jobs:
       CACHE_KEY: ${{ matrix.runs-on }}-build-test-cpp-asserts-v1-${{ format('{0}-{1}', github.ref_name, github.run_number) }}
     steps:
       - name: Set unified TZ
-        uses: szenius/set-timezone@v2.0
+        uses: szenius/set-timezone@1f9716b0f7120e344f0c62bb7b1ee98819aefd42 # v2.0
         with:
           # this is an arbitrary choice
           timezoneLinux: "Asia/Singapore"
@@ -67,7 +67,7 @@ jobs:
               -c submodule."third_party/XRT".update=none \
               submodule update --init --recursive --depth 1 --single-branch -j 10
 
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@8d9ed9ac5c53483de85588cdf95a591a75ab9f55 # v5.5.0
         with:
           python-version: '3.11'
 
@@ -81,7 +81,7 @@ jobs:
           pip install pytest pybind11==2.13.6 nanobind==2.4.0
 
       - name: Enable cache
-        uses: actions/cache/restore@v3
+        uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: ${{ env.CACHE_DIR }}
           key: ${{ env.CACHE_KEY }}
@@ -91,10 +91,10 @@ jobs:
         run: |
           export cache_dir="${{ env.CACHE_DIR }}"
           export CCACHE_COMPILERCHECK="string:$(clang --version)"
-          bash build_tools/build_llvm.sh
+          bash build_tools/build_llvm.sh ON
           rm -rf llvm-build
           export llvm_install_dir=$PWD/llvm-install
-          bash build_tools/build_test_cpp.sh
+          bash build_tools/build_test_cpp.sh ON
 
       - name: Create artifacts
         if: ${{ !cancelled() }}
@@ -104,7 +104,7 @@ jobs:
           tar cf iree-dist-${{ matrix.runs-on }}.tar iree-install
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: ${{ !cancelled() }}
         with:
           name: ${{ matrix.runs-on }}_llvm_packages
@@ -112,7 +112,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: ${{ !cancelled() }}
         with:
           name: ${{ matrix.runs-on }}_iree_packages
@@ -120,7 +120,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Save cache
-        uses: actions/cache/save@v3
+        uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         if: ${{ !cancelled() && github.event_name == 'push' && github.ref_name == 'main' }}
         with:
           path: ${{ env.CACHE_DIR }}
@@ -128,6 +128,6 @@ jobs:
 
       - name: Start tmate session
         if: ${{ (failure() && inputs.debug_with_tmate) || inputs.force_debug_with_tmate }}
-        uses: mxschmitt/action-tmate@v3.18
+        uses: mxschmitt/action-tmate@e5c7151931ca95bad1c6f4190c730ecf8c7dde48 # v3.19
         with:
           limit-access-to-actor: true

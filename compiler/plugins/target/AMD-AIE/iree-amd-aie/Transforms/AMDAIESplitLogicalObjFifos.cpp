@@ -32,6 +32,7 @@ struct ObjFifoSplitInfo {
   size_t splitDim{0};
   int64_t splitSize{1};
   int64_t splitStride{1};
+  int64_t numUniqueConsumerDMAs{1};
 };
 
 using DmaObjFifoPairT =
@@ -121,6 +122,46 @@ FailureOr<int64_t> getSplitStride(ArrayRef<AMDAIE::DmaCpyNdOp> dmaOps,
   return splitStride;
 }
 
+/// Given a list of Copy Ops, fetch the total no. of unique consumer/producer
+/// LogicalObjectFifos. This would helps us figure out the split factor for
+/// LogicalObjectFifos.
+/// And example case which necessitated this feature :-
+///      %lhs = LOF_on_L2
+///      %a = LOF_on_L1_0
+///      %b = LOF_on_L1_1
+///      %c = LOF_on_L1_2
+///      DMA(%a, %lhs)
+///      DMA(%b, %lhs)
+///      DMA(%c, %lhs)
+///      DMA(%b, %lhs)
+///      DMA(%c, %lhs)
+///
+///    In the above snippet, assume we want to split %lhs, it has 5 DMA ops.
+///    But only 3 of them are unique : (%lhs -> %a), (%lhs -> %b) (%lhs -> %c).
+///    Therefore this function is going to return 3. Which the caller is going
+///    to use as split factor.
+template <CopyOpOperateOn OperateOn>
+static FailureOr<int64_t> fetchTotalUniqueLogicalObjFifoUsers(
+    SmallVector<CopyOpInterface> copyLikeOps) {
+  DenseSet<Operation *> uniqueLof;
+  for (CopyOpInterface copyOp : copyLikeOps) {
+    AMDAIE::LogicalObjectFifoFromMemrefOp lof = nullptr;
+    if constexpr (OperateOn == CopyOpOperateOn::Target) {
+      lof = dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+          copyOp.getTarget().getDefiningOp());
+    } else {
+      lof = dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+          copyOp.getSource().getDefiningOp());
+    }
+    if (!lof) {
+      return copyOp.emitOpError()
+             << "could not retrieve source/target objectFifo";
+    }
+    uniqueLof.insert(lof);
+  }
+  return uniqueLof.size();
+}
+
 /// Find the logical objectFifo and DMA source/target splitting dimensions for
 /// each DMA and objectFifo pair.
 ///
@@ -138,6 +179,9 @@ FailureOr<int64_t> getSplitStride(ArrayRef<AMDAIE::DmaCpyNdOp> dmaOps,
 /// that has product size larger than the other side's product size after
 /// splitting because that's the number of elements that should be
 /// produced/consumed on the respective sides before splitting.
+/// Towards the end fetch the number of unique producers (or consumers) for the
+/// objectFifo which will be split. This would form the split factor which would
+/// be capped by the total no. of columns OR std::gcd of source/target size.
 LogicalResult collectSplittingDims(
     const SmallVector<DmaObjFifoPairT> &dmaObjFifoPairs,
     DenseMap<AMDAIE::DmaCpyNdOp, DmaSplitInfo> &dmaSplitInfoMap,
@@ -218,6 +262,19 @@ LogicalResult collectSplittingDims(
       // Calculate the new source stride to be used for splitting the DMA.
       int64_t newSourceStride =
           splitStride != 1 ? splitDimSize / splitStride : 1;
+      FailureOr<int64_t> maybeNumUniqueConsumers =
+          fetchTotalUniqueLogicalObjFifoUsers<CopyOpOperateOn::Target>(
+              objFifo.getCopyLikeConsumers());
+      if (failed(maybeNumUniqueConsumers)) {
+        objFifo.emitOpError() << "could not retrieve the total number of "
+                                 "unique consumer objFifos";
+      }
+      int64_t splitFactor = std::gcd(*maybeNumUniqueConsumers, numCols);
+      int64_t sourceSize = (*sourceSizes)[sourceSplitDim];
+      int64_t targetSize = (*targetSizes)[targetSplitDim];
+      if (sourceSize % splitFactor != 0 || targetSize % splitFactor != 0) {
+        splitFactor = std::gcd(sourceSize, targetSize);
+      }
       LLVM_DEBUG(llvm::dbgs() << "sourceSplitDim: " << sourceSplitDim << "\n");
       LLVM_DEBUG(llvm::dbgs() << "targetSplitDim: " << targetSplitDim << "\n");
       LLVM_DEBUG(llvm::dbgs()
@@ -225,10 +282,11 @@ LogicalResult collectSplittingDims(
       LLVM_DEBUG(llvm::dbgs()
                  << "objFifoSplitDim: " << objFifoSplitDim << "\n");
       LLVM_DEBUG(llvm::dbgs() << "splitStride: " << splitStride << "\n");
-      LLVM_DEBUG(llvm::dbgs() << "splitFactor: " << numCols << "\n");
+      LLVM_DEBUG(llvm::dbgs() << "splitFactor: " << splitFactor << "\n");
       dmaSplitInfoMap[dmaOp] = {sourceSplitDim, newSourceStride, targetSplitDim,
-                                1, numCols};
-      objFifoSplitInfoMap[objFifo] = {objFifoSplitDim, numCols, splitStride};
+                                1, splitFactor};
+      objFifoSplitInfoMap[objFifo] = {objFifoSplitDim, splitFactor, splitStride,
+                                      *maybeNumUniqueConsumers};
     } else if (dmaOp.getSourceObjectFifo() == objFifo) {
       // Find outermost dimension in the access pattern that has stride ==
       // sizeAfterSplit and size != 1.
@@ -274,6 +332,19 @@ LogicalResult collectSplittingDims(
       // Calculate the new target stride to be used for splitting the DMA.
       int64_t newTargetStride =
           splitStride != 1 ? splitDimSize / splitStride : 1;
+      FailureOr<int64_t> maybeNumUniqueProducers =
+          fetchTotalUniqueLogicalObjFifoUsers<CopyOpOperateOn::Source>(
+              objFifo.getCopyLikeProducers());
+      if (failed(maybeNumUniqueProducers)) {
+        objFifo.emitOpError() << "could not retrieve the total number of "
+                                 "unique producer objFifos";
+      }
+      int64_t splitFactor = std::gcd(*maybeNumUniqueProducers, numCols);
+      int64_t sourceSize = (*sourceSizes)[sourceSplitDim];
+      int64_t targetSize = (*targetSizes)[targetSplitDim];
+      if (sourceSize % splitFactor != 0 || targetSize % splitFactor != 0) {
+        splitFactor = std::gcd(sourceSize, targetSize);
+      }
       LLVM_DEBUG(llvm::dbgs() << "sourceSplitDim: " << sourceSplitDim << "\n");
       LLVM_DEBUG(llvm::dbgs() << "targetSplitDim: " << targetSplitDim << "\n");
       LLVM_DEBUG(llvm::dbgs()
@@ -281,10 +352,11 @@ LogicalResult collectSplittingDims(
       LLVM_DEBUG(llvm::dbgs()
                  << "objFifoSplitDim: " << objFifoSplitDim << "\n");
       LLVM_DEBUG(llvm::dbgs() << "splitStride: " << splitStride << "\n");
-      LLVM_DEBUG(llvm::dbgs() << "splitFactor: " << numCols << "\n");
+      LLVM_DEBUG(llvm::dbgs() << "splitFactor: " << splitFactor << "\n");
       dmaSplitInfoMap[dmaOp] = {sourceSplitDim, 1, targetSplitDim,
-                                newTargetStride, numCols};
-      objFifoSplitInfoMap[objFifo] = {objFifoSplitDim, numCols, splitStride};
+                                newTargetStride, splitFactor};
+      objFifoSplitInfoMap[objFifo] = {objFifoSplitDim, splitFactor,
+                                      splitStride};
     }
   }
   return success();
@@ -363,9 +435,9 @@ void AMDAIESplitLogicalObjFifosPass::runOnOperation() {
     }
   }
   for (auto &&[objFifo, splitInfo] : objFifoSplitInfoMap) {
-    if (failed(splitLogicalObjectFifo(rewriter, objFifo, splitInfo.splitDim,
-                                      splitInfo.splitSize,
-                                      splitInfo.splitStride))) {
+    if (failed(splitLogicalObjectFifo(
+            rewriter, objFifo, splitInfo.splitDim, splitInfo.splitSize,
+            splitInfo.splitStride, splitInfo.numUniqueConsumerDMAs))) {
       LLVM_DEBUG(llvm::dbgs()
                  << "Failed to perform splitting of objectFifo op");
       return signalPassFailure();

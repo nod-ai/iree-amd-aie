@@ -69,25 +69,29 @@ static SmallVector<Value> getInputOperands(linalg::LinalgOp &linalgOp) {
 
 /// Utility to fetch pack operands at a specified depth from the LinalgOp's
 /// input operands.
-static FailureOr<SmallVector<Value>> getPackOperands(linalg::LinalgOp linalgOp,
-                                                     uint32_t depthLevel) {
+static FailureOr<SmallVector<Value>> getPackOrCopyOperands(
+    linalg::LinalgOp linalgOp, uint32_t depthLevel) {
   SmallVector<Value> operands;
   for (auto input : llvm::enumerate(linalgOp.getDpsInputs())) {
     uint32_t currentLevel{0};
     Operation *currentOp = input.value().getDefiningOp();
     while (currentLevel < depthLevel && currentOp != nullptr) {
-      if (dyn_cast<tensor::PackOp>(currentOp)) {
+      if (dyn_cast<linalg::PackOp>(currentOp)) {
+        currentLevel++;
+        if (currentLevel == depthLevel) break;
+      } else if (dyn_cast<linalg::CopyOp>(currentOp)) {
         currentLevel++;
         if (currentLevel == depthLevel) break;
       }
       currentOp = currentOp->getOperand(0).getDefiningOp();
     }
-    // The defining op has to be a pack op, fail otherwise.
+    // The defining op has to be a pack or a copy op, fail otherwise.
     if (!currentOp) {
       return linalgOp.emitOpError()
-             << "operand #" << input.index() << " only has pack ops to depth "
-             << currentLevel << ", but request is for a depth " << depthLevel
-             << " pack op.";
+             << "operand #" << input.index()
+             << " only has pack/copy ops to depth " << currentLevel
+             << ", but request is for a depth " << depthLevel
+             << " pack/copy op.";
     }
     // We only want to fetch the input operand of the pack op.
     operands.push_back(currentOp->getResult(0));
@@ -100,7 +104,7 @@ static FailureOr<SmallVector<Value>> getPackOperands(linalg::LinalgOp linalgOp,
 // `bufferizeOperand` parameter.
 static FailureOr<SmallVector<Value>> getOperandsToBufferize(
     BufferizeOperand bufferizeOperand, linalg::LinalgOp &linalgOp,
-    uint32_t packDepth) {
+    uint32_t inputDepth) {
   switch (bufferizeOperand) {
     /// Create new allocations for Lhs, Rhs and Out.
     case BufferizeOperand::LinalgInputOutput:
@@ -112,8 +116,8 @@ static FailureOr<SmallVector<Value>> getOperandsToBufferize(
     case BufferizeOperand::LinalgOutput:
       return SmallVector<Value>(linalgOp.getDpsInits());
     /// Create new allocations for operands from the pack ops.
-    case BufferizeOperand::PackInput:
-      return getPackOperands(linalgOp, packDepth);
+    case BufferizeOperand::PackOrCopyInput:
+      return getPackOrCopyOperands(linalgOp, inputDepth);
     default:
       return failure();
   }
@@ -123,8 +127,11 @@ static FailureOr<SmallVector<Value>> getOperandsToBufferize(
 /// `memorySpace`.
 static AMDAIEMemSpaceAttr getMemorySpaceAttr(RewriterBase &rewriter,
                                              int64_t memorySpace) {
-  AMDAIEMemSpace memSpace;
+  AMDAIEMemSpace memSpace = AMDAIEMemSpace::None;
   switch (memorySpace) {
+    case 0:
+      memSpace = AMDAIEMemSpace::Global;
+      break;
     case 1:
       memSpace = AMDAIEMemSpace::Shared;
       break;
@@ -133,6 +140,7 @@ static AMDAIEMemSpaceAttr getMemorySpaceAttr(RewriterBase &rewriter,
       break;
     default:
       assert(false && "incorrect memory space");
+      break;
   }
   return AMDAIEMemSpaceAttr::get(rewriter.getContext(), memSpace);
 }
@@ -164,7 +172,7 @@ void AMDAIEBufferizeToAllocationPass::runOnOperation() {
         !linalg::isaConvolutionOpInterface(op)) {
       return WalkResult::advance();
     }
-    if (isa<linalg::FillOp>(op)) {
+    if (isa<linalg::FillOp, linalg::CopyOp>(op)) {
       return WalkResult::advance();
     }
     // Use flag `bufferizeElementwise` to indicate whether the target for
@@ -189,7 +197,7 @@ void AMDAIEBufferizeToAllocationPass::runOnOperation() {
   // Find the producer ops for linalg (matmul) op, and bufferizes them in new
   // allocations.
   FailureOr<SmallVector<Value>> operandsToBufferize =
-      getOperandsToBufferize(bufferizeOperand, linalgOp, packDepth);
+      getOperandsToBufferize(bufferizeOperand, linalgOp, inputDepth);
   if (failed(operandsToBufferize)) {
     linalgOp->emitOpError("could not fetch operands to bufferize");
     return signalPassFailure();

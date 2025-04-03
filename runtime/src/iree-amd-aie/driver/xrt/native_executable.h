@@ -22,12 +22,13 @@ extern "C" {
 // Object and launch parameters for a compute kernel.
 typedef struct iree_hal_xrt_kernel_params_t {
   xrt::hw_context context;
+  xrt::device device;
   // The kernel code object.
   xrt::kernel kernel;
-  // Instruction buffer argument to the kernel.
-  xrt::bo instr;
-  // Number of assembly instructions argument to the kernel
-  uint32_t num_instr;  // number of instructions
+  // Assembly instructions for the kernel.
+  std::vector<std::vector<uint32_t>> asm_inst_runlist;
+  // Reconfiguration data for the kernel.
+  std::vector<std::vector<uint32_t>> reconf_data_runlist;
   IREE_TRACE(iree_string_view_t kernel_name;)
   IREE_TRACE(iree_string_view_t source_filename;)
   IREE_TRACE(uint32_t source_line;)

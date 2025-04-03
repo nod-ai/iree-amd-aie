@@ -10,6 +10,7 @@
 include "iree-amd-aie/IR/AMDAIEDialect.td"
 include "mlir/Pass/PassBase.td"
 
+
 def AMDAIEAccessToAcquireRelease :
     Pass<"iree-amdaie-access-to-acquire-release", ""> {
   let summary = "Convert logical objectFifo access operations to acquire/release "
@@ -35,8 +36,10 @@ def AMDAIEAssignConnectionTypes :
   let constructor =
     "mlir::iree_compiler::AMDAIE::createAMDAIEAssignConnectionTypesPass()";
   let options = [
-    Option<"enablePacketFlow", "enable-packet-flow", "bool", /*default=*/"false",
-      "Enable packet routing for connections.">
+    Option<"enableInputPacketFlow", "enable-input-packet-flow", "bool", /*default=*/"false",
+      "Enable packet routing for connections belonging to send kernel inputs.">,
+    Option<"enableOutputPacketFlow", "enable-output-packet-flow", "bool", /*default=*/"false",
+      "Enable packet routing for connections belonging to send kernel outputs.">,
   ];
 }
 
@@ -99,12 +102,12 @@ def AMDAIEBufferizeToAllocation :
                    "Create new allocations for lhs, rhs of a linalg op."),
         clEnumValN(mlir::iree_compiler::AMDAIE::BufferizeOperand::LinalgOutput, "linalg-output",
                    "Create new allocations for output of a linalg op."),
-        clEnumValN(mlir::iree_compiler::AMDAIE::BufferizeOperand::PackInput, "pack-input",
-                   "Create new allocations for operands from the pack op inputs of a linalg op.")
+        clEnumValN(mlir::iree_compiler::AMDAIE::BufferizeOperand::PackOrCopyInput, "pack-or-copy-input",
+                   "Create new allocations for operands from the pack or copy op inputs of a linalg op.")
     )}]>,
-    Option<"packDepth", "pack-depth", "int64_t", /*default=*/"1",
-      "Set the depth of the pack operands to look for. Default is `1` to operate"
-      " on the first level of pack operations.">,
+    Option<"inputDepth", "input-depth", "int64_t", /*default=*/"1",
+      "Set the depth of the pack/copy operands to look for. Default is `1` to operate"
+      " on the first level of pack/copy operations.">,
   ];
 }
 
@@ -123,13 +126,13 @@ def AMDAIECanonicalizeDoublyStridedOp :
 def AMDAIECanonicalizeNpuDmaCpyNd :
   Pass<"iree-amdaie-canonicalize-npu-dma-cpy-nd", "ModuleOp"> {
   let summary = "Canonicalize npu.dma_cpy_nd operations.";
-let description = [{
+  let description = [{
   Canonicalize the offsets/sizes/strides of npu.dma_cpy_nd operations on the L3
   side of the data movement, to make them more representative of the DMA in hardware.
   This pass ensures the offsets/sizes/strides are of size `nbDimensions`, and that no
   dimensions with size>1 have stride=0 except for dimension zero (outer dimension).
   This is a HW constraint.
-}];
+  }];
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIECanonicalizeNpuDmaCpyNdPass()";
   let options = [
     Option<"nbDimensions", "nb-dimensions", "uint64_t", /*default=*/"4",
@@ -172,6 +175,10 @@ def AMDAIEControlCodeLowering :
     Pass<"iree-amdaie-controlcode-lowering", ""> {
   let summary = "Lower control code ops to the most basic NPU write/sync/patch instructions";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEControlCodeLoweringPass()";
+  let options = [
+    Option<"argIdxOffset", "arg-idx-offset", "int32_t", /*default=*/"0",
+      "The offset to be added to the argument index.">,
+  ];
 }
 
 def AMDAIEControlCodeToTransaction :
@@ -184,10 +191,30 @@ def AMDAIEControlCodeToTransaction :
   ];
 }
 
+def AMDAIEControlPacketToNpuDma :
+    Pass<"iree-amdaie-control-packet-to-npu-dma", ""> {
+  let summary = "Convert control packets to DMA copy operations.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEControlPacketToNpuDmaPass()";
+    let options = [
+    Option<"dumpSequence", "dump-sequence", "bool", /*default=*/"false",
+      "Dump the generated control packet sequence, including the header and data. (Used for tests)">
+  ];
+}
+
 def AMDAIEConvertCoreForallToFor :
     Pass<"iree-amdaie-convert-core-forall-to-for", ""> {
   let summary = "Converts `scf.forall` to `scf.for` within `aie.core`.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEConvertCoreForallToForPass()";
+}
+
+def AMDAIEConvertDeviceToControlPackets: Pass<"iree-amdaie-convert-device-to-control-packets"> {
+  let summary = "Convert `aie.device` to `amdaie.npu.control_packet` operations";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEConvertDeviceToControlPacketsPass()";
+  let options = [
+    Option<"pathToElfs", "path-to-elfs", "std::string", /*default=*/"", "Path to ELF files.">,
+    Option<"broadcastCoreConfig", "broadcast-core-config", "bool", /*default=*/"true",
+      "Broadcast the core configuration to all cores.">,
+  ];
 }
 
 def AMDAIECreateAIEWorkgroup :
@@ -283,14 +310,22 @@ def AMDAIELinalgFunctionOutlining :
     the code footprint overall as the loop unrolling in the later passes lead to a lot of
     repeated codes.
   }];
+
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELinalgFunctionOutliningPass()";
   let options = [
-    Option<"emptyFunctions", "empty-functions", "bool", /*default=*/"false",
-      "A developer only option that results in incorrect numerics. "
-      "Replace all outlined functions with a function that does nothing, "
-      "i.e. it just returns. Useful for measuring the performance of data "
-      "movement to/from the device -- by doing zero compute, all time is spent "
-      "moving data to/from the AIE cores.">
+    Option<"outliningStrategy", "outlining-strategy",
+      "mlir::iree_compiler::AMDAIE::OutliningStrategy",
+      /*default=*/"mlir::iree_compiler::AMDAIE::OutliningStrategy::Balanced",
+      "The strategy to be used for outlining. The default is balanced to "
+      "achieve a good tradeoff in performance and program size.",
+      [{::llvm::cl::values(
+        clEnumValN(mlir::iree_compiler::AMDAIE::OutliningStrategy::None, "none",
+                   "No ops are outlined."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::OutliningStrategy::All, "all",
+                   "All ops are outlined."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::OutliningStrategy::Balanced, "balanced",
+                   "A strategy that tries to achieve a balanced tradeoff between performance and program size.")
+      )}]>
     ];
 }
 
@@ -316,15 +351,20 @@ def AMDAIEFuseFillIntoForall :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFuseFillIntoForallPass()";
 }
 
-def AMDAIEFusePackIntoLoop :
-    InterfacePass<"iree-amdaie-fuse-pack-into-loop", "mlir::FunctionOpInterface"> {
-  let summary = "Fuse the pack operations into the innermost for/forall loop.";
-  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFusePackIntoLoopPass()";
+def AMDAIEFuseProducerIntoLoop :
+    InterfacePass<"iree-amdaie-fuse-producer-into-loop", "mlir::FunctionOpInterface"> {
+  let summary = "Fuse the producer operations into the innermost for/forall loop.";
+  let description = [{
+    Greedily fuse the producers of a linalg computation op based on the `fuseDepth`.
+    Currently, the two producer ops that are allowed in the defining op chain are
+    linalg.pack and linalg.copy ops.
+  }];
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFuseProducerIntoLoopPass()";
   let options = [
-    Option<"fusePackDepth", "fuse-pack-depth", "int64_t", /*default=*/"1",
-      "Set the depth until which we would keep fusing producer tensor.pack chain.">,
+    Option<"fuseDepth", "fuse-depth", "int64_t", /*default=*/"1",
+      "Set the depth until which we would keep fusing producers from the defining chain.">,
     Option<"useSCFFor", "use-scf-for", "bool", /*default=*/"true",
-      "Set the innermost scf loop type to fuse tensor.pack ops into">,
+      "Set the innermost scf loop type to fuse producer ops into">,
     Option<"targetElementwise", "target-elementwise", "bool", /*default=*/"false",
       "Set if the target compute op within the loop is an elementwise op">
   ];
@@ -337,7 +377,10 @@ def AMDAIEGenerateControlOverlay : Pass<"iree-amdaie-generate-control-overlay"> 
     Option<"routeShimCtrlToTct", "route-shim-to-tct", "bool", /*default=*/"true",
       "Flag to generate TCT routing between tile CTRL and shim SOUTH ports.">,
     Option<"routeShimToTileCtrl", "route-shim-to-tile-ctrl", "bool", /*default=*/"false",
-      "Flag to generate routing between shim dma DMA and tile CTRL ports, for configuration.">
+      "Flag to generate routing between shim dma DMA and tile CTRL ports, for configuration.">,
+    Option<"broadcastShimToTileCtrl", "broadcast-shim-to-tile-ctrl", "bool", /*default=*/"true",
+      "Flag to indicate if the shim DMA is connected to all tile core CTRL ports in broadcast mode. "
+      "This option is only effective if `route-shim-to-tile-ctrl` is also enabled">
   ];
 }
 
@@ -363,6 +406,10 @@ def AMDAIEInsertDmaBdChain :
     Pass<"iree-amdaie-insert-dma-bd-chain"> {
   let summary = "Chain DMA BD IDs by updating next_bd operands.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEInsertDmaBdChainPass()";
+  let options = [
+    Option<"enableInterleave", "enable-interleave", "bool", /*default=*/"true",
+      "Enable multiple BD chains to be built in an interleaved way.">,
+  ];
 }
 
 
@@ -431,14 +478,14 @@ def AMDAIELinkExecutables :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELinkExecutablesPass()";
 }
 
-def AMDAIELoadAlignmentReset :
-    Pass<"iree-amdaie-load-alignment-reset", ""> {
+def AMDAIELoadStoreAlignmentReset :
+    Pass<"iree-amdaie-load-store-alignment-reset", ""> {
     let summary = "Reset the alignment of the LLVM load operations.";
-    let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELoadAlignmentResetPass()";
+    let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELoadStoreAlignmentResetPass()";
     let description = [{
-      Reset the alignment of the LLVM load operations to the 'unset'
-      optional value. This is a workaround for an issue in peano, and
-      should eventually be removed.
+      Reset the alignment of the LLVM load and store operations to the 'unset'
+      optional value. This is a workaround for an issue where alignments assigned
+      are too low/conservative in the vector-to-llvm pass.
     }];
 }
 
@@ -463,8 +510,6 @@ def AMDAIELowerExecutableTarget :
                    "Use the pack-peel based lowering strategy for matmul-like ops."),
         clEnumValN(mlir::iree_compiler::AMDAIE::TilePassPipeline::PackPeel4LevelTilingPipeline, "pack-peel-4-level-tiling",
                    "Use the pack-peel based lowering strategy with 4 tiling levels for matmul-like ops."),
-        clEnumValN(mlir::iree_compiler::AMDAIE::TilePassPipeline::PadPackPipeline, "pad-pack",
-                   "Use the pad-pack based lowering strategy for matmul-like ops."),
         clEnumValN(mlir::iree_compiler::AMDAIE::TilePassPipeline::ConvDecomposePipeline, "conv-decompose",
                    "Use the conv-decompose based lowering strategy for convolution interface ops.")
       )}]>,
@@ -488,8 +533,6 @@ def AMDAIELoweringStrategy :
                    "Use the pack-peel based lowering strategy for matmul-like ops."),
         clEnumValN(mlir::iree_compiler::AMDAIE::TilePassPipeline::PackPeel4LevelTilingPipeline, "pack-peel-4-level-tiling",
                    "Use the pack-peel based lowering strategy with 4 tiling levels for matmul-like ops."),
-        clEnumValN(mlir::iree_compiler::AMDAIE::TilePassPipeline::PadPackPipeline, "pad-pack",
-                   "Use the pad-pack based lowering strategy for matmul-like ops."),
         clEnumValN(mlir::iree_compiler::AMDAIE::TilePassPipeline::ConvDecomposePipeline, "conv-decompose",
                    "Use the conv-decompose based lowering strategy for convolution interface ops.")
       )}]>,
@@ -564,6 +607,23 @@ def AMDAIEMapForallToCores :
     Option<"blockSizeCol", "block-size-col", "int64_t", /*default=*/"1",
       "Block size along x dimension">
   ];
+}
+
+def AMDAIEAddNoAliasFunctionArguments :
+    Pass<"iree-amdaie-add-no-alias-function-arguments", ""> {
+ let summary = "Add `llvm.noalias` to function arguments when safe.";
+ let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAddNoAliasFunctionArgumentsPass()";
+  let description = [{
+    Where it is safe to do so, give function arguments the `llvm.noalias`
+    attribute. Motivation: peano can generate much faster code if it knows
+    that the arguments to a function do not alias.
+
+    Basic algorithm: for each function, for each call site, for each operand:
+    check if the operand's defining memory allocation (currently `memref.alloc`
+    or `amdaie.buffer`) is the same as any other operand's. If it is the same,
+    then the function signature cannot have the `llvm.noalias` attribute for
+    the corresponding argument.
+  }];
 }
 
 def AMDAIENoneAccessToTemporaryBuffer :
@@ -652,8 +712,19 @@ def AMDAIEPad :
   let constructor =
       "mlir::iree_compiler::AMDAIE::createAMDAIEPadPass()";
   let options = [
-    Option<"paddingLevel", "padding-level", "int64_t", /*default=*/"-1",
-      "A temporary workaround to figure the config for padding">
+    Option<"padElementwise", "pad-elementwise", "bool", /*default=*/"false",
+      "Indicator of whether the target op for padding is an elementwise op">,
+    Option<"padOperand", "pad-operand", "mlir::iree_compiler::AMDAIE::PadOperand",
+      /*default=*/"mlir::iree_compiler::AMDAIE::PadOperand::InputOutput",
+      "Select which operands of a linalg op to be padded",
+      [{::llvm::cl::values(
+        clEnumValN(mlir::iree_compiler::AMDAIE::PadOperand::InputOutput, "input-output",
+                   "Pad the input and output of a linalg op."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::PadOperand::Input, "input",
+                   "Only pad the input of a linalg op."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::PadOperand::Output, "output",
+                   "Only pad the output of a linalg op.")
+    )}]>,
   ];
 }
 
@@ -709,6 +780,27 @@ def AMDAIERemoveMemorySpace : Pass<"iree-amdaie-remove-memoryspace"> {
   let constructor =  "mlir::iree_compiler::AMDAIE::createAMDAIERemoveMemorySpacePass()";
 }
 
+def AMDAIEReplicateCalls :
+    Pass<"iree-amdaie-replicate-calls", ""> {
+ let summary = "Duplicate (replication > 1) or remove (replication = 0) function calls. ";
+ let description = [{
+   This pass is for analysing performance. When replication > 1, more relative time is
+   spent performing core operations. When replication = 0, the core performs no work
+   and so all the time is spent in date movement. When replication != 1, the semantics
+   of the original program are changed and so numerical errors are expected.
+
+   When replication > 1, each function call is wrapped in an scf.for with trip count
+   of `replication`. When replication = 0, the function call is replaced with a call
+   to an empty function. The reason we don't just remove the call entirely is to
+   prevent ensuing overly aggressive dead code elimination.
+ }];
+ let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEReplicateCallsPass()";
+ let options = [
+   Option<"replication", "replication", "int64_t", /*default=*/"1",
+     "The number of times each function call is replicated">
+   ];
+}
+
 def AMDAIESinkIntoCore :
   Pass<"iree-amdaie-sink-into-core", "ModuleOp"> {
   let summary = "Clone constants and other ops into amdaie.cores";
@@ -720,6 +812,12 @@ def AMDAIESinkIntoCore :
    related ops which should be kept outside of cores.
   }];
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIESinkIntoCorePass()";
+}
+
+def AMDAIESplitControlPacketData :
+  Pass<"iree-amdaie-split-control-packet-data", "ModuleOp"> {
+  let summary = "Split control packet data into smaller chunks.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIESplitControlPacketDataPass()";
 }
 
 def AMDAIESplitLogicalObjFifos :

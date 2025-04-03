@@ -6,18 +6,29 @@
 
 #include "AMDAIEUtils.h"
 
+#include <optional>
+
 #include "llvm/ADT/StringExtras.h"
+#include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
 #include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/BuiltinTypes.h"
 
 namespace mlir::iree_compiler::AMDAIE {
 
+std::string getConstantIntValuesString(ArrayRef<OpFoldResult> ofrs) {
+  std::optional<SmallVector<int64_t>> maybeValues =
+      mlir::getConstantIntValues(ofrs);
+  if (maybeValues.has_value())
+    return getArrayString<int64_t>(maybeValues.value());
+  return "[not all constant integers]";
+}
+
 template <typename T>
 std::optional<T> getConfigAttr(IREE::HAL::ExecutableTargetAttr targetAttr,
                                StringRef name) {
   if (!targetAttr) return std::nullopt;
-  auto config = targetAttr.getConfiguration();
+  DictionaryAttr config = targetAttr.getConfiguration();
   if (!config) return std::nullopt;
   std::optional<T> attr = config.getAs<T>(name);
   return attr;
@@ -32,9 +43,25 @@ std::optional<AMDAIEDevice> getConfigAMDAIEDevice(
 }
 
 std::optional<AMDAIEDevice> getConfigAMDAIEDevice(Operation *op) {
-  auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(op);
+  IREE::HAL::ExecutableTargetAttr targetAttr =
+      IREE::HAL::ExecutableTargetAttr::lookup(op);
   if (!targetAttr) return std::nullopt;
   return getConfigAMDAIEDevice(targetAttr);
+}
+
+std::optional<AMDAIE::AMDAIEDevice> getConfigAMDAIEDeviceFromAncestor(
+    Operation *op) {
+  while (op) {
+    if (ModuleOp moduleOp = dyn_cast<ModuleOp>(op)) {
+      IREE::HAL::ExecutableTargetAttr targetAttr =
+          IREE::HAL::ExecutableTargetAttr::lookup(moduleOp);
+      std::optional<AMDAIEDevice> maybeDevice =
+          AMDAIE::getConfigAMDAIEDevice(targetAttr);
+      if (maybeDevice.has_value()) return maybeDevice;
+    }
+    op = op->getParentOp();
+  }
+  return std::nullopt;
 }
 
 /// Utility that returns the number of columns being targeted.
@@ -87,12 +114,12 @@ static mlir::AffineExpr getAffineMapDim(ArrayAttr indexingMaps,
   return affineMap.getResult(nResults - 2 + mnkIndex);
 }
 
-/// Returns the BlockArgument that leads to `val`. Traverses optional ext*
-/// ops.
-static BlockArgument checkOptionalExtOps(Value val) {
+/// Returns the BlockArgument that leads to `val`, if any. Traverses optional
+/// ext* ops.
+BlockArgument getBlockArgumentWithOptionalExtOps(Value val) {
   BlockArgument blockArg;
   if (!(blockArg = dyn_cast<BlockArgument>(val))) {
-    auto defOp = val.getDefiningOp();
+    Operation *defOp = val.getDefiningOp();
     if (!dyn_cast_if_present<arith::ExtFOp>(defOp) &&
         !dyn_cast_if_present<arith::ExtSIOp>(defOp) &&
         !dyn_cast_if_present<arith::ExtUIOp>(defOp)) {
@@ -111,9 +138,12 @@ static bool bodyMatcherForMatmulLikeOps(Value yieldVal, Block *body) {
   Operation *mulOp = addOp->getOperand(1).getDefiningOp();
   if (!isa_and_present<arith::MulIOp, arith::MulFOp>(mulOp)) return false;
 
-  BlockArgument lhsBlockArg = checkOptionalExtOps(mulOp->getOperand(0));
-  BlockArgument rhsBlockArg = checkOptionalExtOps(mulOp->getOperand(1));
-  BlockArgument outBlockArg = checkOptionalExtOps(addOp->getOperand(0));
+  BlockArgument lhsBlockArg =
+      getBlockArgumentWithOptionalExtOps(mulOp->getOperand(0));
+  BlockArgument rhsBlockArg =
+      getBlockArgumentWithOptionalExtOps(mulOp->getOperand(1));
+  BlockArgument outBlockArg =
+      getBlockArgumentWithOptionalExtOps(addOp->getOperand(0));
   if (!lhsBlockArg || !rhsBlockArg || !outBlockArg ||
       lhsBlockArg.getOwner() != body || rhsBlockArg.getOwner() != body ||
       outBlockArg.getOwner() != body || lhsBlockArg.getArgNumber() != 0 ||
@@ -124,14 +154,11 @@ static bool bodyMatcherForMatmulLikeOps(Value yieldVal, Block *body) {
 }
 
 /// Utility to check if the input generic op is a 2D matmul-like op.
-static bool is2DMatmulLikeOp(linalg::LinalgOp linalgOp) {
+bool is2DMatmulLikeOp(linalg::LinalgOp linalgOp) {
   // Check iterator types.
-  SmallVector<utils::IteratorType> matmulIteratorTypes = {
-      utils::IteratorType::parallel, utils::IteratorType::parallel,
-      utils::IteratorType::reduction};
-  SmallVector<utils::IteratorType> opIteratorTypes =
-      linalgOp.getIteratorTypesArray();
-  if (matmulIteratorTypes != opIteratorTypes) return false;
+  unsigned numParallelLoops = linalgOp.getNumParallelLoops();
+  unsigned numReductionLoops = linalgOp.getNumReductionLoops();
+  if (numParallelLoops != 2 || numReductionLoops != 1) return false;
 
   // Check the number of inputs and results from indexing maps.
   ArrayAttr indexingMaps = linalgOp.getIndexingMaps();
@@ -150,15 +177,11 @@ static bool is2DMatmulLikeOp(linalg::LinalgOp linalgOp) {
 }
 
 /// Utility to check if the input generic op is a 4D matmul-like op.
-static bool is4DMatmulLikeOp(linalg::LinalgOp linalgOp) {
+bool is4DMatmulLikeOp(linalg::LinalgOp linalgOp) {
   // Check iterator types.
-  SmallVector<utils::IteratorType> matmulIteratorTypes = {
-      utils::IteratorType::parallel,  utils::IteratorType::parallel,
-      utils::IteratorType::reduction, utils::IteratorType::parallel,
-      utils::IteratorType::parallel,  utils::IteratorType::reduction};
-  SmallVector<utils::IteratorType> opIteratorTypes =
-      linalgOp.getIteratorTypesArray();
-  if (matmulIteratorTypes != opIteratorTypes) return false;
+  unsigned numParallelLoops = linalgOp.getNumParallelLoops();
+  unsigned numReductionLoops = linalgOp.getNumReductionLoops();
+  if (numParallelLoops != 4 || numReductionLoops != 2) return false;
 
   // Check indexing maps.
   ArrayAttr indexingMaps = linalgOp.getIndexingMaps();
@@ -177,17 +200,11 @@ static bool is4DMatmulLikeOp(linalg::LinalgOp linalgOp) {
 }
 
 /// Utility to check if the input generic op is a 6D matmul-like op.
-static bool is6DMatmulLikeOp(linalg::LinalgOp linalgOp) {
+bool is6DMatmulLikeOp(linalg::LinalgOp linalgOp) {
   // Check iterator types.
-  SmallVector<utils::IteratorType> matmulIteratorTypes = {
-      utils::IteratorType::parallel,  utils::IteratorType::parallel,
-      utils::IteratorType::reduction, utils::IteratorType::parallel,
-      utils::IteratorType::parallel,  utils::IteratorType::reduction,
-      utils::IteratorType::parallel,  utils::IteratorType::parallel,
-      utils::IteratorType::reduction};
-  SmallVector<utils::IteratorType> opIteratorTypes =
-      linalgOp.getIteratorTypesArray();
-  if (matmulIteratorTypes != opIteratorTypes) return false;
+  unsigned numParallelLoops = linalgOp.getNumParallelLoops();
+  unsigned numReductionLoops = linalgOp.getNumReductionLoops();
+  if (numParallelLoops != 6 || numReductionLoops != 3) return false;
 
   // Check indexing maps.
   ArrayAttr indexingMaps = linalgOp.getIndexingMaps();
@@ -316,13 +333,29 @@ bool isMatmulInDefChain(Value operand) {
 
 /// Utility to identify if `linalgOp` is an elementwise operation with a
 /// matmul-like op upstream in its computation tree.
-bool isMatmulProducerOfElementwise(linalg::LinalgOp linalgOp) {
-  if (!linalg::isElementwise(linalgOp) || isa<linalg::FillOp>(linalgOp)) {
+bool isElementwiseWithMatmulProducer(linalg::LinalgOp linalgOp) {
+  if (!linalg::isElementwise(linalgOp) ||
+      isa<linalg::FillOp, linalg::CopyOp>(linalgOp)) {
     return false;
   }
   // Check if any of the defining op is a matmul-like op.
   for (Value operand : linalgOp->getOperands()) {
     if (isMatmulInDefChain(operand)) return true;
+  }
+  return false;
+}
+
+/// Utility to identify if `linalgOp` is a matmul-like operation with an
+/// elementwise op as its consumer.
+bool isMatmulWithElementwiseConsumer(linalg::LinalgOp linalgOp) {
+  if (!isMatmul(linalgOp)) return false;
+  // Check if the user is an elementwise op but not fill or copy op.
+  for (Operation *userOp : linalgOp->getUsers()) {
+    if (auto linalgUser = dyn_cast<linalg::LinalgOp>(userOp)) {
+      if (isElementwise(linalgUser) &&
+          !isa<linalg::FillOp, linalg::CopyOp>(linalgUser))
+        return true;
+    }
   }
   return false;
 }
@@ -383,6 +416,115 @@ int detail::findLargestFactor(int num, int max, int multiple) {
   // if we could not find the desired factor then we give up and call the code
   // that doesnt require the multiple constrain.
   return factor ? factor : detail::findLargestFactor(num, max);
+}
+
+bool sinkInto(Region &region, IRRewriter &rewriter,
+              std::function<bool(Operation *)> shouldSink) {
+  Operation *parentOfRegion = region.getParentOp();
+  assert(parentOfRegion && "Region has no parent operation");
+  if (region.getBlocks().empty()) return false;
+  bool regionChanged = false;
+  for (Block &block : region.getBlocks()) {
+    // Collect all ops in the block.
+    SmallVector<Operation *> ops;
+    SmallVector<Operation *> nextIterationOps;
+    block.walk([&](Operation *op) { ops.push_back(op); });
+    while (!ops.empty()) {
+      for (Operation *op : ops) {
+        for (Value operand : op->getOperands()) {
+          if (!operand || !operand.getDefiningOp()) continue;
+          Operation *dependencyOp = operand.getDefiningOp();
+          // Skip if the dependency is already in the core.
+          if (parentOfRegion->isAncestor(dependencyOp)) continue;
+          if (!shouldSink(dependencyOp)) continue;
+          rewriter.setInsertionPointToStart(&block);
+          Operation *sunkOp = rewriter.clone(*dependencyOp);
+          nextIterationOps.push_back(sunkOp);
+          // Replace uses of the dependency op inside the block. Specifically,
+          // if `use` is in `block` then replace its operand with `sunkOp`.
+          auto isInBlock = [&block](OpOperand &use) {
+            Operation *op = use.getOwner();
+            while (op) {
+              if (op->getBlock() == &block) return true;
+              op = op->getParentOp();
+            }
+            return false;
+          };
+          dependencyOp->replaceUsesWithIf(sunkOp, isInBlock);
+          regionChanged = true;
+        }
+      }
+      std::swap(ops, nextIterationOps);
+      nextIterationOps.clear();
+    }
+  }
+  return regionChanged;
+}
+
+scf::ForOp createForOpWithUnrollingDisabled(OpBuilder &builder, Location loc,
+                                            int start, int end, int step) {
+  // RAII guard to reset the insertion point of the builder when destroyed.
+  OpBuilder::InsertionGuard guard(builder);
+
+  auto getConstant = [&](int64_t v) {
+    return builder.create<arith::ConstantIndexOp>(loc, v);
+  };
+
+  Value cStart = getConstant(start);
+  Value cEnd = getConstant(end);
+  Value cStep = getConstant(step);
+
+  scf::ForOp forOp = builder.create<scf::ForOp>(loc, cStart, cEnd, cStep);
+
+  mlir::LLVM::LoopUnrollAttr unrollAttr;
+  mlir::LLVM::LoopAnnotationAttr loopAnnotationAttr;
+  BoolAttr disableAttr = builder.getBoolAttr(true);
+  unrollAttr = mlir::LLVM::LoopUnrollAttr::get(
+      builder.getContext(), /*disable=*/disableAttr, /*count=*/{},
+      /*runtimeDisable=*/{}, /*full=*/{}, /*followupUnrolled=*/{},
+      /*followupRemainder=*/{}, /*followupAll=*/{});
+
+  loopAnnotationAttr = mlir::LLVM::LoopAnnotationAttr::get(
+      builder.getContext(), /*disableNonforced=*/{},
+      /*vectorize=*/{}, /*interleave=*/{}, /*unroll=*/unrollAttr,
+      /*unrollAndJam=*/{}, /*licm=*/{}, /*distribute=*/{},
+      /*pipeline=*/{},
+      /*peeled=*/{}, /*unswitch=*/{}, /*mustProgress=*/{},
+      /*isVectorized=*/{}, /*startLoc=*/{}, /*endLoc=*/{},
+      /*parallelAccesses=*/{});
+
+  // Add the llvm.loop_annotation attribute to the loop.
+  forOp->setAttr("loop_annotation", loopAnnotationAttr);
+
+  return forOp;
+}
+
+SmallVector<std::pair<func::FuncOp, SmallVector<func::CallOp>>>
+getFunctionsAndTheirCallers(Operation *rootOp) {
+  // A mapping from all the function ops in the root op, to their callers.
+  SmallVector<std::pair<func::FuncOp, SmallVector<func::CallOp>>>
+      functionsAndCallers;
+
+  // A mapping from function symbol names, to their index in
+  // `functionsAndCallers`.
+  DenseMap<StringRef, uint32_t> funcOpIndex;
+
+  // Final all the function ops.
+  rootOp->walk([&](func::FuncOp funcOp) {
+    funcOpIndex.insert({funcOp.getSymName(), functionsAndCallers.size()});
+    SmallVector<func::CallOp> callers;
+    functionsAndCallers.push_back({funcOp, callers});
+  });
+
+  // Find all the call ops.
+  rootOp->walk([&](func::CallOp callOp) {
+    StringRef callee = callOp.getCallee();
+    auto iter = funcOpIndex.find(callee);
+    if (iter != funcOpIndex.end()) {
+      functionsAndCallers[iter->second].second.push_back(callOp);
+    }
+  });
+  return functionsAndCallers;
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE

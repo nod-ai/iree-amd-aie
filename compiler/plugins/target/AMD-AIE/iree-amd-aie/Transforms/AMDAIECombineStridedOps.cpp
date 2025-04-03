@@ -16,10 +16,11 @@
 #include "iree-amd-aie/Transforms/Transforms.h"
 #include "iree-amd-aie/Transforms/Utils/AMDAIEDmaUtils.h"
 #include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
-#include "llvm/ADT/STLExtras.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 #define DEBUG_TYPE "iree-amdaie-combine-strided-ops"
+
+using namespace std::placeholders;
 
 namespace mlir::iree_compiler::AMDAIE {
 
@@ -43,8 +44,12 @@ struct CombineStridedOps
     Block *block = op->getBlock();
     if (!block) return failure();
 
+    std::unique_ptr<DmaDimConfig> sourceDmaDimConfig;
+    std::unique_ptr<DmaDimConfig> targetDmaDimConfig;
+
     SmallVector<Operation *> userOpsToBeErased;
     AMDAIE::DoublyStridedOpInterface nextStridedOp;
+
     if (auto npuDmaOp = dyn_cast<AMDAIE::NpuDmaCpyNdOp>(op.getOperation())) {
       LLVM_DEBUG(llvm::dbgs() << "npuDmaOp: " << npuDmaOp << "\n");
       // Fail if any non-wait user operations.
@@ -60,6 +65,20 @@ struct CombineStridedOps
       if (failed(maybeNextNpuDmaOp)) return failure();
       nextStridedOp = cast<AMDAIE::DoublyStridedOpInterface>(
           maybeNextNpuDmaOp->getOperation());
+      if (!nextStridedOp) return failure();
+
+      std::optional<uint8_t> sourceMemspaceInt =
+          nextStridedOp.getSourceMemorySpaceAsUInt();
+      std::optional<uint8_t> targetMemspaceInt =
+          nextStridedOp.getTargetMemorySpaceAsUInt();
+      if (!sourceMemspaceInt || !targetMemspaceInt) {
+        return rewriter.notifyMatchFailure(
+            nextStridedOp, "expected a source and target memory space");
+      }
+      sourceDmaDimConfig = std::make_unique<DmaDimConfig>(
+          deviceModel, sourceMemspaceInt.value());
+      targetDmaDimConfig = std::make_unique<DmaDimConfig>(
+          deviceModel, targetMemspaceInt.value());
     } else if (auto npuCircularDmaOp =
                    dyn_cast<AMDAIE::NpuCircularDmaCpyNdOp>(op.getOperation())) {
       LLVM_DEBUG(llvm::dbgs()
@@ -69,24 +88,27 @@ struct CombineStridedOps
       if (failed(maybeNextNpuCircDmaOp)) return failure();
       nextStridedOp = cast<AMDAIE::DoublyStridedOpInterface>(
           maybeNextNpuCircDmaOp->getOperation());
+      if (!nextStridedOp) return failure();
+
+      std::optional<uint8_t> sourceMemspaceInt =
+          nextStridedOp.getSourceMemorySpaceAsUInt();
+      std::optional<uint8_t> targetMemspaceInt =
+          nextStridedOp.getTargetMemorySpaceAsUInt();
+      if (!sourceMemspaceInt || !targetMemspaceInt) {
+        return rewriter.notifyMatchFailure(
+            nextStridedOp, "expected a source and target memory space");
+      }
+      sourceDmaDimConfig = std::make_unique<CircularDmaDimConfig>(
+          deviceModel, sourceMemspaceInt.value());
+      targetDmaDimConfig = std::make_unique<CircularDmaDimConfig>(
+          deviceModel, targetMemspaceInt.value());
     } else {
       return failure();
     }
 
-    if (!nextStridedOp) return failure();
-
-    std::optional<uint8_t> sourceMemspaceInt =
-        nextStridedOp.getSourceMemorySpaceAsUInt();
-    std::optional<uint8_t> targetMemspaceInt =
-        nextStridedOp.getTargetMemorySpaceAsUInt();
-    if (!sourceMemspaceInt || !targetMemspaceInt) {
-      return rewriter.notifyMatchFailure(
-          nextStridedOp, "expected a source and target memory space");
-    }
-    DmaDimConfig sourceDmaDimConfig(deviceModel, sourceMemspaceInt.value());
-    size_t sourceMaxNbDims = sourceDmaDimConfig.maxNbDims;
-    DmaDimConfig targetDmaDimConfig(deviceModel, targetMemspaceInt.value());
-    size_t targetMaxNbDims = targetDmaDimConfig.maxNbDims;
+    MLIRContext *ctx = rewriter.getContext();
+    auto dimCountCheck = std::bind(&DmaDimConfig::exceedsNbDims,
+                                   std::ref(sourceDmaDimConfig), _1);
 
     SmallVector<OpFoldResult> sourceOffsetsA = op.getSourceMixedOffsets();
     SmallVector<OpFoldResult> sourceSizesA = op.getSourceMixedSizes();
@@ -97,9 +119,15 @@ struct CombineStridedOps
         nextStridedOp.getSourceMixedSizes();
     SmallVector<OpFoldResult> sourceStridesB =
         nextStridedOp.getSourceMixedStrides();
-    bool areSourcesCombinable = areAccessPatternsCombinable(
-        sourceOffsetsA, sourceSizesA, sourceStridesA, sourceOffsetsB,
-        sourceSizesB, sourceStridesB, sourceMaxNbDims);
+    SmallVector<OpFoldResult> newSourceOffsets;
+    SmallVector<OpFoldResult> newSourceSizes;
+    SmallVector<OpFoldResult> newSourceStrides;
+    if (failed(combineAccessPatterns(
+            ctx, sourceOffsetsA, sourceSizesA, sourceStridesA, sourceOffsetsB,
+            sourceSizesB, sourceStridesB, newSourceOffsets, newSourceSizes,
+            newSourceStrides, dimCountCheck))) {
+      return failure();
+    }
 
     SmallVector<OpFoldResult> targetOffsetsA = op.getTargetMixedOffsets();
     SmallVector<OpFoldResult> targetSizesA = op.getTargetMixedSizes();
@@ -110,42 +138,25 @@ struct CombineStridedOps
         nextStridedOp.getTargetMixedSizes();
     SmallVector<OpFoldResult> targetStridesB =
         nextStridedOp.getTargetMixedStrides();
-    bool areTargetsCombinable = areAccessPatternsCombinable(
-        targetOffsetsA, targetSizesA, targetStridesA, targetOffsetsB,
-        targetSizesB, targetStridesB, targetMaxNbDims);
-
-    if (areSourcesCombinable && areTargetsCombinable) {
-      SmallVector<OpFoldResult> newSourceOffsets;
-      SmallVector<OpFoldResult> newSourceSizes;
-      SmallVector<OpFoldResult> newSourceStrides;
-      if (failed(combineAccessPatterns(
-              rewriter, sourceOffsetsA, sourceSizesA, sourceStridesA,
-              sourceOffsetsB, sourceSizesB, sourceStridesB, newSourceOffsets,
-              newSourceSizes, newSourceStrides, sourceMaxNbDims))) {
-        return failure();
-      }
-
-      SmallVector<OpFoldResult> newTargetOffsets;
-      SmallVector<OpFoldResult> newTargetSizes;
-      SmallVector<OpFoldResult> newTargetStrides;
-      if (failed(combineAccessPatterns(
-              rewriter, targetOffsetsA, targetSizesA, targetStridesA,
-              targetOffsetsB, targetSizesB, targetStridesB, newTargetOffsets,
-              newTargetSizes, newTargetStrides, targetMaxNbDims))) {
-        return failure();
-      }
-
-      rewriter.setInsertionPoint(op);
-      auto newDoublyStridedOp = nextStridedOp.createDoublyStridedOp(
-          rewriter, newTargetOffsets, newTargetSizes, newTargetStrides,
-          newSourceOffsets, newSourceSizes, newSourceStrides);
-      rewriter.replaceOp(nextStridedOp, newDoublyStridedOp.getOperation());
-
-      for (Operation *userOp : userOpsToBeErased) rewriter.eraseOp(userOp);
-      rewriter.eraseOp(op);
-      return success();
+    SmallVector<OpFoldResult> newTargetOffsets;
+    SmallVector<OpFoldResult> newTargetSizes;
+    SmallVector<OpFoldResult> newTargetStrides;
+    if (failed(combineAccessPatterns(
+            ctx, targetOffsetsA, targetSizesA, targetStridesA, targetOffsetsB,
+            targetSizesB, targetStridesB, newTargetOffsets, newTargetSizes,
+            newTargetStrides, dimCountCheck))) {
+      return failure();
     }
-    return failure();
+
+    rewriter.setInsertionPoint(op);
+    auto newDoublyStridedOp = nextStridedOp.createDoublyStridedOp(
+        rewriter, newTargetOffsets, newTargetSizes, newTargetStrides,
+        newSourceOffsets, newSourceSizes, newSourceStrides);
+    rewriter.replaceOp(nextStridedOp, newDoublyStridedOp.getOperation());
+
+    for (Operation *userOp : userOpsToBeErased) rewriter.eraseOp(userOp);
+    rewriter.eraseOp(op);
+    return success();
   }
 
   template <typename T>

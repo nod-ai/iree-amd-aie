@@ -50,22 +50,6 @@
 // CHECK:               aie.rule(31, 3, %[[VAL_14]])
 // CHECK:             }
 // CHECK:           }
-// CHECK:           aie.packet_flow(0) {
-// CHECK:             aie.packet_source<%[[TILE_2_2]], DMA : 0>
-// CHECK:             aie.packet_dest<%[[TILE_3_2]], DMA : 0>
-// CHECK:           }
-// CHECK:           aie.packet_flow(1) {
-// CHECK:             aie.packet_source<%[[TILE_2_2]], DMA : 0>
-// CHECK:             aie.packet_dest<%[[TILE_4_2]], DMA : 0>
-// CHECK:           }
-// CHECK:           aie.packet_flow(2) {
-// CHECK:             aie.packet_source<%[[TILE_2_2]], DMA : 0>
-// CHECK:             aie.packet_dest<%[[TILE_5_2]], DMA : 0>
-// CHECK:           }
-// CHECK:           aie.packet_flow(3) {
-// CHECK:             aie.packet_source<%[[TILE_2_2]], DMA : 0>
-// CHECK:             aie.packet_dest<%[[TILE_6_2]], DMA : 0>
-// CHECK:           }
 // CHECK:         }
 module @test_create_packet_flows6 {
  aie.device(xcvc1902) {

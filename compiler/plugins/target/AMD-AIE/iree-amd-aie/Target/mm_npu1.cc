@@ -262,6 +262,137 @@ void matmul_vectorized(const T_in *__restrict pA, unsigned offsetA,
   event1();
 }
 
+template <typename T_in, typename T_out, unsigned rowA, unsigned colA,
+          unsigned colB, unsigned r, unsigned s, unsigned t>
+static inline void matmul_vectorized_4x2(const T_in *__restrict pA,
+                                         unsigned offsetA,
+                                         const T_in *__restrict pB,
+                                         unsigned offsetB,
+                                         T_out *__restrict pC,
+                                         unsigned offsetC) {
+
+  using MMUL = aie::mmul<r, s, t, T_in, T_in, accauto>;
+
+  event0();
+
+  for (unsigned z = 0; z < rowA; z += 4)
+    chess_prepare_for_pipelining chess_loop_range(4, ) {
+      T_out *__restrict pC1 = pC + offsetC + (z * colB + 0) * MMUL::size_C;
+      T_out *__restrict pC2 = pC + offsetC + ((z + 1) * colB + 0) * MMUL::size_C;
+      T_out *__restrict pC3 = pC + offsetC + ((z + 2) * colB + 0) * MMUL::size_C;
+      T_out *__restrict pC4 = pC + offsetC + ((z + 3) * colB + 0) * MMUL::size_C;
+
+      for (unsigned j = 0; j < colB; j += 2)
+#ifdef OPT_PERF_ENABLED
+        chess_flatten_loop
+#endif
+        {
+          const T_in *__restrict pA1 = pA + offsetA + (z * colA + 0) * MMUL::size_A;
+          const T_in *__restrict pA2 = pA + offsetA + ((z + 1) * colA + 0) * MMUL::size_A;
+          const T_in *__restrict pA3 = pA + offsetA + ((z + 2) * colA + 0) * MMUL::size_A;
+          const T_in *__restrict pA4 = pA + offsetA + ((z + 3) * colA + 0) * MMUL::size_A;
+
+          const T_in *__restrict pB1 = pB + offsetB + (0 * colB + j) * MMUL::size_B;
+          const T_in *__restrict pB2 = pB + offsetB + (0 * colB + (j + 1)) * MMUL::size_B;
+
+          aie::vector<T_in, MMUL::size_A> A01 = aie::load_v<MMUL::size_A>(pA1);
+          pA1 += MMUL::size_A;
+          aie::vector<T_in, MMUL::size_A> A11 = aie::load_v<MMUL::size_A>(pA2);
+          pA2 += MMUL::size_A;
+          aie::vector<T_in, MMUL::size_A> A21 = aie::load_v<MMUL::size_A>(pA3);
+          pA3 += MMUL::size_A;
+          aie::vector<T_in, MMUL::size_A> A31 = aie::load_v<MMUL::size_A>(pA4);
+          pA4 += MMUL::size_A;
+          aie::vector<T_in, MMUL::size_B> B01 = aie::load_v<MMUL::size_B>(pB1);
+          pB1 += (MMUL::size_B * colB);
+          aie::vector<T_in, MMUL::size_B> B11 = aie::load_v<MMUL::size_B>(pB2);
+          pB2 += (MMUL::size_B * colB);
+
+          aie::vector<T_out, MMUL::size_C> acc_C00 =
+              aie::load_v<MMUL::size_C>(pC1);
+          aie::vector<T_out, MMUL::size_C> acc_C01 =
+              aie::load_v<MMUL::size_C>(pC1 + MMUL::size_C);
+          aie::vector<T_out, MMUL::size_C> acc_C10 =
+              aie::load_v<MMUL::size_C>(pC2);
+          aie::vector<T_out, MMUL::size_C> acc_C11 =
+              aie::load_v<MMUL::size_C>(pC2 + MMUL::size_C);
+          aie::vector<T_out, MMUL::size_C> acc_C20 =
+              aie::load_v<MMUL::size_C>(pC3);
+          aie::vector<T_out, MMUL::size_C> acc_C21 =
+              aie::load_v<MMUL::size_C>(pC3 + MMUL::size_C);
+          aie::vector<T_out, MMUL::size_C> acc_C30 =
+              aie::load_v<MMUL::size_C>(pC4);
+          aie::vector<T_out, MMUL::size_C> acc_C31 =
+              aie::load_v<MMUL::size_C>(pC4 + MMUL::size_C);
+
+          MMUL C00(acc_C00);
+          MMUL C01(acc_C01);
+          MMUL C10(acc_C10);
+          MMUL C11(acc_C11);
+          MMUL C20(acc_C20);
+          MMUL C21(acc_C21);
+          MMUL C30(acc_C30);
+          MMUL C31(acc_C31);
+
+          C00.mac(A01, B01);
+          C01.mac(A01, B11);
+          C10.mac(A11, B01);
+          C11.mac(A11, B11);
+          C20.mac(A21, B01);
+          C21.mac(A21, B11);
+          C30.mac(A31, B01);
+          C31.mac(A31, B11);
+
+          for (unsigned i = 1; i < colA; i += 1)
+#ifdef OPT_PERF_ENABLED
+            chess_flatten_loop
+#endif
+            {
+              A01 = aie::load_v<MMUL::size_A>(pA1);
+              pA1 += MMUL::size_A;
+              A11 = aie::load_v<MMUL::size_A>(pA2);
+              pA2 += MMUL::size_A;
+              A21 = aie::load_v<MMUL::size_A>(pA3);
+              pA3 += MMUL::size_A;
+              A31 = aie::load_v<MMUL::size_A>(pA4);
+              pA4 += MMUL::size_A;
+              B01 = aie::load_v<MMUL::size_B>(pB1);
+              pB1 += (MMUL::size_B * colB);
+              B11 = aie::load_v<MMUL::size_B>(pB2);
+              pB2 += (MMUL::size_B * colB);
+
+              C00.mac(A01, B01);
+              C01.mac(A01, B11);
+              C10.mac(A11, B01);
+              C11.mac(A11, B11);
+              C20.mac(A21, B01);
+              C21.mac(A21, B11);
+              C30.mac(A31, B01);
+              C31.mac(A31, B11);
+            }
+
+          aie::store_v(pC1, C00.template to_vector<T_out>());
+          pC1 += MMUL::size_C;
+          aie::store_v(pC1, C01.template to_vector<T_out>());
+          pC1 += MMUL::size_C;
+          aie::store_v(pC2, C10.template to_vector<T_out>());
+          pC2 += MMUL::size_C;
+          aie::store_v(pC2, C11.template to_vector<T_out>());
+          pC2 += MMUL::size_C;
+          aie::store_v(pC3, C20.template to_vector<T_out>());
+          pC3 += MMUL::size_C;
+          aie::store_v(pC3, C21.template to_vector<T_out>());
+          pC3 += MMUL::size_C;
+          aie::store_v(pC4, C30.template to_vector<T_out>());
+          pC4 += MMUL::size_C;
+          aie::store_v(pC4, C31.template to_vector<T_out>());
+          pC4 += MMUL::size_C;
+        }
+    }
+
+  event1();
+}
+
 template <unsigned m, unsigned k, unsigned n>
 void matmul_vectorized_4x8x4_bf16_bf16_bf16(const bfloat16 *__restrict pA,
                                        unsigned offsetA,
@@ -295,15 +426,35 @@ void matmul_vectorized_4x8x4_bf16_bf16_f32(const bfloat16 *__restrict pA,
       pA, offsetA, pB, offsetB, pC, offsetC);
 }
 
+template <unsigned m, unsigned k, unsigned n>
+void matmul_vectorized_4x8x8_i8_i8_i32(const int8 *__restrict pA,
+                                      unsigned offsetA,
+                                      const int8 *__restrict pB,
+                                      unsigned offsetB, int32 *__restrict pC,
+                                      unsigned offsetC) {
+  constexpr int r = 4;
+  constexpr int s = 8;
+  constexpr int t = 8;
+  static_assert(m % (4 * r) == 0); // 'm' dimension
+  static_assert(k % s == 0);       // 'k' dimension
+  static_assert(n % (2 * t) == 0); // 'n' dimension
+  return matmul_vectorized_4x2<int8, int32, m / r, k / s, n / t, r, s, t>(
+      pA, offsetA, pB, offsetB, pC, offsetC);
+}
+
 extern "C" {
 
 #define matmul_combos(X, M, N, K)                                     \
   X(bfloat16, bf16, bfloat16, bf16, bfloat16, bf16, M, N, K, 4, 8, 4) \
   X(bfloat16, bf16, bfloat16, bf16, float, f32, M, N, K, 4, 8, 4)
 
+#define matmul_combos_i8(X, M, N, K)                                  \
+  X(int8, i8, int8, i8, int32, i32, M, N, K, 4, 8, 8)
+
 #define zero_fill_combos(X, M, N)  \
   X(bfloat16, bf16, M, N, N/2)     \
-  X(float, f32, M, N, N/2)
+  X(float, f32, M, N, N/2)         \
+  X(int32, i32, M, N, N/2)
 
 #define matmul_vectorized_c_func(lhs_ctype_in, lhs_mlir_type_in,                                             \
                                  rhs_ctype_in, rhs_mlir_type_in,                                             \
@@ -324,6 +475,13 @@ matmul_combos(matmul_vectorized_c_func, 16, 16, 32)
 matmul_combos(matmul_vectorized_c_func, 32, 32, 32)
 matmul_combos(matmul_vectorized_c_func, 64, 64, 64)
 matmul_combos(matmul_vectorized_c_func, 32, 32, 64)
+matmul_combos_i8(matmul_vectorized_c_func, 16, 16, 32)
+matmul_combos_i8(matmul_vectorized_c_func, 32, 32, 8)
+matmul_combos_i8(matmul_vectorized_c_func, 32, 32, 16)
+matmul_combos_i8(matmul_vectorized_c_func, 32, 32, 32)
+matmul_combos_i8(matmul_vectorized_c_func, 32, 32, 64)
+matmul_combos_i8(matmul_vectorized_c_func, 64, 64, 64)
+matmul_combos_i8(matmul_vectorized_c_func, 64, 64, 128)
 
 zero_fill_combos(zero_vectorized_c_func, 16, 16)
 zero_fill_combos(zero_vectorized_c_func, 32, 32)

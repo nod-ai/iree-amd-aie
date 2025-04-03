@@ -28,7 +28,6 @@
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/IRMapping.h"
-#include "mlir/IR/Iterators.h"
 #include "mlir/Pass/PassManager.h"
 
 #define DEBUG_TYPE "iree-amdaie-lower-to-aie"
@@ -37,77 +36,79 @@ using namespace xilinx;
 
 namespace mlir::iree_compiler::AMDAIE {
 
-/// Utility to update the current common repetition count based on the new size
-/// and stride access pattern. If this new access pattern has a smaller
-/// repetition count, the common repetition count will be decreased.
-static FailureOr<size_t> getUpdatedRepetitionCount(
-    ArrayRef<OpFoldResult> sizes, ArrayRef<OpFoldResult> strides,
-    size_t curRepetitionCount) {
-  if (!strides.empty() && !sizes.empty() && isConstantIntValue(strides[0], 0)) {
-    int i = 0;
-    size_t repetitionCount{1};
-    while (i < strides.size() && isConstantIntValue(strides[i], 0)) {
-      std::optional<int64_t> maybeRepetitionCount =
-          getConstantIntValue(sizes[i]);
-      if (!maybeRepetitionCount) return failure();
-      assert(maybeRepetitionCount.value() >= 0 &&
-             "sizes should always be larger or equal to zero");
-      repetitionCount *= maybeRepetitionCount.value();
-      i += 1;
-    }
-    if (curRepetitionCount == 1) return repetitionCount;
-    size_t newRepetitionCount = std::min(repetitionCount, curRepetitionCount);
-    if (repetitionCount % newRepetitionCount != 0) return failure();
-    if (curRepetitionCount % newRepetitionCount != 0) return failure();
-    return newRepetitionCount;
+/// Compute the 'global' repetition count: the product over all dimensions with
+/// zero stride of the size of the dimension.
+///
+/// The case where sizes and strides are empty is a special case, and '0' is
+/// returned.
+static int64_t getRepetitionCount(ArrayRef<OpFoldResult> sizes,
+                                  ArrayRef<OpFoldResult> strides) {
+  assert(sizes.size() == strides.size() &&
+         "expected stride and size vectors of same size");
+  if (strides.empty()) return 0;
+  size_t repetitionCount{1};
+  for (uint32_t i = 0; i < strides.size(); ++i) {
+    if (!isConstantIntValue(strides[i], 0)) continue;
+    std::optional<int64_t> maybeSize = getConstantIntValue(sizes[i]);
+    assert(maybeSize.has_value() &&
+           "expected constant size in this zero stride dimension");
+    assert(maybeSize.value() >= 0 && "expected a non-negative size");
+    repetitionCount *= maybeSize.value();
   }
-  return curRepetitionCount;
+  return repetitionCount;
 }
 
 /// Utility to retrieve the common repetition count from all producers and
 /// consumers of a logical objectFifo.
 static FailureOr<size_t> getRepetitionCount(LogicalObjFifoOpInterface op) {
-  size_t repetitionCount = 1;
+  SmallVector<int64_t> repetitionCounts;
+  auto appendRepetitionCount = [&](ArrayRef<OpFoldResult> sizes,
+                                   ArrayRef<OpFoldResult> strides) {
+    size_t repetitionCount = getRepetitionCount(sizes, strides);
+    if (repetitionCount != 0) repetitionCounts.push_back(repetitionCount);
+  };
+
   for (Operation *userOp : op->getUsers()) {
-    if (auto connectionOp = dyn_cast<AMDAIE::ConnectionOp>(userOp);
-        connectionOp.getTarget() &&
-        dyn_cast_if_present<LogicalObjFifoOpInterface>(
-            connectionOp.getTarget().getDefiningOp()) == op) {
-      // Handle producer connection operations.
+    if (auto connectionOp = dyn_cast<AMDAIE::ConnectionOp>(userOp)) {
       FailureOr<AMDAIE::NpuCircularDmaCpyNdOp> maybeNpuDmaUserOp =
           connectionOp.getNpuCircularDmaCpyNdUser();
-      if (failed(maybeNpuDmaUserOp)) {
-        return connectionOp.emitOpError()
-               << "does not have a circular DMA op user";
+
+      if (failed(maybeNpuDmaUserOp)) continue;
+
+      AMDAIE::NpuCircularDmaCpyNdOp npuDma = maybeNpuDmaUserOp.value();
+
+      if (connectionOp.getTarget() &&
+          dyn_cast_if_present<LogicalObjFifoOpInterface>(
+              connectionOp.getTarget().getDefiningOp()) == op) {
+        appendRepetitionCount(npuDma.getTargetMixedSizes(),
+                              npuDma.getTargetMixedStrides());
       }
-      FailureOr<size_t> maybeNewRepetitionCount = getUpdatedRepetitionCount(
-          maybeNpuDmaUserOp->getTargetMixedSizes(),
-          maybeNpuDmaUserOp->getTargetMixedStrides(), repetitionCount);
-      if (failed(maybeNewRepetitionCount)) {
-        return maybeNpuDmaUserOp->emitOpError() << "no repetition count found";
+
+      if (connectionOp.getSource() &&
+          dyn_cast_if_present<LogicalObjFifoOpInterface>(
+              connectionOp.getSource().getDefiningOp()) == op) {
+        appendRepetitionCount(npuDma.getSourceMixedSizes(),
+                              npuDma.getSourceMixedStrides());
       }
-      repetitionCount = maybeNewRepetitionCount.value();
-    } else if (auto connectionOp = dyn_cast<AMDAIE::ConnectionOp>(userOp);
-               connectionOp.getSource() &&
-               dyn_cast_if_present<LogicalObjFifoOpInterface>(
-                   connectionOp.getSource().getDefiningOp()) == op) {
-      // Handle consumer connection operations.
-      FailureOr<AMDAIE::NpuCircularDmaCpyNdOp> maybeNpuDmaUserOp =
-          connectionOp.getNpuCircularDmaCpyNdUser();
-      if (failed(maybeNpuDmaUserOp)) {
-        return connectionOp.emitOpError()
-               << "does not have a circular DMA op user";
-      }
-      FailureOr<size_t> maybeNewRepetitionCount = getUpdatedRepetitionCount(
-          maybeNpuDmaUserOp->getSourceMixedSizes(),
-          maybeNpuDmaUserOp->getSourceMixedStrides(), repetitionCount);
-      if (failed(maybeNewRepetitionCount)) {
-        return maybeNpuDmaUserOp->emitOpError() << "no repetition count found";
-      }
-      repetitionCount = maybeNewRepetitionCount.value();
     }
   }
-  return repetitionCount;
+
+  // merge the repetition counts:
+  if (repetitionCounts.empty()) return 1;
+  int64_t combinedRepetitionCount =
+      *std::min_element(repetitionCounts.begin(), repetitionCounts.end());
+
+  // if any of the repetition counts are not divisible by the combined
+  // repetition count, that's a problem:
+  if (!std::all_of(
+          repetitionCounts.begin(), repetitionCounts.end(),
+          [&](size_t c) { return c % combinedRepetitionCount == 0; })) {
+    return op.emitOpError()
+           << " could not resolved a common repetition count based on the "
+              "individual repetition counts: "
+           << getArrayString<int64_t>(repetitionCounts);
+  }
+  return combinedRepetitionCount;
 }
 
 //===----------------------------------------------------------------------===//
@@ -340,18 +341,20 @@ LogicalResult AIEDeviceBuilder::foldDimsAndReturnAsStatic(
     function_ref<InFlightDiagnostic()> emitError) {
   if (failed(foldRepetitionCount(rewriter.getContext(), sizes, strides,
                                  repetitionCount))) {
-    return emitError() << "could not fold repetition counts";
+    return emitError() << "could not fold repetition counts from sizes: "
+                       << getConstantIntValuesString(sizes)
+                       << " strides: " << getConstantIntValuesString(strides)
+                       << " repetitionCount: " << repetitionCount << ".";
   }
   SmallVector<OpFoldResult> offsets(
       strides.size(), getAsIndexOpFoldResult(rewriter.getContext(), 0));
-  SmallVector<OpFoldResult> unitOffsets, unitSizes, unitStrides, newOffsets;
-  (void)foldUnitDims(rewriter.getContext(), offsets, sizes, strides,
-                     unitOffsets, unitSizes, unitStrides);
+  (void)foldUnitDims(rewriter.getContext(), offsets, sizes, strides);
+
   DmaDimConfig dmaDimConfig(deviceModel, memSpace);
-  SmallVector<int64_t> maxSizes = dmaDimConfig.getMaxSizes(unitOffsets.size());
+  SmallVector<int64_t> maxSizes = dmaDimConfig.getMaxSizes(offsets.size());
   SmallVector<OpFoldResult> linearOffsets, linearSizes, linearStrides;
   (void)foldLinearDims(
-      rewriter.getContext(), unitOffsets, unitSizes, unitStrides, linearOffsets,
+      rewriter.getContext(), offsets, sizes, strides, linearOffsets,
       linearSizes, linearStrides, [&](size_t idxFromEnd, int64_t size) {
         return idxFromEnd < maxSizes.size() &&
                size <= maxSizes[maxSizes.size() - idxFromEnd - 1];
@@ -420,6 +423,7 @@ LogicalResult AIEDeviceBuilder::coreFuncCallOpToAIE(
   StringRef fnName = oldCallOp.getCallee();
   auto fnDecl = dyn_cast_if_present<func::FuncOp>(
       SymbolTable::lookupSymbolIn(moduleOp, fnName));
+
   assert(fnDecl && "expected function declaration");
   // Check the mapper to see if we've already created a new function declaration
   // with the new function type. If not, create the same. We need to create a
@@ -434,7 +438,12 @@ LogicalResult AIEDeviceBuilder::coreFuncCallOpToAIE(
     SymbolTable::setSymbolVisibility(newFnDecl,
                                      SymbolTable::Visibility::Private);
     newFnDecl->setAttr("llvm.bareptr", rewriter.getBoolAttr(true));
+
     fnDecl.getBody().cloneInto(&(newFnDecl.getBody()), mapper);
+    if (ArrayAttr oldAttrs = fnDecl.getAllArgAttrs()) {
+      newFnDecl.setAllArgAttrs(oldAttrs);
+    }
+
     mapper.map(fnDecl.getOperation(), newFnDecl.getOperation());
     fnDecl = newFnDecl;
   }
@@ -442,6 +451,7 @@ LogicalResult AIEDeviceBuilder::coreFuncCallOpToAIE(
   auto newFnDecl = cast<func::FuncOp>(mapper.lookupOrDefault(fnDecl));
   rewriter.create<func::CallOp>(oldCallOp->getLoc(), newFnDecl, newArgs);
   toBeErased.push_back(oldCallOp);
+
   return success();
 }
 
@@ -555,9 +565,9 @@ LogicalResult AIEDeviceBuilder::bufferToAIE(AMDAIE::BufferOp bufferOp,
   return success();
 }
 
-/// Convert the `amdaie.connection` operation into `aie.flow` ops and DMA
-/// operations. Depending on the location of the source/target of the
-/// connection, different DMA ops are created:
+/// Convert the `amdaie.connection` operation into DMA operations. Depending on
+/// the location of the source/target of the connection, different DMA ops are
+/// created:
 /// 1. Source/target on a Shim tile: iterate through producer/consumer channels
 /// and create corresponding `aie.shim_dma_allocation` ops.
 /// 2. Source/target on MemTile: iterate through producer/consumer channels,
@@ -591,8 +601,17 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
   }
 
   std::optional<AMDAIE::FlowOp> maybeFlowOp = connectionOp.getFlowOp();
-  std::optional<uint8_t> packetId =
-      maybeFlowOp ? maybeFlowOp->getPacketId() : std::nullopt;
+  if (!maybeFlowOp) return connectionOp.emitOpError() << "has no flow op";
+
+  FailureOr<bool> isCtrlFlow = maybeFlowOp->isControlFlow();
+  if (failed(isCtrlFlow)) {
+    return connectionOp.emitOpError()
+           << "could not determine if flow is control";
+  }
+  // No DMA op needed for control flow.
+  if (isCtrlFlow.value()) return success();
+
+  std::optional<uint8_t> packetId = maybeFlowOp->getPacketId();
 
   FailureOr<AMDAIE::NpuCircularDmaCpyNdOp> maybeNpuDmaUserOp =
       connectionOp.getNpuCircularDmaCpyNdUser();

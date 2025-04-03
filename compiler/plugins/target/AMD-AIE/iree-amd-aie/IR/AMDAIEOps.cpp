@@ -152,9 +152,9 @@ namespace {
 LogicalResult foldMixed(SmallVectorImpl<OpFoldResult> &ofrs) {
   bool valuesChanged = false;
   for (OpFoldResult &ofr : ofrs) {
-    if (ofr.is<Attribute>()) continue;
+    if (isa<Attribute>(ofr)) continue;
     Attribute attr;
-    if (matchPattern(ofr.get<Value>(), m_Constant(&attr))) {
+    if (matchPattern(cast<Value>(ofr), m_Constant(&attr))) {
       ofr = attr;
       valuesChanged = true;
     }
@@ -501,13 +501,61 @@ ConnectionOp::getNpuCircularDmaCpyNdUser() {
   return npuDmaUsers[0];
 }
 
-std::optional<FlowOp> ConnectionOp::getFlowOp() {
-  return dyn_cast_if_present<AMDAIE::FlowOp>(getFlow().getDefiningOp());
+std::optional<AMDAIE::FlowOp> ConnectionOp::getFlowOp() {
+  Value flow = getFlow();
+  if (!flow) return std::nullopt;
+  return dyn_cast<AMDAIE::FlowOp>(flow.getDefiningOp());
 }
 
 //===----------------------------------------------------------------------===//
 // AMDAIE_FlowOp
 //===----------------------------------------------------------------------===//
+
+FailureOr<AMDAIE::ChannelOp> FlowOp::getSourceChannelOp() {
+  SmallVector<Value> sourceChannels = getSources();
+  int numSources = sourceChannels.size();
+  if (numSources == 0)
+    return emitOpError() << "with no source channel is unsupported";
+  if (numSources > 1)
+    return emitOpError() << "with multiple source channels is unsupported";
+  auto sourceChannelOp =
+      dyn_cast_if_present<AMDAIE::ChannelOp>(sourceChannels[0].getDefiningOp());
+  if (!sourceChannelOp)
+    return emitOpError() << "source should be an `amdaie.channel` op";
+  return sourceChannelOp;
+}
+
+FailureOr<SmallVector<AMDAIE::ChannelOp>> FlowOp::getTargetChannelOps() {
+  SmallVector<Value> targetChannels = getTargets();
+  SmallVector<AMDAIE::ChannelOp> targetChannelOps;
+  if (targetChannels.size() == 0)
+    return emitOpError() << "with no target channel is unsupported";
+  for (Value targetChannel : targetChannels) {
+    auto targetChannelOp =
+        dyn_cast_if_present<AMDAIE::ChannelOp>(targetChannel.getDefiningOp());
+    if (!targetChannelOp)
+      return emitOpError() << "target should be an `amdaie.channel` op";
+    targetChannelOps.push_back(targetChannelOp);
+  }
+  return targetChannelOps;
+}
+
+FailureOr<bool> FlowOp::isControlFlow() {
+  // Fetch source channel.
+  auto maybeSourceChannelOp = getSourceChannelOp();
+  if (failed(maybeSourceChannelOp)) return failure();
+  AMDAIE::ChannelOp sourceChannelOp = *maybeSourceChannelOp;
+  // Fetch target channels.
+  auto maybeTargetChannelOps = getTargetChannelOps();
+  if (failed(maybeTargetChannelOps)) return failure();
+  // Check source port type first.
+  if (sourceChannelOp.getPortType() == StrmSwPortType::CTRL) return true;
+  // Check if any target port type is `CTRL`.
+  return llvm::any_of(
+      *maybeTargetChannelOps, [](AMDAIE::ChannelOp targetChannelOp) {
+        return targetChannelOp.getPortType() == StrmSwPortType::CTRL;
+      });
+}
 
 LogicalResult FlowOp::verify() {
   if (getSources().size() > 1 && getTargets().size() > 1) {
@@ -1413,6 +1461,33 @@ SmallVector<AMDAIE::NpuDmaCpyNdOp> NpuDmaWaitOp::getDmaOps() {
     }
   }
   return dmaOps;
+}
+
+//===----------------------------------------------------------------------===//
+// AMDAIE_NpuControlPacketOp
+//===----------------------------------------------------------------------===//
+
+std::optional<ArrayRef<int32_t>>
+NpuControlPacketOp::getDataFromArrayOrResource() {
+  std::optional<mlir::Attribute> dataAttr = getData();
+  if (dataAttr.has_value()) {
+    if (auto denseArrayAttr = dyn_cast<DenseI32ArrayAttr>(dataAttr.value())) {
+      return denseArrayAttr.asArrayRef();
+    } else if (auto resourceAttr =
+                   dyn_cast<DenseI32ResourceElementsAttr>(dataAttr.value())) {
+      return resourceAttr.tryGetAsArrayRef();
+    }
+  }
+  return std::nullopt;
+}
+
+LogicalResult NpuControlPacketOp::verify() {
+  std::optional<ArrayRef<int32_t>> data = getDataFromArrayOrResource();
+  if (data.has_value() && data.value().size() != getLength()) {
+    return emitOpError()
+           << "data length does not match the specified `length` attribute";
+  }
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

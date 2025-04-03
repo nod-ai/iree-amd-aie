@@ -24,8 +24,8 @@ using namespace mlir;
 using namespace mlir::iree_compiler;
 using namespace mlir::iree_compiler::aievec;
 
+#include "aievec/AIEVecDialect.cpp.inc"
 #include "aievec/AIEVecEnums.cpp.inc"
-#include "aievec/AIEVecOpsDialect.cpp.inc"
 
 //===----------------------------------------------------------------------===//
 // AIEVecDialect

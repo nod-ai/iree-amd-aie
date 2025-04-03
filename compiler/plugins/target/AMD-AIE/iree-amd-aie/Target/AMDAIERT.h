@@ -13,9 +13,13 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
+FailureOr<uint64_t> getProgramSize(
+    const std::filesystem::path &elfPath, const AMDAIEDeviceModel &deviceModel,
+    function_ref<InFlightDiagnostic()> emitError);
+
 /// Load ELF files for all cores within the device operation.
 LogicalResult addAllAieElfs(const AMDAIEDeviceModel &deviceModel,
-                            xilinx::AIE::DeviceOp &device,
+                            xilinx::AIE::DeviceOp device,
                             const std::filesystem::path &workDirPath,
                             bool aieSim);
 
@@ -27,7 +31,8 @@ LogicalResult addAllCoreEnable(const AMDAIEDeviceModel &deviceModel,
 /// Utility function to reset all cores, initialize hardware locks,
 /// and configure all switchboxes.
 LogicalResult addInitConfig(const AMDAIEDeviceModel &deviceModel,
-                            xilinx::AIE::DeviceOp &device);
+                            xilinx::AIE::DeviceOp &device,
+                            bool configureSwitches = true);
 
 }  // namespace mlir::iree_compiler::AMDAIE
 

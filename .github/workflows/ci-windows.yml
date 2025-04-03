@@ -43,7 +43,7 @@ jobs:
         shell: powershell
     steps:
       - name: Set unified TZ
-        uses: szenius/set-timezone@v2.0
+        uses: szenius/set-timezone@1f9716b0f7120e344f0c62bb7b1ee98819aefd42 # v2.0
         with:
           # this is an arbitrary choice
           timezoneLinux: "Asia/Singapore"
@@ -66,7 +66,7 @@ jobs:
               submodule update --init --recursive --depth 1 --single-branch -j 10
 
       - name: Setup Cpp
-        uses: aminya/setup-cpp@v1
+        uses: aminya/setup-cpp@fc7a5158bd0209259b36b6cb8e06bac791057220 # v1.4.0
         with:
           compiler: llvm
           vcvarsall: true
@@ -74,7 +74,7 @@ jobs:
           ninja: true
           ccache: true
 
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@8d9ed9ac5c53483de85588cdf95a591a75ab9f55 # v5.5.0
         with:
           python-version: '3.11'
 
@@ -84,7 +84,7 @@ jobs:
           pip install pyyaml pybind11==2.13.6 nanobind==2.4.0
 
       - name: Enable cache
-        uses: actions/cache/restore@v3
+        uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: ${{ env.CACHE_DIR }}
           key: ${{ env.CACHE_KEY }}
@@ -114,7 +114,7 @@ jobs:
           tar cf iree-dist-windows.tar iree-install
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: ${{ !cancelled() }}
         with:
           name: windows_x86_64_llvm_packages
@@ -122,7 +122,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: ${{ !cancelled() }}
         with:
           name: windows_x86_64_iree_packages
@@ -130,7 +130,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Save cache
-        uses: actions/cache/save@v3
+        uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         if: ${{ !cancelled() && (inputs.force_ccache || github.event_name == 'push' && github.ref_name == 'main') }}
         with:
           path: ${{ env.CACHE_DIR }}
@@ -138,7 +138,7 @@ jobs:
 
       - name: Start tmate session
         if: ${{ (failure() && inputs.debug_with_tmate) || inputs.force_debug_with_tmate }}
-        uses: mxschmitt/action-tmate@v3.18
+        uses: mxschmitt/action-tmate@e5c7151931ca95bad1c6f4190c730ecf8c7dde48 # v3.19
         with:
           limit-access-to-actor: true
 
@@ -150,12 +150,12 @@ jobs:
       XILINX_XRT: "C:\\Xilinx\\XRT"
     steps:
       - name: "Checking out repository" # for test scripts
-        uses: actions/checkout@8f4b7f84864484a7bf31766abe9204da3cbe65b3 # v3.5.0
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           submodules: false # not required for testbench
 
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
         with:
           name: windows_x86_64_iree_packages
 
@@ -171,7 +171,7 @@ jobs:
         run: |
           python -m venv .venv
           .\.venv\Scripts\Activate.ps1
-          pip install -r tests\requirements.txt
+          pip install pyyaml pytest numpy
 
       - name: E2E correctness matmul test
         shell: bash
@@ -194,3 +194,10 @@ jobs:
             --target_device "npu1_4col" \
             --device_hal=xrt \
             --skip_tests "Performance"
+
+      - name: Clean up system temp directory
+        run: |
+            Get-ChildItem "$env:TEMP" -Recurse | Where-Object {
+              -not $_.PSIsContainer -and
+              ($_.LastWriteTime -lt (Get-Date).AddDays(-30))
+            } | Remove-Item -ErrorAction SilentlyContinue

@@ -271,6 +271,14 @@ struct AMDAIEDeviceModel {
     uint8_t minStrideBitWidth{32};
     /// The max packet id.
     uint8_t packetIdMaxIdx{0};
+    /// The max packet type.
+    uint8_t packetTypeMax{0};
+    /// Suppress Tlast error in control packets.
+    bool ctrlPktTlastErrorDisabled{false};
+
+    /// The bitwidth of the packet ID mask. This is currently buried in
+    /// aie-rt and not exposed for configuration.
+    uint8_t packetIdMaskWidth{5};
     /// Currently, the max arbiter/msel is hidden inside aie-rt.
     uint8_t streamSwitchCoreArbiterMax{0};
     uint8_t streamSwitchCoreMSelMax{0};
@@ -295,12 +303,72 @@ struct AMDAIEDeviceModel {
     /// https://www.xilinx.com/htmldocs/xilinx2024_1/aiengine_ml_intrinsics/intrinsics/group__intr__gpvectorop__shift.html
     uint32_t shiftOperandBits{512};
 
+    /// On aie2 (and very similar on aie2P), I have observed the
+    /// following lowerings at different load sized through peano:
+    ///
+    /// Number of bytes | vectorized | asm lines (aie2P) |
+    /// ----------------+------------+-------------------+
+    /// 16              | no         | 14 (vpush.hi.8)   |
+    /// 32              | yes        | 6 (1 vst)         |
+    /// 64              | yes        | 7 (2 vst)         |
+    /// 128             | yes        | 8 (4 vst)         |
+    /// 256 LLVM ERROR: unable to legalize instruction.. |
+    /// 512             | no         | ~3000 (st.s8)     |
+    /// 1024            | no         | ~6000 (st.s8)     |
+    /// ----------------+------------+-------------------+
+    ///
+    /// We choose the maximum number of bytes for which the store is vectorized:
+    ///
+    /// I suspect this is just 4x the `vectorLoadStoreAlignmentBits` value,
+    /// and peano hasn't considered the 8x case (??).
+    uint8_t preferredLoadBytes{128};
+
     AMDAIEDeviceConfig() = default;
+  };
+
+  /// Struct representing the format of the packet header, which includes the
+  /// following fields:
+  /// - [4:0] Stream ID,
+  /// - [11:5] Reserved,
+  /// - [14:12] Packet type,
+  /// - [15] Reserved,
+  /// - [20:16] Source row,
+  /// - [27:21] Source column,
+  /// - [30:28] Reserved,
+  /// - [31] Odd parity bit.
+  struct AMDAIEPacketHeaderFormat {
+    uint8_t streamIdShift{0};
+    uint8_t reservedShift0{5};
+    uint8_t packetTypeShift{12};
+    uint8_t reservedShift1{15};
+    uint8_t srcRowShift{16};
+    uint8_t srcColShift{21};
+    uint8_t reservedShift2{28};
+    uint8_t parityShift{31};
+  };
+
+  /// Struct representing the format of the control header, which
+  /// includes the following fields:
+  /// - [19:0] Address,
+  /// - [21:20] Beat, the number of 32-bit words data in the packet,
+  /// - [23:22] Operation,
+  /// - [28:24] Stream ID, for return packet,
+  /// - [30:29] Reserved,
+  /// - [31] Odd parity bit.
+  struct AMDAIEControlHeaderFormat {
+    uint8_t addressShift{0};
+    uint8_t beatShift{20};
+    uint8_t operationShift{22};
+    uint8_t streamIdShift{24};
+    uint8_t reservedShift{29};
+    uint8_t parityShift{31};
   };
 
   XAie_Config configPtr;
   XAie_DevInst devInst;
   AMDAIEDeviceConfig deviceConfig;
+  AMDAIEPacketHeaderFormat packetHeaderFormat;
+  AMDAIEControlHeaderFormat controlHeaderFormat;
 
   explicit AMDAIEDeviceModel(uint8_t aieGen, uint64_t baseAddr,
                              uint8_t colShift, uint8_t rowShift,
@@ -365,6 +433,25 @@ struct AMDAIEDeviceModel {
   bool hasLegalMemAffinity(uint8_t coreCol, uint8_t coreRow, uint8_t memCol,
                            uint8_t memRow) const;
 
+  /// Construct a packet header from the specified fields.
+  FailureOr<uint32_t> getPacketHeader(uint32_t packetId, uint32_t packetType,
+                                      uint32_t srcRow, uint32_t srcCol) const;
+
+  /// Construct a control header from the specified fields.
+  FailureOr<uint32_t> getControlHeader(uint32_t address, uint32_t beat,
+                                       uint32_t opcode,
+                                       uint32_t streamId) const;
+
+  /// Get the maximum for the `address` field in the control packet header.
+  uint32_t getCtrlPktMaxAddress() const;
+  /// Gets the maximum data length (in beats) of a control packet.
+  /// The data length `i` is encoded as `i - 1` in the control packet header.
+  /// For example, if 3 bits are allocated for the `length` field, the maximum
+  /// length is `2^3 = 8` beats, not 7.
+  uint32_t getCtrlPktMaxLength() const;
+  /// Get the maximum for the `opcode` field in the control packet header.
+  uint32_t getCtrlPktMaxOpcode() const;
+
   uint32_t getMemInternalBaseAddress() const;
   uint32_t getMemSouthBaseAddress() const;
   uint32_t getMemWestBaseAddress() const;
@@ -387,10 +474,67 @@ struct AMDAIEDeviceModel {
                              uint8_t srcChan, StrmSwPortType dstBundle,
                              uint8_t dstChan) const;
 
+  /// Maps an MM2S (shim DMA or NOC) port to its corresponding special shim mux
+  /// port.
+  static const llvm::SmallDenseMap<std::pair<StrmSwPortType, uint8_t>,
+                                   std::pair<StrmSwPortType, uint8_t>>
+      mm2sDmaNocToSpecialShimPortMap;
+
+  /// Maps an S2MM (shim DMA or NOC) port to its corresponding special shim mux
+  /// port.
+  static const llvm::SmallDenseMap<std::pair<StrmSwPortType, uint8_t>,
+                                   std::pair<StrmSwPortType, uint8_t>>
+      s2mmDmaNocToSpecialShimPortMap;
+
+  /// Retrieves the speicial shim mux port that connects a given MM2S or S2MM
+  /// DMA/NOC port. The shim DMA and NOC ports must go through
+  /// this special shim mux connection before being further routed to the rest
+  /// of the device.
+  std::optional<std::pair<StrmSwPortType, uint8_t>>
+  getShimMuxPortMappingForDmaOrNoc(StrmSwPortType port, uint8_t channel,
+                                   DMAChannelDir direction) const;
+
+  /// Retrieves the original DMA port that corresponds to a given
+  /// shim mux port. This performs the reverse lookup for
+  /// `getShimMuxPortMappingForDmaOrNoc()`.
+  std::optional<std::pair<StrmSwPortType, uint8_t>>
+  getDmaFromShimMuxPortMapping(StrmSwPortType port, uint8_t channel,
+                               DMAChannelDir direction) const;
+
+  /// The returned string is used by `chess` to identify the device.
+  std::optional<std::string> getNPUVersionString() const;
+  /// The returned string is used by `peano` to identify the device.
+  std::optional<std::string> getTargetArchString() const;
+
   uint32_t getColumnShift() const;
   uint32_t getRowShift() const;
 
+  // Return the magic location in the ELF files containing the size of the
+  // program in bytes. The location is returned as a byte offset and number of
+  // bytes being used to store the number. NOTE: this could potentially change
+  // at any moment in the future.
+  std::pair<uint32_t, uint32_t> getElfPmSizeLocationAndNumBytes() const {
+    return {72, 4};
+  }
+
+  /// Extract the column from a register address.
+  uint32_t getColumnFromAddress(uint32_t address) const;
+  /// Extract the row from a register address.
+  uint32_t getRowFromAddress(uint32_t address) const;
+  /// Extract the offset from a register address.
+  uint32_t getOffsetFromAddress(uint32_t address) const;
+
+  /// Get the maximum for the `packetId` field in the packet header.
   uint8_t getPacketIdMaxIdx() const;
+  /// Get the maximum for the `packetType` field in the packet header.
+  uint8_t getpacketTypeMax() const;
+  /// Get the bitwidth of the packet id mask.
+  uint8_t getPacketIdMaskWidth() const;
+  /// Get the maximum number of packet rule slots available for each slave port.
+  uint8_t getNumPacketRuleSlots(uint8_t col, uint8_t row) const;
+  /// Get the boolean flag indicating whether the device has the control packet
+  /// TLAST missing error disabled.
+  bool getCtrlPktTlastErrorDisabled() const;
 
   uint8_t getStreamSwitchArbiterMax(uint8_t col, uint8_t row) const;
   uint8_t getStreamSwitchMSelMax(uint8_t col, uint8_t row) const;
@@ -408,6 +552,10 @@ struct AMDAIEDeviceModel {
 
   uint32_t getShiftOperandBits() const { return deviceConfig.shiftOperandBits; }
 
+  uint32_t getPreferredLoadBytes() const {
+    return deviceConfig.preferredLoadBytes;
+  }
+
   /// Return a map from channels to valid BD ids for the requested tile type.
   /// TODO(jornt): find these ranges in the device model.
   DenseMap<uint32_t, SmallVector<uint32_t>> getChannelToValidBdIds(
@@ -423,11 +571,18 @@ struct AMDAIEDeviceModel {
 
   FailureOr<std::array<uint32_t, 3>> getAIEMatmulInstructionSize(
       Type elTypeLhs, Type elTypeRhs, Type elTypeAcc) const;
+
+  uint32_t getNumBanks(int col, int row) const {
+    return isMemTile(col, row) ? 8 : 4;
+  }
 };
 
 struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device);
 StrmSwPortType getConnectingBundle(StrmSwPortType dir);
 bool isNPUDevice(mlir::iree_compiler::AMDAIE::AMDAIEDevice d);
+
+/// Given a 32-bit word, set its most significant bit for odd parity.
+void setOddParityBit(uint32_t &word);
 
 /// ============================= BEGIN ==================================
 /// ================== stringification utils =============================

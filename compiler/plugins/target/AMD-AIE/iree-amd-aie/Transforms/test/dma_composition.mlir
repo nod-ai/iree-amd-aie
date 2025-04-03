@@ -143,3 +143,30 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
     return
   }
 }
+
+// -----
+
+// TODO(newling) add another canonicalizer to make
+// (1) bring stride 0 to the first (outermost) dimension
+// (2) for size-1 dimensions, make the stride constant if possible,
+// with these the source side would be
+// [0, %arg0, %arg1, %arg2] [2, 1, 1, 1000] [0, 10, 5, 1]
+// CHECK-LABEL: @with_different_indices_sliced
+// CHECK:       amdaie.npu.circular_dma_cpy_nd
+// CHECK-SAME:    [0, 0] [2, 1000] [0, 1]
+// CHECK-SAME:    [%arg0, 0, 5, %arg2] [1, 2, 1, 1000] [10, 0, %arg1, 1])
+// CHECK-NOT:   amdaie.npu.circular_dma_cpy_nd
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @with_different_indices_sliced(%arg0: index, %arg1 : index, %arg2 : index, %arg3: !amdaie.logicalobjectfifo<memref<bf16>>) {
+    amdaie.workgroup {
+      %0 = amdaie.connection(%arg3, %arg3) : (!amdaie.logicalobjectfifo<memref<bf16>>, !amdaie.logicalobjectfifo<memref<bf16>>)
+      amdaie.controlcode {
+        %1 = amdaie.npu.circular_dma_cpy_nd %0([0] [1000] [1], [%arg0, 0, 5, %arg2] [1, 1, 1, 1000] [10, 10, %arg1, 1])
+        %2 = amdaie.npu.circular_dma_cpy_nd %0([0] [1000] [1], [0, %arg0, 5, %arg2] [1, 1, 1, 1000] [10, 10, %arg1, 1])
+        amdaie.end
+      }
+    }
+    return
+  }
+}

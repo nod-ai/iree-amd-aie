@@ -507,8 +507,12 @@ void AMDAIEDistributeCoresAndObjectFifosPass::runOnOperation() {
   LLVM_DEBUG(llvm::dbgs() << "Module after insertLogicalObjectFifoAccess: \n"
                           << moduleOp << "\n");
 
-  // Assign tile locations to logical objectfifos on local (L1) memory.
-  if (failed(assignLocalTiles(rewriter, moduleOp))) {
+  DenseMap<Operation *, DenseSet<Operation *>> uniqueL3L2Pair;
+  // Assign tile locations to all logical objectfifos.
+  // TODO(jornt): This is needed inside this pass to make the output stable with
+  // respect to cse. When that gets resolved, we can avoid convoluting this
+  // pass.
+  if (failed(assignTiles(rewriter, moduleOp, deviceModel, uniqueL3L2Pair))) {
     moduleOp.emitOpError() << "local tile assignment failed";
     return signalPassFailure();
   }
@@ -517,20 +521,7 @@ void AMDAIEDistributeCoresAndObjectFifosPass::runOnOperation() {
     return signalPassFailure();
   }
 
-  LLVM_DEBUG(llvm::dbgs() << "Module after assignLocalTiles: \n"
-                          << moduleOp << "\n");
-
-  // Assign tile locations to logical objectfifos on non-local (not L1) memory.
-  if (failed(assignNonLocalTiles(rewriter, moduleOp, deviceModel))) {
-    moduleOp.emitOpError() << "local tile assignment failed";
-    return signalPassFailure();
-  }
-
-  if (failed(verify(moduleOp, true))) {
-    return signalPassFailure();
-  }
-
-  LLVM_DEBUG(llvm::dbgs() << "Module after assignNonLocalTiles: \n"
+  LLVM_DEBUG(llvm::dbgs() << "Module after assignTiles: \n"
                           << moduleOp << "\n");
 }
 

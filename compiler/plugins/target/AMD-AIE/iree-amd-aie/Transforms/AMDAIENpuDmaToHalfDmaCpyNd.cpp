@@ -55,7 +55,11 @@ struct NpuDmaToHalfDmaCpyNdConverter final
     // Convert target half.
     Value target =
         dmaOp.getTarget() ? dmaOp.getTarget() : connectionOp.getTarget();
-    if (connectionOp.getTargetChannels().size() != 1)
+    // Broadcasting is allowed only when the NPU DMA operation does not specify
+    // a target LogicalObjectFifo, meaning the data flow is directed into the
+    // AIE array. Otherwise, if a target is specified, ensure there is exactly
+    // one target channel.
+    if (dmaOp.getTarget() && connectionOp.getTargetChannels().size() != 1)
       return connectionOp.emitOpError() << "expected a single target channel";
     auto targetChannelOp = dyn_cast<AMDAIE::ChannelOp>(
         connectionOp.getTargetChannels()[0].getDefiningOp());

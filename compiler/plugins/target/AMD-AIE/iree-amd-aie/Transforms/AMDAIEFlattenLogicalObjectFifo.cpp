@@ -45,8 +45,9 @@ void AMDAIEFlattenLogicalObjectFifoPass::runOnOperation() {
     rewriter.setInsertionPoint(op);
     auto newLogicalObjectFifo =
         rewriter.create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-            rewriter.getUnknownLoc(), LogicalObjectFifoType::get(newType),
-            op.getMemref(), op.getTiles());
+            rewriter.getUnknownLoc(),
+            LogicalObjectFifoType::get(newType, op.getDepth()), op.getMemref(),
+            op.getTiles());
     rewriter.replaceOp(op, newLogicalObjectFifo);
 
     // Replace the access op and insert `memref.reinterpret_cast` to get to the
@@ -60,7 +61,7 @@ void AMDAIEFlattenLogicalObjectFifoPass::runOnOperation() {
             rewriter.getUnknownLoc(), newLogicalObjectFifo.getOutput(),
             accessOp.getAccessType());
 
-        auto [strides, baseOffset] = getStridesAndOffset(oldType);
+        auto [strides, baseOffset] = oldType.getStridesAndOffset();
         auto reinterpretOp = rewriter.create<memref::ReinterpretCastOp>(
             rewriter.getUnknownLoc(), oldType, newAccessOp.getOutput(),
             baseOffset, oldType.getShape(), strides);

@@ -10,6 +10,9 @@
 include "iree-amd-aie/IR/AMDAIEDialect.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/EnumAttr.td"
+include "mlir/IR/BuiltinAttributes.td"
+
+def AMDAIE_AnyCtrlPktDataType : AnyAttrOf<[DenseI32ArrayAttr, Builtin_DenseResourceElementsAttr]>;
 
 def AMDAIE_ConnectionType: I32EnumAttr<"ConnectionType",
   "The connection type to be used for a connection op.",
@@ -68,6 +71,7 @@ def MemoryAccess: I32EnumAttr<"MemoryAccess",
   let cppNamespace = "mlir::iree_compiler::AMDAIE";
 }
 
+def AMDAIE_MemSpace_None : I32EnumAttrCase<"None", 3>;
 def AMDAIE_MemSpace_Global : I32EnumAttrCase<"Global", 0>;
 def AMDAIE_MemSpace_Shared : I32EnumAttrCase<"Shared", 1>;
 def AMDAIE_MemSpace_Local : I32EnumAttrCase<"Local", 2>;
@@ -76,6 +80,7 @@ def AMDAIE_MemSpaceAttr: I32EnumAttr<"AMDAIEMemSpace", "AIE Memory Space",
     AMDAIE_MemSpace_Global,
     AMDAIE_MemSpace_Shared,
     AMDAIE_MemSpace_Local,
+    AMDAIE_MemSpace_None,
   ]> {
 
   let cppNamespace = "mlir::iree_compiler::AMDAIE";

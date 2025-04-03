@@ -7,196 +7,263 @@
 #include "AMDAIEDmaUtils.h"
 
 #include "AMDAIEUtils.h"
+#include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 #include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
+
+#define DEBUG_TYPE "iree-amdaie-dma-utils"
 
 namespace mlir::iree_compiler::AMDAIE {
 
-static bool isEqualConstantIntOrValueArrayFromIndices(
-    ArrayRef<OpFoldResult> ofrsA, ArrayRef<OpFoldResult> ofrsB,
-    size_t indexA = 0, size_t indexB = 0) {
-  if ((ofrsA.size() - indexA) != (ofrsB.size() - indexB)) return false;
-  return isEqualConstantIntOrValueArray(ofrsA.drop_front(indexA),
-                                        ofrsB.drop_front(indexB));
+// Functions in namespace `detail` are not intended to be used outside of this
+// file, but are exposed in the .h file for testing purposes.
+namespace detail {
+
+void matchStridesOfUnitDims(MLIRContext *ctx, ArrayRef<OpFoldResult> sizesX,
+                            SmallVector<OpFoldResult> &stridesX,
+                            SmallVector<OpFoldResult> &offsetsX,
+                            ArrayRef<OpFoldResult> stridesY) {
+  for (int i = 0; i < sizesX.size(); ++i) {
+    if (stridesX[i] != stridesY[i]) {
+      std::optional<int64_t> maybeIntSize = getConstantIntValue(sizesX[i]);
+      if (maybeIntSize.has_value() && maybeIntSize.value() == 1) {
+        std::optional<int64_t> maybeOffset = getConstantIntValue(offsetsX[i]);
+        std::optional<int64_t> maybeStrideX = getConstantIntValue(stridesX[i]);
+        std::optional<int64_t> maybeStrideY = getConstantIntValue(stridesY[i]);
+        if (maybeOffset.has_value() && maybeStrideX.has_value() &&
+            maybeStrideY.has_value()) {
+          int64_t offset = maybeOffset.value();
+          int64_t strideX = maybeStrideX.value();
+          int64_t strideY = maybeStrideY.value();
+          int64_t numerator = offset * strideX;
+          int64_t denominator = strideY;
+          if (numerator % denominator == 0) {
+            offsetsX[i] = getAsIndexOpFoldResult(ctx, numerator / denominator);
+            stridesX[i] = stridesY[i];
+          }
+        }
+      }
+    }
+  }
 }
 
-bool areAccessPatternsEqualFromIndices(ArrayRef<OpFoldResult> offsetsA,
-                                       ArrayRef<OpFoldResult> sizesA,
-                                       ArrayRef<OpFoldResult> stridesA,
-                                       ArrayRef<OpFoldResult> offsetsB,
-                                       ArrayRef<OpFoldResult> sizesB,
-                                       ArrayRef<OpFoldResult> stridesB,
-                                       size_t indexA, size_t indexB) {
-  return isEqualConstantIntOrValueArrayFromIndices(offsetsA, offsetsB, indexA,
-                                                   indexB) &&
-         isEqualConstantIntOrValueArrayFromIndices(sizesA, sizesB, indexA,
-                                                   indexB) &&
-         isEqualConstantIntOrValueArrayFromIndices(stridesA, stridesB, indexA,
-                                                   indexB);
+std::optional<int64_t> getGlobalOffsetDifference(
+    ArrayRef<OpFoldResult> offsetsX, ArrayRef<OpFoldResult> stridesX,
+    ArrayRef<OpFoldResult> offsetsY, ArrayRef<OpFoldResult> stridesY) {
+  assert(offsetsX.size() == stridesX.size() &&
+         "expected same number of offsets and strides for X");
+  assert(offsetsY.size() == stridesY.size() &&
+         "expected same number of offsets and strides for Y");
+  assert(offsetsX.size() == offsetsY.size() &&
+         "expected same number of offsets for X and Y");
+
+  // In this function we're computing the constant globalOffsetDifference:
+  //
+  //    sum_{d} offsetsA[d] * stridesA[d]  -
+  //    sum_{d} offsetsB[d] * stridesB[d] .
+  //
+  // If all values in offsetsA, offsetsB, stridesA, stridesB are constant,
+  // this is straightforward. If not, we need all the non-constant terms to
+  // cancel. In the maps below, we store the terms with non-constants, and then
+  // check at the end of this function that they've all cancelled. In
+  // `valToConst` we store terms where one of offset and stride is constant, and
+  // the other is not. In `valPairs`, we keep track of all the terms where
+  // neither the stride nor the offset is constant.
+  DenseMap<Value, int64_t> valToConst;
+  auto incrementValToConst = [&](Value v, int64_t signedStride) {
+    auto iter = valToConst.find(v);
+    if (iter == valToConst.end()) {
+      valToConst[v] = signedStride;
+    } else {
+      iter->second += signedStride;
+    }
+  };
+
+  DenseMap<std::pair<Value, Value>, int64_t> valPairs;
+  auto incrementValPairs = [&](Value v0, Value v1, int64_t sign) {
+    std::pair<Value, Value> p0(v0, v1);
+    auto iter0 = valPairs.find(p0);
+    if (iter0 != valPairs.end()) {
+      iter0->second += sign;
+      return;
+    }
+    std::pair<Value, Value> p1(v1, v0);
+    auto iter1 = valPairs.find(p1);
+    if (iter1 != valPairs.end()) {
+      iter1->second += sign;
+      return;
+    }
+    valPairs.insert({p0, sign});
+  };
+
+  int64_t globalOffsetDifference{0};
+
+  // Add the term `offset * stride * sign` to the global offset different,
+  // triaging the different combinations of constant/non-constant.
+  auto updateGlobalOffsetDifference = [&](OpFoldResult offset,
+                                          OpFoldResult stride, int64_t sign) {
+    std::optional<int64_t> cOffset = getConstantIntValue(offset);
+    std::optional<int64_t> cStride = getConstantIntValue(stride);
+    Value vOffset = dyn_cast<Value>(offset);
+    Value vStride = dyn_cast<Value>(stride);
+
+    if (!cOffset.has_value() && !cStride.has_value()) {
+      incrementValPairs(vOffset, vStride, sign);
+    } else if (cOffset.has_value() && cStride.has_value()) {
+      globalOffsetDifference += sign * cOffset.value() * cStride.value();
+    } else if (cOffset.has_value()) {
+      incrementValToConst(cast<Value>(stride), sign * cOffset.value());
+    } else if (cStride.has_value()) {
+      incrementValToConst(cast<Value>(offset), sign * cStride.value());
+    }
+  };
+
+  for (uint32_t i = 0; i < offsetsX.size(); ++i) {
+    updateGlobalOffsetDifference(offsetsX[i], stridesX[i], 1);
+    updateGlobalOffsetDifference(offsetsY[i], stridesY[i], -1);
+  }
+
+  // The cases where the non-constant terms did not all cancel, and so the
+  // global offset difference could not be determined to be constant.
+  if (llvm::any_of(valToConst, [](auto x) { return x.second != 0; })) {
+    return std::nullopt;
+  }
+  if (llvm::any_of(valPairs, [](auto x) { return x.second != 0; })) {
+    return std::nullopt;
+  }
+
+  return globalOffsetDifference;
 }
 
-bool areAccessPatternsCombinable(const SmallVector<OpFoldResult> &offsetsA,
-                                 const SmallVector<OpFoldResult> &sizesA,
-                                 const SmallVector<OpFoldResult> &stridesA,
-                                 const SmallVector<OpFoldResult> &offsetsB,
-                                 const SmallVector<OpFoldResult> &sizesB,
-                                 const SmallVector<OpFoldResult> &stridesB,
-                                 size_t maxNbDims) {
-  assert(offsetsA.size() == sizesA.size() &&
-         "expected same number of source offsets and sizes");
-  assert(offsetsA.size() == stridesA.size() &&
-         "expected same number of source offsets and strides");
-  assert(offsetsB.size() == sizesB.size() &&
-         "expected same number of source offsets and sizes");
-  assert(offsetsB.size() == stridesB.size() &&
-         "expected same number of source offsets and strides");
-  if (std::abs((ssize_t)offsetsA.size() - (ssize_t)offsetsB.size()) > 1)
-    return false;
-  // Empty access patterns are always combinable as they effectively mean:
-  // 'don't perform any or change the addressing'.
-  if (offsetsA.empty() && offsetsB.empty()) return true;
-  // In case both access patterns have the same number of dimension, a new
-  // dimension will need to be added, so fail if there aren't enough
-  // dimensions.
-  if (offsetsA.size() == offsetsB.size() && offsetsA.size() + 1 > maxNbDims)
-    return false;
+int64_t findFactorResultingInSmallerSize(int64_t size, int64_t maxSize) {
+  assert(size >= 0 && "size must be non-negative");
+  assert(maxSize >= 0 && "maxSize must be non-negative");
+  if (size == 0 || maxSize == 0 || size == 1 || maxSize == 1) return 1;
+  if (size <= maxSize) return 1;
+  for (int64_t i = 2; i <= size / 2; i++) {
+    if (size % i == 0 && size / i <= maxSize) return i;
+  }
+  return size;
+}
 
-  // Equality of the last N elements of the access patterns of A and B with N =
-  // min(sizeA, sizeB) results in some simple cases in which the access
-  // patterns are combinable. Note that abs(sizeB - sizeA) should <= 1 and this
-  // is checked for earlier, so just asserted here.
-  assert(std::abs((ssize_t)offsetsB.size() - (ssize_t)offsetsA.size()) <= 1 &&
-         "The distance between the indices should be smaller or equal to one.");
-  size_t indexA = offsetsA.size() > offsetsB.size() ? 1 : 0;
-  size_t indexB = offsetsB.size() > offsetsA.size() ? 1 : 0;
-  if (areAccessPatternsEqualFromIndices(offsetsA, sizesA, stridesA, offsetsB,
-                                        sizesB, stridesB, indexA, indexB)) {
-    if (offsetsA.size() == offsetsB.size()) {
+}  // namespace detail
+
+namespace {
+
+/// Consider 2 access patterns X and Y, where the access pattern for Y has one
+/// more dimension than the access pattern for X. This function inserts a
+/// singleton dimension into the access pattern for X, at the first dimension
+/// from the back where the access patterns differ.
+///
+/// For example if X and Y have access patterns
+///
+/// X:  (offset: [0, 0]    sizes: [2, 8]    strides: [8, 1])
+/// Y:  (offset: [0, 0, 0] sizes: [2, 4, 8] strides: [8, 16, 1])
+///
+/// then X is transformed into
+///
+/// X:  (offset: [0, 0, 0] sizes: [2, 1, 8] strides: [8, 16, 1])
+void insertUnitDimension(MLIRContext *ctx, SmallVector<OpFoldResult> &offsetsX,
+                         SmallVector<OpFoldResult> &sizesX,
+                         SmallVector<OpFoldResult> &stridesX,
+                         ArrayRef<OpFoldResult> stridesY) {
+  assert(stridesY.size() == stridesX.size() + 1 &&
+         "expected Y's rank to be 1 greater than X's");
+  uint32_t index = stridesX.size();
+  while (index > 0) {
+    if (stridesY[index] != stridesX[index - 1]) break;
+    index--;
+  }
+  OpFoldResult zeroFoldResult = getAsIndexOpFoldResult(ctx, 0);
+  OpFoldResult oneFoldResult = getAsIndexOpFoldResult(ctx, 1);
+  sizesX.insert(sizesX.begin() + index, oneFoldResult);
+  stridesX.insert(stridesX.begin() + index, stridesY[index]);
+  offsetsX.insert(offsetsX.begin() + index, zeroFoldResult);
+}
+
+/// If access pattern `A` followed by `B` can be merged into a single access
+/// pattern, merge `B` into `A` and return true. Otherwise return false.
+bool mergeInFirst(MLIRContext *ctx, SmallVector<OpFoldResult> &offsetsA,
+                  SmallVector<OpFoldResult> &sizesA,
+                  SmallVector<OpFoldResult> &stridesA,
+                  SmallVector<OpFoldResult> offsetsB,
+                  SmallVector<OpFoldResult> sizesB,
+                  SmallVector<OpFoldResult> stridesB) {
+  // Two rank-0 patterns merge into a single rank-0 pattern.
+  if (offsetsA.size() == 0 && offsetsB.size() == 0) return true;
+
+  // Local canonicalization to improve opportunities for merging:
+  if (sizesA.size() + 1 == sizesB.size()) {
+    insertUnitDimension(ctx, offsetsA, sizesA, stridesA, stridesB);
+  } else if (sizesB.size() + 1 == sizesA.size()) {
+    insertUnitDimension(ctx, offsetsB, sizesB, stridesB, stridesA);
+  } else if (sizesA.size() != sizesB.size()) {
+    // If the ranks of the accesses differ by more than 1, it is impossible
+    // to merge them (unless the higher ranked access pattern has 2+ leading
+    // dimensions of size 1, which is being ignored for now).
+    return false;
+  }
+  detail::matchStridesOfUnitDims(ctx, sizesA, stridesA, offsetsA, stridesB);
+  detail::matchStridesOfUnitDims(ctx, sizesB, stridesB, offsetsB, stridesA);
+
+  // Check that strides and sizes are compatible for merging.
+  if (stridesA != stridesB) return false;
+  if (ArrayRef<OpFoldResult>(sizesA).drop_front() !=
+      ArrayRef<OpFoldResult>(sizesB).drop_front()) {
+    return false;
+  }
+
+  std::optional<int64_t> maybeOffsetDifference =
+      detail::getGlobalOffsetDifference(offsetsB, stridesB, offsetsA, stridesA);
+
+  // The case where the global offset difference is not constant is difficult to
+  // handle, unless we can prove that it is non-negative. Leaving this edge case
+  // for future work.
+  if (!maybeOffsetDifference.has_value()) return false;
+  int64_t offsetDifference = maybeOffsetDifference.value();
+
+  // The special case where the global offset difference exactly matches the
+  // pattern of A, in this case no new dimension is needed when merging the
+  // patterns.
+  std::optional<int64_t> cStrideA0 = getConstantIntValue(stridesA[0]);
+  std::optional<int64_t> cSizeA0 = getConstantIntValue(sizesA[0]);
+  std::optional<int64_t> cSizeB0 = getConstantIntValue(sizesB[0]);
+  if (cStrideA0 && cSizeA0 && cSizeB0) {
+    int64_t extended = cSizeA0.value() * cStrideA0.value();
+    int64_t sum = cSizeA0.value() + cSizeB0.value();
+    if (offsetDifference == extended) {
+      sizesA[0] = getAsIndexOpFoldResult(ctx, sum);
       return true;
-    } else if (offsetsA.size() > offsetsB.size()) {
-      // The access pattern A has N repetitions of access pattern B, so they can
-      // be combined together into N+1 repetitions.
-      return isConstantIntValue(stridesA[0], 0);
-    } else {
-      // offsetsB.size() > offsetsA.size()
-      // The access pattern B has N repetitions of access pattern A, so they can
-      // be combined together into N+1 repetitions.
-      if (isConstantIntValue(stridesB[0], 0)) return true;
-      // The access pattern of B is the same as the access pattern of A, but at
-      // a different offset. They can be combined by reducing the offset of B to
-      // zero.
-      if (isConstantIntValue(offsetsB[0], 1)) return true;
-      return false;
     }
   }
 
-  for (auto &&[strideA, strideB] :
-       llvm::zip(llvm::reverse(stridesA), llvm::reverse(stridesB))) {
-    std::optional<int64_t> maybeStrideA = getConstantIntValue(strideA);
-    std::optional<int64_t> maybeStrideB = getConstantIntValue(strideB);
-    // Handle static and constant value with same int value.
-    if (maybeStrideA && maybeStrideB &&
-        maybeStrideA.value() == maybeStrideB.value()) {
-      continue;
-    }
-    if (strideA != strideB) return false;
+  // This is the case where the 2 patterns don't connect seamlessly, and we need
+  // to introduce a new dimension to contain a new offset.
+  if (sizesA[0] == sizesB[0] && (offsetDifference >= 0)) {
+    int32_t index = 0;
+    std::optional<int64_t> cSizeA0 = getConstantIntValue(sizesA[0]);
+    if (cSizeA0.has_value() && cSizeA0.value() == 1) ++index;
+    OpFoldResult of = getAsIndexOpFoldResult(ctx, offsetDifference);
+    sizesA.insert(sizesA.begin() + index, getAsIndexOpFoldResult(ctx, 2));
+    stridesA.insert(stridesA.begin() + index, of);
+    offsetsA.insert(offsetsA.begin() + index, getAsIndexOpFoldResult(ctx, 0));
+    return true;
   }
 
-  // Don't check the outermost dimension of size at this point.
-  SmallVector<OpFoldResult> innerSizesA;
-  SmallVector<OpFoldResult> innerSizesB;
-  std::copy(sizesA.begin() + 1, sizesA.end(), std::back_inserter(innerSizesA));
-  std::copy(sizesB.begin() + 1, sizesB.end(), std::back_inserter(innerSizesB));
-  for (auto &&[sizeA, sizeB] :
-       llvm::zip(llvm::reverse(innerSizesA), llvm::reverse(innerSizesB))) {
-    std::optional<int64_t> maybeSizeA = getConstantIntValue(sizeA);
-    std::optional<int64_t> maybeSizeB = getConstantIntValue(sizeB);
-    // Handle static and constant value with same int value.
-    if (maybeSizeA && maybeSizeB && maybeSizeA.value() == maybeSizeB.value()) {
-      continue;
-    }
-    if (sizeA != sizeB) return false;
-  }
-
-  // Edge case for sizesA[0] != sizesB[0].
-  if (offsetsB.size() == offsetsA.size() && sizesA[0] != sizesB[0]) {
-    std::optional<int64_t> constOffsetA = getConstantIntValue(offsetsA[0]);
-    std::optional<int64_t> constSizeA = getConstantIntValue(sizesA[0]);
-    std::optional<int64_t> constOffsetB = getConstantIntValue(offsetsB[0]);
-    std::optional<int64_t> constSizeB = getConstantIntValue(sizesB[0]);
-    if (constOffsetA && constOffsetB && constSizeA && constSizeB) {
-      int64_t offsetDiff = constOffsetB.value() - constOffsetA.value();
-      if (constSizeA.value() != offsetDiff) return false;
-    } else {
-      return false;
-    }
-  }
-
-  bool foundDiff{false};
-  for (auto iter : llvm::enumerate(
-           llvm::zip(llvm::reverse(offsetsA), llvm::reverse(offsetsB)))) {
-    const OpFoldResult &offsetA = std::get<0>(iter.value());
-    const OpFoldResult &offsetB = std::get<1>(iter.value());
-    if (offsetA == offsetB) continue;
-    std::optional<int64_t> maybeOffsetA = getConstantIntValue(offsetA);
-    std::optional<int64_t> maybeOffsetB = getConstantIntValue(offsetB);
-    if (maybeOffsetA && maybeOffsetB &&
-        maybeOffsetA.value() == maybeOffsetB.value()) {
-      continue;
-    }
-    // Retrieve the corresponding stride for this dimension.
-    std::optional<int64_t> maybeStride =
-        getConstantIntValue(stridesA[stridesA.size() - 1 - iter.index()]);
-    if (maybeOffsetA && maybeOffsetB && maybeStride) {
-      int64_t diff =
-          (maybeOffsetB.value() - maybeOffsetA.value()) * maybeStride.value();
-      // Handle the three different size cases. Return early in case of an
-      // incompatibility.
-      if (offsetsA.size() > offsetsB.size()) {
-        std::optional<int64_t> constOffset = getConstantIntValue(offsetsA[0]);
-        std::optional<int64_t> constStride = getConstantIntValue(stridesA[0]);
-        std::optional<int64_t> constSize = getConstantIntValue(sizesA[0]);
-        if (constOffset && constStride && constSize &&
-            constOffset.value() == 0 &&
-            (constStride.value() * constSize.value()) == diff) {
-          if (foundDiff) return false;
-          foundDiff = true;
-        } else {
-          return false;
-        }
-      } else if (offsetsB.size() > offsetsA.size()) {
-        std::optional<int64_t> constOffset = getConstantIntValue(offsetsB[0]);
-        std::optional<int64_t> constStride = getConstantIntValue(stridesB[0]);
-        if (constOffset && constStride && constOffset.value() == 0 &&
-            constStride.value() == diff) {
-          if (foundDiff) return false;
-          foundDiff = true;
-        } else {
-          return false;
-        }
-      } else {
-        if (foundDiff) return false;
-        foundDiff = true;
-      }
-    } else {
-      return false;
-    }
-  }
-  return foundDiff;
+  return false;
 }
 
-LogicalResult combineAccessPatterns(RewriterBase &rewriter,
-                                    const SmallVector<OpFoldResult> &offsetsA,
-                                    const SmallVector<OpFoldResult> &sizesA,
-                                    const SmallVector<OpFoldResult> &stridesA,
-                                    const SmallVector<OpFoldResult> &offsetsB,
-                                    const SmallVector<OpFoldResult> &sizesB,
-                                    const SmallVector<OpFoldResult> &stridesB,
-                                    SmallVector<OpFoldResult> &newOffsets,
-                                    SmallVector<OpFoldResult> &newSizes,
-                                    SmallVector<OpFoldResult> &newStrides,
-                                    size_t maxNbDims) {
+}  // namespace
+
+LogicalResult combineAccessPatterns(
+    MLIRContext *ctx, ArrayRef<OpFoldResult> offsetsA,
+    ArrayRef<OpFoldResult> sizesA, ArrayRef<OpFoldResult> stridesA,
+    ArrayRef<OpFoldResult> offsetsB, ArrayRef<OpFoldResult> sizesB,
+    ArrayRef<OpFoldResult> stridesB, SmallVector<OpFoldResult> &newOffsets,
+    SmallVector<OpFoldResult> &newSizes, SmallVector<OpFoldResult> &newStrides,
+    function_ref<bool(size_t)> exceedsNbDims) {
   assert(offsetsA.size() == sizesA.size() &&
          "expected same number of source offsets and sizes");
   assert(offsetsA.size() == stridesA.size() &&
@@ -205,90 +272,103 @@ LogicalResult combineAccessPatterns(RewriterBase &rewriter,
          "expected same number of source offsets and sizes");
   assert(offsetsB.size() == stridesB.size() &&
          "expected same number of source offsets and strides");
-  if (!areAccessPatternsCombinable(offsetsA, sizesA, stridesA, offsetsB, sizesB,
-                                   stridesB, maxNbDims)) {
-    return failure();
-  }
-  if (offsetsA.empty() && offsetsB.empty()) return success();
-  if (offsetsB.size() > offsetsA.size()) {
-    newOffsets = offsetsB;
-    newSizes = sizesB;
-    newStrides = stridesB;
-    // If the offset on the first dimension of B is larger than zero, we can
-    // just decrease that one by one to accomplish the access pattern merge.
-    // Otherwise, we check for and update the other differing offsets.
-    std::optional<int64_t> offset = getConstantIntValue(newOffsets[0]);
-    if (offset && offset.value() > 0) {
-      newOffsets[0] = rewriter.getI64IntegerAttr(offset.value() - 1);
-    } else {
-      for (int i = 1; i <= offsetsA.size(); i++) {
-        if (offsetsA[offsetsA.size() - i] != offsetsB[offsetsB.size() - i]) {
-          newOffsets[newOffsets.size() - i] = offsetsA[offsetsA.size() - i];
-          break;
-        }
-      }
+
+  // Ensure that OpFoldResults are Attributes when they can be. Specifally
+  // this will replace arith.constant values with attributes.
+  auto simplified =
+      [&](ArrayRef<OpFoldResult> input) -> SmallVector<OpFoldResult> {
+    SmallVector<OpFoldResult> x(input.begin(), input.end());
+    for (OpFoldResult &y : x) {
+      std::optional<int64_t> c = getConstantIntValue(y);
+      if (c.has_value()) y = getAsIndexOpFoldResult(ctx, c.value());
     }
-    std::optional<int64_t> size = getConstantIntValue(newSizes[0]);
-    if (!size) return failure();
-    newSizes[0] = rewriter.getI64IntegerAttr(size.value() + 1);
-  } else if (offsetsA.size() > offsetsB.size()) {
-    newOffsets = offsetsA;
-    newSizes = sizesA;
-    newStrides = stridesA;
-    std::optional<int64_t> size = getConstantIntValue(newSizes[0]);
-    if (!size) return failure();
-    newSizes[0] = rewriter.getI64IntegerAttr(size.value() + 1);
-  } else {
-    // Edge case for sizesA[0] != sizesB[0].
-    if (sizesA[0] != sizesB[0]) {
-      newOffsets = offsetsA;
-      newSizes = sizesA;
-      newStrides = stridesA;
-      std::optional<int64_t> sizeA = getConstantIntValue(sizesA[0]);
-      std::optional<int64_t> sizeB = getConstantIntValue(sizesB[0]);
-      if (!sizeA || !sizeB) return failure();
-      newSizes[0] = rewriter.getI64IntegerAttr(sizeA.value() + sizeB.value());
-    } else {
-      // All dims of sizes are the same, so add a new dimension with
-      // 'offset == 0', 'size == 2' and 'stride == offsetDiff'.
-      newOffsets.push_back(rewriter.getI64IntegerAttr(0));
-      int64_t offsetDiff{0};
-      int64_t strideMultiplier{0};
-      for (auto iter : llvm::enumerate(llvm::zip(offsetsA, offsetsB))) {
-        const OpFoldResult &offsetA = std::get<0>(iter.value());
-        const OpFoldResult &offsetB = std::get<1>(iter.value());
-        newOffsets.push_back(offsetA);
-        if (offsetA != offsetB) {
-          std::optional<int64_t> constOffsetA = getConstantIntValue(offsetA);
-          std::optional<int64_t> constOffsetB = getConstantIntValue(offsetB);
-          if (!constOffsetA || !constOffsetB) {
-            return emitError(rewriter.getUnknownLoc())
-                   << "differing offsets should be constants";
-          }
-          offsetDiff = constOffsetB.value() - constOffsetA.value();
-          std::optional<int64_t> maybeStride =
-              getConstantIntValue(stridesA[iter.index()]);
-          if (!maybeStride) {
-            return emitError(rewriter.getUnknownLoc())
-                   << "no constant stride found at the same index where the "
-                      "offset "
-                      "difference occurs";
-          }
-          strideMultiplier = maybeStride.value();
-        }
-      }
-      newSizes.push_back(rewriter.getI64IntegerAttr(2));
-      newSizes.append(sizesA.begin(), sizesA.end());
-      newStrides.push_back(
-          rewriter.getI64IntegerAttr(offsetDiff * strideMultiplier));
-      newStrides.append(stridesA.begin(), stridesA.end());
-    }
-  }
-  assert(newOffsets.size() == newSizes.size() &&
-         "expected same number of new offsets and sizes");
-  assert(newOffsets.size() == newStrides.size() &&
-         "expected same number of new offsets and strides");
+    return x;
+  };
+
+  newOffsets = simplified(offsetsA);
+  newSizes = simplified(sizesA);
+  newStrides = simplified(stridesA);
+  SmallVector<OpFoldResult> mutableOffsetsB = simplified(offsetsB);
+  SmallVector<OpFoldResult> mutableSizesB = simplified(sizesB);
+  SmallVector<OpFoldResult> mutableStridesB = simplified(stridesB);
+
+  bool combined = mergeInFirst(ctx, newOffsets, newSizes, newStrides,
+                               mutableOffsetsB, mutableSizesB, mutableStridesB);
+
+  // This is the case where the patterns could not be combined, even before the
+  // check for exceeding the number of dimensions.
+  if (!combined) return failure();
+  (void)foldUnitDims(ctx, newOffsets, newSizes, newStrides);
+  if (exceedsNbDims(newOffsets.size())) return failure();
+
   return success();
+}
+
+/// Expand dimensions with a size that exceeds a maximum size.
+///
+/// Example:
+///
+/// `offsets: [0], sizes: [8], strides: [1], maxSizes: [5]`
+///
+/// This describes accessing 8 contiguous elements. If the maximum size is 5,
+/// this will be transformed into:
+///
+/// `offsets: [0, 0], sizes: [2, 4], strides: [4, 1]`
+///
+/// Here, all the sizes are smaller or equal to the max size. This helps with
+/// enabling more DMA composition transformations.
+LogicalResult expandLargeDimIntoLinearDims(
+    MLIRContext *ctx, const SmallVector<OpFoldResult> &offsets,
+    const SmallVector<OpFoldResult> &sizes,
+    const SmallVector<OpFoldResult> &strides,
+    SmallVector<OpFoldResult> &newOffsets, SmallVector<OpFoldResult> &newSizes,
+    SmallVector<OpFoldResult> &newStrides, ArrayRef<int64_t> maxSizes) {
+  assert(offsets.size() == sizes.size() && offsets.size() == strides.size() &&
+         "expected same number of offsets, sizes and strides");
+  assert(maxSizes.size() >= sizes.size() &&
+         "expected `maxSizes` to have at least as many elements as `sizes`");
+  bool expandableLinearDimsFound = false;
+  if (offsets.size() == 0) return success(expandableLinearDimsFound);
+
+  std::optional<SmallVector<int64_t>> staticSizes = getConstantIntValues(sizes);
+  std::optional<SmallVector<int64_t>> staticStrides =
+      getConstantIntValues(strides);
+  if (!staticSizes || !staticStrides) return failure();
+  SmallVector<int64_t> staticSizeVals = staticSizes.value();
+  SmallVector<int64_t> staticStrideVals = staticStrides.value();
+
+  for (size_t i = 0; i < offsets.size(); i++) {
+    int64_t size = staticSizeVals[offsets.size() - i - 1];
+    int64_t stride = staticStrideVals[strides.size() - i - 1];
+    int64_t maxSize = maxSizes[maxSizes.size() - i - 1];
+    OpFoldResult offset = offsets[offsets.size() - i - 1];
+    do {
+      int64_t factor = detail::findFactorResultingInSmallerSize(size, maxSize);
+      if (factor == 1 || factor == size) {
+        // No factor found or the factor is the size itself, so we can't expand
+        // this dimension.
+        newOffsets.push_back(offset);
+        newStrides.push_back(getAsIndexOpFoldResult(ctx, stride));
+        newSizes.push_back(getAsIndexOpFoldResult(ctx, size));
+        break;
+      }
+      int64_t newSize = size / factor;
+      newOffsets.push_back(offset);
+      newStrides.push_back(getAsIndexOpFoldResult(ctx, stride));
+      newSizes.push_back(getAsIndexOpFoldResult(ctx, newSize));
+      // Update the offset, stride and size for the next iteration.
+      offset = getAsIndexOpFoldResult(ctx, 0);
+      stride *= newSize;
+      size = factor;
+      expandableLinearDimsFound = true;
+    } while (size > 1);
+  }
+
+  // Reverse as the new offsets/sizes/strides were created in reverse order.
+  std::reverse(newOffsets.begin(), newOffsets.end());
+  std::reverse(newSizes.begin(), newSizes.end());
+  std::reverse(newStrides.begin(), newStrides.end());
+  return success(expandableLinearDimsFound);
 }
 
 /// Fold subsequent dimensions within a strided access pattern that describe a
@@ -331,18 +411,22 @@ LogicalResult foldLinearDims(
   newStrides.push_back(strides[strides.size() - 1]);
   newSizes.push_back(sizes[sizes.size() - 1]);
 
-  for (int i = offsets.size() - 2; i >= 0; i--) {
+  for (int i = static_cast<int>(offsets.size()) - 2; i >= 0; i--) {
     // Conditions for folding a dim.
-    // 1. Offsets[i] == 0.This is required because we are dropping the offset
-    // of the i dimension and keep newOffets[-1]
+    // 1. Either, offsets[i] == 0 and then we can fold with any `newOffsets[-1]`
+    // (even dynamic ones), OR offsets[i] multiplied by the respective stride,
+    // is a multiple of the previous stride.
     // 2. newSizes[-1] x newStrides[-1] == strides[i]. With this we can have
     // newSizes[-1] = sizes[i] * newSizes[-1] , and then fold away the i
     // dimension
     // 3. checkValidSize(sizes[i] * newSizes[-1]). This allows hardware
     // constraints to be checked.
     size_t vecSize = newOffsets.size();
+    std::optional<int64_t> maybeNewOffset = getConstantIntValue(offsets[i]);
     int64_t newStride = staticStrideVals[i];
     int64_t newSize = staticSizeVals[i];
+    std::optional<int64_t> maybePrevOffset =
+        getConstantIntValue(newOffsets[vecSize - 1]);
     int64_t prevStride = getConstantIndexOrAssert(newStrides[vecSize - 1]);
     int64_t prevSize = getConstantIndexOrAssert(newSizes[vecSize - 1]);
     int64_t dimExtent = prevStride * prevSize;
@@ -350,11 +434,29 @@ LogicalResult foldLinearDims(
     // offsets/sizes/strides start exceeding the number of provide max
     // constraints as this will result in undefined behaviour.
     bool fitsMaxConstraint = checkValidSize(vecSize - 1, newSize * prevSize);
-    if (fitsMaxConstraint && isConstantIntValue(offsets[i], 0) &&
-        dimExtent == newStride) {
-      foldableLinearDimsFound = true;
-      newSizes[vecSize - 1] = getAsIndexOpFoldResult(ctx, newSize * prevSize);
-      continue;
+    if (fitsMaxConstraint && dimExtent == newStride) {
+      // There are currently two cases supported for folding a dimension:
+      // 1. If the offset is 0, we can fold the dimension, no matter what the
+      // value of `newPrevOffset` is (it can be dynamic).
+      // 2. If the offset, multiplied by the respective stride, is a multiple of
+      // the previous stride, we can fold the dimension if we update the new
+      // offset as well. However, in this case we need to add to new offset and
+      // this is currently only supported for constant offsets.
+      if (isConstantIntValue(offsets[i], 0)) {
+        foldableLinearDimsFound = true;
+        newSizes[vecSize - 1] = getAsIndexOpFoldResult(ctx, newSize * prevSize);
+        continue;
+      } else if (maybeNewOffset.has_value() && maybePrevOffset.has_value()) {
+        // NOTE: It's guaranteed that
+        // `(maybeNewOffset.value() * newStride) % prevStride == 0`
+        // as `newStride == prevStride * prevSize`
+        foldableLinearDimsFound = true;
+        newSizes[vecSize - 1] = getAsIndexOpFoldResult(ctx, newSize * prevSize);
+        int64_t newPrevOffset = maybePrevOffset.value() +
+                                maybeNewOffset.value() * newStride / prevStride;
+        newOffsets[vecSize - 1] = getAsIndexOpFoldResult(ctx, newPrevOffset);
+        continue;
+      }
     }
     newOffsets.push_back(offsets[i]);
     newStrides.push_back(strides[i]);
@@ -425,55 +527,6 @@ LogicalResult foldSingleDim(SmallVector<OpFoldResult> &offsets,
   return success();
 }
 
-/// Fold unit dimensions within a strided access pattern. There are two cases
-/// being handled here:
-/// 1. If a dimension has `size == 1` and `offset == 0`, the dimension can be
-/// folded entirely.
-/// 2. If a dimension has `size == 1` and `offset != 0`, it can be folded into
-/// another dimension with the same stride if that exists.
-LogicalResult foldUnitDims(MLIRContext *ctx,
-                           const SmallVector<OpFoldResult> &offsets,
-                           const SmallVector<OpFoldResult> &sizes,
-                           const SmallVector<OpFoldResult> &strides,
-                           SmallVector<OpFoldResult> &newOffsets,
-                           SmallVector<OpFoldResult> &newSizes,
-                           SmallVector<OpFoldResult> &newStrides) {
-  bool foldableUnitDimsFound = false;
-  DenseMap<int64_t, std::pair<size_t, int64_t>> strideToIndexAndOffset;
-  for (int i = 0; i < offsets.size(); i++) {
-    // If a dimension has `size == 1` and `offset == 0`, the dimension can be
-    /// folded entirely.
-    if (isConstantIntValue(offsets[i], 0) && isConstantIntValue(sizes[i], 1)) {
-      foldableUnitDimsFound = true;
-      continue;
-    }
-    std::optional<int64_t> maybeOffset = getConstantIntValue(offsets[i]);
-    std::optional<int64_t> maybeStride = getConstantIntValue(strides[i]);
-    if (maybeOffset && maybeStride) {
-      int64_t offset = maybeOffset.value();
-      int64_t stride = maybeStride.value();
-      if (isConstantIntValue(sizes[i], 1) &&
-          strideToIndexAndOffset.contains(stride)) {
-        foldableUnitDimsFound = true;
-        strideToIndexAndOffset[stride].second += offset;
-        // Continue to not add to newOffsets, newSizes, newStrides
-        continue;
-      } else {
-        strideToIndexAndOffset[stride] = {newOffsets.size(), offset};
-      }
-    }
-    newOffsets.push_back(offsets[i]);
-    newStrides.push_back(strides[i]);
-    newSizes.push_back(sizes[i]);
-  }
-  // Update offsets
-  for (auto &&[stride, indexAndOffset] : strideToIndexAndOffset) {
-    newOffsets[indexAndOffset.first] =
-        getAsIndexOpFoldResult(ctx, indexAndOffset.second);
-  }
-  return success(foldableUnitDimsFound);
-}
-
 LogicalResult moveNpuDmaSyncUsersAfterAncestorInSameBlock(
     RewriterBase &rewriter, Operation *parentOp) {
   WalkResult res = parentOp->walk([&](AMDAIE::NpuDmaWaitOp npuDmaWaitOp) {
@@ -506,6 +559,89 @@ LogicalResult moveNpuDmaSyncUsersAfterAncestorInSameBlock(
   return success();
 }
 
+/// Try to add `offsetToMerge` to one of the offsets in `offsets`.  This
+/// function assumes an effective stride for `offsetToMerge` of 1 so to add
+/// `offsetToMerge` to the offset in dimension `d`, `offsetToMerge` must be
+/// divisable by the stride in dimension `d`.
+///
+/// \return false if `offsetToMerge` could not be added to any of the offsets.
+bool mergeOffset(MLIRContext *ctx, int64_t offsetToMerge,
+                 SmallVector<OpFoldResult> &offsets,
+                 ArrayRef<OpFoldResult> strides) {
+  if (offsetToMerge == 0) return true;
+  for (uint32_t i = 0; i < offsets.size(); ++i) {
+    std::optional<int64_t> cOffset = getConstantIntValue(offsets[i]);
+    std::optional<int64_t> cStride = getConstantIntValue(strides[i]);
+    if (cOffset.has_value() && cStride.has_value()) {
+      int64_t offset = cOffset.value();
+      int64_t stride = cStride.value();
+      if (stride != 0 && offsetToMerge % stride == 0) {
+        offset += offsetToMerge / stride;
+        offsets[i] = getAsIndexOpFoldResult(ctx, offset);
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/// This function tries to reduce the rank of the access pattern by merging
+/// unit dimensions into other dimensions.
+LogicalResult foldUnitDims(MLIRContext *ctx, SmallVector<OpFoldResult> &offsets,
+                           SmallVector<OpFoldResult> &sizes,
+                           SmallVector<OpFoldResult> &strides) {
+  uint64_t initialRank = offsets.size();
+
+  int64_t cumulativeOffset{0};
+  int64_t insertionIndex{0};
+
+  SmallVector<OpFoldResult> newOffsets;
+  SmallVector<OpFoldResult> newSizes;
+  SmallVector<OpFoldResult> newStrides;
+
+  for (int i = 0; i < offsets.size(); ++i) {
+    // If in dimension `i` there is constant offset, constant stride, and size
+    // of 1, then update the cumulative offset.
+    std::optional<int64_t> cOffset = getConstantIntValue(offsets[i]);
+    std::optional<int64_t> cSize = getConstantIntValue(sizes[i]);
+    std::optional<int64_t> cStride = getConstantIntValue(strides[i]);
+    bool isSizeOne = cSize.has_value() && cSize.value() == 1;
+    if (cOffset.has_value() && cStride.has_value() && isSizeOne) {
+      cumulativeOffset += cOffset.value() * cStride.value();
+    } else {
+      insertionIndex += isSizeOne;
+      newOffsets.push_back(offsets[i]);
+      newSizes.push_back(sizes[i]);
+      newStrides.push_back(strides[i]);
+    }
+  }
+
+  // This is the case where there are no unit dimensions to fold.
+  if (newStrides.size() == initialRank) return failure();
+
+  bool merged = mergeOffset(ctx, cumulativeOffset, newOffsets, newStrides);
+
+  // This is the case where there is one unit dimension, but it cannot be
+  // merged into another dimension.
+  if (!merged && (newStrides.size() + 1 == initialRank)) return failure();
+
+  // At this point we know that we will be able to reduce the rank, and so will
+  // start updating offsets, sizes, and strides.
+  offsets = newOffsets;
+  sizes = newSizes;
+  strides = newStrides;
+  if (!merged) {
+    OpFoldResult one = getAsIndexOpFoldResult(ctx, 1);
+    OpFoldResult offset = getAsIndexOpFoldResult(ctx, cumulativeOffset);
+    offsets.insert(offsets.begin() + insertionIndex, one);
+    sizes.insert(sizes.begin() + insertionIndex, one);
+    strides.insert(strides.begin() + insertionIndex, offset);
+  }
+
+  assert(offsets.size() < initialRank && "Rank should have been reduced");
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // DmaDimConfig
 //===----------------------------------------------------------------------===//
@@ -526,13 +662,22 @@ bool DmaDimConfig::isValidAccessPattern(ArrayRef<int64_t> sizes,
                                         ArrayRef<int64_t> strides) const {
   assert(sizes.size() == strides.size() &&
          "`sizes` and `strides` should have the same size");
-  SmallVector<int64_t> maxSizes = getMaxSizes(sizes.size());
-  assert(maxSizes.size() >= sizes.size() &&
+  // No need to check the unit dimensions.
+  SmallVector<int64_t> nonUnitSizes;
+  SmallVector<int64_t> nonUnitStrides;
+  for (size_t i = 0; i < sizes.size(); ++i) {
+    if (sizes[i] != 1) {
+      nonUnitSizes.push_back(sizes[i]);
+      nonUnitStrides.push_back(strides[i]);
+    }
+  }
+  SmallVector<int64_t> maxSizes = getMaxSizes(nonUnitSizes.size());
+  assert(maxSizes.size() >= nonUnitSizes.size() &&
          "Max number of dimensions exceeded");
-  size_t frontToDrop = maxSizes.size() - sizes.size();
-  if (anyOutOfRange(sizes, maxSizes, frontToDrop)) return false;
-  SmallVector<int64_t> maxStrides = getMaxStrides(sizes.size());
-  if (anyOutOfRange(strides, maxStrides, frontToDrop)) return false;
+  size_t frontToDrop = maxSizes.size() - nonUnitSizes.size();
+  if (anyOutOfRange(nonUnitSizes, maxSizes, frontToDrop)) return false;
+  SmallVector<int64_t> maxStrides = getMaxStrides(nonUnitSizes.size());
+  if (anyOutOfRange(nonUnitStrides, maxStrides, frontToDrop)) return false;
   return true;
 }
 
@@ -599,20 +744,7 @@ SmallVector<int64_t> CircularDmaDimConfig::getMaxSizes(
   size_t nbDims = maybeNbDims.has_value() ? maybeNbDims.value() : maxNbDims;
   uint32_t maxIntraSize = deviceModel.getDmaBdProp<uint16_t>(
       tileType, 0, AMDAIE::AMDAIEDmaBdProp::WrapMax);
-  SmallVector<int64_t> maxSizes(nbDims, 0);
-  int64_t nbIntraDimsToBeFilled =
-      std::min((int64_t)nbIntraDims, (int64_t)maxSizes.size());
-  int64_t intraStart = maxSizes.size() - nbIntraDimsToBeFilled;
-  std::fill_n(maxSizes.begin() + intraStart, nbIntraDimsToBeFilled,
-              maxIntraSize);
-  assert(intraStart >= 0 &&
-         "The start index for intra dimensions should be greater than or equal "
-         "to zero");
-  if (intraStart < maxSizes.size())
-    maxSizes[intraStart] = std::numeric_limits<int64_t>::max();
-  // All other dimension can have any size for circular DMAs.
-  std::fill_n(maxSizes.begin(), intraStart,
-              std::numeric_limits<int64_t>::max());
+  SmallVector<int64_t> maxSizes(nbDims, maxIntraSize);
   return maxSizes;
 }
 

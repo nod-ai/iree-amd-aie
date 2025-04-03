@@ -316,6 +316,88 @@ uint32_t AMDAIEDeviceModel::getCoreTileLocalMemorySize() const {
   return devInst.DevProp.DevMod[XAIEGBL_TILE_TYPE_AIETILE].CoreMod->DataMemSize;
 }
 
+void setOddParityBit(uint32_t &word) {
+  // Mask to keep the lower 31 bits (bits 30:0).
+  uint32_t lower31Bits = word & 0x7FFFFFFF;
+  // Compute the odd parity bit. It is set to 1 if the number of 1's in
+  // lower31Bits is even, ensuring the total count (including this bit) becomes
+  // odd. Otherwise, it is set to 0.
+  uint32_t parity = (llvm::popcount(lower31Bits) + 1) % 2;
+  // Set the parity bit in the most significant bit (bit 31).
+  word = (parity << 31) | lower31Bits;
+}
+
+FailureOr<uint32_t> AMDAIEDeviceModel::getPacketHeader(uint32_t streamId,
+                                                       uint32_t packetType,
+                                                       uint32_t srcRow,
+                                                       uint32_t srcCol) const {
+  if (srcRow >= rows() || srcCol >= columns()) {
+    llvm::errs() << "source tile out of range\n";
+    return failure();
+  }
+  if (streamId > getPacketIdMaxIdx()) {
+    llvm::errs() << "streamId out of range\n";
+    return failure();
+  }
+  if (packetType > getpacketTypeMax()) {
+    llvm::errs() << "packetType out of range\n";
+    return failure();
+  }
+  // Construct the header by shifting and combining the individual fields.
+  uint32_t header = (srcCol << packetHeaderFormat.srcColShift) |
+                    (srcRow << packetHeaderFormat.srcRowShift) |
+                    (packetType << packetHeaderFormat.packetTypeShift) |
+                    (streamId << packetHeaderFormat.streamIdShift);
+  setOddParityBit(header);
+  return header;
+}
+
+FailureOr<uint32_t> AMDAIEDeviceModel::getControlHeader(
+    uint32_t address, uint32_t length, uint32_t opcode,
+    uint32_t streamId) const {
+  if (address > getCtrlPktMaxAddress()) {
+    llvm::errs() << "address out of range\n";
+    return failure();
+  }
+  if (length > getCtrlPktMaxLength() || length == 0) {
+    llvm::errs() << "length out of range\n";
+    return failure();
+  }
+  if (opcode > getCtrlPktMaxOpcode()) {
+    llvm::errs() << "opcode out of range\n";
+    return failure();
+  }
+  if (streamId > getPacketIdMaxIdx()) {
+    llvm::errs() << "streamId out of range\n";
+    return failure();
+  }
+  // Construct the header by shifting and combining the individual fields.
+  // Note that length `i` is encoded in the header as `i - 1`.
+  uint32_t header = (streamId << controlHeaderFormat.streamIdShift) |
+                    (opcode << controlHeaderFormat.operationShift) |
+                    ((length - 1) << controlHeaderFormat.beatShift) |
+                    (address << controlHeaderFormat.addressShift);
+  setOddParityBit(header);
+  return header;
+}
+
+uint32_t AMDAIEDeviceModel::getCtrlPktMaxAddress() const {
+  return (1 << (controlHeaderFormat.beatShift -
+                controlHeaderFormat.addressShift)) -
+         1;
+}
+
+uint32_t AMDAIEDeviceModel::getCtrlPktMaxLength() const {
+  return (1 << (controlHeaderFormat.operationShift -
+                controlHeaderFormat.beatShift));
+}
+
+uint32_t AMDAIEDeviceModel::getCtrlPktMaxOpcode() const {
+  return (1 << (controlHeaderFormat.streamIdShift -
+                controlHeaderFormat.operationShift)) -
+         1;
+}
+
 uint32_t AMDAIEDeviceModel::getMemInternalBaseAddress() const {
   return getMemEastBaseAddress();
 }
@@ -454,14 +536,126 @@ uint32_t AMDAIEDeviceModel::getNumDestSwitchboxConnections(
                                         static_cast<uint8_t>(row), bundle);
 }
 
+const llvm::SmallDenseMap<std::pair<StrmSwPortType, uint8_t>,
+                          std::pair<StrmSwPortType, uint8_t>>
+    AMDAIEDeviceModel::mm2sDmaNocToSpecialShimPortMap = {
+        {{StrmSwPortType::DMA, 0}, {StrmSwPortType::NORTH, 3}},
+        {{StrmSwPortType::DMA, 1}, {StrmSwPortType::NORTH, 7}},
+        {{StrmSwPortType::NOC, 0}, {StrmSwPortType::NORTH, 2}},
+        {{StrmSwPortType::NOC, 1}, {StrmSwPortType::NORTH, 3}},
+        {{StrmSwPortType::NOC, 2}, {StrmSwPortType::NORTH, 6}},
+        {{StrmSwPortType::NOC, 3}, {StrmSwPortType::NORTH, 7}}};
+
+const llvm::SmallDenseMap<std::pair<StrmSwPortType, uint8_t>,
+                          std::pair<StrmSwPortType, uint8_t>>
+    AMDAIEDeviceModel::s2mmDmaNocToSpecialShimPortMap = {
+        {{StrmSwPortType::DMA, 0}, {StrmSwPortType::NORTH, 2}},
+        {{StrmSwPortType::DMA, 1}, {StrmSwPortType::NORTH, 3}},
+        {{StrmSwPortType::NOC, 0}, {StrmSwPortType::NORTH, 2}},
+        {{StrmSwPortType::NOC, 1}, {StrmSwPortType::NORTH, 3}},
+        {{StrmSwPortType::NOC, 2}, {StrmSwPortType::NORTH, 4}},
+        {{StrmSwPortType::NOC, 3}, {StrmSwPortType::NORTH, 5}}};
+
+std::optional<std::pair<StrmSwPortType, uint8_t>>
+AMDAIEDeviceModel::getShimMuxPortMappingForDmaOrNoc(
+    StrmSwPortType port, uint8_t channel, DMAChannelDir direction) const {
+  auto key = std::make_pair(port, channel);
+  if (direction == DMAChannelDir::MM2S &&
+      mm2sDmaNocToSpecialShimPortMap.count(key)) {
+    return mm2sDmaNocToSpecialShimPortMap.at(key);
+  } else if (direction == DMAChannelDir::S2MM &&
+             s2mmDmaNocToSpecialShimPortMap.count(key)) {
+    return s2mmDmaNocToSpecialShimPortMap.at(key);
+  }
+  return std::nullopt;
+}
+
+std::optional<std::pair<StrmSwPortType, uint8_t>>
+AMDAIEDeviceModel::getDmaFromShimMuxPortMapping(StrmSwPortType port,
+                                                uint8_t channel,
+                                                DMAChannelDir direction) const {
+  auto key = std::make_pair(port, channel);
+  if (direction == DMAChannelDir::MM2S) {
+    for (auto &entry : mm2sDmaNocToSpecialShimPortMap) {
+      if (entry.first.first == StrmSwPortType::DMA && entry.second == key)
+        return entry.first;
+    }
+  } else if (direction == DMAChannelDir::S2MM) {
+    for (auto &entry : s2mmDmaNocToSpecialShimPortMap) {
+      if (entry.first.first == StrmSwPortType::DMA && entry.second == key)
+        return entry.first;
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<std::string> AMDAIEDeviceModel::getNPUVersionString() const {
+  switch (configPtr.AieGen) {
+    case XAIE_DEV_GEN_AIE2IPU:
+      return "npu1";
+    case XAIE_DEV_GEN_AIE2P_STRIX_B0:
+      return "npu4";
+    default:
+      return std::nullopt;
+  }
+}
+
+std::optional<std::string> AMDAIEDeviceModel::getTargetArchString() const {
+  switch (configPtr.AieGen) {
+    case XAIE_DEV_GEN_AIE:
+      return "AIE";
+    case XAIE_DEV_GEN_AIE2IPU:
+      return "AIE2";
+    case XAIE_DEV_GEN_AIE2P_STRIX_B0:
+      return "AIE2P";
+    default:
+      return std::nullopt;
+  }
+}
+
 uint32_t AMDAIEDeviceModel::getColumnShift() const {
   return configPtr.ColShift;
 }
 
 uint32_t AMDAIEDeviceModel::getRowShift() const { return configPtr.RowShift; }
 
+uint32_t AMDAIEDeviceModel::getColumnFromAddress(uint32_t address) const {
+  uint32_t columnMask = (1 << (getColumnShift() - getRowShift())) - 1;
+  return (address >> getColumnShift()) & columnMask;
+}
+
+uint32_t AMDAIEDeviceModel::getRowFromAddress(uint32_t address) const {
+  uint32_t rowMask = (1 << (getColumnShift() - getRowShift())) - 1;
+  return (address >> getRowShift()) & rowMask;
+}
+
+uint32_t AMDAIEDeviceModel::getOffsetFromAddress(uint32_t address) const {
+  uint32_t offsetMask = (1 << getRowShift()) - 1;
+  return address & offsetMask;
+}
+
 uint8_t AMDAIEDeviceModel::getPacketIdMaxIdx() const {
   return deviceConfig.packetIdMaxIdx;
+}
+
+uint8_t AMDAIEDeviceModel::getpacketTypeMax() const {
+  return deviceConfig.packetTypeMax;
+}
+
+uint8_t AMDAIEDeviceModel::getPacketIdMaskWidth() const {
+  return deviceConfig.packetIdMaskWidth;
+}
+
+uint8_t AMDAIEDeviceModel::getNumPacketRuleSlots(uint8_t col,
+                                                 uint8_t row) const {
+  AMDAIETileType tileType = getTileType(col, row);
+  const XAie_StrmMod *strmMod =
+      devInst.DevProp.DevMod[static_cast<uint8_t>(tileType)].StrmSw;
+  return strmMod->NumSlaveSlots;
+}
+
+bool AMDAIEDeviceModel::getCtrlPktTlastErrorDisabled() const {
+  return deviceConfig.ctrlPktTlastErrorDisabled;
 }
 
 uint8_t AMDAIEDeviceModel::getStreamSwitchArbiterMax(uint8_t col,
@@ -514,6 +708,7 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
       AMDAIEDeviceModel::AMDAIEDeviceConfig deviceConfig;
       deviceConfig.shimTileNumRows = XAIE1_SHIM_NUM_ROWS;
       deviceConfig.packetIdMaxIdx = XAIE1_PACKET_ID_MAX;
+      deviceConfig.packetTypeMax = XAIE1_PACKET_TYPE_MAX;
       deviceConfig.streamSwitchCoreArbiterMax = XAIE1_SS_ARBITER_MAX;
       deviceConfig.streamSwitchCoreMSelMax = XAIE1_SS_MSEL_MAX;
       deviceConfig.streamSwitchMemTileArbiterMax = XAIE1_SS_ARBITER_MAX;
@@ -539,6 +734,7 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
       AMDAIEDeviceModel::AMDAIEDeviceConfig deviceConfig;
       deviceConfig.shimTileNumRows = XAIEML_SHIM_NUM_ROWS;
       deviceConfig.packetIdMaxIdx = XAIEML_PACKET_ID_MAX;
+      deviceConfig.packetTypeMax = XAIEML_PACKET_TYPE_MAX;
       deviceConfig.streamSwitchCoreArbiterMax = XAIEML_SS_ARBITER_MAX;
       deviceConfig.streamSwitchCoreMSelMax = XAIEML_SS_MSEL_MAX;
       deviceConfig.streamSwitchMemTileArbiterMax = XAIEML_SS_ARBITER_MAX;
@@ -563,6 +759,7 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
       AMDAIEDeviceModel::AMDAIEDeviceConfig deviceConfig;
       deviceConfig.shimTileNumRows = XAIEML_SHIM_NUM_ROWS;
       deviceConfig.packetIdMaxIdx = XAIEML_PACKET_ID_MAX;
+      deviceConfig.packetTypeMax = XAIEML_PACKET_TYPE_MAX;
       deviceConfig.streamSwitchCoreArbiterMax = XAIEML_SS_ARBITER_MAX;
       deviceConfig.streamSwitchCoreMSelMax = XAIEML_SS_MSEL_MAX;
       deviceConfig.streamSwitchMemTileArbiterMax = XAIEML_SS_ARBITER_MAX;
@@ -591,6 +788,7 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
       AMDAIEDeviceModel::AMDAIEDeviceConfig deviceConfig;
       deviceConfig.shimTileNumRows = XAIE2IPU_SHIM_NUM_ROWS;
       deviceConfig.packetIdMaxIdx = XAIE2IPU_PACKET_ID_MAX;
+      deviceConfig.packetTypeMax = XAIE2IPU_PACKET_TYPE_MAX;
       deviceConfig.streamSwitchCoreArbiterMax = XAIE2IPU_SS_ARBITER_MAX;
       deviceConfig.streamSwitchCoreMSelMax = XAIE2IPU_SS_MSEL_MAX;
       deviceConfig.streamSwitchMemTileArbiterMax = XAIE2IPU_SS_ARBITER_MAX;
@@ -638,6 +836,8 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
       AMDAIEDeviceModel::AMDAIEDeviceConfig deviceConfig;
       deviceConfig.shimTileNumRows = XAIE_STRIXB0_MEM_TILE_NUM_ROWS;
       deviceConfig.packetIdMaxIdx = XAIE_STRIXB0_PACKET_ID_MAX;
+      deviceConfig.packetTypeMax = XAIE_STRIXB0_PACKET_TYPE_MAX;
+      deviceConfig.ctrlPktTlastErrorDisabled = true;
       deviceConfig.streamSwitchCoreArbiterMax = XAIE_STRIXB0_SS_ARBITER_MAX;
       deviceConfig.streamSwitchCoreMSelMax = XAIE_STRIXB0_SS_MSEL_MAX;
       deviceConfig.streamSwitchMemTileArbiterMax = XAIE_STRIXB0_SS_ARBITER_MAX;
@@ -671,9 +871,9 @@ static constexpr uint32_t getElementTypeKey(uint32_t a, uint32_t b,
   return a + (b << 8) + (c << 16);
 }
 
-/// Map from (LHS bitwidth, RHS bitwidth, Accumulator bitwidth) to the AIE
-/// instruction size (m, n, k) for the integer types with those bitwidths.
-/// This function is based on the following table pulled from the
+/// Map from (LHS bitwidth, RHS bitwidth, Accumulator bitwidth) to the NPU1
+/// (AIE2) instruction size (m, n, k) for the integer types with those
+/// bitwidths. This function is based on the following table pulled from the
 /// AIEVec_MatMulOp documentation in
 /// mlir-aie/include/aie/Dialect/AIEVec/IR/AIEVecOps.td
 ///
@@ -735,13 +935,43 @@ getNpu1IntegerMatmulInstructionSizeMap() {
   return matmulIntSizes;
 }
 
+/// Map from (LHS bitwidth, RHS bitwidth, Accumulator bitwidth) to the NPU4
+/// (AIE2P) instruction size (m, n, k) for the integer types with those
+/// bitwidths.
+///
+///   lhs                | rhs                | accumulator
+///  :------------------:|:------------------:|:-----------------:
+///   `vector<8x8xi8>`   | `vector<8x8xi8>`   | `vector<8x8xi32>`
+///
+/// An instruction size (m, n, k) is returned for each combination of element
+/// type in the table. Combinations of element type that are not covered by the
+/// table return failure.
+///
+/// Example: consider the line of the table:
+///   `vector<8x8xi8>`  | `vector<8x8xi8>`  | `vector<8x8xi32>`
+///
+/// This first line says that if 'lhs' is an i8 tensor, 'rhs' is an i8 tensor
+/// and 'accumulator' is an i32 tensor, then there is an AIE instruction for
+/// matmul with m = 8, n = 8, k = 8.
+static llvm::DenseMap<uint32_t, std::array<uint32_t, 3>> &
+getNpu4IntegerMatmulInstructionSizeMap() {
+  // Sanity check.
+  static_assert(getElementTypeKey(1, 2, 3) == 1 + 2 * 256 + 3 * 65536);
+
+  static llvm::DenseMap<uint32_t, std::array<uint32_t, 3>> matmulIntSizes{
+
+      // `vector<8x8xi8>`   | `vector<8x8xi8>`   | `vector<8x8xi32>`
+      {getElementTypeKey(8, 8, 32), {8, 8, 8}},
+
+  };
+  return matmulIntSizes;
+}
+
 /// Return the AIE instruction size (m, n, k) for the integer types with
 /// bitwidths nBitsLhs, nBitsRhs, and nBitsAcc. Based on the table above.
-static llvm::FailureOr<std::array<uint32_t, 3>>
-getNpu1IntegerMatmulInstructionSize(uint32_t nBitsLhs, uint32_t nBitsRhs,
-                                    uint32_t nBitsAcc) {
-  static llvm::DenseMap<uint32_t, std::array<uint32_t, 3>> &mapForIntTypes =
-      getNpu1IntegerMatmulInstructionSizeMap();
+static llvm::FailureOr<std::array<uint32_t, 3>> getIntegerMatmulInstructionSize(
+    uint32_t nBitsLhs, uint32_t nBitsRhs, uint32_t nBitsAcc,
+    const llvm::DenseMap<uint32_t, std::array<uint32_t, 3>> &mapForIntTypes) {
   auto it =
       mapForIntTypes.find(getElementTypeKey(nBitsLhs, nBitsRhs, nBitsAcc));
   if (it == mapForIntTypes.end()) {
@@ -785,11 +1015,16 @@ AMDAIEDeviceModel::getAIEMatmulInstructionSize(Type elTypeLhs, Type elTypeRhs,
   assert(allInteger &&
          "expected all element types to either be all float types or all "
          "integer types");
-  if (device != AMDAIEDevice::npu1_4col) {
-    return failure();
+  if (device == AMDAIEDevice::npu1_4col || device == AMDAIEDevice::npu1_3col ||
+      device == AMDAIEDevice::npu1_2col || device == AMDAIEDevice::npu1_1col ||
+      device == AMDAIEDevice::npu1) {
+    return getIntegerMatmulInstructionSize(
+        nBitsLhs, nBitsRhs, nBitsAcc, getNpu1IntegerMatmulInstructionSizeMap());
+  } else if (device == AMDAIEDevice::npu4) {
+    return getIntegerMatmulInstructionSize(
+        nBitsLhs, nBitsRhs, nBitsAcc, getNpu4IntegerMatmulInstructionSizeMap());
   }
-
-  return getNpu1IntegerMatmulInstructionSize(nBitsLhs, nBitsRhs, nBitsAcc);
+  return failure();
 }
 
 /// ============================= BEGIN ==================================

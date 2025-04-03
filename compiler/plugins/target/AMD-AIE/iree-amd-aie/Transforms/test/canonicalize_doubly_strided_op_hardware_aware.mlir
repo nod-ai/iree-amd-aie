@@ -1,4 +1,4 @@
-// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-canonicalize-doubly-strided-op{hardware-aware=true}))" --split-input-file -allow-unregistered-dialect --verify-diagnostics %s | FileCheck %s
+// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-canonicalize-doubly-strided-op{hardware-aware=true}),canonicalize)" --split-input-file -allow-unregistered-dialect --verify-diagnostics %s | FileCheck %s
 
 
 module {
@@ -48,6 +48,24 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
     "iree.keep"(%1) : (index) -> ()
     %2 = amdaie.dma_cpy_nd(%arg0[0, 0, 0, 0, 0] [8, 8, 16, 8, 512] [1024, 128, 1024, 256, 1], %arg1[0, 0, 0, 0, 0] [8, 8, 16, 8, 512] [1024, 128, 1024, 256, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
     "iree.keep"(%2) : (index) -> ()
+    return
+  }
+}
+
+// -----
+
+// CHECK-LABEL:    func.func @npu_circular_dma_cpy_nd_expand
+// CHECK:          amdaie.npu.circular_dma_cpy_nd %{{.+}}([0, 0] [2, 512] [512, 1], [0, 0] [4, 256] [256, 1])
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @npu_circular_dma_cpy_nd_expand(%arg0: !amdaie.logicalobjectfifo<memref<1024xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<1024xi32>>) {
+    amdaie.workgroup {
+      %0 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<1024xi32, 1>>, !amdaie.logicalobjectfifo<memref<1024xi32>>)
+      amdaie.controlcode {
+        amdaie.npu.circular_dma_cpy_nd %0([0] [1024] [1], [0, 0] [4, 256] [256, 1])
+        amdaie.end
+      }
+    }
     return
   }
 }

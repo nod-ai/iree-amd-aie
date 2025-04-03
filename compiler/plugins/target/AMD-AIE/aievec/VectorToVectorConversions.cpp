@@ -17,6 +17,7 @@
 #include "Passes.h"
 #include "aievec/AIEVecOps.h"
 #include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
+#include "iree-amd-aie/aie_runtime/AMDAIEEnums.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
@@ -24,7 +25,10 @@
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Utils/ReshapeOpsUtils.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Dialect/Vector/Transforms/LoweringPatterns.h"
@@ -104,7 +108,7 @@ static SmallVector<Value> getCollapsedIndices(RewriterBase &rewriter,
   OpFoldResult collapsedOffset =
       rewriter.create<arith::ConstantIndexOp>(loc, 0).getResult();
 
-  auto collapsedStrides = computeSuffixProduct(
+  SmallVector<int64_t> collapsedStrides = computeSuffixProduct(
       ArrayRef<int64_t>(shape.begin() + firstDimToCollapse, shape.end()));
 
   // Compute the collapsed offset.
@@ -113,8 +117,8 @@ static SmallVector<Value> getCollapsedIndices(RewriterBase &rewriter,
   collapsedOffset = affine::makeComposedFoldedAffineApply(
       rewriter, loc, collapsedExpr, collapsedVals);
 
-  if (collapsedOffset.is<Value>()) {
-    indicesAfterCollapsing.push_back(collapsedOffset.get<Value>());
+  if (isa<Value>(collapsedOffset)) {
+    indicesAfterCollapsing.push_back(cast<Value>(collapsedOffset));
   } else {
     indicesAfterCollapsing.push_back(rewriter.create<arith::ConstantIndexOp>(
         loc, *getConstantIntValue(collapsedOffset)));
@@ -142,7 +146,7 @@ class FlattenContiguousRowMajorTransferReadPattern
 
   LogicalResult matchAndRewrite(vector::TransferReadOp transferReadOp,
                                 PatternRewriter &rewriter) const override {
-    auto loc = transferReadOp.getLoc();
+    Location loc = transferReadOp.getLoc();
     Value vector = transferReadOp.getVector();
     VectorType vectorType = cast<VectorType>(vector.getType());
     auto source = transferReadOp.getSource();
@@ -182,7 +186,7 @@ class FlattenContiguousRowMajorTransferReadPattern
     // 2.1. New dim exprs + affine map
     SmallVector<AffineExpr, 1> dimExprs{
         getAffineDimExpr(firstDimToCollapse, rewriter.getContext())};
-    auto collapsedMap =
+    AffineMap collapsedMap =
         AffineMap::get(collapsedRank, 0, dimExprs, rewriter.getContext());
 
     // 2.2 New indices
@@ -229,7 +233,7 @@ class FlattenContiguousRowMajorTransferWritePattern
 
   LogicalResult matchAndRewrite(vector::TransferWriteOp transferWriteOp,
                                 PatternRewriter &rewriter) const override {
-    auto loc = transferWriteOp.getLoc();
+    Location loc = transferWriteOp.getLoc();
     Value vector = transferWriteOp.getVector();
     VectorType vectorType = cast<VectorType>(vector.getType());
     Value source = transferWriteOp.getSource();
@@ -272,7 +276,7 @@ class FlattenContiguousRowMajorTransferWritePattern
     // 2.1. New dim exprs + affine map
     SmallVector<AffineExpr, 1> dimExprs{
         getAffineDimExpr(firstDimToCollapse, rewriter.getContext())};
-    auto collapsedMap =
+    AffineMap collapsedMap =
         AffineMap::get(collapsedRank, 0, dimExprs, rewriter.getContext());
 
     // 2.2 New indices
@@ -360,6 +364,193 @@ struct CanonicalizeTrivialReadAccessSubviewOpPattern
     rewriter.replaceOpWithNewOp<vector::TransferReadOp>(
         readOp, readOp.getType(), subViewOp.getSource(), newIndices,
         readOp.getPadding(), readOp.getInBoundsValues());
+    return success();
+  }
+};
+
+/// `vector.transfer_write` gets converted to `llvm.store` in the pass
+/// --convert-vector-to-llvm. The `llvm.store` persists through the
+/// translation to LLVMIR, and then through peano's `opt`. Then in peano's
+/// `llc` (VLIW code generation), what the `llvm.store` gets converted to
+/// depends on the size of the store. This pattern splits a transfer_read
+/// into smaller transfer_reads based on the best size for hitting vector
+/// assembly loads after `llc`. For example, assuming 128 bytes is the
+/// best store size for vectorization.
+///
+/// INPUT:
+///  %c0 = arith.constant 0 : index
+///  %cst = arith.constant dense<0> : vector<256xi32>
+///  %a = memref.alloc() : memref<256xi32>
+///  vector.transfer_write %cst, %a[%c0] {..} vector<256xi32>, memref<256xi32>
+///
+/// OUTPUT:
+///  %c0 = arith.constant 0 : index
+///  %c32 = arith.constant 32 : index
+///  %c256 = arith.constant 256 : index
+///  %cst = arith.constant dense<0> : vector<32xi32>
+///  %a = memref.alloc() : memref<256xi32>
+///  scf.for %arg0 = %c0 to %c256 step %c32 {
+///    vector.transfer_write %cst, %a[%arg0] {..} : vector<32xi32>,
+///                                                 memref<256xi32>
+///  }
+///
+/// Note: the closest thing to this that I can find upstream is
+/// `populateVectorUnrollPatterns` but that isn't quite what we want.
+/// It unrolls the loop (this pass doesn't) and creates ops to extract
+/// and insert strided slices that are not needed when the vector is a splat
+/// value.
+
+struct SerializeSplatTransferReadWithTargetLoadSize
+    : public OpRewritePattern<vector::TransferWriteOp> {
+  using OpRewritePattern<vector::TransferWriteOp>::OpRewritePattern;
+  SerializeSplatTransferReadWithTargetLoadSize(MLIRContext *context,
+                                               AMDAIE::AMDAIEDevice d)
+      : OpRewritePattern<vector::TransferWriteOp>(context),
+        deviceModel(AMDAIE::getDeviceModel(d)) {}
+
+ private:
+  AMDAIE::AMDAIEDeviceModel deviceModel;
+  LogicalResult matchAndRewrite(vector::TransferWriteOp writeOp,
+                                PatternRewriter &rewriter) const override {
+    Value writeDestination = writeOp.getSource();
+    MemRefType writeDestinationType =
+        dyn_cast<MemRefType>(writeDestination.getType());
+
+    assert(writeDestinationType && "transfer_write must write to memref");
+    if (!writeDestinationType.hasStaticShape()) {
+      return rewriter.notifyMatchFailure(writeOp, "source has dynamic shape");
+    }
+    {
+      MemRefLayoutAttrInterface layout = writeDestinationType.getLayout();
+      if (layout && !layout.isIdentity()) {
+        return rewriter.notifyMatchFailure(writeOp,
+                                           "source has non-identity layout");
+      }
+    }
+    // This pass only succeeds when the memref that is written to is rank-1.
+    // There is already a pattern for flattening memrefs that takes care of
+    // rank-n (n>1) memrefs.
+    if (writeDestinationType.getRank() != 1) {
+      return rewriter.notifyMatchFailure(writeOp, "memref isn't rank-1");
+    }
+
+    Operation::operand_range initialWriteIndices = writeOp.getIndices();
+    assert(initialWriteIndices.size() == 1 && "write destination is rank-1");
+    Attribute initialIndexAttr;
+    matchPattern(initialWriteIndices[0], m_Constant(&initialIndexAttr));
+    if (!initialIndexAttr) {
+      return rewriter.notifyMatchFailure(writeOp, "index isn't constant");
+    }
+    int64_t initialIndex = cast<IntegerAttr>(initialIndexAttr).getInt();
+
+    VectorType initialVectorType =
+        dyn_cast<VectorType>(writeOp.getVector().getType());
+    // Sanity checks on the vector operand:
+    assert(initialVectorType && "vector must be of vector type");
+    assert(writeDestinationType.getElementType() ==
+               initialVectorType.getElementType() &&
+           "element types must match");
+
+    // Find the arith.constant that the vector operand is a view of, if it is
+    // one.
+    Value currentTraversalValue = writeOp.getVector();
+    arith::ConstantOp vectorSource;
+    while (Operation *op = currentTraversalValue.getDefiningOp()) {
+      if (auto cOp = dyn_cast<arith::ConstantOp>(op)) vectorSource = cOp;
+      if (vectorSource || op->getNumOperands() != 1) break;
+      currentTraversalValue = op->getOperand(0);
+    }
+    if (!vectorSource) {
+      return rewriter.notifyMatchFailure(
+          writeOp, "vector isn't derived from arith.constant");
+    }
+
+    // Get the splat value of the constant vector.
+    TypedAttr constantValue = vectorSource.getValue();
+    auto splatAttr = dyn_cast<SplatElementsAttr>(constantValue);
+    if (!splatAttr || !splatAttr.isSplat()) {
+      return rewriter.notifyMatchFailure(writeOp, "constant isn't a splat");
+    }
+    Attribute splat = splatAttr.getSplatValue<Attribute>();
+
+    int64_t bytesPerWrite = deviceModel.getPreferredLoadBytes();
+
+    Type elementType = writeDestinationType.getElementType();
+
+    int64_t nbWriteElements = initialVectorType.getNumElements();
+    int64_t bitsPerElement = elementType.getIntOrFloatBitWidth();
+    int64_t bytesPerElement = bitsPerElement / 8;
+    int64_t totalBytes = nbWriteElements * bytesPerElement;
+    int64_t elementsPerWrite = bytesPerWrite / bytesPerElement;
+    int64_t nbLoopWrites = nbWriteElements / elementsPerWrite;
+    int64_t nbTailBytes = totalBytes % bytesPerWrite;
+    int64_t nbTailElements = nbTailBytes / bytesPerElement;
+    int64_t tailStart = initialIndex + nbLoopWrites * elementsPerWrite;
+
+    if (totalBytes <= bytesPerWrite) {
+      return rewriter.notifyMatchFailure(writeOp,
+                                         "source is smaller than write size");
+    }
+
+    // Create a transfer_write that writes to the original memref destination,
+    // but with an adjusted number of elements and an adjusted offset index.
+    auto createTransferWrite = [&](uint32_t n, Value offset) {
+      VectorType type = VectorType::get({n}, elementType);
+      DenseElementsAttr attr = DenseElementsAttr::get(type, splat);
+      auto newConstantOp =
+          rewriter.create<arith::ConstantOp>(vectorSource.getLoc(), type, attr);
+      rewriter.create<vector::TransferWriteOp>(
+          writeOp.getLoc(), newConstantOp.getResult(), writeDestination, offset,
+          writeOp.getPermutationMapAttr(), writeOp.getInBoundsAttr());
+    };
+
+    // Construct the loop body.
+    rewriter.setInsertionPointAfter(writeOp);
+
+    // TODO(newling) consider partial unrolling if beneficial, or some smarter
+    // way of deciding whether to attach no unrolling. Perhaps this should even
+    // be a separate pass. Preventing this from unrolling here for now, as I see
+    // it saves 1K PM bytes for a linalg.fill for a matmul.
+    auto loopOp = AMDAIE::createForOpWithUnrollingDisabled(
+        rewriter, writeOp.getLoc(), initialIndex, tailStart, elementsPerWrite);
+
+    // Create transfer_write inside loop body.
+    rewriter.setInsertionPointToStart(loopOp.getBody());
+    createTransferWrite(elementsPerWrite, loopOp.getInductionVar());
+
+    // If there are tail elements, create a transfer_write for them.
+    if (nbTailElements > 0) {
+      rewriter.setInsertionPointAfter(loopOp);
+      Value cEnd =
+          rewriter.create<arith::ConstantIndexOp>(writeOp.getLoc(), tailStart);
+      createTransferWrite(nbTailElements, cEnd);
+    }
+
+    // erase the original transfer_write
+    rewriter.eraseOp(writeOp);
+    return success();
+  }
+};
+
+/// TODO(newling) upstream this to MLIR.
+///
+/// A simple folder:
+/// ```
+/// %1 = memref.reinterpret_cast %0 ...
+/// %2 = memref.collapse_shape %1 ...
+/// ```
+/// If type of %2 is same as type of %0, replace uses of %2 with %0.
+struct FoldReinterpretCastFollowedByCollapseShapePattern
+    : public OpRewritePattern<memref::CollapseShapeOp> {
+  using OpRewritePattern<memref::CollapseShapeOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(memref::CollapseShapeOp collapseOp,
+                                PatternRewriter &rewriter) const override {
+    auto reinterpretOp = dyn_cast_if_present<memref::ReinterpretCastOp>(
+        collapseOp.getOperand().getDefiningOp());
+    if (!reinterpretOp) return failure();
+    BaseMemRefType reinterpretInputType = reinterpretOp.getSource().getType();
+    if (reinterpretInputType != collapseOp.getType()) return failure();
+    rewriter.replaceOp(collapseOp, reinterpretOp.getSource());
     return success();
   }
 };
@@ -663,9 +854,9 @@ getUnsqueezedShapeAndInBounds(uint64_t inputRank,
   return {newShape, newInBounds};
 }
 
-/// This pattern rewrites a `vector.transfer_write` with a non minor identity
-/// permutation map, with a minor-identity permutation map, if possible. For
-/// example,
+/// This pattern rewrites a `vector.transfer_write` without a minor-identity
+/// permutation map as one with a minor-identity permutation map, if possible.
+/// For example,
 ///
 /// ```
 /// #map = affine_map<(d0, d1, d2, d3) -> (d1, d3)>
@@ -789,49 +980,124 @@ struct ToMinorIdentityTransferReadPattern
   }
 };
 
-// clang-format off
-/// Pattern to linearize arith.truncf because later aievec.srs in AIEVecToLLVM is
-/// expected to have 1-D source and target.
-/// Refer: https://github.com/nod-ai/iree-amd-aie/blob/main/compiler/plugins/target/AMD-AIE/aievec/AIEVecToLLVM.cpp#L73-L74
+/// Pattern to linearize/flatten the operands of operations of type `TOp`.
 ///
-/// Example of what this pattern achieves :-
+/// This pattern matches if all operands and the result have the same shape, and
+/// are not rank-1. In this case all the operands are flattened to rank-1 with a
+/// vector.shape_cast.
+///
+/// One example where this is required is for arith.truncf, because later
+/// aievec.srs in AIEVecToLLVM is expected to have 1-D source and target.
+///
+/// Example of what this pattern achieves (when TOp is arith::TruncFOp) :-
 /// INPUT
 ///     %0 = arith.truncf %inp : vector<2x3xf32> to vector<2x3xbf16>
 /// OUTPUT
 ///     %0 = vector.shape_cast %inp : vector<2x3xf32> to vector<6xf32>
 ///     %1 = arith.truncf %0 : vector<6xf32> to vector<6xbf16>
 ///     %2 = vector.shape_cast %1 : vector<6xbf16> to vector<2x3xbf16>
-// clang-format on
-struct FlattenArithTruncFOpPattern : public OpRewritePattern<arith::TruncFOp> {
-  using OpRewritePattern<arith::TruncFOp>::OpRewritePattern;
+///
+template <typename TOp>
+struct FlattenOpPattern : public OpRewritePattern<TOp> {
+  using OpRewritePattern<TOp>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(arith::TruncFOp op,
+  LogicalResult matchAndRewrite(TOp op,
                                 PatternRewriter &rewriter) const override {
-    // Get old shape type.
-    auto oldShapedType = dyn_cast<VectorType>(op.getType());
-    if (!oldShapedType) return failure();
-    // Bail out if it's already linearized.
-    if (oldShapedType.getRank() == 1) return failure();
-    // Linearize the shape.
-    int64_t linearizedSize = oldShapedType.getNumElements();
-    // Fetch input.
-    Value origInputOfTruncFOp = op.getIn();
-    // Form linearized vector shape type for input and output.
-    VectorType newVectorTypeForInput = VectorType::get(
-        {linearizedSize},
-        cast<ShapedType>(origInputOfTruncFOp.getType()).getElementType());
-    VectorType newVectorTypeForOutput =
-        VectorType::get({linearizedSize}, oldShapedType.getElementType());
-    // Shape cast the original input to linearized shape type.
-    Value newInputVector = rewriter.create<vector::ShapeCastOp>(
-        op.getLoc(), newVectorTypeForInput, origInputOfTruncFOp);
-    // Create new base operation with the linearized input/output.
-    Value newTruncFOp = rewriter.create<arith::TruncFOp>(
-        op.getLoc(), newVectorTypeForOutput, newInputVector);
-    // Delinearize the output back to the original type.
-    rewriter.replaceOpWithNewOp<vector::ShapeCastOp>(op, op.getType(),
-                                                     newTruncFOp);
+    if (op->getNumResults() != 1) {
+      return rewriter.notifyMatchFailure(op, "not a single result");
+    }
+    Value result = op->getResult(0);
+    auto outType = dyn_cast<VectorType>(result.getType());
+    if (!outType) {
+      return rewriter.notifyMatchFailure(op, "output not vector");
+    }
+    // Obtain the flattened output type, or fail if already rank-1.
+    ArrayRef<int64_t> shape = outType.getShape();
+    if (outType.getRank() == 1) {
+      return rewriter.notifyMatchFailure(op, "already rank-1");
+    }
+    Type outElmType = outType.getElementType();
+    int64_t nElms = outType.getNumElements();
+    VectorType newOutType = VectorType::get({nElms}, outElmType);
+
+    // Obtain flattened input types, or fail if shapes do not all same.
+    SmallVector<VectorType> newInTypes;
+    for (Value input : op->getOperands()) {
+      auto type = dyn_cast<VectorType>(input.getType());
+      if (!type) {
+        return rewriter.notifyMatchFailure(op, "input not vector");
+      }
+      if (type.getShape() != shape) {
+        return rewriter.notifyMatchFailure(op,
+                                           "input and output shapes differ");
+      }
+      Type inElmType = type.getElementType();
+      newInTypes.push_back(VectorType::get({nElms}, inElmType));
+    }
+
+    // Create flattened inputs.
+    SmallVector<Value> newInputs;
+    for (auto enumInput : llvm::enumerate(op->getOperands())) {
+      Value input = enumInput.value();
+      Type type = newInTypes[enumInput.index()];
+      auto parent =
+          dyn_cast_if_present<vector::ShapeCastOp>(input.getDefiningOp());
+      if (parent && parent.getOperand().getType() == type) {
+        newInputs.push_back(parent.getOperand());
+      } else {
+        newInputs.push_back(rewriter.createOrFold<vector::ShapeCastOp>(
+            op.getLoc(), type, input));
+      }
+    }
+
+    // Create a new op with the flattened inputs, and then reshape the result
+    // back to the original rank.
+    Value newOp =
+        rewriter.createOrFold<TOp>(op.getLoc(), newOutType, newInputs);
+    rewriter.replaceOpWithNewOp<vector::ShapeCastOp>(op, outType, newOp);
     return success();
+  }
+};
+
+/// A pattern to fold a `vector.shape_cast` following a splat constant
+/// materialization, with a direct splat constant of the new shape. Example
+/// INPUT
+///    %cst = arith.constant dense<7> : vector<4x8xi64>
+///    %0 = vector.shape_cast %cst : vector<4x8xi64> to vector<32xi64>
+///    %use = some.use %0
+/// OUTPUT
+///    %cst = arith.constant dense<7> : vector<32xi64>
+///    %use = some.use %cst
+struct ShapeCastSplatPattern : public OpRewritePattern<arith::ConstantOp> {
+  using OpRewritePattern<arith::ConstantOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(arith::ConstantOp cstOp,
+                                PatternRewriter &rewriter) const override {
+    // Check if the constant is a splat value.
+    TypedAttr constantValue = cstOp.getValueAttr();
+    SplatElementsAttr attr = dyn_cast<SplatElementsAttr>(constantValue);
+    if (!attr || !attr.isSplat()) {
+      return rewriter.notifyMatchFailure(cstOp, "constant isn't a splat");
+    }
+    Attribute splat = attr.getSplatValue<Attribute>();
+
+    // Replace all uses of shape_casts of the splat value with direct splat
+    // constants of the new shape.
+    Location loc = cstOp.getLoc();
+    bool changed{false};
+    rewriter.setInsertionPoint(cstOp);
+    for (Operation *user : cstOp->getUsers()) {
+      auto cast = dyn_cast<vector::ShapeCastOp>(user);
+      if (!cast) continue;
+      VectorType type = cast.getResult().getType();
+      DenseElementsAttr attr = DenseElementsAttr::get(type, splat);
+      auto newOp = rewriter.create<arith::ConstantOp>(loc, type, attr);
+      rewriter.replaceAllUsesWith(cast, newOp.getResult());
+      changed = true;
+    }
+
+    if (changed) return success();
+    return rewriter.notifyMatchFailure(cstOp, "no users are vector.shape_cast");
   }
 };
 
@@ -1030,13 +1296,23 @@ struct CanonicalizeVectorForAIEVecPass
   }
 
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<arith::ArithDialect, memref::MemRefDialect,
-                    vector::VectorDialect, affine::AffineDialect>();
+    registry.insert<affine::AffineDialect, arith::ArithDialect,
+                    memref::MemRefDialect, scf::SCFDialect,
+                    vector::VectorDialect, LLVM::LLVMDialect>();
   }
 
   void runOnOperation() override {
     auto op = getOperation();
     MLIRContext *context = &getContext();
+
+    std::optional<AMDAIE::AMDAIEDevice> maybeDevice =
+        AMDAIE::getConfigAMDAIEDeviceFromAncestor(op);
+    if (!maybeDevice.has_value()) {
+      op->emitOpError(
+          "doesn't have target_device specified in a parent module.");
+      return signalPassFailure();
+    }
+    AMDAIE::AMDAIEDevice device = maybeDevice.value();
 
     {
       RewritePatternSet patterns(context);
@@ -1054,11 +1330,14 @@ struct CanonicalizeVectorForAIEVecPass
 
     {
       RewritePatternSet patterns(context);
-      patterns
-          .add<ExtractTransposeFromContractionOp, FlattenArithTruncFOpPattern,
-               ToMinorIdentityTransferReadPattern,
-               ToMinorIdentityTransferWritePattern,
-               ConvertLeadingUnitDimInsertToReshapePattern>(context);
+      patterns.add<
+          ExtractTransposeFromContractionOp, FlattenOpPattern<arith::TruncFOp>,
+          FlattenOpPattern<arith::TruncIOp>, FlattenOpPattern<arith::MulIOp>,
+          FlattenOpPattern<arith::ShRSIOp>, FlattenOpPattern<arith::ExtSIOp>,
+          FlattenOpPattern<arith::ExtUIOp>, FlattenOpPattern<arith::ExtFOp>,
+          ShapeCastSplatPattern, ToMinorIdentityTransferReadPattern,
+          ToMinorIdentityTransferWritePattern,
+          ConvertLeadingUnitDimInsertToReshapePattern>(context);
       patterns.add<ConvertSplatTransferReadToBroadcastPattern>(context);
       patterns
           .add<copied_from_mlir::FlattenContiguousRowMajorTransferReadPattern,
@@ -1076,6 +1355,9 @@ struct CanonicalizeVectorForAIEVecPass
       // cycles.
       RewritePatternSet patterns(context);
       populateBubbleSignExtensionsLate(patterns);
+      patterns.add<FoldReinterpretCastFollowedByCollapseShapePattern>(context);
+      patterns.add<SerializeSplatTransferReadWithTargetLoadSize>(context,
+                                                                 device);
       (void)applyPatternsGreedily(op, std::move(patterns));
     }
   }
@@ -1148,7 +1430,7 @@ FailureOr<Value> getAlignedTransferRead(
 
   // If the offset is constant and zero, the read is already aligned.
   if (auto offsetConstantOp = offset.getDefiningOp<arith::ConstantIndexOp>())
-    if (offsetConstantOp.getValue() == 0) return readOp.getVector();
+    if (offsetConstantOp.value() == 0) return readOp.getVector();
 
   // Verify that we can load a vector 2x as long as the original vector.
   int64_t longBits = 2 * shortBits;
@@ -1234,9 +1516,9 @@ struct AlignTransferReadsPass
   }
 
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry
-        .insert<arith::ArithDialect, memref::MemRefDialect,
-                vector::VectorDialect, affine::AffineDialect, AIEVecDialect>();
+    registry.insert<affine::AffineDialect, AIEVecDialect, arith::ArithDialect,
+                    LLVM::LLVMDialect, memref::MemRefDialect,
+                    vector::VectorDialect>();
   }
 
   void runOnOperation() override {
@@ -1278,8 +1560,9 @@ struct DetectNonCanonicalOpsPass
   }
 
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<arith::ArithDialect, memref::MemRefDialect,
-                    vector::VectorDialect, affine::AffineDialect>();
+    registry
+        .insert<affine::AffineDialect, arith::ArithDialect, LLVM::LLVMDialect,
+                memref::MemRefDialect, vector::VectorDialect>();
   }
 
   void runOnOperation() override {

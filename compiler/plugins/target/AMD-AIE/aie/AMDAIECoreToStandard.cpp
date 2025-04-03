@@ -6,8 +6,8 @@
 
 #include "AIEDialect.h"
 #include "Passes.h"
+#include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
-#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/Attributes.h"
@@ -21,45 +21,71 @@
 using namespace mlir;
 using namespace xilinx::AIE;
 
-static void lockToStd(UseLockOp useLock, IRRewriter &rewriter) {
-  if (!isa<DeviceOp>(useLock->getParentOp())) {
-    std::string funcName = [&]() {
+static LogicalResult lockToStd(IRRewriter &rewriter, Operation *parentOp,
+                               const std::string &targetArch) {
+  OpBuilder::InsertionGuard guard(rewriter);
+  MLIRContext *ctx = rewriter.getContext();
+
+  StringAttr privateSym = StringAttr::get(ctx, "private");
+  auto buildDecl = [&](const std::string &funcName) {
+    rewriter.create<func::FuncOp>(
+        rewriter.getUnknownLoc(), funcName,
+        FunctionType::get(ctx, {rewriter.getI32Type(), rewriter.getI32Type()},
+                          {}),
+        privateSym, ArrayAttr{}, ArrayAttr{});
+  };
+
+  std::string acquireFunction = "llvm." + targetArch + ".acquire";
+  std::string releaseFunction = "llvm." + targetArch + ".release";
+
+  buildDecl(acquireFunction);
+  buildDecl(releaseFunction);
+
+  WalkResult res = parentOp->walk([&](UseLockOp useLock) {
+    if (!isa<DeviceOp>(useLock->getParentOp())) {
+      std::string funcName;
       switch (useLock.getAction()) {
         case LockAction::Acquire:
         case LockAction::AcquireGreaterEqual:
-          return "llvm.aie2.acquire";
+          funcName = acquireFunction;
+          break;
         case LockAction::Release:
-          return "llvm.aie2.release";
+          funcName = releaseFunction;
+          break;
         default:
-          assert(false && "Unknown lock action");
+          useLock.emitOpError() << "has an unsupported lock action";
+          return WalkResult::interrupt();
       }
-    }();
 
-    // TODO(max): this can be simplified with
-    // SymbolTable::lookupNearestSymbolFrom if DeviceOp ceases to be a
-    // SymbolTable
-    ModuleOp modOp = useLock->getParentOfType<ModuleOp>();
-    func::FuncOp func = modOp.lookupSymbol<func::FuncOp>(funcName);
+      // TODO(max): this can be simplified with
+      // SymbolTable::lookupNearestSymbolFrom if DeviceOp ceases to be a
+      // SymbolTable
+      ModuleOp modOp = useLock->getParentOfType<ModuleOp>();
+      func::FuncOp func = modOp.lookupSymbol<func::FuncOp>(funcName);
 
-    int lockValue = useLock.getValue().value_or(1);
+      int lockValue = useLock.getValue().value_or(1);
 
-    // AIE2 acquire greater equal is encoded as a negative value.
-    if (useLock.getAction() == LockAction::AcquireGreaterEqual)
-      lockValue = -lockValue;
+      // AIE2 acquire greater equal is encoded as a negative value.
+      if (useLock.getAction() == LockAction::AcquireGreaterEqual)
+        lockValue = -lockValue;
 
-    rewriter.setInsertionPoint(useLock);
-    IntegerAttr lockAttr = rewriter.getI32IntegerAttr(lockValue);
-    IntegerType type = IntegerType::get(rewriter.getContext(), 32);
-    Location loc = useLock.getLoc();
+      rewriter.setInsertionPoint(useLock);
+      IntegerAttr lockAttr = rewriter.getI32IntegerAttr(lockValue);
+      IntegerType type = IntegerType::get(rewriter.getContext(), 32);
+      Location loc = useLock.getLoc();
 
-    SmallVector<Value, 2> args{
-        rewriter.create<arith::IndexCastOp>(loc, type, useLock.getLock()),
-        rewriter.create<arith::ConstantOp>(loc, type, lockAttr)};
+      SmallVector<Value, 2> args{
+          rewriter.create<arith::IndexCastOp>(loc, type, useLock.getLock()),
+          rewriter.create<arith::ConstantOp>(loc, type, lockAttr)};
 
-    rewriter.create<func::CallOp>(loc, func, args);
-  }
+      rewriter.create<func::CallOp>(loc, func, args);
+    }
 
-  rewriter.eraseOp(useLock);
+    rewriter.eraseOp(useLock);
+    return WalkResult::advance();
+  });
+  if (res.wasInterrupted()) return failure();
+  return success();
 }
 
 static void bufferToStd(ModuleOp module, BufferOp buffer,
@@ -132,40 +158,16 @@ void outlineOps(DeviceOp device) {
 }
 
 namespace mlir::iree_compiler::AMDAIE {
-struct AMDAIECoreToStandardPass : mlir::OperationPass<ModuleOp> {
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(AMDAIECoreToStandardPass)
-
-  AMDAIECoreToStandardPass() : mlir::OperationPass<ModuleOp>(resolveTypeID()) {}
-  AMDAIECoreToStandardPass(const AMDAIECoreToStandardPass &other)
-      : mlir::OperationPass<mlir::ModuleOp>(other) {}
-
-  llvm::StringRef getArgument() const override {
-    return "amdaie-standard-lowering";
-  }
-
-  llvm::StringRef getName() const override {
-    return "AMDAIECoreToStandardPass";
-  }
-
-  std::unique_ptr<mlir::Pass> clonePass() const override {
-    return std::make_unique<AMDAIECoreToStandardPass>(
-        *static_cast<const AMDAIECoreToStandardPass *>(this));
-  }
+struct AMDAIECoreToStandardPass
+    : public impl::AMDAIECoreToStandardBase<AMDAIECoreToStandardPass> {
+  AMDAIECoreToStandardPass(const AMDAIECoreToStandardOptions &options)
+      : AMDAIECoreToStandardBase(options) {}
 
   void getDependentDialects(mlir::DialectRegistry &registry) const override {
     registry.insert<mlir::func::FuncDialect>();
     registry.insert<mlir::memref::MemRefDialect>();
     registry.insert<xilinx::AIE::AIEDialect>();
   }
-
-  mlir::Pass::Option<unsigned> tileCol{
-      *this, "tilecol",
-      llvm::cl::desc("X coordinate of tile to generate code for"),
-      llvm::cl::init(-1)};
-  mlir::Pass::Option<unsigned> tileRow{
-      *this, "tilerow",
-      llvm::cl::desc("Y coordinate of tile to generate code for"),
-      llvm::cl::init(-1)};
 
   // Assert that cores are isolated
   static bool coresAreIsolated(ModuleOp m) {
@@ -191,6 +193,22 @@ struct AMDAIECoreToStandardPass : mlir::OperationPass<ModuleOp> {
     return true;
   }
 
+  // Ensure that all aie.core ops are isolated from above, i.e. that all
+  // operands of ops within an aie.core are produced inside the aie.core (or are
+  // block arguments of the core). The expection is ops in the aie dialect --
+  // operands produced by for example an aie.buffer may be outside the core.
+  static void isolateCores(ModuleOp m) {
+    IRRewriter rewriter(m->getContext());
+    auto notAieDialect = [](Operation *op) -> bool {
+      StringRef dialect = op->getDialect()->getNamespace();
+      if (dialect == AIEDialect::getDialectNamespace()) return false;
+      return true;
+    };
+    m->walk([&](CoreOp coreOp) {
+      sinkInto(coreOp.getRegion(), rewriter, notAieDialect);
+    });
+  }
+
   void runOnOperation() override {
     ModuleOp m = getOperation();
 
@@ -198,6 +216,19 @@ struct AMDAIECoreToStandardPass : mlir::OperationPass<ModuleOp> {
       m.emitOpError("expected AIE.device operation at toplevel");
       return signalPassFailure();
     }
+    DeviceOp deviceOp = *m.getOps<DeviceOp>().begin();
+    AMDAIEDeviceModel deviceModel =
+        getDeviceModel(static_cast<AMDAIEDevice>(deviceOp.getDevice()));
+
+    std::optional<std::string> targetArch = deviceModel.getTargetArchString();
+    if (!targetArch.has_value()) {
+      deviceOp.emitError() << "doesn't have a target arch string";
+      return signalPassFailure();
+    }
+    // Chess uses `aie2` for both aie2 and aie2p, while peano separates between
+    // `aie2` and `aie2p`.
+    std::string targetArchStr =
+        lowerToChess ? "aie2" : StringRef(targetArch.value()).lower();
 
     MLIRContext *ctx = &getContext();
     IRRewriter rewriter(ctx);
@@ -206,43 +237,30 @@ struct AMDAIECoreToStandardPass : mlir::OperationPass<ModuleOp> {
     // Ensure that we don't have an incorrect target triple. This may override
     // some bogus target triple in the original mlir.
     m->setAttr(LLVM::LLVMDialect::getTargetTripleAttrName(),
-               rewriter.getStringAttr("aie2"));
+               rewriter.getStringAttr(targetArchStr));
 
-    StringAttr privateSym = StringAttr::get(ctx, "private");
-    auto buildDecl = [&](const std::string &funcName) {
-      rewriter.create<func::FuncOp>(
-          rewriter.getUnknownLoc(), funcName,
-          FunctionType::get(ctx, {rewriter.getI32Type(), rewriter.getI32Type()},
-                            {}),
-          privateSym, ArrayAttr{}, ArrayAttr{});
-    };
-    buildDecl("llvm.aie2.acquire");
-    buildDecl("llvm.aie2.release");
+    isolateCores(m);
 
-    m.walk([&](UseLockOp useLock) { lockToStd(useLock, rewriter); });
+    if (failed(lockToStd(rewriter, m, targetArchStr))) {
+      return signalPassFailure();
+    }
 
     m.walk([&](BufferOp buffer) { bufferToStd(m, buffer, rewriter); });
 
     if (!coresAreIsolated(m)) return signalPassFailure();
 
-    m.walk(
-        [&](CoreOp coreOp) { coreToStd(coreOp, rewriter, tileCol, tileRow); });
+    m.walk([&](CoreOp coreOp) { coreToStd(coreOp, rewriter, -1, -1); });
 
     // Move all the func.func ops and memref.globals from device to module.
-    DeviceOp device = *m.getOps<DeviceOp>().begin();
-    outlineOps<memref::GlobalOp>(device);
-    outlineOps<func::FuncOp>(device);
-    rewriter.eraseOp(device);
+    outlineOps<memref::GlobalOp>(deviceOp);
+    outlineOps<func::FuncOp>(deviceOp);
+    rewriter.eraseOp(deviceOp);
   }
 };
 
-std::unique_ptr<OperationPass<ModuleOp>> createAMDAIECoreToStandardPass() {
-  return std::make_unique<AMDAIECoreToStandardPass>();
+std::unique_ptr<OperationPass<ModuleOp>> createAMDAIECoreToStandardPass(
+    AMDAIECoreToStandardOptions options) {
+  return std::make_unique<AMDAIECoreToStandardPass>(options);
 }
 
-void registerAMDAIECoreToStandard() {
-  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
-    return createAMDAIECoreToStandardPass();
-  });
-}
 }  // namespace mlir::iree_compiler::AMDAIE

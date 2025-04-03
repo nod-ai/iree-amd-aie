@@ -20,17 +20,22 @@
 namespace mlir::iree_compiler {
 namespace {
 
+namespace {
+#define GEN_PASS_REGISTRATION
+#include "aie/Passes.h.inc"
+}  // namespace
+
 struct AMDAIESession
     : public PluginSession<AMDAIESession, AMDAIE::AMDAIEOptions,
                            PluginActivationPolicy::DefaultActivated> {
   static void registerPasses() {
     AMDAIE::registerAMDAIEPasses();
-    AMDAIE::registerAMDAIEAssignBufferAddressesBasic();
+    registerAMDAIEAssignBufferAddresses();
     AMDAIE::registerAMDAIEAssignBufferDescriptorIDs();
-    AMDAIE::registerAMDAIECoreToStandard();
+    registerAMDAIECoreToStandard();
     AMDAIE::registerAMDAIELocalizeLocks();
     AMDAIE::registerAMDAIENormalizeAddressSpaces();
-    AMDAIE::registerAMDAIERoutePathfinderFlows();
+    registerAMDAIERouteFlowsWithPathfinder();
     AMDAIE::registerAMDAIEDmaToNpu();
     AMDAIE::registerAIRConversionPasses();
     AMDAIE::registerAIRTransformPasses();

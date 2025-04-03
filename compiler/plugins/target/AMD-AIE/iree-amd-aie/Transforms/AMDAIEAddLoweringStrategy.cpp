@@ -50,20 +50,6 @@ class AMDAIELoweringStrategyPass
 void AMDAIELoweringStrategyPass::runOnOperation() {
   ModuleOp moduleOp = getOperation();
 
-  // Detect unsupported pipeline combinations.
-  {
-    bool padPack = useTilePipeline == TilePassPipeline::PadPackPipeline;
-    bool objectFifo =
-        useLowerToAIEPipeline == LowerToAIEPassPipeline::ObjectFifo;
-    if (padPack && objectFifo) {
-      moduleOp->emitError(
-          "Unsupported pair of pipelines, TilePassPipeline::PadPack "
-          "and LowerToAIEPassPipeline::ObjectFifo. Did you mean to use "
-          "TilePassPipeline::PackPeelPipeline instead?");
-      return signalPassFailure();
-    }
-  }
-
   for (auto funcOp : moduleOp.getOps<FunctionOpInterface>()) {
     // Set the strategy with default heuristics.
     if (failed(initAIELaunchConfig(funcOp, useTilePipeline,

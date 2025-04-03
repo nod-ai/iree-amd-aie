@@ -97,10 +97,9 @@ LogicalResult eraseQueueOperations(IRRewriter &rewriter,
 /// queue based on its half DMA copy operation.
 /// Can't fold wait op if:
 /// (1) the current operation is not in the same scope as the queue, or
-/// (2) the current operation is a packet flow, or
-/// (3) reaches the maximum queue size, or
-/// (4) the queue is empty, or
-/// (5) the current BD ID on the same tile already occurs in the queue.
+/// (2) reaches the maximum queue size, or
+/// (3) the queue is empty, or
+/// (4) the current BD ID on the same tile already occurs in the queue.
 FailureOr<bool> canFoldByQueue(
     const AMDAIE::AMDAIEDeviceModel &deviceModel,
     const Operation *queueParentOp,
@@ -108,16 +107,6 @@ FailureOr<bool> canFoldByQueue(
     AMDAIE::NpuHalfDmaCpyNdOp currHalfDmaCpyNdOp, DmaBdIdPair currBdIdPair) {
   // Not in the same scope? Can't fold.
   if (currHalfDmaCpyNdOp->getParentOp() != queueParentOp) return false;
-
-  // Packet flow? Can't fold.
-  AMDAIE::ConnectionOp connectionOp = currBdIdPair.first.second;
-  std::optional<AMDAIE::FlowOp> maybeFlowOp = connectionOp.getFlowOp();
-  if (!maybeFlowOp) {
-    return connectionOp.emitOpError()
-           << "expected to operate on an `amdaie.flow`";
-  }
-  AMDAIE::FlowOp flowOp = maybeFlowOp.value();
-  if (flowOp.getIsPacketFlow()) return false;
 
   // Reached the maximum queue size, or the queue is empty? Can't fold.
   DmaBdIdKey currBdIdKey = currBdIdPair.first;
@@ -247,8 +236,7 @@ LogicalResult eraseBatchOperations(IRRewriter &rewriter,
 /// (1) the current operation is not in the same scope as the batch, or
 /// (2) the current connection op already occurs in the batch, or
 /// (3) the batch is empty, or
-/// (4) the current operation is a packet flow, or
-/// (5) the current BD ID on the same tile already occurs in the batch.
+/// (4) the current BD ID on the same tile already occurs in the batch.
 FailureOr<bool> canFoldByBatch(
     const Operation *batchParentOp,
     const DenseSet<AMDAIE::ConnectionOp> &connectionOps,
@@ -261,15 +249,6 @@ FailureOr<bool> canFoldByBatch(
   AMDAIE::ConnectionOp connectionOp = currBdIdPair.first.second;
   if (connectionOps.contains(connectionOp) || connectionOps.empty())
     return false;
-
-  // Packet flow? Can't fold.
-  std::optional<AMDAIE::FlowOp> maybeFlowOp = connectionOp.getFlowOp();
-  if (!maybeFlowOp) {
-    return connectionOp.emitOpError()
-           << "expected to operate on an `amdaie.flow`";
-  }
-  AMDAIE::FlowOp flowOp = maybeFlowOp.value();
-  if (flowOp.getIsPacketFlow()) return false;
 
   // Duplicate BD ID on the same tile? Can't fold.
   AMDAIE::TileOp tileOp = currBdIdPair.first.first;

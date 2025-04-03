@@ -48,7 +48,7 @@ void AMDAIEFuseConsumerIntoLoopPass::runOnOperation() {
   // Check if there is matmul-elementwise fusion opportunity. If so, overwrite
   // the `fuseDepth` to be 2.
   funcOp->walk<WalkOrder::PostOrder, ReverseIterator>([&](linalg::LinalgOp op) {
-    if (isMatmulProducerOfElementwise(op)) {
+    if (isElementwiseWithMatmulProducer(op)) {
       fuseDepth = 2;
       return WalkResult::interrupt();
     }
@@ -92,7 +92,7 @@ void AMDAIEFuseConsumerIntoLoopPass::runOnOperation() {
     changed = false;
     // Canonicalize before every iteration to enable more back-to-back fusion
     // opportunities.
-    (void)applyPatternsAndFoldGreedily(funcOp, canonicalizationPatterns);
+    (void)applyPatternsGreedily(funcOp, canonicalizationPatterns);
     Operation *producerOp = computeOp;
     // TODO(jornt): Refactor fuseDepth to avoid hardcoding and fuse greedily
     // with any depth instead.

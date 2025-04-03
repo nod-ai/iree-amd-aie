@@ -21,6 +21,84 @@ using mlir::OpTrait::iree_compiler::AMDAIE::CircularDmaOp;
 
 namespace {
 
+/// Expand dimensions that exceed the maximum size into a sequence of linear
+/// dimensions.
+class ExpandSingleDimIntoLinearDims
+    : public OpInterfaceRewritePattern<AMDAIE::DoublyStridedOpInterface> {
+  using OpInterfaceRewritePattern::OpInterfaceRewritePattern;
+
+ public:
+  ExpandSingleDimIntoLinearDims(
+      MLIRContext *ctx,
+      std::optional<std::reference_wrapper<const AMDAIEDeviceModel>>
+          deviceModel = std::nullopt)
+      : OpInterfaceRewritePattern<AMDAIE::DoublyStridedOpInterface>(ctx),
+        deviceModel(deviceModel) {}
+
+  LogicalResult matchAndRewrite(AMDAIE::DoublyStridedOpInterface op,
+                                PatternRewriter &rewriter) const override {
+    if (!deviceModel.has_value()) {
+      return rewriter.notifyMatchFailure(
+          op, "no device model passed, so won't expand linear dimensions");
+    }
+    OpBuilder::InsertionGuard guard(rewriter);
+    std::optional<uint8_t> sourceMemSpace = op.getSourceMemorySpaceAsUInt();
+    std::optional<uint8_t> targetMemSpace = op.getTargetMemorySpaceAsUInt();
+    if (!sourceMemSpace || !targetMemSpace) {
+      return rewriter.notifyMatchFailure(
+          op,
+          "expected a source and target memory space for hardware aware "
+          "linear dimension expansion");
+    }
+    SmallVector<OpFoldResult> sourceOffsets = op.getSourceMixedOffsets();
+    SmallVector<OpFoldResult> sourceSizes = op.getSourceMixedSizes();
+    SmallVector<OpFoldResult> sourceStrides = op.getSourceMixedStrides();
+    SmallVector<OpFoldResult> targetOffsets = op.getTargetMixedOffsets();
+    SmallVector<OpFoldResult> targetSizes = op.getTargetMixedSizes();
+    SmallVector<OpFoldResult> targetStrides = op.getTargetMixedStrides();
+    SmallVector<int64_t> maxSourceSizes, maxTargetSizes;
+    if (op->hasTrait<CircularDmaOp>()) {
+      CircularDmaDimConfig sourceDmaDimConfig(deviceModel.value(),
+                                              sourceMemSpace.value());
+      maxSourceSizes = sourceDmaDimConfig.getMaxSizes(sourceOffsets.size());
+      CircularDmaDimConfig targetDmaDimConfig(deviceModel.value(),
+                                              targetMemSpace.value());
+      maxTargetSizes = targetDmaDimConfig.getMaxSizes(targetOffsets.size());
+    } else {
+      DmaDimConfig sourceDmaDimConfig(deviceModel.value(),
+                                      sourceMemSpace.value());
+      maxSourceSizes = sourceDmaDimConfig.getMaxSizes(sourceOffsets.size());
+      DmaDimConfig targetDmaDimConfig(deviceModel.value(),
+                                      targetMemSpace.value());
+      maxTargetSizes = targetDmaDimConfig.getMaxSizes(targetOffsets.size());
+    }
+    SmallVector<OpFoldResult> newSourceOffsets, newSourceSizes,
+        newSourceStrides, newTargetOffsets, newTargetSizes, newTargetStrides;
+    LogicalResult sourceRes = expandLargeDimIntoLinearDims(
+        op.getContext(), sourceOffsets, sourceSizes, sourceStrides,
+        newSourceOffsets, newSourceSizes, newSourceStrides, maxSourceSizes);
+    LogicalResult targetRes = expandLargeDimIntoLinearDims(
+        op.getContext(), targetOffsets, targetSizes, targetStrides,
+        newTargetOffsets, newTargetSizes, newTargetStrides, maxTargetSizes);
+    if (failed(sourceRes) && failed(targetRes)) {
+      return rewriter.notifyMatchFailure(
+          op, "neither a source nor a target change");
+    }
+
+    rewriter.setInsertionPointAfter(op);
+    auto newDoublyStridedOp = op.createDoublyStridedOp(
+        rewriter, newTargetOffsets, newTargetSizes, newTargetStrides,
+        newSourceOffsets, newSourceSizes, newSourceStrides);
+    rewriter.replaceOp(op, newDoublyStridedOp.getOperation());
+    return success();
+  }
+
+ private:
+  /// If the device model is set, this rewriter will use the device model to
+  /// keep hardware stride/size limitations into account.
+  std::optional<std::reference_wrapper<const AMDAIEDeviceModel>> deviceModel;
+};
+
 /// Recognize linear accesses across multiple DMA access dimensions and fold
 /// them.
 class FoldDmaOpLinearDims
@@ -154,22 +232,16 @@ struct FoldDmaOpUnitDims
     SmallVector<OpFoldResult> targetOffsets = op.getTargetMixedOffsets();
     SmallVector<OpFoldResult> targetSizes = op.getTargetMixedSizes();
     SmallVector<OpFoldResult> targetStrides = op.getTargetMixedStrides();
-    SmallVector<OpFoldResult> newSourceOffsets, newSourceSizes,
-        newSourceStrides, newTargetOffsets, newTargetSizes, newTargetStrides;
-    LogicalResult sourceRes =
-        foldUnitDims(op.getContext(), sourceOffsets, sourceSizes, sourceStrides,
-                     newSourceOffsets, newSourceSizes, newSourceStrides);
-    LogicalResult targetRes =
-        foldUnitDims(op.getContext(), targetOffsets, targetSizes, targetStrides,
-                     newTargetOffsets, newTargetSizes, newTargetStrides);
-    if (failed(sourceRes) && failed(targetRes)) {
-      return failure();
-    }
+    LogicalResult sourceRes = foldUnitDims(op.getContext(), sourceOffsets,
+                                           sourceSizes, sourceStrides);
+    LogicalResult targetRes = foldUnitDims(op.getContext(), targetOffsets,
+                                           targetSizes, targetStrides);
+    if (failed(sourceRes) && failed(targetRes)) return failure();
 
     rewriter.setInsertionPointAfter(op);
     auto newDoublyStridedOp = op.createDoublyStridedOp(
-        rewriter, newTargetOffsets, newTargetSizes, newTargetStrides,
-        newSourceOffsets, newSourceSizes, newSourceStrides);
+        rewriter, targetOffsets, targetSizes, targetStrides, sourceOffsets,
+        sourceSizes, sourceStrides);
     rewriter.replaceOp(op, newDoublyStridedOp.getOperation());
     return success();
   }
@@ -227,6 +299,8 @@ void populateCanonicalizeDoublyStridedOpPatterns(
   patterns.add<FoldDmaOpUnitDims>(patterns.getContext());
   patterns.add<FoldDmaOpLinearDims>(patterns.getContext(),
                                     std::move(deviceModel));
+  patterns.add<ExpandSingleDimIntoLinearDims>(patterns.getContext(),
+                                              std::move(deviceModel));
   if (foldSingleDims) {
     patterns.add<FoldDmaOpSingleDims>(patterns.getContext());
   }

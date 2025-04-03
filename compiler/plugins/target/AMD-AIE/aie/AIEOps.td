@@ -236,7 +236,8 @@ def AIE_PacketRuleOp: AIE_Op<"rule"> {
   let arguments = (
     ins I8Attr:$mask,
         I8Attr:$value,
-        Index:$amsel
+        Index:$amsel,
+        OptionalAttr<DenseI32ArrayAttr>:$packet_ids
   );
   let summary = "Packet switched routing rule";
   let assemblyFormat = [{
@@ -493,6 +494,14 @@ def AIE_BufferOp: AIE_Op<"buffer", [
   }];
   // mlir-air legacy
   let extraClassDeclaration = [{
+    mlir::StringAttr name() {
+      if (auto attr = getOperation()->getAttrOfType<mlir::StringAttr>(
+              mlir::SymbolTable::getSymbolAttrName()))
+        return attr;
+      emitOpError("does not have '")
+          << mlir::SymbolTable::getSymbolAttrName() << "' attribute specified";
+      llvm::report_fatal_error("couldn't get name");
+    }
     TileOp getTileOp();
     void getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn);

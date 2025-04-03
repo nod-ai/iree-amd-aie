@@ -23,8 +23,11 @@ struct HalfDmaCpyNdToNpuConverter final
   using OpConversionPattern::OpConversionPattern;
 
   HalfDmaCpyNdToNpuConverter(MLIRContext *context,
-                             const AMDAIE::AMDAIEDeviceModel &deviceModel)
-      : OpConversionPattern(context), deviceModel(std::move(deviceModel)) {
+                             const AMDAIE::AMDAIEDeviceModel &deviceModel,
+                             int32_t argIdxOffset)
+      : OpConversionPattern(context),
+        deviceModel(std::move(deviceModel)),
+        argIdxOffset(argIdxOffset) {
     minStrideBitWidth = deviceModel.getMinStrideBitWidth();
   }
 
@@ -32,25 +35,49 @@ struct HalfDmaCpyNdToNpuConverter final
   /// is specific to Shim BDs for now.
   FailureOr<AMDAIE::NpuPushToQueueOp> insertWriteBdOps(
       AMDAIE::NpuHalfDmaCpyNdOp op, ConversionPatternRewriter &rewriter,
-      AMDAIE::AMDAIETileType tileType,
-      AMDAIE::LogicalObjectFifoFromMemrefOp logicalObjFifo,
-      AMDAIE::BdIdOp bdIdOp, AMDAIE::ChannelOp channelOp, int64_t bufferLength,
-      int64_t bufferOffset, int32_t enablePacket, int32_t packetId,
-      int32_t packetType, ArrayRef<OpFoldResult> sizes,
-      ArrayRef<OpFoldResult> strides) const {
+      AMDAIE::AMDAIETileType tileType, AMDAIE::BdIdOp bdIdOp,
+      AMDAIE::ChannelOp channelOp, int64_t bufferLength, int64_t bufferOffset,
+      int32_t enablePacket, int32_t packetId, int32_t packetType,
+      SmallVector<OpFoldResult> sizes, SmallVector<OpFoldResult> strides,
+      bool loweringCtrlpktDma) const {
     uint8_t numIntraAddrDim = deviceModel.getDmaProp<uint8_t>(
         tileType, AMDAIE::AMDAIEDmaProp::NumAddrDim);
     uint8_t numAddrDim =
         numIntraAddrDim + deviceModel.deviceConfig.dmaNbInterDims;
-    auto subspanOp = dyn_cast_if_present<IREE::HAL::InterfaceBindingSubspanOp>(
-        logicalObjFifo.getMemref().getDefiningOp());
-    if (!subspanOp) {
-      return logicalObjFifo.emitOpError()
-             << "must operate on an `hal.interface.binding.subspan`";
+
+    // Default values, used for control packet DMAs only.
+    // The `argIdx` must match the driver and is assumed to be 0.
+    // The `elemWidthInBits` is fixed at 32 for control packet data.
+    // The `memSpace` is set to 0, indicating storage in global memory.
+    int64_t argIdx = 0;
+    int64_t elemWidthInBits = 32;
+    uint8_t memSpace = 0;
+    if (!loweringCtrlpktDma) {
+      // Normal DMAs, update `argIdx`, `elemWidthInBits`, and `memSpace` based
+      // on the memref.
+      auto logicalObjFifo =
+          dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+              op.getInput().getDefiningOp());
+      if (!logicalObjFifo) {
+        return op.emitOpError() << "expected input to be an "
+                                   "`amdaie.logicalobjectfifo.from_memref`";
+      }
+      auto subspanOp =
+          dyn_cast_if_present<IREE::HAL::InterfaceBindingSubspanOp>(
+              logicalObjFifo.getMemref().getDefiningOp());
+      if (!subspanOp) {
+        return logicalObjFifo.emitOpError()
+               << "must operate on an `hal.interface.binding.subspan`";
+      }
+      argIdx = subspanOp.getBinding().getZExtValue();
+      MemRefType memrefType = logicalObjFifo.getMemrefType();
+      elemWidthInBits = memrefType.getElementTypeBitWidth();
+      memSpace = logicalObjFifo.getMemorySpaceAsUInt();
     }
-    int64_t argIdx = subspanOp.getBinding().getZExtValue();
-    MemRefType memrefType = logicalObjFifo.getMemrefType();
-    int64_t elemWidthInBits = memrefType.getElementTypeBitWidth();
+    // Add the optional offset to the argIdx.
+    argIdx += argIdxOffset;
+    if (argIdx < 0) return op.emitOpError() << "argIdx must be non-negative";
+
     std::optional<AMDAIE::DMAChannelDir> maybeDmaDirection =
         channelOp.getDirection();
     if (!maybeDmaDirection) {
@@ -66,6 +93,20 @@ struct HalfDmaCpyNdToNpuConverter final
     int32_t bdId = getConstantIndexOrAssert(bdIdOp.getValue());
     int32_t outOfOrderId{0};
 
+    SmallVector<OpFoldResult> offsets(
+        strides.size(), getAsIndexOpFoldResult(rewriter.getContext(), 0));
+    (void)foldUnitDims(rewriter.getContext(), offsets, sizes, strides);
+
+    DmaDimConfig dmaDimConfig(deviceModel, memSpace);
+    SmallVector<int64_t> maxSizes = dmaDimConfig.getMaxSizes(offsets.size());
+    SmallVector<OpFoldResult> linearOffsets, linearSizes, linearStrides;
+    (void)foldLinearDims(
+        rewriter.getContext(), offsets, sizes, strides, linearOffsets,
+        linearSizes, linearStrides, [&](size_t idxFromEnd, int64_t size) {
+          return idxFromEnd < maxSizes.size() &&
+                 size <= maxSizes[maxSizes.size() - idxFromEnd - 1];
+        });
+
     SmallVector<int32_t, 4> staticSizes;
     SmallVector<int32_t, 4> staticStrides;
     // Padding is unused for now.
@@ -75,14 +116,15 @@ struct HalfDmaCpyNdToNpuConverter final
     int32_t iterationSize{0};
     int32_t iterationStride{0};
     int32_t repeatCount{1};
-    for (auto iter : llvm::enumerate(llvm::zip(sizes, strides))) {
+    for (auto iter : llvm::enumerate(llvm::zip(linearSizes, linearStrides))) {
       int64_t size = getConstantIndexOrAssert(std::get<0>(iter.value()));
       int64_t stride = getConstantIndexOrAssert(std::get<1>(iter.value()));
 
       /// Map the outer dimension to the iteration dimension if intra dimensions
       /// are all used already or if the first stride == 0 as only the iteration
       /// dimension supports stride == 0.
-      if (iter.index() == 0 && (sizes.size() == numAddrDim || stride == 0)) {
+      if (iter.index() == 0 &&
+          (linearSizes.size() == numAddrDim || stride == 0)) {
         if (stride == 0) {
           repeatCount = size;
         } else {
@@ -96,7 +138,7 @@ struct HalfDmaCpyNdToNpuConverter final
         staticStrides.push_back(
             std::max(stride * elemWidthInBits / minStrideBitWidth, (int64_t)1));
         // Innermost size needs to account for addressing granularity.
-        if (iter.index() == (sizes.size() - 1)) {
+        if (iter.index() == (linearSizes.size() - 1)) {
           staticSizes.push_back(size * elemWidthInBits / minStrideBitWidth);
         } else {
           staticSizes.push_back(size);
@@ -105,6 +147,12 @@ struct HalfDmaCpyNdToNpuConverter final
     }
     // Make sure sizes/strides have the correct size based on the number from
     // intra addressing dimensions.
+    assert(staticSizes.size() <= numIntraAddrDim &&
+           "The number of dimensions in DMA sizes should not more than the "
+           "number of `intra` addressing dimensions");
+    assert(staticStrides.size() <= numIntraAddrDim &&
+           "The number of dimensions in DMA strides should not more than the "
+           "number of `intra` addressing dimensions");
     staticSizes.insert(staticSizes.begin(),
                        numIntraAddrDim - staticSizes.size(), 0);
     staticStrides.insert(staticStrides.begin(),
@@ -178,26 +226,28 @@ struct HalfDmaCpyNdToNpuConverter final
       }
       packetId = maybePacketId.value();
     }
-    // Only support Shim for now.
-    if (op.getMemorySpaceAsUInt() != 0) {
+    FailureOr<bool> maybeIsControlFlow = maybeFlowOp->isControlFlow();
+    if (failed(maybeIsControlFlow)) {
+      return maybeFlowOp->emitOpError()
+             << "failed to determine if it is control flow";
+    }
+    std::optional<AMDAIE::ChannelOp> maybeChannelOp = op.getChannelOp();
+    if (!maybeChannelOp)
+      return op.emitOpError() << "found non-`amdaie.channel` channel";
+    // Lower only the half DMA op if its input originates from the shim;
+    // otherwise, erase it. We must check both the memory space and port type,
+    // as certain special ports (e.g., `CTRL`) have an undefined memory space
+    // (currently set to 0), and we still want to exclude them.
+    if (op.getMemorySpaceAsUInt() != 0 ||
+        maybeChannelOp->getPortType() != StrmSwPortType::DMA) {
       rewriter.eraseOp(op);
       return success();
-    }
-    auto logicalObjFifo =
-        dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-            op.getInput().getDefiningOp());
-    if (!logicalObjFifo) {
-      return op.emitOpError() << "expected input to be an "
-                                 "`amdaie.logicalobjectfifo.from_memref`";
     }
     std::optional<AMDAIE::BdIdOp> maybeBdIdOp = op.getBdIdOp();
     if (!maybeBdIdOp) {
       return op.emitOpError() << "must have a BD ID op to lower to "
                                  "`amdaie.npu.write_bd`";
     }
-    std::optional<AMDAIE::ChannelOp> maybeChannelOp = op.getChannelOp();
-    if (!maybeChannelOp)
-      return op.emitOpError() << "found non-`amdaie.channel` channel";
     std::optional<int64_t> maybeSize = op.getAccessStaticSize();
     if (!maybeSize)
       return op.emitOpError() << "could not compute a static size";
@@ -207,10 +257,10 @@ struct HalfDmaCpyNdToNpuConverter final
     SmallVector<OpFoldResult> sizes = op.getMixedSizes();
     SmallVector<OpFoldResult> strides = op.getMixedStrides();
     FailureOr<AMDAIE::NpuPushToQueueOp> npuPushToQueueOp = insertWriteBdOps(
-        op, rewriter, AMDAIE::AMDAIETileType::SHIMNOC, logicalObjFifo,
-        maybeBdIdOp.value(), maybeChannelOp.value(), maybeSize.value(),
-        maybeOffset.value(), enablePacket, packetId, packetType, sizes,
-        strides);
+        op, rewriter, AMDAIE::AMDAIETileType::SHIMNOC, maybeBdIdOp.value(),
+        maybeChannelOp.value(), maybeSize.value(), maybeOffset.value(),
+        enablePacket, packetId, packetType, sizes, strides,
+        *maybeIsControlFlow);
     if (failed(npuPushToQueueOp)) return failure();
     rewriter.replaceOp(op, *npuPushToQueueOp);
 
@@ -234,6 +284,8 @@ struct HalfDmaCpyNdToNpuConverter final
  private:
   const AMDAIE::AMDAIEDeviceModel &deviceModel;
   uint8_t minStrideBitWidth;
+  // Offset to be added to the `argIdx` field of the write BD operation.
+  int32_t argIdxOffset;
 };
 
 struct DmaWaitToTctSyncConverter final
@@ -297,6 +349,9 @@ class AMDAIEControlCodeLoweringPass
     : public impl::AMDAIEControlCodeLoweringBase<
           AMDAIEControlCodeLoweringPass> {
  public:
+  AMDAIEControlCodeLoweringPass(const AMDAIEControlCodeLoweringOptions &options)
+      : AMDAIEControlCodeLoweringBase(options) {}
+
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<AMDAIEDialect>();
   }
@@ -326,7 +381,8 @@ void AMDAIEControlCodeLoweringPass::runOnOperation() {
     ConversionTarget conversionTarget(*context);
     conversionTarget.addLegalDialect<AMDAIEDialect>();
     conversionTarget.addIllegalOp<AMDAIE::NpuHalfDmaCpyNdOp>();
-    patterns.insert<HalfDmaCpyNdToNpuConverter>(context, deviceModel);
+    patterns.insert<HalfDmaCpyNdToNpuConverter>(context, deviceModel,
+                                                argIdxOffset);
 
     if (failed(applyPartialConversion(parentOp, conversionTarget,
                                       std::move(patterns)))) {
@@ -352,8 +408,9 @@ void AMDAIEControlCodeLoweringPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<Pass> createAMDAIEControlCodeLoweringPass() {
-  return std::make_unique<AMDAIEControlCodeLoweringPass>();
+std::unique_ptr<Pass> createAMDAIEControlCodeLoweringPass(
+    AMDAIEControlCodeLoweringOptions options) {
+  return std::make_unique<AMDAIEControlCodeLoweringPass>(options);
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE

@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "iree-amd-aie/Transforms/Passes.h"
+#include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenAttrs.h"
 #include "iree/compiler/Codegen/Utils/Utils.h"
 #include "llvm/ADT/StringExtras.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
@@ -93,6 +94,7 @@ FailureOr<SmallVector<Attribute>> getGPUMappingAttributes(
       return gpu::GPUThreadMappingAttr::get(context, id);
     else {
       assert(false && "Unhandled group type, must be thread or block.");
+      return Attribute{nullptr};
     }
   };
 
@@ -177,8 +179,8 @@ static bool isTilingReductionDimension(TilingInterface consumerOp,
 }
 
 static bool consumerToSkip(TilingInterface op) {
-  if (isa<linalg::CopyOp>(op) || isa<tensor::PackOp>(op) ||
-      isa<tensor::UnPackOp>(op))
+  if (isa<linalg::CopyOp>(op) || isa<linalg::PackOp>(op) ||
+      isa<linalg::UnPackOp>(op))
     return true;
   return false;
 }
@@ -278,7 +280,7 @@ void AMDAIETileAndFusePass::runOnOperation() {
   TilingInterface consumerOp;
   funcOp->walk<WalkOrder::PostOrder, ReverseIterator>([&](TilingInterface op) {
     // Find the next consumer op if it does not have loops OR it is from
-    // the skip ops list which currently contains linalg.copy and tensor.unpack.
+    // the skip ops list which currently contains linalg.copy and linalg.unpack.
     if (op.getLoopIteratorTypes().empty() || consumerToSkip(op))
       return WalkResult::advance();
 
@@ -355,7 +357,7 @@ void AMDAIETileAndFusePass::runOnOperation() {
           bool fusableOp =
               TypeSwitch<Operation *, bool>(originalProducer.getOwner())
                   // List ops that shouldnt be fused.
-                  .Case<tensor::PackOp, tensor::PadOp, linalg::CopyOp,
+                  .Case<linalg::PackOp, tensor::PadOp, linalg::CopyOp,
                         memref::CopyOp>([](Operation *) { return false; })
                   // Fuse all Linalg ops (can be generalized later)
                   .Default([&](Operation *op) {

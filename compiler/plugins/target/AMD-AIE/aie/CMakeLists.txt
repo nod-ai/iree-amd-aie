@@ -87,6 +87,8 @@ iree_cc_library(
     MLIRMemRefDialect
     MLIRIR
     MLIREmitCDialect
+    iree::compiler::Dialect::HAL::IR
+    iree::compiler::Dialect::HAL::IR::HALDialect
 )
 
 ###############################################################################
@@ -129,11 +131,35 @@ iree_cc_library(
 # in-tree AIE and AIEX passes
 ###############################################################################
 
+iree_tablegen_library(
+  NAME
+    AIEPassesIncGen
+  TD_FILE
+    "Passes.td"
+  OUTS
+    --gen-pass-decls Passes.h.inc
+)
+
+iree_cc_library(
+  NAME
+    AIEPassHeaders
+  HDRS
+    "PassDetail.h"
+    "Passes.h"
+    "Passes.h.inc"
+  DEPS
+    ::AIEPassesIncGen
+    ::AIEDialectIR
+    ::AIEXDialectIR
+    MLIRPass
+  PUBLIC
+)
+
 iree_cc_library(
   NAME
     AIEPasses
   SRCS
-    AMDAIEAssignBufferAddressesBasic.cpp
+    AMDAIEAssignBufferAddresses.cpp
     AMDAIEAssignBufferDescriptorIDs.cpp
     AMDAIECoreToStandard.cpp
     AMDAIECreatePathFindFlows.cpp
@@ -145,6 +171,7 @@ iree_cc_library(
     ::AIEDialectIR
     ::AIEXDialectIR
     ::AIENormalizeAddressSpacesGen
+    ::AIEPassHeaders
 )
 
 add_subdirectory(test)

@@ -11,8 +11,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "XLLVMDialect.h"
-#include "mlir/Dialect/LLVMIR/LLVMTypes.h"
-#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Target/LLVMIR/ModuleTranslation.h"
 #include "mlir/Transforms/FoldUtils.h"
@@ -29,7 +27,7 @@ using namespace mlir::iree_compiler::aievec::xllvm;
 void XLLVMDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
-#include "aievec/XLLVMAIE2IntrOps.cpp.inc"
+#include "aievec/XLLVMOps.cpp.inc"
       >();
 }
 
@@ -67,4 +65,4 @@ llvm::CallInst *createExternalLLVMIntrinsicCall(
 }  // namespace mlir::iree_compiler::aievec::xllvm
 
 #define GET_OP_CLASSES
-#include "aievec/XLLVMAIE2IntrOps.cpp.inc"
+#include "aievec/XLLVMOps.cpp.inc"

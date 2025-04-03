@@ -3,6 +3,10 @@
 // CHECK-LABEL: hal.executable.export public @matmul_i32_dispatch_0_matmul_128x128x256_i32
 
 // CHECK:       aie.device(npu1_4col) {
+// CHECK:       func.func private @generic_matmul_0_outlined
+// CHECK-SAME:    memref<1x1x4x8x4x8xi32> {llvm.noalias},
+// CHECK-SAME:    memref<1x1x8x4x8x4xi32> {llvm.noalias},
+// CHECK-SAME:    memref<1x1x8x8x4x4xi32> {llvm.noalias}) attributes {llvm.bareptr = true}
 // CHECK-DAG:   %[[TILE_0_2:.+]] = aie.tile(0, 2)
 // CHECK-DAG:   %[[TILE_0_3:.+]] = aie.tile(0, 3)
 // CHECK-DAG:   %[[TILE_1_2:.+]] = aie.tile(1, 2)

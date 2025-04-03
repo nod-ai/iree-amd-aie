@@ -9,18 +9,18 @@
 
 #include "iree-amd-aie/Transforms/PassDetail.h"
 #include "iree-amd-aie/aie_runtime/AMDAIEEnums.h"
-#include "iree/compiler/Codegen/Common/TileSizeSelection.h"
 #include "mlir/Pass/Pass.h"
 
 namespace mlir::iree_compiler::AMDAIE {
 
 /// Add passes to lower to AIE objectFifos.
 void addAMDAIEObjectFifoLoweringPasses(
-    OpPassManager &passManager, bool enablePacketFlow,
-    TilePassPipeline useTilePipeline, bool enableVectorizationPasses,
-    bool enableCoalescingLoops, bool enableCollapsingUnitDims,
-    bool enableFunctionOutlining, bool replaceOutlinedFunctionsWithEmpty,
-    bool insertLoopAroundCoreBlock, uint32_t numCols);
+    OpPassManager &passManager, bool enableInputPacketFlow,
+    bool enableOutputPacketFlow, TilePassPipeline useTilePipeline,
+    bool enableVectorizationPasses, bool enableCoalescingLoops,
+    bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
+    int outliningLoopInCallCount, bool insertLoopAroundCoreBlock,
+    uint32_t numCols, bool emitCtrlPkt);
 
 /// Add passes to lower from MLIR-AIR through AIE. This is
 /// currently the default passes used for lowering after IREEs tiling.
@@ -31,7 +31,8 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
 
 /// Add lowering passes from MLIR-AIE. This is
 /// currently the default passes used for lowering from AIE dialect.
-void addMLIRAIELoweringPasses(OpPassManager &passManager);
+void addMLIRAIELoweringPasses(OpPassManager &passManager,
+                              TilePassPipeline useTilePipeline);
 
 /// Populates passes needed to lower linalg/arith/math ops to LLVM dialect via
 /// the structured ops path. The pass manager `pm` here operate on the module
@@ -41,36 +42,25 @@ void buildAMDAIETransformPassPipeline(
     uint32_t numCols, TilePassPipeline useTilePipeline,
     LowerToAIEPassPipeline useLowerToAIEPipeline, bool matmulElementwiseFusion,
     bool enableVectorizationPasses, const std::string &pathToUkernels,
-    bool enablePacketFlow, bool enableCoalescingLoops,
-    bool enableCollapsingUnitDims, bool enableFunctionOutlining,
-    bool replaceOutlinedFunctionsWithEmpty, bool insertLoopAroundCoreBlock);
+    bool enableInputPacketFlow, bool enableOutputPacketFlow,
+    bool enableCoalescingLoops, bool enableCollapsingUnitDims,
+    OutliningStrategy enableFunctionOutlining, int outliningLoopInCallCount,
+    bool insertLoopAroundCoreBlock, bool emitCtrlPkt);
 
 /// Populates passes needed to lower the IR via a Pack-Peel based approach.
-void addPackPeelBasedPassPipeline(OpPassManager &oassManager,
-                                  TilingConfig &tilingConfig,
+void addPackPeelBasedPassPipeline(OpPassManager &passManager,
                                   const std::string &pathToUkernels,
-                                  bool enableVectorizationPasses,
                                   TilePassPipeline useTilePipeline);
 
 /// Populates passes needed to lower the IR via a Pack-Peel based approach with
 /// 4 levels of tiling.
-void addPackPeel4LevelTilingBasedPassPipeline(OpPassManager &oassManager,
-                                              TilingConfig &tilingConfig,
+void addPackPeel4LevelTilingBasedPassPipeline(OpPassManager &passManager,
                                               const std::string &pathToUkernels,
-                                              bool enableVectorizationPasses,
-                                              TilePassPipeline useTilePipeline);
-
-/// Populates passes needed to lower the IR via a Pad-Pack based approach.
-void addPadPackBasedPassPipeline(OpPassManager &passManager,
-                                 TilingConfig &tilingConfig,
-                                 const std::string &pathToUkernels,
-                                 bool enableVectorizationPasses,
-                                 TilePassPipeline useTilePipeline);
+                                              TilePassPipeline useTilePipeline,
+                                              Operation *rootOp);
 
 /// Populates passes needed to lower the IR via a Conv-Decompose based approach.
 void addConvDecomposePassPipeline(OpPassManager &passManager,
-                                  TilingConfig &tilingConfig,
-                                  bool enableVectorizationPasses,
                                   TilePassPipeline useTilePipeline);
 
 /// Populates passes needed to link HAL executables across AIE targets.
@@ -132,14 +122,25 @@ std::unique_ptr<Pass> createAMDAIEControlCodeLoopUnrollPass();
 
 /// Pass to convert control code HalfDmaCpyNd into NPU WriteBd, AddressPatch,
 /// PushToQueue operations.
-std::unique_ptr<Pass> createAMDAIEControlCodeLoweringPass();
+std::unique_ptr<Pass> createAMDAIEControlCodeLoweringPass(
+    AMDAIEControlCodeLoweringOptions options = {});
 
 /// Pass to convert control code into a transaction binary.
 std::unique_ptr<Pass> createAMDAIEControlCodeToTransactionPass(
     AMDAIEControlCodeToTransactionOptions options = {});
 
+/// Pass to convert `amdaie.npu.control_packet` to
+/// `amdaie.npu.dma_cpy_nd` operations.
+std::unique_ptr<Pass> createAMDAIEControlPacketToNpuDmaPass(
+    AMDAIEControlPacketToNpuDmaOptions options = {});
+
 /// Pass to convert `scf.forall` to `scf.for` within `aie.core`.
 std::unique_ptr<Pass> createAMDAIEConvertCoreForallToForPass();
+
+/// Pass to convert `aie.device`to a sequence of `amdaie.npu.control_packet`
+/// ops.
+std::unique_ptr<Pass> createAMDAIEConvertDeviceToControlPacketsPass(
+    AMDAIEConvertDeviceToControlPacketsOptions options = {});
 
 /// Pass to insert an infinite loop around each `amdaie.core`'s block.
 std::unique_ptr<Pass> createAMDAIEInsertInfiniteLoopAroundCoreBlockPass();
@@ -216,7 +217,8 @@ std::unique_ptr<Pass> createAMDAIEHoistForLoopAffineApplyPass();
 std::unique_ptr<Pass> createAMDAIEHoistLogicalObjFifoPass();
 
 /// Create pass to chain DMA BD IDs by updating next_bd operands.
-std::unique_ptr<Pass> createAMDAIEInsertDmaBdChainPass();
+std::unique_ptr<Pass> createAMDAIEInsertDmaBdChainPass(
+    AMDAIEInsertDmaBdChainOptions options = {});
 
 /// Create a pass to transform linalg.generics into a form which benefits later
 /// vectorization passes (to vector and aievec dialects).
@@ -226,9 +228,9 @@ std::unique_ptr<Pass> createAMDAIEInsertLoopsForVectorizationPass(
 /// Create a pass to remove redundant DMA wait operations.
 std::unique_ptr<Pass> createAMDAIEFoldDmaWaitsPass();
 
-/// Create a pass to fuse the pack operations into the for loops.
-std::unique_ptr<Pass> createAMDAIEFusePackIntoLoopPass(
-    AMDAIEFusePackIntoLoopOptions options = {});
+/// Create a pass to fuse the producer operations into the scf loops.
+std::unique_ptr<Pass> createAMDAIEFuseProducerIntoLoopPass(
+    AMDAIEFuseProducerIntoLoopOptions options = {});
 
 /// Create pass to insert `amdaie.core` operations inside the innermost
 /// `scf.forall` operations selected for parallel execution.
@@ -301,8 +303,15 @@ std::unique_ptr<Pass> createAMDAIEPeelForLoopPass(
 /// Create a pass to remove memory space annotation from all types.
 std::unique_ptr<Pass> createAMDAIERemoveMemorySpacePass();
 
+/// Create a pass for function outlining.
+std::unique_ptr<Pass> createAMDAIEReplicateCallsPass(
+    AMDAIEReplicateCallsOptions = {});
+
 /// Create a pass to sink all dependencies into `amdaie.core` operations.
 std::unique_ptr<Pass> createAMDAIESinkIntoCorePass();
+
+/// Create a pass to split control packet data into smaller chunks.
+std::unique_ptr<Pass> createAMDAIESplitControlPacketDataPass();
 
 /// Create a pass to split logicalobjectfifos for shimTile/memTile distribution.
 std::unique_ptr<Pass> createAMDAIESplitLogicalObjFifosPass();
@@ -320,11 +329,15 @@ std::unique_ptr<Pass> createAMDAIETilePass(AMDAIETileOptions options = {});
 std::unique_ptr<Pass> createAMDAIETileAndFusePass(
     AMDAIETileAndFuseOptions options = {});
 
+/// Create pass to add the llvm.noalias attribute to function arguments
+/// where it is safe to do so.
+std::unique_ptr<Pass> createAMDAIEAddNoAliasFunctionArgumentsPass();
+
 /// Create pass to propagate pack/unpack ops using upstream patterns.
 std::unique_ptr<Pass> createAMDAIEPropagateDataLayoutPass();
 
 /// Create pass to reset the alignment of LLVM load operations.
-std::unique_ptr<Pass> createAMDAIELoadAlignmentResetPass();
+std::unique_ptr<Pass> createAMDAIELoadStoreAlignmentResetPass();
 
 void registerAMDAIEPasses();
 

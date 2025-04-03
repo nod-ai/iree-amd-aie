@@ -126,6 +126,12 @@ def AMDAIE_FlowOp: AMDAIE_Op<"flow", [AttrSizedOperandSegments]>,
 
   let assemblyFormat = [{ `(` `{` $sources `}` `->` `{` $targets `}` `)` attr-dict }];
   let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    FailureOr<AMDAIE::ChannelOp> getSourceChannelOp();
+    FailureOr<SmallVector<AMDAIE::ChannelOp>> getTargetChannelOps();
+    FailureOr<bool> isControlFlow();
+  }];
 }
 
 def AMDAIE_TileOp: AMDAIE_Op<"tile", [
@@ -179,7 +185,8 @@ def AMDAIE_WorkgroupOp : AMDAIE_Op<"workgroup",
 
   let regions = (region SizedRegion<1>:$region);
   let arguments = (
-    ins OptionalAttr<Builtin_DenseResourceElementsAttr>:$npu_instructions
+    ins OptionalAttr<Builtin_DenseResourceElementsAttr>:$npu_instructions,
+        OptionalAttr<Builtin_DenseResourceElementsAttr>:$ctrlpkt_sequence
   );
 
   let assemblyFormat = [{ regions attr-dict }];
@@ -577,6 +584,23 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd", [
   }];
 
   let hasCanonicalizer = 1;
+}
+
+def AMDAIE_NpuDmaPlaceHolderOp : AMDAIE_Op<"npu.dma_placeholder"> {
+  let summary = "Represents a placeholder for a DMA operation.";
+  let description = [{
+    This operation acts as a placeholder user for `amdaie.connection` operations to prevent
+    them from being dead-code eliminated. This is used for control flow connections that are
+    inserted before control packets are generated because they need to be taken into account
+    together with data connections for routing. This operation does not have any side effects
+    on control code size.
+  }];
+
+  let arguments = (
+    ins Index:$connection
+  );
+
+  let assemblyFormat = [{ `(` $connection `)` attr-dict }];
 }
 
 def AMDAIE_NpuHalfDmaCpyNdOp
@@ -1045,6 +1069,48 @@ def AMDAIE_NpuTctSyncOp: AMDAIE_Op<"npu.tct_sync"> {
         UI32Attr:$row_num
   );
   let assemblyFormat = [{ attr-dict }];
+}
+
+def AMDAIE_NpuControlPacketOp: AMDAIE_Op<"npu.control_packet"> {
+  let summary = "AIE control packet.";
+  let description = [{
+    Represent an AIE control packet header and optional payload,
+    including a header with `address`, `length`, `opcode`, and `stream_id`.
+    An optional `data` attribute provides a payload for writing.
+
+    Details on `opcode`:
+    `write`: Write configuration data to the AIE. The `stream_id` field has no effect.
+    `read`: Request data from the AIE.
+    `write_read`: Write configuration data to the AIE and then request data from the AIE.
+
+    For both `read` and `write_read` operations, the `stream_id` must match
+    the `packet_id` used for routing CTRL MM2S to SHIM S2MM.
+
+    Example:
+
+    ```mlir
+    amdaie.npu.control_packet write {address = 0 : ui32, data = array<i32: 2>
+      length = 1 : ui32, stream_id = 0 : ui32}
+    ```
+  }];
+  let arguments = (
+    ins UI32Attr:$address,
+        UI32Attr:$length,
+        CtrlPktOpcodeAttr:$opcode,
+        UI32Attr:$stream_id,
+        OptionalAttr<AMDAIE_AnyCtrlPktDataType>:$data
+  );
+
+  let assemblyFormat = [{
+    $opcode
+    attr-dict
+  }];
+
+  let extraClassDeclaration = [{
+    std::optional<llvm::ArrayRef<int32_t>> getDataFromArrayOrResource();
+  }];
+
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//

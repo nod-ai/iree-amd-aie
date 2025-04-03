@@ -565,7 +565,7 @@ struct OffsetConfig {
 FailureOr<OffsetConfig> getNewOffsetConfig(
     RewriterBase &rewriter, ArrayRef<OpFoldResult> offsets,
     ArrayRef<OpFoldResult> strides, size_t sizeAfterSplit, int64_t splitDimSize,
-    int64_t splitStride, int64_t splitFactor,
+    int64_t splitStride, int64_t splitFactor, int64_t dmaPerSplit,
     function_ref<InFlightDiagnostic()> emitError) {
   SmallVector<size_t> offsetIndices =
       getStrideIndicesWithDynamicOrNonZeroOffset(offsets, strides,
@@ -603,7 +603,63 @@ FailureOr<OffsetConfig> getNewOffsetConfig(
       // `splitDimSize == 2`, offsets 0 and 1 are mapped to objectFifo 0 and
       // offsets 2 and 3 are mapped to objectFifo 1.
       if (splitStride == 1) objFifoIndex /= splitDimSize;
-      newOffsetValue = operand;
+      // If the total number of consumer DMAs per split is greater than 1, we
+      // account for this when determining which split to use and what the
+      // corresponding offset at the split dimension should be.
+      // Eg:
+      //    Assume we inferred that 2 splits of a logicalObjFifo is required.
+      //    Also assume the original logicalObjFifo was being used by 4 DMA
+      //    producers/consumers. Therefore DMAs per split will be 2.
+      //
+      //    BEFORE:
+      //      scf.for %iv in (2):
+      //        affine_1 = %iv * 4 + 0
+      //        affine_2 = %iv * 4 + 1
+      //        affine_3 = %iv * 4 + 2
+      //        affine_4 = %iv * 4 + 3
+      //                L2 [affine_1]   : 32 x 32
+      //                L2 [affine_2]   : 32 x 32
+      //                L2 [affine_3]   : 32 x 32
+      //                L2 [affine_4]   : 32 x 32
+      //
+      //    AFTER:
+      //      scf.for %iv in (2):
+      //        affine_1 = %iv * 2 + 0
+      //        affine_2 = %iv * 2 + 1
+      //                L2.0 [affine_1]   : 32 x 32
+      //                L2.0 [affine_2]   : 32 x 32
+      //                L2.1 [affine_1]   : 32 x 32
+      //                L2.1 [affine_2]   : 32 x 32
+      //
+      //   Where, for the new affine expression :-
+      //        SCALE = Size of the dimension where splitting would occur /
+      //                DMAs per split
+      //        BIAS  = Bias information extracted % DMAs per split
+      if (dmaPerSplit > 1) {
+        OpBuilder::InsertionGuard guard(rewriter);
+        rewriter.setInsertionPoint(applyOp);
+        auto createAffineMap = [&](AffineExpr affineExpr, int64_t scaleVal,
+                                   int64_t offsetToAdd) -> AffineMap {
+          AffineExpr newScaleExpr = affineExpr * scaleVal;
+          AffineExpr newAffineExpr = newScaleExpr + offsetToAdd;
+          return AffineMap::get(/*dimCount=*/1, /*symbolCount=*/0,
+                                {newAffineExpr}, rewriter.getContext());
+        };
+        AffineExpr affineExpr = rewriter.getAffineDimExpr(0);
+        AffineMap newAffineMap = createAffineMap(
+            affineExpr, splitDimSize / dmaPerSplit, objFifoIndex % dmaPerSplit);
+        newOffsetValue = rewriter
+                             .create<affine::AffineApplyOp>(
+                                 applyOp.getLoc(), newAffineMap, operand)
+                             .getResult();
+        objFifoIndex /= dmaPerSplit;
+      } else if (splitFactor == 1) {
+        // In case of no split, we reuse the affine.apply SSA value for the
+        // offset.
+        newOffsetValue = offsetValue;
+      } else {
+        newOffsetValue = operand;
+      }
     } else if (auto blockArg = dyn_cast<BlockArgument>(offsetValue);
                blockArg &&
                isa<LoopLikeOpInterface>(blockArg.getOwner()->getParentOp())) {
@@ -637,7 +693,8 @@ LogicalResult splitLogicalObjectFifo(IRRewriter &rewriter,
                                      AMDAIE::LogicalObjectFifoFromMemrefOp op,
                                      size_t splitDim,
                                      std::optional<size_t> maybeSplitFactor,
-                                     int64_t splitStride) {
+                                     int64_t splitStride,
+                                     int64_t numUniqueConsumerDMAs) {
   OpBuilder::InsertionGuard g(rewriter);
   SmallVector<int64_t> memrefShape =
       llvm::to_vector(op.getMemrefType().getShape());
@@ -678,7 +735,8 @@ LogicalResult splitLogicalObjectFifo(IRRewriter &rewriter,
     SmallVector<OpFoldResult> targetStrides = producer.getTargetMixedStrides();
     FailureOr<OffsetConfig> maybeOffsetConfig = getNewOffsetConfig(
         rewriter, targetOffsets, targetStrides, sizeAfterSplit, splitDimSize,
-        splitStride, splitFactor, [&]() { return producer.emitOpError(); });
+        splitStride, splitFactor, /*dmaPerSplit=*/1,
+        [&]() { return producer.emitOpError(); });
     if (failed(maybeOffsetConfig)) {
       return producer.emitOpError()
              << "failed to find an offset index and new offset";
@@ -710,13 +768,15 @@ LogicalResult splitLogicalObjectFifo(IRRewriter &rewriter,
   }
 
   // Update the consumer dma ops.
+  int64_t dmaPerSplit = numUniqueConsumerDMAs / newObjFifos.size();
   for (AMDAIE::DmaCpyNdOp consumer : consumers) {
     SmallVector<OpFoldResult> sourceOffsets = consumer.getSourceMixedOffsets();
     SmallVector<OpFoldResult> sourceSizes = consumer.getSourceMixedSizes();
     SmallVector<OpFoldResult> sourceStrides = consumer.getSourceMixedStrides();
     FailureOr<OffsetConfig> maybeOffsetConfig = getNewOffsetConfig(
         rewriter, sourceOffsets, sourceStrides, sizeAfterSplit, splitDimSize,
-        splitStride, splitFactor, [&]() { return consumer.emitOpError(); });
+        splitStride, splitFactor, dmaPerSplit,
+        [&]() { return consumer.emitOpError(); });
     if (failed(maybeOffsetConfig)) {
       return consumer.emitOpError()
              << "failed to find an offset index and offset";
@@ -755,7 +815,7 @@ LogicalResult splitLogicalObjectFifo(IRRewriter &rewriter,
 LogicalResult splitDoublyStridedOp(IRRewriter &rewriter,
                                    AMDAIE::DoublyStridedOpInterface op,
                                    size_t sourceSplitDim, size_t targetSplitDim,
-                                   std::optional<size_t> maybeSplitFactor,
+                                   int64_t splitFactor,
                                    int64_t sourceSplitStride,
                                    int64_t targetSplitStride) {
   if (!op->use_empty())
@@ -800,14 +860,6 @@ LogicalResult splitDoublyStridedOp(IRRewriter &rewriter,
   }
   int64_t sourceSize = maybeSourceSize.value();
   int64_t targetSize = maybeTargetSize.value();
-  int64_t splitFactor = maybeSplitFactor.has_value()
-                            ? maybeSplitFactor.value()
-                            : std::gcd(sourceSize, targetSize);
-  if (sourceSize % splitFactor != 0 || targetSize % splitFactor != 0) {
-    return op.emitOpError() << "the target or source size is not divisible by "
-                               "the provided splitting factor: "
-                            << splitFactor;
-  }
 
   int64_t newSourceSize = sourceSize / splitFactor;
   int64_t newTargetSize = targetSize / splitFactor;

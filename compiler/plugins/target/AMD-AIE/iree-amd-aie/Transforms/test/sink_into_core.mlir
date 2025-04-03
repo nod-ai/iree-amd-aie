@@ -3,7 +3,6 @@
 module {
   // CHECK-LABEL: func @sink_into_single_core
   func.func @sink_into_single_core(%arg0: index) {
-    // CHECK-NOT: arith.constant 3 : index
     %c0 = arith.constant 0 : index
     %c2 = arith.constant 2 : index
     %c3 = arith.constant 3 : index
@@ -11,9 +10,9 @@ module {
     %tile = amdaie.tile(%c0, %c2)
     // CHECK: amdaie.core
     %1 = amdaie.core(%tile, in : [], out : []) {
-      // CHECK: arith.constant 3 : index
-      // CHECK: arith.addi
-      // CHECK: linalg.fill
+      // CHECK-NEXT: %[[C3:.*]] = arith.constant 3 : index
+      // CHECK-NEXT: %[[ADD:.*]] = arith.addi %arg0, %[[C3]] : index
+      // CHECK: linalg.fill ins(%[[ADD]] : index)
       %alloc = memref.alloc() : memref<2x2xindex>
       linalg.fill ins(%0 : index) outs(%alloc : memref<2x2xindex>)
       amdaie.end
@@ -25,16 +24,8 @@ module {
 // -----
 
 module {
-  // Constants 0 and 1 are cloned into the cores, but not removed, because
-  // they are still used outside of the cores. Constants 2 and 3 are used only
-  // inside the cores, so they are cloned into the cores but then removed from
-  // the outer function.
   // CHECK-LABEL: func @sink_into_pair_of_cores
   func.func @sink_into_pair_of_cores(%arg0 : index) {
-    // CHECK-NOT: arith.constant 3 : index
-    // CHECK-NOT: arith.constant 2 : index
-    // CHECK-DAG: arith.constant 1 : index
-    // CHECK-DAG: arith.constant 0 : index
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %c2 = arith.constant 2 : index
@@ -43,9 +34,14 @@ module {
     %tile_0 = amdaie.tile(%c0, %c1)
     // CHECK: amdaie.core
     %0 = amdaie.core(%tile, in : [], out : []) {
-      // CHECK-DAG: arith.constant 3 : index
-      // CHECK-DAG: arith.constant 2 : index
-      // CHECK-DAG: arith.constant 1 : index
+      // CHECK-DAG: %[[C3:.*]] = arith.constant 3 : index
+      // CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
+      // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
+      // CHECK: %[[A0:.*]] = arith.addi %arg0, %[[C1]] : index
+      // CHECK: %[[A1:.*]] = arith.addi %[[C1]], %[[A0]] : index
+      // CHECK: %[[A2:.*]] = arith.addi %[[A1]], %[[C2]] : index
+      // CHECK: %[[A3:.*]] = arith.addi %[[A2]], %[[C3]] : index
+      // CHECK: linalg.fill ins(%[[A3]] : index)
       %1 = arith.addi %arg0, %c1 : index
       %2 = arith.addi %c1, %1 : index
       %3 = arith.addi %2, %c2 : index

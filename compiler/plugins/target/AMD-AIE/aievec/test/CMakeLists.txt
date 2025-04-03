@@ -1,5 +1,6 @@
 set(_mlir_files
   align-transfer-reads.mlir
+  canonicalize_transfer_write_for_load.mlir
   fold-ops.mlir
   matmul.mlir
   precanonicalization-aieml-llvmir.mlir

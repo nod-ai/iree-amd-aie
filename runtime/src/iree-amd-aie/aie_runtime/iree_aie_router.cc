@@ -71,6 +71,9 @@ struct SwitchboxConnect {
   std::vector<std::vector<int>> usedCapacity;
   // how many packet streams are actually using this Channel
   std::vector<std::vector<int>> packetFlowCount;
+  // The number of fixed, previously-routed packet streams using each channel
+  // before the pathfinder algorithm starts.
+  std::vector<std::vector<int>> fixedPacketFlowCount;
   // only sharing the channel with the same packet group id
   std::vector<std::vector<int>> packetGroupId;
 
@@ -84,6 +87,8 @@ struct SwitchboxConnect {
     usedCapacity.resize(srcPorts.size(), std::vector<int>(dstPorts.size(), 0));
     packetFlowCount.resize(srcPorts.size(),
                            std::vector<int>(dstPorts.size(), 0));
+    fixedPacketFlowCount.resize(srcPorts.size(),
+                                std::vector<int>(dstPorts.size(), 0));
     packetGroupId.resize(srcPorts.size(), std::vector<int>(dstPorts.size(), 0));
   }
 
@@ -110,11 +115,12 @@ struct SwitchboxConnect {
 
 struct Flow {
   int packetGroupId;
-  PathEndPoint src;
-  std::vector<PathEndPoint> dsts;
+  PhysPort src;
+  SmallVector<PhysPort> dsts;
 };
 
 struct RouterImpl {
+  RouterImpl(int maxCol, int maxRow) : maxCol(maxCol), maxRow(maxRow) {}
   // Flows to be routed
   std::vector<Flow> flows;
   // Represent all routable paths as a graph
@@ -123,18 +129,39 @@ struct RouterImpl {
   // switchbox otherwise, it represents connections (South, North, West, East)
   // accross two switchboxes
   std::map<std::pair<TileLoc, TileLoc>, SwitchboxConnect> graph;
-  // Channels available in the network
-  // The key is a PathEndPoint representing the start of a path
-  // The value is a vector of PathEndPoints representing the possible ends of
-  // the path
-  std::map<PathEndPoint, std::vector<PathEndPoint>> channels;
+  // Channels available in the network.
+  // The key is a `PhysPort` representing the start of a path.
+  // The value is a vector of `PhysPorts` representing the possible ends of
+  // the path.
+  std::map<PhysPort, SmallVector<PhysPort>> channels;
+  /// The dimensions (columns and rows) of the AIE device to be routed.
+  /// These values may be smaller than the actual device size if only a portion
+  /// of the device is intended to be routed.
+  int maxCol, maxRow;
+  /// Map to get the neighbor tile location given a direction.
+  static const llvm::SmallDenseMap<std::pair<StrmSwPortType, StrmSwPortType>,
+                                   std::pair<int, int>>
+      directionToDeltaCoordsMap;
 };
 
-Router::Router() { impl = new RouterImpl(); }
+const llvm::SmallDenseMap<std::pair<StrmSwPortType, StrmSwPortType>,
+                          std::pair<int, int>>
+    RouterImpl::directionToDeltaCoordsMap = {
+        {{StrmSwPortType::SOUTH, StrmSwPortType::NORTH},
+         {0, -1}},  // South to North, going down, row - 1
+        {{StrmSwPortType::NORTH, StrmSwPortType::SOUTH},
+         {0, 1}},  // North to South, going up, row + 1
+        {{StrmSwPortType::WEST, StrmSwPortType::EAST},
+         {-1, 0}},  // West to East, going left, col - 1
+        {{StrmSwPortType::EAST, StrmSwPortType::WEST},
+         {1, 0}}};  // East to West, going right, col + 1
+
+Router::Router(int maxCol, int maxRow) {
+  impl = new RouterImpl(maxCol, maxRow);
+}
 Router::~Router() { delete impl; }
 
-void Router::initialize(int maxCol, int maxRow,
-                        const AMDAIEDeviceModel &deviceModel) {
+void Router::initialize(const AMDAIEDeviceModel &deviceModel) {
   std::map<StrmSwPortType, int> maxChannels;
   auto intraconnect = [&](int col, int row) {
     TileLoc tileLoc = {col, row};
@@ -214,32 +241,23 @@ void Router::initialize(int maxCol, int maxRow,
                                TileLoc{targetCol, targetRow})] = sb;
   };
 
-  for (int row = 0; row <= maxRow; row++) {
-    for (int col = 0; col <= maxCol; col++) {
+  for (int row = 0; row <= impl->maxRow; row++) {
+    for (int col = 0; col <= impl->maxCol; col++) {
       maxChannels.clear();
       // connections within the same switchbox
       intraconnect(col, row);
 
       // connections between switchboxes
-      if (row > 0) {
-        // from south to north
-        interconnect(col, row, col, row - 1, StrmSwPortType::SOUTH,
-                     StrmSwPortType::NORTH);
-      }
-      if (row < maxRow) {
-        // from north to south
-        interconnect(col, row, col, row + 1, StrmSwPortType::NORTH,
-                     StrmSwPortType::SOUTH);
-      }
-      if (col > 0) {
-        // from east to west
-        interconnect(col, row, col - 1, row, StrmSwPortType::WEST,
-                     StrmSwPortType::EAST);
-      }
-      if (col < maxCol) {
-        // from west to east
-        interconnect(col, row, col + 1, row, StrmSwPortType::EAST,
-                     StrmSwPortType::WEST);
+      for (auto &[direction, deltaCoords] : impl->directionToDeltaCoordsMap) {
+        int neighborCol = col + deltaCoords.first;
+        int neighborRow = row + deltaCoords.second;
+        // Check if the neighboring switchbox exists.
+        if (neighborCol < 0 || neighborCol > impl->maxCol || neighborRow < 0 ||
+            neighborRow > impl->maxRow) {
+          continue;
+        }
+        interconnect(col, row, neighborCol, neighborRow, direction.first,
+                     direction.second);
       }
     }
   }
@@ -250,7 +268,7 @@ void Router::addFlow(TileLoc srcCoords, Port srcPort, TileLoc dstCoords,
   // check if a flow with this source already exists
   for (auto &[_, src, dsts] : impl->flows) {
     if (src.tileLoc == srcCoords && src.port == srcPort) {
-      dsts.emplace_back(PathEndPoint{dstCoords, dstPort});
+      dsts.emplace_back(PhysPort{dstCoords, dstPort, PhysPort::Direction::DST});
       return;
     }
   }
@@ -283,14 +301,15 @@ void Router::addFlow(TileLoc srcCoords, Port srcPort, TileLoc dstCoords,
   }
 
   // If no existing flow was found with this source, create a new flow.
+  PhysPort srcPhysPort{srcCoords, srcPort, PhysPort::Direction::SRC};
+  PhysPort dstPhysPort{dstCoords, dstPort, PhysPort::Direction::DST};
   impl->flows.push_back(
-      Flow{packetGroupId, PathEndPoint{srcCoords, srcPort},
-           std::vector<PathEndPoint>{PathEndPoint{dstCoords, dstPort}}});
+      Flow{packetGroupId, srcPhysPort, SmallVector<PhysPort>{dstPhysPort}});
 }
 
 // Keep track of connections already used in the AIE; Pathfinder algorithm will
 // avoid using these.
-bool Router::addFixedConnection(
+bool Router::addFixedCircuitConnection(
     int col, int row, const std::vector<std::tuple<Port, Port>> &connects) {
   TileLoc tileLoc = {col, row};
   auto &sb = impl->graph[std::make_pair(tileLoc, tileLoc)];
@@ -313,19 +332,86 @@ bool Router::addFixedConnection(
   return true;
 }
 
-std::map<PathEndPoint, PathEndPoint> Router::dijkstraShortestPaths(
-    PathEndPoint src) {
+/// Tracks previously-routed packet flows by setting
+/// `fixedPacketFlowCount`. This ensures that the pathfinder algorithm does not
+/// reuse the same channel for a new circuit flow. Reuse for new packet flows is
+/// allowed, as packet IDs will differentiate them.
+bool Router::addFixedPacketConnection(const PhysPort &srcPhyPort,
+                                      const PhysPort &destPhyPort) {
+  SwitchboxConnect &sb =
+      impl->graph[std::make_pair(srcPhyPort.tileLoc, destPhyPort.tileLoc)];
+  size_t srcPortIdx = std::distance(
+      sb.srcPorts.begin(),
+      std::find(sb.srcPorts.begin(), sb.srcPorts.end(), srcPhyPort.port));
+  size_t destPortIdx = std::distance(
+      sb.dstPorts.begin(),
+      std::find(sb.dstPorts.begin(), sb.dstPorts.end(), destPhyPort.port));
+  // Could not find the source or destination port, something is wrong.
+  if (srcPortIdx >= sb.srcPorts.size() || destPortIdx >= sb.dstPorts.size())
+    return false;
+  // Increment the fixed packet flow count, to indicate there is a
+  // previously-routed packet stream using this channel.
+  sb.fixedPacketFlowCount[srcPortIdx][destPortIdx]++;
+  // There are two types of `SwitchboxConnect` in `impl->graph`:
+  // 1. intra-switchbox connections (`srcPhyPort.tileLoc ==
+  // destPhyPort.tileLoc`), representing configurable routes within a single
+  // switchbox.
+  // 2. inter-switchbox connections (`srcPhyPort.tileLoc !=
+  // destPhyPort.tileLoc`): representing unconfigurable connections between
+  // neighboring switchboxes. For example, tile (0,0) North is always tied
+  // to tile (0,1) South.
+  // When handling intra-switchbox connections connections,
+  // we must also propagate to inter-switchbox connections.
+  if (srcPhyPort.tileLoc == destPhyPort.tileLoc) {
+    int col = srcPhyPort.tileLoc.col;
+    int row = srcPhyPort.tileLoc.row;
+    int srcChannel = srcPhyPort.port.channel;
+    int destChannel = destPhyPort.port.channel;
+    for (auto &[direction, deltaCoords] : impl->directionToDeltaCoordsMap) {
+      int neighborCol = col + deltaCoords.first;
+      int neighborRow = row + deltaCoords.second;
+      // Check if the neighboring switchbox exists.
+      if (neighborCol < 0 || neighborCol > impl->maxCol || neighborRow < 0 ||
+          neighborRow > impl->maxRow) {
+        continue;
+      }
+      // Propagate to the neighboring switchbox from `srcPhyPort`.
+      if (srcPhyPort.port.bundle == direction.first &&
+          !addFixedPacketConnection({{neighborCol, neighborRow},
+                                     {direction.second, srcChannel},
+                                     PhysPort::Direction::SRC},
+                                    {{col, row},
+                                     {direction.first, srcChannel},
+                                     PhysPort::Direction::DST})) {
+        return false;
+      }
+      // Propagate to the neighboring switchbox from `destPhyPort`.
+      if (destPhyPort.port.bundle == direction.first &&
+          !addFixedPacketConnection({{col, row},
+                                     {direction.first, destChannel},
+                                     PhysPort::Direction::SRC},
+                                    {{neighborCol, neighborRow},
+                                     {direction.second, destChannel},
+                                     PhysPort::Direction::DST})) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+std::map<PhysPort, PhysPort> Router::dijkstraShortestPaths(PhysPort src) {
   // Use std::map instead of DenseMap because DenseMap doesn't let you
   // overwrite tombstones.
-  std::map<PathEndPoint, double> distance;
-  std::map<PathEndPoint, PathEndPoint> preds;
-  std::map<PathEndPoint, uint64_t> indexInHeap;
+  std::map<PhysPort, double> distance;
+  std::map<PhysPort, PhysPort> preds;
+  std::map<PhysPort, uint64_t> indexInHeap;
   enum Color { WHITE, GRAY, BLACK };
-  std::map<PathEndPoint, Color> colors;
+  std::map<PhysPort, Color> colors;
   typedef d_ary_heap_indirect<
-      /*Value=*/PathEndPoint, /*Arity=*/4,
-      /*IndexInHeapPropertyMap=*/std::map<PathEndPoint, uint64_t>,
-      /*DistanceMap=*/std::map<PathEndPoint, double> &,
+      /*Value=*/PhysPort, /*Arity=*/4,
+      /*IndexInHeapPropertyMap=*/std::map<PhysPort, uint64_t>,
+      /*DistanceMap=*/std::map<PhysPort, double> &,
       /*Compare=*/std::less<>>
       MutableQueue;
   MutableQueue Q(distance, indexInHeap);
@@ -344,30 +430,25 @@ std::map<PathEndPoint, PathEndPoint> Router::dijkstraShortestPaths(
           if (sb.srcPorts[i] == src.port &&
               sb.connectivity[i][j] == Connectivity::AVAILABLE) {
             // connections within the same switchbox
-            impl->channels[src].push_back(
-                PathEndPoint{src.tileLoc, sb.dstPorts[j]});
+            impl->channels[src].push_back(PhysPort{src.tileLoc, sb.dstPorts[j],
+                                                   PhysPort::Direction::DST});
           }
         }
       }
       // connections to neighboring switchboxes
-      std::vector<std::pair<TileLoc, Port>> neighbors = {
-          {{src.tileLoc.col, src.tileLoc.row - 1},
-           {StrmSwPortType::NORTH, src.port.channel}},
-          {{src.tileLoc.col - 1, src.tileLoc.row},
-           {StrmSwPortType::EAST, src.port.channel}},
-          {{src.tileLoc.col, src.tileLoc.row + 1},
-           {StrmSwPortType::SOUTH, src.port.channel}},
-          {{src.tileLoc.col + 1, src.tileLoc.row},
-           {StrmSwPortType::WEST, src.port.channel}}};
-
-      for (const auto &[neighborCoords, neighborPort] : neighbors) {
+      for (const auto &[direction, deltaCoords] :
+           impl->directionToDeltaCoordsMap) {
+        TileLoc neighborCoords = {src.tileLoc.col + deltaCoords.first,
+                                  src.tileLoc.row + deltaCoords.second};
+        Port neighborPort = {direction.second, src.port.channel};
         if (impl->graph.count(std::make_pair(src.tileLoc, neighborCoords)) >
                 0 &&
             src.port.bundle == getConnectingBundle(neighborPort.bundle)) {
           auto &sb = impl->graph[std::make_pair(src.tileLoc, neighborCoords)];
           if (std::find(sb.dstPorts.begin(), sb.dstPorts.end(), neighborPort) !=
               sb.dstPorts.end())
-            impl->channels[src].push_back({neighborCoords, neighborPort});
+            impl->channels[src].push_back(
+                {neighborCoords, neighborPort, PhysPort::Direction::DST});
         }
       }
       std::sort(impl->channels[src].begin(), impl->channels[src].end());
@@ -410,10 +491,10 @@ std::map<PathEndPoint, PathEndPoint> Router::dijkstraShortestPaths(
 // weights and repeat the process until a valid solution is found. Returns a
 // map specifying switchbox settings for all flows. If no legal routing can be
 // found after maxIterations, returns empty vector.
-std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
+std::optional<std::map<PhysPort, SwitchSettings>> Router::findPaths(
     const int maxIterations) {
   LLVM_DEBUG(llvm::dbgs() << "\t---Begin Pathfinder::findPaths---\n");
-  std::map<PathEndPoint, SwitchSettings> routingSolution;
+  std::map<PhysPort, SwitchSettings> routingSolution;
   // initialize all Channel histories to 0
   for (auto &[_, sb] : impl->graph) {
     for (size_t i = 0; i < sb.srcPorts.size(); i++) {
@@ -432,7 +513,7 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
 
   int iterationCount = -1;
   int illegalEdges = 0;
-  int totalPathLength = 0;
+  [[maybe_unused]] int totalPathLength = 0;
   do {
     // if reach maxIterations, throw an error since no routing can be found
     if (++iterationCount >= maxIterations) {
@@ -458,7 +539,9 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
       for (size_t i = 0; i < sb.srcPorts.size(); i++) {
         for (size_t j = 0; j < sb.dstPorts.size(); j++) {
           sb.usedCapacity[i][j] = 0;
-          sb.packetFlowCount[i][j] = 0;
+          // If there is no previously-routed packet flow,
+          // `fixedPacketFlowCount` will be just 0.
+          sb.packetFlowCount[i][j] = sb.fixedPacketFlowCount[i][j];
           sb.packetGroupId[i][j] = -1;
         }
       }
@@ -470,8 +553,8 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
         // switchbox; find the shortest paths to each other switchbox. Output is
         // in the predecessor map, which must then be processed to get
         // individual switchbox settings
-        std::set<PathEndPoint> processed;
-        std::map<PathEndPoint, PathEndPoint> preds = dijkstraShortestPaths(src);
+        DenseSet<PhysPort> processed;
+        std::map<PhysPort, PhysPort> preds = dijkstraShortestPaths(src);
 
         // trace the path of the flow backwards via predecessors
         // increment used_capacity for the associated channels
@@ -571,10 +654,10 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
     }
 
 #ifndef NDEBUG
-    for (const auto &[PathEndPoint, switchSetting] : routingSolution) {
+    for (const auto &[PhysPort, switchSetting] : routingSolution) {
       LLVM_DEBUG(llvm::dbgs()
-                 << "\t\t\tFlow starting at (" << PathEndPoint.tileLoc.col
-                 << "," << PathEndPoint.tileLoc.row << "):\t");
+                 << "\t\t\tFlow starting at (" << PhysPort.tileLoc.col << ","
+                 << PhysPort.tileLoc.row << "):\t");
     }
 #endif
     LLVM_DEBUG(llvm::dbgs()
@@ -588,12 +671,12 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
   return routingSolution;
 }
 
-/// Transform outputs produced by the router into representations (structs) that
-/// directly map to stream switch configuration ops (soon-to-be aie-rt calls).
-/// Namely pairs of (switchbox, internal connections).
+/// Transform outputs produced by the router into representations (structs)
+/// that directly map to stream switch configuration ops (soon-to-be aie-rt
+/// calls). Namely pairs of (switchbox, internal connections).
 std::map<TileLoc, std::vector<Connect>> emitConnections(
-    const std::map<PathEndPoint, SwitchSettings> &flowSolutions,
-    const PathEndPoint &srcPoint, const AMDAIEDeviceModel &deviceModel) {
+    const std::map<PhysPort, SwitchSettings> &flowSolutions,
+    const PhysPort &srcPoint, const AMDAIEDeviceModel &deviceModel) {
   auto srcBundle = srcPoint.port.bundle;
   auto srcChannel = srcPoint.port.channel;
   TileLoc srcTileLoc = srcPoint.tileLoc;
@@ -611,74 +694,71 @@ std::map<TileLoc, std::vector<Connect>> emitConnections(
   };
   SwitchSettings settings = flowSolutions.at(srcPoint);
   for (const auto &[curr, setting] : settings) {
-    int shimCh = srcChannel;
+    // Check the source (based on `srcTileLoc` and `srcBundle`) of the flow.
+    // Shim DMAs/NOCs require special handling.
+    std::optional<StrmSwPortType> newSrcBundle = std::nullopt;
+    std::optional<int> newSrcChannel = std::nullopt;
     // TODO: must reserve N3, N7, S2, S3 for DMA connections
-    if (curr == srcTileLoc &&
+    if (std::optional<std::pair<StrmSwPortType, uint8_t>> mappedShimMuxPort =
+            deviceModel.getShimMuxPortMappingForDmaOrNoc(srcBundle, srcChannel,
+                                                         DMAChannelDir::MM2S);
+        mappedShimMuxPort.has_value() && curr == srcTileLoc &&
         deviceModel.isShimNOCTile(srcTileLoc.col, srcTileLoc.row)) {
-      // Check for special shim connectivity at the start (based on `srcTileLoc`
-      // and `srcBundle`) of the flow. Shim DMAs/NOCs require special handling.
-      auto shimMux = std::pair(Connect::Interconnect::SHIMMUX, srcTileLoc.col);
-      if (srcBundle == StrmSwPortType::DMA) {
-        // must be either DMA0 -> N3 or DMA1 -> N7
-        shimCh = srcChannel == 0 ? 3 : 7;
-        addConnection(curr, srcBundle, srcChannel, StrmSwPortType::NORTH,
-                      shimCh, shimMux.first, shimMux.second);
-      } else if (srcBundle == StrmSwPortType::NOC) {
-        // must be NOC0/NOC1 -> N2/N3 or NOC2/NOC3 -> N6/N7
-        shimCh = srcChannel >= 2 ? srcChannel + 4 : srcChannel + 2;
-        addConnection(curr, srcBundle, srcChannel, StrmSwPortType::NORTH,
-                      shimCh, shimMux.first, shimMux.second);
-      }
+      newSrcBundle = mappedShimMuxPort->first;
+      newSrcChannel = mappedShimMuxPort->second;
+      // The connection is updated as: `srcBundle/srcChannel` ->
+      // `newSrcBundle/newSrcChannel` -> `destBundle/destChannel`. The following
+      // line establishes the first half of the connection; the second half will
+      // be handled later.
+      addConnection(curr, srcBundle, srcChannel, newSrcBundle.value(),
+                    newSrcChannel.value(), Connect::Interconnect::SHIMMUX,
+                    curr.col, curr.row);
     }
 
-    auto sw = std::make_tuple(Connect::Interconnect::SWB, curr.col, curr.row);
     assert(setting.srcs.size() == setting.dsts.size());
     for (size_t i = 0; i < setting.srcs.size(); i++) {
       Port src = setting.srcs[i];
       Port dst = setting.dsts[i];
-      StrmSwPortType bundle = dst.bundle;
-      int channel = dst.channel;
-      // Check for special shim connectivity at the start (based on `srcTileLoc`
-      // and `srcBundle`) or at the end (based on `curr` and `bundle`) of the
-      // flow. Shim DMAs/NOCs require special handling.
-      if (curr == srcTileLoc &&
-          deviceModel.isShimNOCorPLTile(srcTileLoc.col, srcTileLoc.row) &&
-          (srcBundle == StrmSwPortType::DMA ||
-           srcBundle == StrmSwPortType::NOC)) {
-        addConnection(curr, StrmSwPortType::SOUTH, shimCh, bundle, channel,
-                      std::get<0>(sw), std::get<1>(sw), std::get<2>(sw));
-      } else if (deviceModel.isShimNOCorPLTile(curr.col, curr.row) &&
-                 (bundle == StrmSwPortType::DMA ||
-                  bundle == StrmSwPortType::NOC)) {
-        auto shimMux = std::make_pair(Connect::Interconnect::SHIMMUX, curr.col);
-        shimCh = channel;
-        if (deviceModel.isShimNOCTile(curr.col, curr.row)) {
-          // shim DMAs at end of flows
-          if (bundle == StrmSwPortType::DMA) {
-            // must be either N2 -> DMA0 or N3 -> DMA1
-            shimCh = channel == 0 ? 2 : 3;
-            addConnection(curr, StrmSwPortType::NORTH, shimCh, bundle, channel,
-                          shimMux.first, shimMux.second);
-          } else if (bundle == StrmSwPortType::NOC) {
-            // must be either N2/3/4/5 -> NOC0/1/2/3
-            shimCh = channel + 2;
-            addConnection(curr, StrmSwPortType::NORTH, shimCh, bundle, channel,
-                          shimMux.first, shimMux.second);
-          }
-        }
-        addConnection(curr, src.bundle, src.channel, StrmSwPortType::SOUTH,
-                      shimCh, std::get<0>(sw), std::get<1>(sw),
-                      std::get<2>(sw));
+      StrmSwPortType destBundle = dst.bundle;
+      int destChannel = dst.channel;
+      if (newSrcBundle.has_value() && newSrcChannel.has_value()) {
+        // Complete the second half of `src.bundle/src.channel` ->
+        // `newSrcBundle/newSrcChannel` -> `destBundle/destChannel`.
+        // `getConnectingBundle` is used to update bundle direction from shim
+        // mux to shim switchbox.
+        addConnection(curr, getConnectingBundle(newSrcBundle.value()),
+                      newSrcChannel.value(), destBundle, destChannel,
+                      Connect::Interconnect::SWB, curr.col, curr.row);
+      } else if (std::optional<std::pair<StrmSwPortType, uint8_t>>
+                     mappedShimMuxPort =
+                         deviceModel.getShimMuxPortMappingForDmaOrNoc(
+                             destBundle, destChannel, DMAChannelDir::S2MM);
+                 mappedShimMuxPort &&
+                 deviceModel.isShimNOCTile(curr.col, curr.row)) {
+        // Check for special shim connectivity at the destination (based on
+        // `curr` and `destBundle`) of the flow. Shim DMAs/NOCs require special
+        // handling.
+        StrmSwPortType newDestBundle = mappedShimMuxPort->first;
+        int newDestChannel = mappedShimMuxPort->second;
+        // The connection is updated as: `src.bundle/src.channel` ->
+        // `newDestBundle/newDestChannel` -> `destBundle/destChannel`.
+        // `getConnectingBundle` is used to update bundle direction from shim
+        // mux to shim switchbox.
+        addConnection(curr, src.bundle, src.channel,
+                      getConnectingBundle(newDestBundle), newDestChannel,
+                      Connect::Interconnect::SWB, curr.col, curr.row);
+        addConnection(curr, newDestBundle, newDestChannel, destBundle,
+                      destChannel, Connect::Interconnect::SHIMMUX, curr.col,
+                      curr.row);
       } else {
-        // otherwise, regular switchbox connection
-        addConnection(curr, src.bundle, src.channel, bundle, channel,
-                      std::get<0>(sw), std::get<1>(sw), std::get<2>(sw));
+        // Otherwise, add the regular switchbox connection.
+        addConnection(curr, src.bundle, src.channel, destBundle, destChannel,
+                      Connect::Interconnect::SWB, curr.col, curr.row);
       }
     }
   }
-  // sort for deterministic order in IR
+  // Sort for deterministic order in IR.
   for (auto &[_, conns] : connections) std::sort(conns.begin(), conns.end());
-
   return connections;
 }
 
@@ -733,35 +813,139 @@ bool existsPathToDest(const SwitchSettings &settings, TileLoc currTile,
   return false;
 }
 
+/// Generate the mask value for all the IDs in the group.
+/// Iterate over all the ID values in a group. If the i-th bit (i <=
+/// `numMaskBits`) of an ID value differs from the i-th bit of another ID value,
+/// the bit position should be "don't care", and the mask value should be 0 at
+/// that bit position. Otherwise, the mask value should be 1 at that bit
+/// position.
+///
+/// Example:
+/// Consider a group of IDs: {0x1, 0x2, 0x3} and `numMaskBits`=5. Counting from
+/// the LSB,
+/// - 1st bit of 0x1 is 1, 1st bit of 0x2 is 0, and 1st bit of 0x3 is 1;
+/// - 2nd bit of 0x1 is 0, 2nd bit of 0x2 is 1, and 2nd bit of 0x3 is 1;
+/// - 3rd bit of 0x1 is 0, 3rd bit of 0x2 is 0, and 3rd bit of 0x3 is 0;
+/// - 4th bit of 0x1 is 0, 4th bit of 0x2 is 0, and 4th bit of 0x3 is 0;
+/// - 5th bit of 0x1 is 0, 5th bit of 0x2 is 0, and 5th bit of 0x3 is 0.
+/// Therefore, the 1st and 2nd bits of the mask value should be "don't care"
+/// (marked as 0), and the 3rd, 4th and 5th bits of the mask value should be 1,
+/// resulting in a final mask value of 0b11100(0x1C).
+void updateGroupMask(const PhysPort &slavePort, std::set<uint32_t> &group,
+                     std::map<PhysPortAndID, uint32_t> &slaveMasks,
+                     uint32_t numMaskBits) {
+  if (group.empty()) return;
+  assert(numMaskBits <= 32 && "Invalid number of mask bits");
+  // Initialize the mask value to all 1s.
+  uint32_t mask = (numMaskBits == 32) ? ~0u : ((uint32_t)1 << numMaskBits) - 1;
+  // Iterate through `group`, use XOR to find differing bits from `firstId`, and
+  // set them as 0 in `mask`.
+  uint32_t firstId = *group.begin();
+  for (uint32_t id : group) mask = mask & ~(id ^ firstId);
+  // Update the final mask value for all the IDs in the group.
+  for (uint32_t id : group) slaveMasks[PhysPortAndID(slavePort, id)] = mask;
+}
+
+/// Sort groups by their size in ascending order. A smaller group size can
+/// represent a stricter `packet_rule`, which should be placed first to prevent
+/// other broader (less strict) rules from matching unintended IDs.
+///
+/// Example:
+/// Consider two slave groups, A and B, that share the same `physPort`
+/// (i.e., the same `tileLoc`, `bundle`, and `channel`). These groups
+/// will later be merged into a single `packet_rules` operation,
+/// where each group contributes a `packet_rule` entry. The order
+/// of these entries is critical because the first matching `packet_rule`
+/// takes precedence.
+///
+/// - `Group A` contains IDs `{0x3, 0x4, 0x5}` with `mask = 0x18`,
+///   and defines a `packet_rule`: `(ID & 0x18) == 0x00`.
+/// - `Group B` contains ID `{0x2}` with `mask = 0x1F`,
+///   and defines a `packet_rule`: `(ID & 0x1F) == 0x02`.
+///
+/// In this case, `Group B`'s `packet_rule` must precede `Group A`'s
+/// within the `packet_rules` operation. Otherwise, ID `0x02`
+/// would incorrectly match `(ID & 0x18) == 0x00`, leading to incorrect
+/// behavior.
+void sortGroupsBySize(SmallVector<std::set<uint32_t>> &groups) {
+  auto sortBySize = [](auto &lhs, auto &rhs) {
+    if (lhs.size() != rhs.size()) return lhs.size() < rhs.size();
+    return lhs < rhs;
+  };
+  std::sort(groups.begin(), groups.end(), sortBySize);
+}
+
+/// Verifies the correctness of ID groupings before putting them into a single
+/// `packet_rules` set. Each group contributes a `packet_rule` entry, and this
+/// function checks if any ID in a later group incorrectly matches a preceding
+/// group's masked ID.
+///
+/// Example:
+/// Consider three groups: A, B, and C.
+/// - `Group A`: Contains IDs `{0x0}` with `mask = 0x1F`.
+///   - Packet rule: `(ID & 0x1F) ?= (0x0 & 0x1F)`.
+/// - `Group B`: Contains IDs `{0x6, 0x7}` with `mask = 0x18`.
+///   - Packet rule: `(ID & 0x18) ?= (0x6 & 0x18)`.
+/// - `Group C`: Contains IDs `{0x1, 0x2, 0x3, 0x4, 0x5}` with `mask = 0x18`.
+///   - Packet rule: `(ID & 0x18) ?= (0x1 & 0x18)`.
+///
+/// ID `0x1` belongs to `Group C`, however, due to the limitation of masking, it
+/// matches both `Group B` and `C`'s rules. Since `Group B` precedes `Group C`,
+/// and `packet_rule` entries are evaluated in order, the function returns
+/// `false` to indicate an invalid grouping.
+bool verifyGroupsByMask(PhysPort slavePort,
+                        const SmallVector<std::set<uint32_t>> &groups,
+                        const std::map<PhysPortAndID, uint32_t> &slaveMasks) {
+  for (size_t i = 0; i < groups.size(); ++i) {
+    uint32_t iPktId = *groups[i].begin();
+    uint32_t iMask = slaveMasks.at(PhysPortAndID(slavePort, iPktId));
+    uint32_t iMaskedId = iPktId & iMask;
+    for (size_t j = i + 1; j < groups.size(); ++j) {
+      for (uint32_t jPktId : groups[j]) {
+        if ((jPktId & iMask) == iMaskedId) return false;
+      }
+    }
+  }
+  return true;
+}
+
 std::tuple<SlaveGroupsT, SlaveMasksT> emitSlaveGroupsAndMasksRoutingConfig(
-    ArrayRef<PhysPortAndID> slavePorts, const PacketFlowMapT &packetFlows) {
+    ArrayRef<PhysPortAndID> slavePorts, const PacketFlowMapT &packetFlows,
+    ArrayRef<PhysPortAndID> priorSlavePorts,
+    const PacketFlowMapT &priorPacketFlows, uint32_t numMaskBits) {
   // Convert packet flow map into a map from src 'port and id's to destination
   // ports, so that multiple flows with different packet IDs, but the same
   // ports, can be merged.
   DenseMap<PhysPortAndID, llvm::SetVector<PhysPort>> physPortAndIDToPhysPort;
-  for (auto &&[src, dsts] : packetFlows) {
+  // Put previously-routed packet flows with the unrouted ones together,
+  // with previously-routed ones first to respect their relative order.
+  PacketFlowMapT allPacketFlows = priorPacketFlows;
+  allPacketFlows.insert(packetFlows.begin(), packetFlows.end());
+  for (auto &&[src, dsts] : allPacketFlows) {
     SmallVector<PhysPort> physPorts =
         llvm::map_to_vector(dsts, [](const PhysPortAndID &physPortAndID) {
           return physPortAndID.physPort;
         });
     physPortAndIDToPhysPort[src].insert(physPorts.begin(), physPorts.end());
   }
-  // Compute mask values
-  // Merging as many stream flows as possible
-  // The flows must originate from the same source port and have different IDs
-  // Two flows can be merged if they share the same destinations
+  // `slaveGroups` maps a slave port to groups of packet IDs. The groups will be
+  // later used for generating `packet_rules`.
   SlaveGroupsT slaveGroups;
-  SmallVector<PhysPortAndID> workList(slavePorts.begin(), slavePorts.end());
-  while (!workList.empty()) {
-    PhysPortAndID slave1 = workList.pop_back_val();
-    Port slavePort1 = slave1.physPort.port;
-
-    bool foundgroup = false;
-    for (auto &group : slaveGroups) {
-      PhysPortAndID slave2 = group.front();
-      if (Port slavePort2 = slave2.physPort.port; slavePort1 != slavePort2)
-        continue;
-
+  // `slaveMasks` maps a slave port and packet ID to a mask value, used for
+  // `packet_rule` entries.
+  SlaveMasksT slaveMasks;
+  // Put previously-routed slave ports with the unrouted ones together, with
+  // previously-routed ones first to respect their relative order.
+  SmallVector<PhysPortAndID> workList(priorSlavePorts.begin(),
+                                      priorSlavePorts.end());
+  workList.append(slavePorts.begin(), slavePorts.end());
+  for (PhysPortAndID &slave1 : workList) {
+    // Try to find a matching group that can be merged with.
+    std::optional<uint32_t> matchedGroupIdx;
+    SmallVector<std::set<uint32_t>> &groups = slaveGroups[slave1.physPort];
+    for (size_t i = 0; i < groups.size(); ++i) {
+      PhysPortAndID slave2(slave1.physPort, *groups[i].begin());
+      // Can be merged if `slave1` and `slave2` share the same destinations.
       const llvm::SetVector<PhysPort> &dests1 =
           physPortAndIDToPhysPort.at(slave1);
       const llvm::SetVector<PhysPort> &dests2 =
@@ -771,69 +955,62 @@ std::tuple<SlaveGroupsT, SlaveMasksT> emitSlaveGroupsAndMasksRoutingConfig(
                       [&dests2](const PhysPort &dest1) {
                         return dests2.count(dest1);
                       })) {
-        group.push_back(slave1);
-        foundgroup = true;
+        // Found a matching group.
+        matchedGroupIdx = i;
         break;
       }
     }
-
-    if (!foundgroup) {
-      slaveGroups.emplace_back(std::vector<PhysPortAndID>{slave1});
+    // Attempt to merge, and verify that the merged group is still valid.
+    if (matchedGroupIdx.has_value()) {
+      // Make a copy of the groups in case the merge is invalid.
+      SmallVector<std::set<uint32_t>> groupsCopy = groups;
+      std::set<uint32_t> &group = groups[matchedGroupIdx.value()];
+      // Merge `slave1.id` into the group.
+      group.insert(slave1.id);
+      updateGroupMask(slave1.physPort, group, slaveMasks, numMaskBits);
+      sortGroupsBySize(groups);
+      // If the merge is valid, simply continue the while loop on `workList`.
+      if (verifyGroupsByMask(slave1.physPort, groups, slaveMasks)) continue;
+      // Not a valid merge, so revert the changes on `groups` and `slaveMasks`.
+      slaveGroups[slave1.physPort] = groupsCopy;
+      updateGroupMask(slave1.physPort, group, slaveMasks, numMaskBits);
     }
+    // No mergeable group, create a new group instead.
+    std::set<uint32_t> group = {static_cast<uint32_t>(slave1.id)};
+    groups.emplace_back(group);
+    updateGroupMask(slave1.physPort, group, slaveMasks, numMaskBits);
+    sortGroupsBySize(groups);
   }
-
-  SlaveMasksT slaveMasks;
-  for (const auto &group : slaveGroups) {
-    // Iterate over all the ID values in a group
-    // If bit n-th (n <= 5) of an ID value differs from bit n-th of another ID
-    // value, the bit position should be "don't care", and we will set the
-    // mask bit of that position to 0
-    int mask[5] = {-1, -1, -1, -1, -1};
-    for (PhysPortAndID port : group) {
-      for (int i = 0; i < 5; i++) {
-        if (mask[i] == -1) {
-          mask[i] = port.id >> i & 0x1;
-        } else if (mask[i] != (port.id >> i & 0x1)) {
-          // found bit difference --> mark as "don't care"
-          mask[i] = 2;
-        }
-      }
-    }
-
-    int maskValue = 0;
-    for (int i = 4; i >= 0; i--) {
-      if (mask[i] == 2) {
-        // don't care
-        mask[i] = 0;
-      } else {
-        mask[i] = 1;
-      }
-      maskValue = (maskValue << 1) + mask[i];
-    }
-    for (PhysPortAndID port : group) slaveMasks[port] = maskValue;
-  }
-
-  // sort for deterministic IR output
-  for (auto &item : slaveGroups) std::sort(item.begin(), item.end());
-  std::sort(slaveGroups.begin(), slaveGroups.end());
   return std::make_tuple(slaveGroups, slaveMasks);
 }
 
 /// Given switchbox configuration data produced by the router, emit
 /// configuration data for packet routing along those same switchboxes.
 FailureOr<std::tuple<MasterSetsT, SlaveAMSelsT>> emitPacketRoutingConfiguration(
-    const AMDAIEDeviceModel &deviceModel, const PacketFlowMapT &packetFlows) {
+    const AMDAIEDeviceModel &deviceModel, const PacketFlowMapT &packetFlows,
+    const PacketFlowMapT &priorPacketFlows) {
   // The generator for finding `(arbiter, msel)` pairs for packet flow
   // connections.
   AMSelGenerator amselGenerator;
 
+  // Put previously-routed packet flows with the unrouted ones together, with
+  // previously-routed ones first to respect their relative order.
   SmallVector<std::pair<PhysPortAndID, llvm::SetVector<PhysPortAndID>>>
-      sortedPacketFlows(packetFlows.begin(), packetFlows.end());
+      sortedPacketFlows(priorPacketFlows.begin(), priorPacketFlows.end());
+  size_t priorPacketFlowsSize = priorPacketFlows.size();
+  sortedPacketFlows.append(packetFlows.begin(), packetFlows.end());
 
-  // To get determinsitic behaviour
-  std::sort(
-      sortedPacketFlows.begin(), sortedPacketFlows.end(),
-      [](const auto &lhs, const auto &rhs) { return lhs.first < rhs.first; });
+  // Sort for deterministic AMSel allocation, using the source PhysPortAndID as
+  // the key.
+  auto sortBySrc = [](const auto &lhs, const auto &rhs) {
+    return lhs.first < rhs.first;
+  };
+  // Previously-routed flows and unrouted flows are sorted separately to
+  // maintain their relative order.
+  std::sort(sortedPacketFlows.begin(),
+            sortedPacketFlows.begin() + priorPacketFlowsSize, sortBySrc);
+  std::sort(sortedPacketFlows.begin() + priorPacketFlowsSize,
+            sortedPacketFlows.end(), sortBySrc);
 
   // A map from Tile and master selectValue to the ports targeted by that
   // master select.
@@ -928,7 +1105,6 @@ std::string to_string(const SwitchSettings &settings) {
 
 STRINGIFY_2TUPLE_STRUCT(Port, bundle, channel)
 STRINGIFY_2TUPLE_STRUCT(Connect, src, dst)
-STRINGIFY_2TUPLE_STRUCT(PathEndPoint, tileLoc, port)
 STRINGIFY_3TUPLE_STRUCT(PhysPort, tileLoc, port, direction)
 STRINGIFY_2TUPLE_STRUCT(PhysPortAndID, physPort, id)
 

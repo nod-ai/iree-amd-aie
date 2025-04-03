@@ -49,9 +49,9 @@ int main(int argc, char **argv) {
   }
   auto deviceOp = *deviceOps.begin();
   llvm::DebugFlag = true;
+#ifndef NDEBUG
   const char *debugTypes[3] = {"aie-generate-cdo", "iree-aie-runtime",
                                "iree-aie-cdo-emitter"};
-#ifndef NDEBUG
   llvm::setCurrentDebugTypes(debugTypes, 3);
 #endif
   auto status = AIETranslateToCDODirect(deviceOp, workDir, false, false, false);

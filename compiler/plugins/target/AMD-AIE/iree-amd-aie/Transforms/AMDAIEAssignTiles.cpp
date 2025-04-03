@@ -6,8 +6,10 @@
 
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/Passes.h"
+#include "iree-amd-aie/Transforms/Utils/AMDAIEOpUtils.h"
 #include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
+#include "mlir/IR/Iterators.h"
 #include "mlir/IR/Verifier.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -121,271 +123,300 @@ LogicalResult duplicateGlobalObjFifos(RewriterBase &rewriter, Operation *op) {
   return success();
 }
 
-/// Assign tiles to the logical objectfifos with local memory space (L1).
-/// The tiles are derived from the usage of the logical objectfifos within
-/// core operations, which are already assigned a tile location.
-LogicalResult assignLocalTiles(RewriterBase &rewriter, Operation *op) {
-  WalkResult res =
-      op->walk([&](AMDAIE::LogicalObjectFifoFromMemrefOp logicalObjectFifo) {
-        Attribute memSpace = logicalObjectFifo.getMemorySpace();
-        if (!memSpace || dyn_cast<IntegerAttr>(memSpace).getInt() != 2)
-          return WalkResult::advance();
+/// Base class for tile allocators to support different tile assignment
+/// strategies.
+class TileAllocatorBase {
+ public:
+  TileAllocatorBase(RewriterBase &rewriter,
+                    const AMDAIE::AMDAIEDeviceModel &deviceModel)
+      : rewriter(rewriter), deviceModel(deviceModel) {}
+  virtual ~TileAllocatorBase(){};
+  /// Assign tiles to the provided vector of logical objectFifos on the same
+  /// memory space. This method expects a set of valid tile candidates to be
+  /// provided inside the operation.
+  virtual LogicalResult assignTiles(
+      SmallVector<AMDAIE::LogicalObjFifoOpInterface> &objFifos,
+      uint8_t memSpace, function_ref<InFlightDiagnostic()> emitError) = 0;
 
-        llvm::SmallSetVector<std::pair<int64_t, int64_t>, 16> tileLocations;
-        if (failed(findUsersInCoreAndAddTiles(
-                logicalObjectFifo,
-                cast<AMDAIE::LogicalObjFifoOpInterface>(
-                    logicalObjectFifo.getOperation()),
-                tileLocations))) {
-          return WalkResult::interrupt();
-        }
-        // Handle subviews.
+ protected:
+  RewriterBase &rewriter;
+  const AMDAIE::AMDAIEDeviceModel &deviceModel;
+};
+
+/// A custom tile allocater that takes into consideration the usage and column
+/// of users to determine tile locations.
+class UsageAndColumnBasedTileAllocator final : public TileAllocatorBase {
+ public:
+  DenseMap<Operation *, DenseSet<Operation *>> uniqueL3L2Pair;
+
+  UsageAndColumnBasedTileAllocator(
+      RewriterBase &rewriter, const AMDAIE::AMDAIEDeviceModel &deviceModel,
+      DenseMap<Operation *, DenseSet<Operation *>> uniqueL3L2Pair)
+      : TileAllocatorBase(rewriter, deviceModel),
+        uniqueL3L2Pair(uniqueL3L2Pair) {}
+
+  LogicalResult assignTiles(
+      SmallVector<AMDAIE::LogicalObjFifoOpInterface> &objFifos,
+      uint8_t memSpace, function_ref<InFlightDiagnostic()> emitError) {
+    assert(llvm::all_of(objFifos,
+                        [&](AMDAIE::LogicalObjFifoOpInterface objFifo) {
+                          return objFifo.getMemorySpaceAsUInt() == memSpace;
+                        }) &&
+           "All logical objectFifos should have ths same memory space");
+    if (memSpace == 2) return assignLocalTiles(objFifos, memSpace, emitError);
+    if (memSpace == 0 || memSpace == 1)
+      return assignNonLocalTiles(objFifos, memSpace, emitError);
+    return emitError() << "Unsupported memory space : "
+                       << std::to_string(memSpace);
+  }
+
+ private:
+  /// Assign tiles to the logical objectfifos with local memory space (L1).
+  /// The tiles are derived from the usage of the logical objectfifos within
+  /// core operations, which are already assigned a tile location.
+  LogicalResult assignLocalTiles(
+      SmallVector<AMDAIE::LogicalObjFifoOpInterface> &objFifos,
+      uint8_t memSpace, function_ref<InFlightDiagnostic()> emitError) {
+    assert(memSpace == 2 && "Local memory space should be `2`.");
+    for (AMDAIE::LogicalObjFifoOpInterface objFifo : objFifos) {
+      llvm::SmallSetVector<std::pair<int64_t, int64_t>, 16> tileLocations;
+      if (failed(findUsersInCoreAndAddTiles(objFifo, objFifo, tileLocations))) {
+        return failure();
+      }
+      // Handle subviews.
+      if (auto fromMemrefOp = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+              objFifo.getOperation())) {
         for (Operation *userOp :
-             logicalObjectFifo.getMemref().getDefiningOp()->getUsers()) {
+             fromMemrefOp.getMemref().getDefiningOp()->getUsers()) {
           if (auto subviewOp = dyn_cast<memref::SubViewOp>(userOp)) {
-            if (failed(findUsersInCoreAndAddTiles(
-                    subviewOp,
-                    cast<AMDAIE::LogicalObjFifoOpInterface>(
-                        logicalObjectFifo.getOperation()),
-                    tileLocations))) {
-              return WalkResult::interrupt();
+            if (failed(findUsersInCoreAndAddTiles(subviewOp, objFifo,
+                                                  tileLocations))) {
+              return failure();
             }
           }
         }
-
-        SmallVector<Value> tiles;
-        tiles.reserve(tileLocations.size());
-        rewriter.setInsertionPoint(logicalObjectFifo);
-        for (auto [column, row] : tileLocations) {
-          auto colIndex = rewriter.create<arith::ConstantIndexOp>(
-              rewriter.getUnknownLoc(), column);
-          auto rowIndex = rewriter.create<arith::ConstantIndexOp>(
-              rewriter.getUnknownLoc(), row);
-          auto tileOp = rewriter.create<AMDAIE::TileOp>(
-              rewriter.getUnknownLoc(), colIndex, rowIndex);
-          tiles.push_back(tileOp.getResult());
-        }
-        // Sort for deterministic output IR.
-        llvm::sort(tiles.begin(), tiles.end(),
-                   AMDAIE::TileOp::tileValueColumnAndRowComparator);
-        rewriter.replaceOpWithNewOp<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-            logicalObjectFifo,
-            cast<LogicalObjectFifoType>(
-                logicalObjectFifo.getOutput().getType()),
-            logicalObjectFifo.getMemref(), tiles);
-        return WalkResult::advance();
-      });
-  if (res.wasInterrupted()) return failure();
-  return success();
-}
-
-/// Assign a set of candidate physical AIE tiles to logical objectFifos. This
-/// rewrite takes an iterative approach by matching logical objectfifos and only
-/// assigning tiles when linked through dma ops with other logical objectfifos
-/// which already have tiles assigned. If the linked logical objectfifos don't
-/// have tiles assigned yet, we will return a failure and give the linked
-/// logical objectfifos a chance to assign tiles before returning to this one.
-class FillTiles
-    : public OpInterfaceRewritePattern<AMDAIE::LogicalObjFifoOpInterface> {
-  using OpInterfaceRewritePattern<
-      AMDAIE::LogicalObjFifoOpInterface>::OpInterfaceRewritePattern;
-
- public:
-  FillTiles(MLIRContext *context, const AMDAIE::AMDAIEDeviceModel &deviceModel)
-      : OpInterfaceRewritePattern(context), deviceModel(deviceModel) {}
-
-  LogicalResult matchAndRewrite(
-      AMDAIE::LogicalObjFifoOpInterface logicalObjectFifo,
-      PatternRewriter &rewriter) const override {
-    LLVM_DEBUG(llvm::dbgs() << "FillTiles: " << logicalObjectFifo << "\n");
-    if (!logicalObjectFifo.getTiles().empty()) {
-      return rewriter.notifyMatchFailure(logicalObjectFifo,
-                                         "Tiles are already assigned.");
-    }
-    uint8_t memSpace = logicalObjectFifo.getMemorySpaceAsUInt();
-    if (memSpace != 0 && memSpace != 1) {
-      return rewriter.notifyMatchFailure(
-          logicalObjectFifo,
-          "Skip logical objFifos that don't operate on L3 or L2");
-    }
-
-    SmallVector<AMDAIE::TileOp, 16> targetTiles;
-    SmallVector<AMDAIE::TileOp, 16> sourceTiles;
-    LogicalResult dstRes =
-        getUserTiles<CopyOpOperateOn::Target>(logicalObjectFifo, targetTiles);
-    LogicalResult srcRes =
-        getUserTiles<CopyOpOperateOn::Source>(logicalObjectFifo, sourceTiles);
-    if (failed(dstRes) && failed(srcRes)) {
-      return rewriter.notifyMatchFailure(logicalObjectFifo,
-                                         "No source or target tiles found");
-    }
-
-    SmallVector<uint32_t> memSpaceRows = deviceModel.getMemSpaceRows(memSpace);
-    if (memSpaceRows.size() == 0) {
-      return rewriter.notifyMatchFailure(
-          logicalObjectFifo,
-          "No rows found for the memory space of this logical objFifo");
-    }
-    if (memSpaceRows.size() > 1) {
-      logicalObjectFifo.emitWarning()
-          << "has a memory space with multiple available rows, the first one "
-             "of which is chosen for tile assignment, but this might not lead "
-             "to good usage of the available resources.";
-    }
-    uint32_t row = memSpaceRows[0];
-    llvm::SmallSetVector<std::pair<int64_t, int64_t>, 16> tileLocations;
-    auto createTileLocations =
-        [&](SmallVector<AMDAIE::TileOp, 16> &tiles) -> LogicalResult {
-      // For deterministic and canonical output, sort on column index and erase
-      // duplicates.
-      std::sort(tiles.begin(), tiles.end(),
-                AMDAIE::TileOp::tileColumnComparator);
-      tiles.erase(std::unique(tiles.begin(), tiles.end()), tiles.end());
-      for (AMDAIE::TileOp tile : tiles) {
-        std::optional<int64_t> column = getConstantIntValue(tile.getCol());
-        if (!column)
-          return rewriter.notifyMatchFailure(tile, "found non-constant column");
-        tileLocations.insert(std::make_pair(column.value(), row));
       }
-      return success();
-    };
 
-    if (!targetTiles.empty() && !sourceTiles.empty()) {
-      return rewriter.notifyMatchFailure(
-          logicalObjectFifo,
-          "Found logical objectfifo with both source and target tiles, which "
-          "is not supported yet");
-    } else if (!targetTiles.empty()) {
-      // Create tile locations for this logical objectfifo based on the
-      // consumers' tiles.
-      if (failed(createTileLocations(targetTiles))) {
-        return rewriter.notifyMatchFailure(
-            logicalObjectFifo,
-            "Could not find tile locations based on the consumers' tiles.");
+      SmallVector<Value> tiles;
+      tiles.reserve(tileLocations.size());
+      rewriter.setInsertionPoint(objFifo);
+      for (auto [column, row] : tileLocations) {
+        auto colIndex = rewriter.create<arith::ConstantIndexOp>(
+            rewriter.getUnknownLoc(), column);
+        auto rowIndex = rewriter.create<arith::ConstantIndexOp>(
+            rewriter.getUnknownLoc(), row);
+        auto tileOp = rewriter.create<AMDAIE::TileOp>(rewriter.getUnknownLoc(),
+                                                      colIndex, rowIndex);
+        tiles.push_back(tileOp.getResult());
       }
-    } else if (!sourceTiles.empty()) {
-      // Create tile locations for this logical objectfifo based on producers'
-      // tiles.
-      if (failed(createTileLocations(sourceTiles))) {
-        return rewriter.notifyMatchFailure(
-            logicalObjectFifo,
-            "Could not find tile locations based on the producers' tiles.");
+      // Sort for deterministic output IR.
+      llvm::sort(tiles.begin(), tiles.end(),
+                 AMDAIE::TileOp::tileValueColumnAndRowComparator);
+      if (failed(objFifo.replaceWithNewTiles(rewriter, tiles))) {
+        return objFifo.emitOpError() << "could not replace its tiles.";
       }
-    } else {
-      return rewriter.notifyMatchFailure(
-          logicalObjectFifo,
-          "Don't assign this logicalObjectFifo to a physical tile (yet!). Wait "
-          "for other logical objectfifos to be assigned first.");
-    }
-
-    if (tileLocations.empty()) {
-      return rewriter.notifyMatchFailure(
-          logicalObjectFifo,
-          "No tile locations found for this logical objFifo. Maybe in a next "
-          "iteration, with more information, a tile location can be found.");
-    }
-    rewriter.setInsertionPoint(logicalObjectFifo);
-    SmallVector<Value> tiles;
-    tiles.reserve(tileLocations.size());
-    for (auto [column, row] : tileLocations) {
-      auto getCol = rewriter.create<arith::ConstantIndexOp>(
-          rewriter.getUnknownLoc(), column);
-      auto getRow = rewriter.create<arith::ConstantIndexOp>(
-          rewriter.getUnknownLoc(), row);
-      auto tileOp = rewriter.create<AMDAIE::TileOp>(rewriter.getUnknownLoc(),
-                                                    getCol, getRow);
-      tiles.push_back(tileOp.getResult());
-    }
-    if (failed(logicalObjectFifo.replaceWithNewTiles(rewriter, tiles))) {
-      return rewriter.notifyMatchFailure(
-          logicalObjectFifo,
-          "Could not replace the tiles in the provided logical objectFifo.");
     }
     return success();
   }
 
- private:
-  // The device model used to retrieve device specific information.
-  const AMDAIEDeviceModel &deviceModel;
+  /// Assign tile locations to objectFifos. Start by searching for a set of
+  /// candidate tile locations and then assign tiles based on a simple
+  /// usage-based model that prioritizes tiles that have the least usage.
+  LogicalResult assignNonLocalTiles(
+      SmallVector<AMDAIE::LogicalObjFifoOpInterface> &objFifos,
+      uint8_t memSpace, function_ref<InFlightDiagnostic()> emitError) {
+    assert((memSpace == 0 || memSpace == 1) &&
+           "The memory space of non-local objectFifos should be `0` or `1`");
+    // Keep track of the buffer usage on tiles to try distributing buffers
+    // evenly over available tile resources.
+    DenseMap<TileLoc, size_t> tileLocToUsage;
+    auto tileLocAndUsageCmp = [&](const TileLoc &a, const TileLoc &b) -> bool {
+      size_t usageA = tileLocToUsage[a];
+      size_t usageB = tileLocToUsage[b];
+      if (usageA < usageB) return true;
+      if (usageA > usageB) return false;
+      if (a.col < b.col) return true;
+      if (a.col > b.col) return false;
+      if (a.row < b.row) return true;
+      if (a.row > b.row) return false;
+      assert(false && "same tiles should never be compared");
+      return false;
+    };
+
+    SmallVector<uint32_t> memSpaceRows = deviceModel.getMemSpaceRows(memSpace);
+    if (memSpaceRows.size() == 0) {
+      return emitError()
+             << "No rows found for the memory space of this logical objFifo";
+    }
+    uint32_t row = memSpaceRows[0];
+
+    for (AMDAIE::LogicalObjFifoOpInterface objFifo : objFifos) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Assign tile for objFifo: " << objFifo << "\n");
+
+      mlir::FunctionOpInterface funcOp =
+          objFifo->getParentOfType<mlir::FunctionOpInterface>();
+      if (!funcOp) {
+        return objFifo.emitOpError()
+               << "Could not find a function-like parent op.";
+      }
+      FailureOr<CoreRegionInfo> coreRegionInfo = getCoreRegionInfo(funcOp);
+      if (failed(coreRegionInfo)) return failure();
+      int startCol = coreRegionInfo.value().startCol;
+      int numCols = coreRegionInfo.value().numCols;
+      llvm::SmallSetVector<TileLoc, 16> tileLocations;
+      for (int i = startCol; i < startCol + numCols; i++)
+        tileLocations.insert(TileLoc(i, row));
+      if (tileLocations.empty()) {
+        return objFifo.emitOpError() << "No tile locations found for this "
+                                        "logical objFifo. Maybe in a next "
+                                        "iteration, with more information, a "
+                                        "tile location can be found.";
+      }
+      SmallVector<TileLoc> tiles = tileLocations.takeVector();
+
+      // Sort tiles on priority column + left to right;
+      FailureOr<int64_t> maybePriorityCol = getPriorityColumn(objFifo);
+      if (failed(maybePriorityCol)) return failure();
+      int64_t priorityCol = maybePriorityCol.value();
+      llvm::sort(tiles, [&](const TileLoc &a, const TileLoc &b) {
+        if (a.col == priorityCol) return true;
+        return a.col < b.col;
+      });
+
+      // Here we are limiting the number of tile options to buffer count to
+      // avoid repeated accesses of the same buffer being assigned to
+      // different tiles. Because if the repeated access of the same buffer
+      // are assigned to different tiles, that unnecessarily ends up consuming
+      // more DMA channels on those new tiles than needed, and as a result we
+      // will end up exhausting the DMA channels. Currently the following fix
+      // works for L3 buffers.
+      auto fromMemrefOp = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+          objFifo.getOperation());
+      if (fromMemrefOp) {
+        Operation *defOp = fromMemrefOp.getMemref().getDefiningOp();
+        if (defOp && uniqueL3L2Pair.contains(defOp))
+          tiles.truncate(
+              std::min((size_t)uniqueL3L2Pair[defOp].size(), tiles.size()));
+      }
+
+      // Assing a tile location.
+      TileLoc assignedTileLoc;
+      const auto *tileIt = llvm::find_if(tiles, [&](const TileLoc &tileLoc) {
+        return tileLoc.col == priorityCol;
+      });
+      if (tileIt != tiles.end()) {
+        assignedTileLoc = *tileIt;
+        LLVM_DEBUG(llvm::dbgs()
+                   << "Assign to priority column: " << priorityCol << "\n");
+      } else {
+        LLVM_DEBUG(llvm::dbgs() << "Assign based on usage comparator\n");
+        assignedTileLoc =
+            *std::min_element(tiles.begin(), tiles.end(), tileLocAndUsageCmp);
+      }
+
+      // Increase usage of the chosen tile as a new logical objectFifo will be
+      // assigned to it. This allows distributing the logical objectFifos
+      // evenly across the available tile resources.
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Assign to tile (col, row): (" << assignedTileLoc.col
+                 << ", " << assignedTileLoc.row << ")\n");
+      tileLocToUsage[assignedTileLoc] += 1;
+
+      rewriter.setInsertionPoint(objFifo);
+      auto getCol = rewriter.create<arith::ConstantIndexOp>(
+          rewriter.getUnknownLoc(), assignedTileLoc.col);
+      auto getRow = rewriter.create<arith::ConstantIndexOp>(
+          rewriter.getUnknownLoc(), assignedTileLoc.row);
+      auto assignedTileOp = rewriter.create<AMDAIE::TileOp>(
+          rewriter.getUnknownLoc(), getCol, getRow);
+      SmallVector<Value> tileResults = {
+          cast<Value>(assignedTileOp.getResult())};
+      if (failed(objFifo.replaceWithNewTiles(rewriter, tileResults))) {
+        return objFifo.emitOpError() << "Could not replace its tiles.";
+      }
+    }
+    return success();
+  }
+
+  /// Utility to return a priority column for the provided objectFifo if tiles
+  /// of users are all within the same column. Returns `-1` if no priority
+  /// column was found.
+  FailureOr<int64_t> getPriorityColumn(
+      AMDAIE::LogicalObjFifoOpInterface objFifo) const {
+    int64_t priorityCol{-1};
+    SmallVector<AMDAIE::TileOp> targetTiles;
+    SmallVector<AMDAIE::TileOp> sourceTiles;
+    LogicalResult dstRes =
+        getUserTiles<CopyOpOperateOn::Target>(objFifo, targetTiles);
+    LogicalResult srcRes =
+        getUserTiles<CopyOpOperateOn::Source>(objFifo, sourceTiles);
+    if (failed(dstRes) && failed(srcRes)) {
+      return objFifo.emitOpError() << "No source or target tiles found";
+    }
+    SmallVector<int64_t> targetColsVec =
+        llvm::map_to_vector(targetTiles, [](AMDAIE::TileOp tileOp) {
+          std::optional<int64_t> column = getConstantIntValue(tileOp.getCol());
+          return column.has_value() ? column.value() : -1;
+        });
+    DenseSet<int64_t> targetCols(targetColsVec.begin(), targetColsVec.end());
+    SmallVector<int64_t> sourceColsVec =
+        llvm::map_to_vector(sourceTiles, [](AMDAIE::TileOp tileOp) {
+          std::optional<int64_t> column = getConstantIntValue(tileOp.getCol());
+          return column.has_value() ? column.value() : -1;
+        });
+    DenseSet<int64_t> sourceCols(sourceColsVec.begin(), sourceColsVec.end());
+    if (targetCols.size() == 1 && sourceCols.size() == 1) {
+      int64_t targetCol = *targetCols.begin();
+      int64_t sourceCol = *sourceCols.begin();
+      if (targetCol != -1 && sourceCol != -1 && targetCol != sourceCol) {
+        return objFifo.emitOpError()
+               << "Found two different priority columns, column " << targetCol
+               << " on the target side and column " << sourceCol
+               << " on the source side.";
+      } else {
+        priorityCol = targetCol;
+      }
+    } else if (targetCols.size() == 1) {
+      priorityCol = *targetCols.begin();
+    } else if (sourceCols.size() == 1) {
+      priorityCol = *sourceCols.begin();
+    }
+    return priorityCol;
+  }
 };
 
-/// Assign tile locations to objectFifos. Start by searching for a set of
-/// candidate tile locations and then assign tiles based on a simple usage-based
-/// model that prioritizes tiles that have the least usage.
-LogicalResult assignNonLocalTiles(RewriterBase &rewriter, Operation *op,
-                                  const AMDAIEDeviceModel &deviceModel) {
-  MLIRContext *context = rewriter.getContext();
+/// Assign tile locations to objectFifos based on available resources. Visit
+/// objectFifos based on locality to the cores, i.e. first visit the objectFifos
+/// on L1, then L2, etc.
+LogicalResult assignTiles(
+    RewriterBase &rewriter, Operation *op, const AMDAIEDeviceModel &deviceModel,
+    DenseMap<Operation *, DenseSet<Operation *>> uniqueL3L2Pair) {
   if (failed(clearNonLocalTiles(rewriter, op)))
     return op->emitOpError() << "failed to clear non-local tile assignments";
 
-  // Find and fill the tile candidates.
-  RewritePatternSet fillTilePatterns(context);
-  fillTilePatterns.insert<FillTiles>(context, deviceModel);
-  if (failed(applyPatternsGreedily(op, std::move(fillTilePatterns)))) {
-    return op->emitOpError()
-           << "collection of tile candidates for logical objectFifos failed";
+  UsageAndColumnBasedTileAllocator tileAllocator(rewriter, deviceModel,
+                                                 uniqueL3L2Pair);
+
+  DenseMap<uint8_t, SmallVector<AMDAIE::LogicalObjFifoOpInterface>>
+      memSpaceToObjFifos;
+  op->walk([&](AMDAIE::LogicalObjFifoOpInterface logicalObjectFifo) {
+    uint8_t memSpace = logicalObjectFifo.getMemorySpaceAsUInt();
+    memSpaceToObjFifos[memSpace].push_back(logicalObjectFifo);
+  });
+  SmallVector<uint8_t> memSpaces = llvm::map_to_vector(
+      memSpaceToObjFifos,
+      [](const std::pair<uint8_t,
+                         SmallVector<AMDAIE::LogicalObjFifoOpInterface>>
+             &memSpaceAndObjFifos) { return memSpaceAndObjFifos.first; });
+  llvm::sort(memSpaces, std::greater<uint8_t>());
+  for (uint8_t memSpace : memSpaces) {
+    if (failed(
+            tileAllocator.assignTiles(memSpaceToObjFifos[memSpace], memSpace,
+                                      [&]() { return op->emitOpError(); }))) {
+      return failure();
+    }
   }
-  if (failed(verify(op, true))) {
-    return failure();
-  }
-  LLVM_DEBUG(llvm::dbgs() << "After fillTiles: \n" << *op << "\n");
-
-  // Keep track of the buffer usage on tiles to try distributing buffers evenly
-  // over available tile resources.
-  DenseMap<TileLoc, size_t> tileLocToUsage;
-  auto tileLocAndUsageCmp = [&](AMDAIE::TileOp a, AMDAIE::TileOp b) -> bool {
-    int64_t colA = getConstantIndexOrAssert(a.getCol());
-    int64_t rowA = getConstantIndexOrAssert(a.getRow());
-    int64_t colB = getConstantIndexOrAssert(b.getCol());
-    int64_t rowB = getConstantIndexOrAssert(b.getRow());
-    size_t usageA = tileLocToUsage[TileLoc(colA, rowA)];
-    size_t usageB = tileLocToUsage[TileLoc(colB, rowB)];
-    if (usageA < usageB) return true;
-    if (usageA > usageB) return false;
-    if (colA < colB) return true;
-    if (colA > colB) return false;
-    if (rowA < rowB) return true;
-    if (rowA > rowB) return false;
-    assert(false && "same tiles should never be compared");
-  };
-
-  // After filling tile candidates, find and assign a specific one.
-  DenseMap<MemRefType, int64_t> logicalObjFifoToTileId;
-  WalkResult res =
-      op->walk([&](AMDAIE::LogicalObjFifoOpInterface logicalObjectFifo) {
-        uint8_t memSpace = logicalObjectFifo.getMemorySpaceAsUInt();
-        if (memSpace != 0 && memSpace != 1) return WalkResult::advance();
-        if (logicalObjectFifo.getTiles().size() == 0) {
-          logicalObjectFifo.emitOpError()
-              << "should have at least one tile candidate";
-          return WalkResult::interrupt();
-        }
-
-        SmallVector<AMDAIE::TileOp> tiles =
-            llvm::map_to_vector(logicalObjectFifo.getTiles(), [](Value tile) {
-              return dyn_cast_if_present<TileOp>(tile.getDefiningOp());
-            });
-        AMDAIE::TileOp assignedTileOp =
-            *std::min_element(tiles.begin(), tiles.end(), tileLocAndUsageCmp);
-
-        // Increase usage of the chosen tile as a new logical objectFifo will be
-        // assigned to it. This allows distributing the logical objectFifos
-        // evenly across the available tile resources.
-        int64_t col = getConstantIndexOrAssert(assignedTileOp.getCol());
-        int64_t row = getConstantIndexOrAssert(assignedTileOp.getRow());
-        tileLocToUsage[TileLoc(col, row)] += 1;
-
-        rewriter.setInsertionPoint(logicalObjectFifo);
-        SmallVector<Value> tileResults = {
-            cast<Value>(assignedTileOp.getResult())};
-        if (failed(
-                logicalObjectFifo.replaceWithNewTiles(rewriter, tileResults))) {
-          logicalObjectFifo.emitOpError() << "could not replace its tiles.";
-          return WalkResult::interrupt();
-        }
-        return WalkResult::advance();
-      });
-  if (res.wasInterrupted()) return failure();
   return success();
 }
 
@@ -416,13 +447,6 @@ void AMDAIEAssignTilesPass::runOnOperation() {
   }
   AMDAIEDeviceModel deviceModel = getDeviceModel(maybeDevice.value());
 
-  // Assign tile locations to logical objectFifos on local (L1) memory.
-  if (failed(assignLocalTiles(rewriter, parentOp))) {
-    parentOp->emitOpError() << "local tile assignment failed";
-    return signalPassFailure();
-  }
-  LLVM_DEBUG(llvm::dbgs() << "After assignLocalTiles: \n" << *parentOp << "\n");
-
   // Duplicate global objectFifos for each strided copy-like operation user to
   // allow global logical objectFifos to be assigned to different tile
   // locations.
@@ -433,8 +457,46 @@ void AMDAIEAssignTilesPass::runOnOperation() {
   LLVM_DEBUG(llvm::dbgs() << "After duplicateGlobalObjFifos: \n"
                           << *parentOp << "\n");
 
+  // Analyse the count of each L3 logicalObjectFifos appearing in L3<->L2
+  // CopyOp. We would be maintaining this count in a map `l3BufferCount` and
+  // using this later to pick one tile to assign to the L3 logicalObjectFifo.
+  // The analysis below is maintaining all unique pairs of (L3 source, L2
+  // target) and (L3 target, L2 source).
+  DenseMap<Operation *, DenseSet<Operation *>> uniqueL3L2Pair;
+  parentOp->walk([&](Operation *op) -> WalkResult {
+    if (auto copyOp = dyn_cast<CopyOpInterface>(op)) {
+      auto source = dyn_cast_if_present<AMDAIE::LogicalObjFifoOpInterface>(
+          copyOp.getSource().getDefiningOp());
+      auto target = dyn_cast_if_present<AMDAIE::LogicalObjFifoOpInterface>(
+          copyOp.getTarget().getDefiningOp());
+      if (!source || !target) {
+        return WalkResult::interrupt();
+      }
+      auto sourceFromMemrefOp = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+          source.getOperation());
+      auto targetFromMemrefOp = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+          target.getOperation());
+      if (!sourceFromMemrefOp || !targetFromMemrefOp) {
+        return WalkResult::interrupt();
+      }
+      Operation *l3DefOp = nullptr;
+      Operation *l2DefOp = nullptr;
+      if (source.getMemorySpaceAsUInt() == 0) {
+        l3DefOp = sourceFromMemrefOp.getMemref().getDefiningOp();
+        l2DefOp = targetFromMemrefOp.getMemref().getDefiningOp();
+      } else if (target.getMemorySpaceAsUInt() == 0) {
+        l3DefOp = targetFromMemrefOp.getMemref().getDefiningOp();
+        l2DefOp = sourceFromMemrefOp.getMemref().getDefiningOp();
+      } else {
+        return WalkResult::advance();
+      }
+      uniqueL3L2Pair[l3DefOp].insert(l2DefOp);
+      return WalkResult::advance();
+    }
+    return WalkResult::advance();
+  });
   // Assign tile locations to logical objectFifos on non-local (not L1) memory.
-  if (failed(assignNonLocalTiles(rewriter, parentOp, deviceModel))) {
+  if (failed(assignTiles(rewriter, parentOp, deviceModel, uniqueL3L2Pair))) {
     parentOp->emitOpError() << "non-local tile assignment failed";
     return signalPassFailure();
   }

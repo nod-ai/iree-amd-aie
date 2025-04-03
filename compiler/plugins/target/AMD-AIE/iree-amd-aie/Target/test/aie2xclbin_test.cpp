@@ -62,7 +62,8 @@ int main(int argc, char **argv) {
 
   std::string npuInstFilePath = (workDir / mlirFilePath.filename()).string();
   npuInstFilePath += ".npu.txt";
-  LogicalResult status = emitNpuInstructions(deviceOp, npuInstFilePath);
+  LogicalResult status =
+      emitDenseArrayAttrToFile(deviceOp, "npu_instructions", npuInstFilePath);
   std::vector<std::string> diagnostics;
   ScopedDiagnosticHandler handler(moduleOp.getContext(), [&](Diagnostic &d) {
     llvm::raw_string_ostream(diagnostics.emplace_back())
