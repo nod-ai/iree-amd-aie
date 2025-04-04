@@ -559,7 +559,9 @@ def AMDAIELoweringStrategy :
     Option<"numRows", "num-rows", "uint32_t", /*default=*/"4",
       "Number of rows used in an AIE core array">,
     Option<"numCols", "num-cols", "uint32_t", /*default=*/"4",
-      "Number of columns used in an AIE core array">
+      "Number of columns used in an AIE core array">,
+    Option<"enableAMDAIEUkernels", "enable-ukernels", "std::string", /*default=*/"",
+      "Enables microkernels in the amdaie backend. May be `none`, `all`, or a comma-separated list of specific unprefixed microkernels to enable, e.g. `matmul`.">,
   ];
 }
 

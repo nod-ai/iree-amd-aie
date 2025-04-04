@@ -497,6 +497,8 @@ function run_matmul_test_on_shapes() {
 #    linearly with m*k*n.
 
 # Example of a run without any defaults arguments.
+# AIR test is sensitive to the tile sizes for small input sizes, use tests with
+# large input sizes to prove of concept.
 run_matmul_test \
     --name_prefix "test1" \
     --lhs_rhs_type "bf16" \
@@ -507,9 +509,9 @@ run_matmul_test \
     --amd_aie_install_path "${IREE_INSTALL_DIR}" \
     --lower_to_aie_pipeline "air" \
     --tile_pipeline "pack-peel" \
-    --m "64" \
-    --n "64" \
-    --k "64" \
+    --m "256" \
+    --n "256" \
+    --k "256" \
     --dynamicity "static" \
     --accumulate "false" \
     --expect_compile_failure "0" \

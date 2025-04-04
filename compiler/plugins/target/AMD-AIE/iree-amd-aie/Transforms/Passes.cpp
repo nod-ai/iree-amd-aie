@@ -600,11 +600,11 @@ void buildAMDAIETransformPassPipeline(
     OpPassManager &variantPassManager, AMDAIEDevice device, uint32_t numRows,
     uint32_t numCols, TilePassPipeline useTilePipeline,
     LowerToAIEPassPipeline useLowerToAIEPipeline, bool matmulElementwiseFusion,
-    bool enableVectorizationPasses, const std::string &pathToUkernels,
-    bool enableInputPacketFlow, bool enableOutputPacketFlow,
-    bool enableCoalescingLoops, bool enableCollapsingUnitDims,
-    OutliningStrategy enableFunctionOutlining, int callReplication,
-    bool insertLoopAroundCoreBlock, bool emitCtrlPkt) {
+    bool enableVectorizationPasses, std::string enableAMDAIEUkernels,
+    const std::string &pathToUkernels, bool enableInputPacketFlow,
+    bool enableOutputPacketFlow, bool enableCoalescingLoops,
+    bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
+    int callReplication, bool insertLoopAroundCoreBlock, bool emitCtrlPkt) {
   OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
   {
     FunctionLikeNest funcPassManager(modulePassManager);
@@ -618,6 +618,7 @@ void buildAMDAIETransformPassPipeline(
     options.targetDevice = device;
     options.numRows = numRows;
     options.numCols = numCols;
+    options.enableAMDAIEUkernels = enableAMDAIEUkernels;
     modulePassManager.addPass(createAMDAIELoweringStrategyPass(options));
   }
   modulePassManager.addPass(createLowerExecutableUsingTransformDialectPass());

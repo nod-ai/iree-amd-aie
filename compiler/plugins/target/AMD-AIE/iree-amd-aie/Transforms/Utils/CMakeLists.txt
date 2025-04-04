@@ -15,10 +15,12 @@ iree_cc_library(
     "AMDAIEDmaUtils.h"
     "AMDAIELogicalObjFifoSplittingUtils.h"
     "AMDAIEOpUtils.h"
+    "AMDAIETileSizeSelectionUtils.h"
     "AMDAIEUtils.h"
   SRCS
     "AMDAIEDmaUtils.cpp"
     "AMDAIELogicalObjFifoSplittingUtils.cpp"
+    "AMDAIETileSizeSelectionUtils.cpp"
     "AMDAIEUtils.cpp"
   DEPS
     iree::compiler::Utils

@@ -57,7 +57,8 @@ LogicalResult initAIELaunchConfig(FunctionOpInterface funcOp,
                                   TilePassPipeline useTilePipeline,
                                   LowerToAIEPassPipeline useLowerToAIEPipeline,
                                   AMDAIEDevice targetDevice, uint32_t numRows,
-                                  uint32_t numCols);
+                                  uint32_t numCols,
+                                  std::string enableAMDAIEUkernels);
 
 }  // namespace mlir::iree_compiler::AMDAIE
 
