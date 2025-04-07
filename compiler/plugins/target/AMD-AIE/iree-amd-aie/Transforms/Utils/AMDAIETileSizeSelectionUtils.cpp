@@ -21,10 +21,10 @@ void findLargestTileSizes(uint32_t m, uint32_t n, uint32_t k, uint32_t& curMax,
                               (k % params.vectorK == 0);
 
   if (isInputDivisible && isIntrinsicDivisible) {
-    uint32_t A = params.numBytesA * m * k * params.isDoubleBufferA;
-    uint32_t B = params.numBytesB * n * k * params.isDoubleBufferB;
-    uint32_t C = params.numBytesC * m * n * params.isDoubleBufferC;
-    uint32_t Acc = params.numBytesAcc * m * n * params.isDoubleBufferAcc;
+    uint32_t A = params.numBytesA * m * k * params.bufferDepthA;
+    uint32_t B = params.numBytesB * n * k * params.bufferDepthB;
+    uint32_t C = params.numBytesC * m * n * params.bufferDepthC;
+    uint32_t Acc = params.numBytesAcc * m * n * params.bufferDepthAcc;
     int64_t memoryUsage = A + B + C + Acc;
 
     if (memoryUsage < params.memoryLimit && memoryUsage > curMax) {

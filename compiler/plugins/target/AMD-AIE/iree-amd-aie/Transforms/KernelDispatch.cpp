@@ -29,7 +29,7 @@ using detail::findLargestFactor;
 namespace {
 
 FailureOr<std::array<uint32_t, 3>> getMatmulInstructionSize(
-    linalg::LinalgOp op, AMDAIEDevice targetDevice) {
+    linalg::LinalgOp op, AMDAIEDeviceModel deviceModel) {
   auto getElementType = [](Value v) {
     return cast<ShapedType>(v.getType()).getElementType();
   };
@@ -41,20 +41,18 @@ FailureOr<std::array<uint32_t, 3>> getMatmulInstructionSize(
   auto elTypeRhs = getElementType(op->getOperand(1));
   auto elTypeAcc = getElementType(op->getResult(0));
 
-  AMDAIEDeviceModel deviceModel = AMDAIE::getDeviceModel(targetDevice);
   return deviceModel.getAIEMatmulInstructionSize(elTypeLhs, elTypeRhs,
                                                  elTypeAcc);
 }
 
-FailureOr<std::array<uint32_t, 3>> getPackedSize(linalg::LinalgOp linalgOp,
-                                                 uint64_t M, uint64_t N,
-                                                 uint64_t K,
-                                                 AMDAIEDevice targetDevice) {
+FailureOr<std::array<uint32_t, 3>> getPackedSize(
+    linalg::LinalgOp linalgOp, uint64_t M, uint64_t N, uint64_t K,
+    AMDAIEDeviceModel deviceModel) {
   // Depending on the operand/result element types, there might be a specific
   // vector instruction size that must be used on AIE. Some types do not have
   // vector instructions, for example if operands are 32-bit types.
   FailureOr<std::array<uint32_t, 3>> maybeInstructionSize =
-      getMatmulInstructionSize(linalgOp, targetDevice);
+      getMatmulInstructionSize(linalgOp, deviceModel);
 
   // Operand/result element types do not have vector instructions. In this case,
   // try for a packing of 4x4x8, but if the tensor dimensions M, N, and K are
@@ -170,7 +168,7 @@ class ParameterSetting {
 
   static FailureOr<ParameterSetting> create(linalg::LinalgOp linalgOp,
                                             bool isObjectFifo,
-                                            AMDAIEDevice targetDevice,
+                                            AMDAIEDeviceModel deviceModel,
                                             uint32_t numRows, uint32_t numCols,
                                             std::string enableAMDAIEUkernels,
                                             uint32_t kPackScaleL1 = 1);
@@ -199,7 +197,7 @@ class ParameterSetting {
 };
 
 FailureOr<ParameterSetting> ParameterSetting::create(
-    linalg::LinalgOp linalgOp, bool isObjectFifo, AMDAIEDevice targetDevice,
+    linalg::LinalgOp linalgOp, bool isObjectFifo, AMDAIEDeviceModel deviceModel,
     uint32_t numRows, uint32_t numCols, std::string enableAMDAIEUkernels,
     uint32_t kPackScaleL1) {
   auto initType =
@@ -242,14 +240,14 @@ FailureOr<ParameterSetting> ParameterSetting::create(
   // the second level of inner pack size (vector instruction size).
 
   // Get the level 1 pack size, i.e., vector instruction size.
-  auto maybePackedSize = getPackedSize(linalgOp, M, N, K, targetDevice);
+  auto maybePackedSize = getPackedSize(linalgOp, M, N, K, deviceModel);
   if (failed(maybePackedSize)) return failure();
   auto [m1Pack, n1Pack, k1Pack] = maybePackedSize.value();
 
   // MLIR-AIR disable double buffering in L1 memory.
-  unsigned isDoubleBufferA = isObjectFifo ? 2 : 1;
-  unsigned isDoubleBufferB = isObjectFifo ? 2 : 1;
-  unsigned isDoubleBufferAcc = isObjectFifo ? 2 : 1;
+  unsigned bufferDepthA = isObjectFifo ? 2 : 1;
+  unsigned bufferDepthB = isObjectFifo ? 2 : 1;
+  unsigned bufferDepthAcc = isObjectFifo ? 2 : 1;
   // Currently only consider elementwise op that does truncations, i.e.
   // trunci/truncf ops.
   unsigned nBytesElemOut{0};
@@ -261,27 +259,28 @@ FailureOr<ParameterSetting> ParameterSetting::create(
         nBytesElemOut = outputType.getElementTypeBitWidth() / 8;
         // For bias, we need to count the second input from elementwise op, so
         // reserve another buffer for that.
-        isDoubleBufferAcc = linalgUser.getNumDpsInputs() == 1 ? 1 : 2;
+        bufferDepthAcc = linalgUser.getNumDpsInputs() == 1 ? 1 : 2;
       }
     }
   }
 
   // Get the largest tile sizes that can fit in L1 memory.
-  TileParams tileParams{/*memoryLimit=*/65536,
-                        /*numBytesA=*/nBytesLhs,
-                        /*numBytesB=*/nBytesRhs,
-                        /*numBytesC=*/nBytesElemOut,
-                        /*numBytesAcc=*/nBytesInit,
-                        /*isDoubleBufferA=*/isDoubleBufferA,
-                        /*isDoubleBufferB=*/isDoubleBufferB,
-                        /*isDoubleBufferC=*/1,
-                        /*isDoubleBufferAcc=*/isDoubleBufferAcc,
-                        /*inputM=*/static_cast<uint32_t>(M),
-                        /*inputN=*/static_cast<uint32_t>(N),
-                        /*inputK=*/static_cast<uint32_t>(K),
-                        /*vectorM=*/m1Pack,
-                        /*vectorN=*/n1Pack,
-                        /*vectorK=*/k1Pack};
+  TileParams tileParams{
+      /*memoryLimit=*/deviceModel.getCoreTileLocalMemorySize(),
+      /*numBytesA=*/nBytesLhs,
+      /*numBytesB=*/nBytesRhs,
+      /*numBytesC=*/nBytesElemOut,
+      /*numBytesAcc=*/nBytesInit,
+      /*bufferDepthA=*/bufferDepthA,
+      /*bufferDepthB=*/bufferDepthB,
+      /*bufferDepthC=*/1,
+      /*bufferDepthAcc=*/bufferDepthAcc,
+      /*inputM=*/static_cast<uint32_t>(M),
+      /*inputN=*/static_cast<uint32_t>(N),
+      /*inputK=*/static_cast<uint32_t>(K),
+      /*vectorM=*/m1Pack,
+      /*vectorN=*/n1Pack,
+      /*vectorK=*/k1Pack};
   TileSize maxL1Size = selectL1TileSizes(tileParams);
 
   uint32_t maxL0SizeM = numRows * maxL1Size.M;
@@ -376,10 +375,11 @@ static LogicalResult setRootConfigForPackPeel4LevelTilingPipeline(
     uint32_t numRows, uint32_t numCols, std::string enableAMDAIEUkernels) {
   // Scale the L1 K with a factor of 2 compared with the outer dimensions M and
   // N to increase the L1 memory usage.
+  AMDAIEDeviceModel deviceModel = getDeviceModel(targetDevice);
   bool isObjectFifo =
       useLowerToAIEPipeline == LowerToAIEPassPipeline::ObjectFifo;
   auto maybePackPeelTiling = ParameterSetting::create(
-      linalgOp, isObjectFifo, targetDevice, numRows, numCols,
+      linalgOp, isObjectFifo, deviceModel, numRows, numCols,
       enableAMDAIEUkernels, /*kPackScaleL1=*/2);
   if (failed(maybePackPeelTiling)) return failure();
   auto packPeelTiling = maybePackPeelTiling.value();
@@ -395,8 +395,6 @@ static LogicalResult setRootConfigForPackPeel4LevelTilingPipeline(
   if (mDims.empty() || nDims.empty() || kDims.empty()) {
     return linalgOp.emitOpError("failed to fetch m/n/k dims.");
   }
-
-  AMDAIEDeviceModel deviceModel = getDeviceModel(targetDevice);
 
   // ------------------------------------------------------
   // --------------- Set packing config -------------------
@@ -542,10 +540,11 @@ static LogicalResult setRootConfigForPackPeelPipeline(
     mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
     LowerToAIEPassPipeline useLowerToAIEPipeline, AMDAIEDevice targetDevice,
     uint32_t numRows, uint32_t numCols, std::string enableAMDAIEUkernels) {
+  AMDAIEDeviceModel deviceModel = getDeviceModel(targetDevice);
   bool isObjectFifo =
       useLowerToAIEPipeline == LowerToAIEPassPipeline::ObjectFifo;
   auto maybePackPeelTiling =
-      ParameterSetting::create(linalgOp, isObjectFifo, targetDevice, numRows,
+      ParameterSetting::create(linalgOp, isObjectFifo, deviceModel, numRows,
                                numCols, enableAMDAIEUkernels);
   if (failed(maybePackPeelTiling)) return failure();
   auto packPeelTiling = maybePackPeelTiling.value();
@@ -676,8 +675,9 @@ static LogicalResult setRootConfigForConvDecomposePipeline(
     AMDAIEDevice targetDevice) {
   MLIRContext *context = entryPointFn.getContext();
 
+  AMDAIEDeviceModel deviceModel = getDeviceModel(targetDevice);
   FailureOr<std::array<uint32_t, 3>> maybeInstructionSize =
-      getMatmulInstructionSize(linalgOp, targetDevice);
+      getMatmulInstructionSize(linalgOp, deviceModel);
   int64_t OW = 4;
   int64_t OC = 4;
   int64_t IC = 8;

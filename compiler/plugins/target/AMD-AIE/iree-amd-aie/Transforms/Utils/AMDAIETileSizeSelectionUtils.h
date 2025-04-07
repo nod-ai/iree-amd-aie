@@ -14,7 +14,7 @@ namespace mlir::iree_compiler::AMDAIE {
 struct TileParams {
   int64_t memoryLimit;
   uint32_t numBytesA, numBytesB, numBytesC, numBytesAcc;
-  uint32_t isDoubleBufferA, isDoubleBufferB, isDoubleBufferC, isDoubleBufferAcc;
+  uint32_t bufferDepthA, bufferDepthB, bufferDepthC, bufferDepthAcc;
   uint32_t inputM, inputN, inputK;
   uint32_t vectorM, vectorN, vectorK;
 };

@@ -7,8 +7,8 @@ using namespace mlir::iree_compiler::AMDAIE;
 
 TEST(SelectTileSizeTest, L1TileSizeTest) {
   // The input params are {memoryLimit, numBytesA, numBytesB, numBytesC,
-  // numBytesAcc, isDoubleBufferA, isDoubleBufferB, isDoubleBufferC,
-  // isDoubleBufferAcc, inputM, inputN, inputK, vectorM, vectorN, vectorK}.
+  // numBytesAcc, bufferDepthA, bufferDepthB, bufferDepthC, bufferDepthAcc,
+  // inputM, inputN, inputK, vectorM, vectorN, vectorK}.
   EXPECT_EQ((selectL1TileSizes(
                 {65536, 4, 4, 0, 4, 2, 2, 2, 2, 512, 512, 512, 4, 4, 8})),
             (TileSize{32, 32, 64}));
