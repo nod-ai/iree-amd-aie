@@ -70,6 +70,7 @@ void AMDAIEFuseConsumerIntoLoopPass::runOnOperation() {
                << "There is no scf.for/forall loop to fuse with\n");
     return;
   }
+  LoopLikeOpInterface loops = cast<LoopLikeOpInterface>(scfLoopOp);
 
   // Step 3. Search the compute op and its consumer slices.
   Operation *computeOp;
@@ -123,7 +124,7 @@ void AMDAIEFuseConsumerIntoLoopPass::runOnOperation() {
           continue;
         }
         std::optional<scf::SCFFuseConsumerOfSliceResult> fusedConsumer =
-            scf::tileAndFuseConsumerOfSlice(rewriter, candidateSliceOp);
+            scf::tileAndFuseConsumerOfSlice(rewriter, candidateSliceOp, MutableArrayRef(&loops);
         if (!fusedConsumer) {
           producerOp = producerOp->getParentOfType<LoopLikeOpInterface>();
           LLVM_DEBUG(llvm::dbgs()

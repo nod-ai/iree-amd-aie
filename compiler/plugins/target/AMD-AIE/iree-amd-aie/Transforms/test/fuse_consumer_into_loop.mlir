@@ -402,7 +402,7 @@ func.func @no_consumer_fusion(%arg0: tensor<64xf32>) -> tensor<64xf32> {
 
 // CHECK-LABEL: @fuse_consumer_into_mix_scf_forall_for
 // CHECK:         scf.forall
-// CHECK:           %[[FORALL:.*]]:2 = scf.forall
+// CHECK:           %[[FORALL:.*]] = scf.forall
 // CHECK:             %[[FOR:.*]] = scf.for
 // CHECK:               %[[MATMUL:.*]] = linalg.generic
 // CHECK:               scf.yield %[[MATMUL]]
