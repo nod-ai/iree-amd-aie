@@ -1,6 +1,6 @@
 # Copyright 2025 The IREE Authors
 
-# # NPU1_4COL matmul test(s):
+# NPU1_4COL matmul test(s):
 npu1_4col_matmul_tests = [
     # 1x1 core tests.
     {
@@ -106,6 +106,20 @@ npu4_matmul_tests = [
         "K": 128,
         "input_type": "i8",
         "acc_type": "i32",
+        "name_suffix": "OneCore_npu4",
+        "additional_labels": ["OneCore"],
+        "aie_compilation_flags": [
+            "--iree-amdaie-num-rows=1",
+            "--iree-amdaie-num-cols=1",
+        ],
+    },
+    {
+        "M": 4096,
+        "N": 128,
+        "K": 32,
+        "input_type": "i32",
+        "acc_type": "i32",
+        "tile_pipeline": "pack-peel-4-level-tiling",
         "name_suffix": "OneCore_npu4",
         "additional_labels": ["OneCore"],
         "aie_compilation_flags": [

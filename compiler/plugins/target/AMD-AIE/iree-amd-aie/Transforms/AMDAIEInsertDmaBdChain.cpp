@@ -64,9 +64,15 @@ LogicalResult updateChainOperands(
 }
 
 /// Utility function to determine if chains can grow further
-/// or require breaking, depending on whether there is any duplicate BD ID.
+/// or require breaking, depending on :-
+///   1. Whether the BD chain exceeds the maximum queue size.
+///   2. Whether there is any duplicate BD ID.
 ///
-/// Example:
+/// Example for maximum queue size = 4:
+/// - Chain X currently holds BD IDs: [4, 5, 6, 7] : since the chain size is
+///   >= 4, we will break chain X: [] (empty after breaking)
+///
+/// Example for duplicate BD ID:
 /// - Chain X currently holds BD IDs: [4, 5, 6, 7]
 /// - Chain Y currently holds BD IDs: [0, 1, 2, 3]
 /// - A new BD ID (0) needs to be added to the front (due to reverse
@@ -82,10 +88,18 @@ LogicalResult updateChainOperands(
 /// - Break both chains X and Y.
 ///   - Chain X: [0] (the newly added BD ID).
 ///   - Chain Y: [] (emptied after breaking).
-void checkForChainsWithDuplicateBdId(
+void checkForProspectChainBreaks(
     uint32_t currBdId, const DmaChain &currDmaChain,
     const DenseMap<DmaChain, DenseSet<uint32_t>> &dmaChainToBdIds,
-    llvm::SmallSetVector<DmaChain, 4> &chainsToBreak) {
+    llvm::SmallSetVector<DmaChain, 4> &chainsToBreak, uint32_t maxQueueSize) {
+  // Check whether any BD chain exceeds the maximum queue size; add a break to
+  // the chain if that's the case.
+  for (auto &[entry, bdIds] : dmaChainToBdIds) {
+    if (bdIds.size() >= maxQueueSize) {
+      chainsToBreak.insert(entry);
+    }
+  }
+  // Check whether any duplicate BD ID is present.
   for (auto &[entry, bdIds] : dmaChainToBdIds) {
     if (entry.first == currDmaChain.first && bdIds.contains(currBdId)) {
       // Break the chain that contains the duplicate BD ID.
@@ -191,11 +205,11 @@ LogicalResult insertDmaBdChain(const AMDAIE::AMDAIEDeviceModel &deviceModel,
           if (entry.first != currDmaChain) chainsToBreak.insert(entry.first);
         }
       }
-      // Any duplicate BD ID from the same tile indicates that the chain
-      // cannot grow further and requires breaking to release the
-      // conflicting BD ID.
-      checkForChainsWithDuplicateBdId(bdId, currDmaChain, dmaChainToBdIds,
-                                      chainsToBreak);
+      uint32_t col = getConstantIndexOrAssert(tileOp.getCol());
+      uint32_t row = getConstantIndexOrAssert(tileOp.getRow());
+      uint32_t maxQueueSize = deviceModel.getDmaMaxQueueSize(col, row);
+      checkForProspectChainBreaks(bdId, currDmaChain, dmaChainToBdIds,
+                                  chainsToBreak, maxQueueSize);
 
       // If the chains are not to be continued, update DMA operands using
       // the `updateChainOperands` function.

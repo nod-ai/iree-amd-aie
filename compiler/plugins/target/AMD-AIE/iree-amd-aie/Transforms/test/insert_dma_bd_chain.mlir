@@ -362,3 +362,80 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
     return
   }
 }
+
+// -----
+
+// Tests that the BD chain is capped by the maximu queue size for a given device.
+// In the following test, for NPU4 for tile(0,0) - the maximum queue size is 4; so
+// the BD chain formed will not have chain length greater than 4.
+
+// CHECK-LABEL: @bd_chain_capped_by_max_queue_size
+// CHECK:       %[[CHANNEL:.+]] = amdaie.channel
+// CHECK:       %[[CONNECTION:.+]] = amdaie.connection
+// CHECK:       amdaie.controlcode
+// CHECK:         %[[BD_ID_0:.+]] = amdaie.bd_id
+// CHECK:         %[[BD_ID_1:.+]] = amdaie.bd_id
+// CHECK:         %[[BD_ID_2:.+]] = amdaie.bd_id
+// CHECK:         %[[BD_ID_3:.+]] = amdaie.bd_id
+// CHECK:         %[[BD_ID_4:.+]] = amdaie.bd_id
+// CHECK:         %[[OBJECT_FIFO:.+]] = amdaie.logicalobjectfifo.from_memref
+// CHECK:         %[[TOKEN_0:.+]] = amdaie.npu.half_dma_cpy_nd async %[[CONNECTION]](%[[OBJECT_FIFO]] [] [] [] bd_id = %[[BD_ID_0]] channel = %[[CHANNEL]])
+// CHECK:         amdaie.npu.dma_wait(%[[TOKEN_0]] : !amdaie.async_token)
+// CHECK:         amdaie.npu.half_dma_cpy_nd  %[[CONNECTION]](%[[OBJECT_FIFO]] [] [] [] bd_id = %[[BD_ID_1]] channel = %[[CHANNEL]]  next_bd = %[[BD_ID_2]] start_bd = %[[BD_ID_1]])
+// CHECK:         amdaie.npu.half_dma_cpy_nd  %[[CONNECTION]](%[[OBJECT_FIFO]] [] [] [] bd_id = %[[BD_ID_2]] channel = %[[CHANNEL]]  next_bd = %[[BD_ID_3]] start_bd = %[[BD_ID_1]])
+// CHECK:         amdaie.npu.half_dma_cpy_nd  %[[CONNECTION]](%[[OBJECT_FIFO]] [] [] [] bd_id = %[[BD_ID_3]] channel = %[[CHANNEL]]  next_bd = %[[BD_ID_4]] start_bd = %[[BD_ID_1]])
+// CHECK:         %[[TOKEN_1:.+]] = amdaie.npu.half_dma_cpy_nd async %[[CONNECTION]](%[[OBJECT_FIFO]] [] [] [] bd_id = %[[BD_ID_4]] channel = %[[CHANNEL]] start_bd = %[[BD_ID_1]])
+// CHECK:         amdaie.npu.dma_wait(%[[TOKEN_1]] : !amdaie.async_token)
+
+// There is only a single BD chain anyway.
+// Same results no matter `enable-interleave` is true or false.
+// DISABLE-INTERLEAVE-LABEL:   @bd_chain_capped_by_max_queue_size
+// DISABLE-INTERLEAVE-COUNT-2: amdaie.npu.dma_wait
+// DISABLE-INTERLEAVE-NOT:     amdaie.npu.dma_wait
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu4", ukernels = "none"}>
+#pipeline_layout = #hal.pipeline.layout<bindings = [#hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, Indirect>], flags = Indirect>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @bd_chain_capped_by_max_queue_size() {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c2 = arith.constant 2 : index
+    %c3 = arith.constant 3 : index
+    %c4 = arith.constant 4 : index
+    amdaie.workgroup {
+      %tile = amdaie.tile(%c0, %c0)
+      %tile_0 = amdaie.tile(%c0, %c1)
+      %buffer = amdaie.buffer(%tile_0) : memref<1024xbf16, 1 : i32>
+      %buffer_2 = amdaie.buffer(%tile_0) : memref<1024xbf16, 1 : i32>
+      %lock = amdaie.lock(%tile_0(0), 0)
+      %lock_3 = amdaie.lock(%tile_0(1), 0)
+      %channel = amdaie.channel(%tile, 0, port_type = DMA, direction = MM2S)
+      %channel_4 = amdaie.channel(%tile_0, 0, port_type = DMA, direction = S2MM)
+      %0 = hal.interface.binding.subspan layout(#pipeline_layout) binding(0) alignment(64) offset(%c0) flags("ReadOnly|Indirect") : memref<512x512xbf16>
+      %1 = amdaie.logicalobjectfifo.from_buffers({%buffer, %buffer_2}, {%lock}, {%lock_3}) : memref<1024xbf16, 1 : i32>, memref<1024xbf16, 1 : i32> -> !amdaie.logicalobjectfifo<memref<1024xbf16, 1 : i32>, 2>
+      %2 = amdaie.logicalobjectfifo.placeholder{%tile} : !amdaie.logicalobjectfifo<memref<512x512xbf16>>
+      %3 = amdaie.flow({%channel} -> {%channel_4}) {is_packet_flow = false}
+      %4 = amdaie.connection(%1 {%channel_4}, %2 {%channel}, flow = %3) {connection_type = #amdaie<connection_type Circuit>} : (!amdaie.logicalobjectfifo<memref<1024xbf16, 1 : i32>, 2>, !amdaie.logicalobjectfifo<memref<512x512xbf16>>)
+      amdaie.controlcode {
+        memref.assume_alignment %0, 64 : memref<512x512xbf16>
+        %5 = amdaie.logicalobjectfifo.from_memref %0, {%tile} : memref<512x512xbf16> -> !amdaie.logicalobjectfifo<memref<262144xbf16>>
+        %bd_id = amdaie.bd_id(%tile, %c0)
+        %6 = amdaie.npu.half_dma_cpy_nd async %4(%5 [] [] [] bd_id = %bd_id channel = %channel) : !amdaie.logicalobjectfifo<memref<262144xbf16>>
+        amdaie.npu.dma_wait(%6 : !amdaie.async_token)
+        %bd_id_1 = amdaie.bd_id(%tile, %c1)
+        %7 = amdaie.npu.half_dma_cpy_nd async %4(%5 [] [] [] bd_id = %bd_id_1 channel = %channel) : !amdaie.logicalobjectfifo<memref<262144xbf16>>
+        amdaie.npu.dma_wait(%7 : !amdaie.async_token)
+        %bd_id_2 = amdaie.bd_id(%tile, %c2)
+        %8 = amdaie.npu.half_dma_cpy_nd async %4(%5 [] [] [] bd_id = %bd_id_2 channel = %channel) : !amdaie.logicalobjectfifo<memref<262144xbf16>>
+        amdaie.npu.dma_wait(%8 : !amdaie.async_token)
+        %bd_id_3 = amdaie.bd_id(%tile, %c3)
+        %9 = amdaie.npu.half_dma_cpy_nd async %4(%5 [] [] [] bd_id = %bd_id_3 channel = %channel) : !amdaie.logicalobjectfifo<memref<262144xbf16>>
+        amdaie.npu.dma_wait(%9 : !amdaie.async_token)
+        %bd_id_4 = amdaie.bd_id(%tile, %c4)
+        %10 = amdaie.npu.half_dma_cpy_nd async %4(%5 [] [] [] bd_id = %bd_id_4 channel = %channel) : !amdaie.logicalobjectfifo<memref<262144xbf16>>
+        amdaie.npu.dma_wait(%10 : !amdaie.async_token)
+        amdaie.end
+      }
+    }
+    return
+  }
+}
