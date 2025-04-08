@@ -292,6 +292,17 @@ class BaseMatmul(BaseTest):
     def benchmark(self, config):
         filename = self.get_filename(config)
 
+        # Print some additional information that might have been tagged on earlier.
+        if config.verbose:
+            if hasattr(self, "n_matmul_ops"):
+                print(f"Total ops (2 * M * N * K * repeats) : {self.n_matmul_ops}")
+
+            if hasattr(self, "n_cols"):
+                print(f"Number of columns : {self.n_cols}")
+
+            if hasattr(self, "n_rows"):
+                print(f"Number of rows : {self.n_rows}")
+
         benchmark_aie(
             config=config,
             aie_compilation_flags=self.aie_compilation_flags,
@@ -2383,6 +2394,27 @@ class Tests:
             if outline != "none":
                 name_suffix += "_outline"
 
+            n_rows = 0
+            n_cols = 0
+            if run_on_target == "npu1_4col":
+                n_rows = 4
+                n_cols = 4
+            elif run_on_target == "npu4":
+                n_rows = 4
+                n_cols = 8
+
+            # --iree-amdaie-num-rows=1
+            for f in aie_compilation_flags:
+                if "--iree-amdaie-num-rows=" in f:
+                    n_rows = int(f.split("=")[1])
+                if "--iree-amdaie-num-cols=" in f:
+                    n_cols = int(f.split("=")[1])
+
+            if n_rows == 0 or n_cols == 0:
+                raise ValueError("n_rows or n_cols not set, maybe a new device type?")
+
+            n_matmul_ops = 2 * M * N * K * call_replication
+
             if matmul4d:
                 TestClass = Matmul4d if scale_trunc is False else Matmul4dScaleTrunci
             elif (transpose_a, transpose_b) == (False, False):
@@ -2428,27 +2460,30 @@ class Tests:
                     )
                 )
 
-            self.register(
-                TestClass(
-                    M,
-                    N,
-                    K,
-                    in_dtype,
-                    out_dtype,
-                    test_params=TestParams(
-                        run_on_target=run_on_target,
-                        tile_pipeline=tile_pipeline,
-                        use_ukernel=use_ukernel,
-                        aie_compilation_flags=aie_compilation_flags,
-                        name_suffix=name_suffix,
-                        run_benchmark=True,
-                        n_repeats=n_performance_repeats,
-                        use_chess_for_ukernel=use_chess_for_ukernel,
-                    ),
-                    additional_labels=["Performance"] + additional_labels,
-                    n_kernel_runs=n_performance_kernel_runs,
-                )
+            test = TestClass(
+                M,
+                N,
+                K,
+                in_dtype,
+                out_dtype,
+                test_params=TestParams(
+                    run_on_target=run_on_target,
+                    tile_pipeline=tile_pipeline,
+                    use_ukernel=use_ukernel,
+                    aie_compilation_flags=aie_compilation_flags,
+                    name_suffix=name_suffix,
+                    run_benchmark=True,
+                    n_repeats=n_performance_repeats,
+                    use_chess_for_ukernel=use_chess_for_ukernel,
+                ),
+                additional_labels=["Performance"] + additional_labels,
+                n_kernel_runs=n_performance_kernel_runs,
             )
+            test.n_matmul_ops = n_matmul_ops
+            test.n_rows = n_rows
+            test.n_cols = n_cols
+
+            self.register(test)
 
         # M, K, N (copies from run_matmul_tests.sh)
         bf16_ukernel_shapes_medium = [

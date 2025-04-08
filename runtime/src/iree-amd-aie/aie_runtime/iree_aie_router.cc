@@ -115,8 +115,8 @@ struct SwitchboxConnect {
 
 struct Flow {
   int packetGroupId;
-  PathEndPoint src;
-  std::vector<PathEndPoint> dsts;
+  PhysPort src;
+  SmallVector<PhysPort> dsts;
 };
 
 struct RouterImpl {
@@ -129,11 +129,11 @@ struct RouterImpl {
   // switchbox otherwise, it represents connections (South, North, West, East)
   // accross two switchboxes
   std::map<std::pair<TileLoc, TileLoc>, SwitchboxConnect> graph;
-  // Channels available in the network
-  // The key is a PathEndPoint representing the start of a path
-  // The value is a vector of PathEndPoints representing the possible ends of
-  // the path
-  std::map<PathEndPoint, std::vector<PathEndPoint>> channels;
+  // Channels available in the network.
+  // The key is a `PhysPort` representing the start of a path.
+  // The value is a vector of `PhysPorts` representing the possible ends of
+  // the path.
+  std::map<PhysPort, SmallVector<PhysPort>> channels;
   /// The dimensions (columns and rows) of the AIE device to be routed.
   /// These values may be smaller than the actual device size if only a portion
   /// of the device is intended to be routed.
@@ -268,7 +268,7 @@ void Router::addFlow(TileLoc srcCoords, Port srcPort, TileLoc dstCoords,
   // check if a flow with this source already exists
   for (auto &[_, src, dsts] : impl->flows) {
     if (src.tileLoc == srcCoords && src.port == srcPort) {
-      dsts.emplace_back(PathEndPoint{dstCoords, dstPort});
+      dsts.emplace_back(PhysPort{dstCoords, dstPort, PhysPort::Direction::DST});
       return;
     }
   }
@@ -301,9 +301,10 @@ void Router::addFlow(TileLoc srcCoords, Port srcPort, TileLoc dstCoords,
   }
 
   // If no existing flow was found with this source, create a new flow.
+  PhysPort srcPhysPort{srcCoords, srcPort, PhysPort::Direction::SRC};
+  PhysPort dstPhysPort{dstCoords, dstPort, PhysPort::Direction::DST};
   impl->flows.push_back(
-      Flow{packetGroupId, PathEndPoint{srcCoords, srcPort},
-           std::vector<PathEndPoint>{PathEndPoint{dstCoords, dstPort}}});
+      Flow{packetGroupId, srcPhysPort, SmallVector<PhysPort>{dstPhysPort}});
 }
 
 // Keep track of connections already used in the AIE; Pathfinder algorithm will
@@ -399,19 +400,18 @@ bool Router::addFixedPacketConnection(const PhysPort &srcPhyPort,
   return true;
 }
 
-std::map<PathEndPoint, PathEndPoint> Router::dijkstraShortestPaths(
-    PathEndPoint src) {
+std::map<PhysPort, PhysPort> Router::dijkstraShortestPaths(PhysPort src) {
   // Use std::map instead of DenseMap because DenseMap doesn't let you
   // overwrite tombstones.
-  std::map<PathEndPoint, double> distance;
-  std::map<PathEndPoint, PathEndPoint> preds;
-  std::map<PathEndPoint, uint64_t> indexInHeap;
+  std::map<PhysPort, double> distance;
+  std::map<PhysPort, PhysPort> preds;
+  std::map<PhysPort, uint64_t> indexInHeap;
   enum Color { WHITE, GRAY, BLACK };
-  std::map<PathEndPoint, Color> colors;
+  std::map<PhysPort, Color> colors;
   typedef d_ary_heap_indirect<
-      /*Value=*/PathEndPoint, /*Arity=*/4,
-      /*IndexInHeapPropertyMap=*/std::map<PathEndPoint, uint64_t>,
-      /*DistanceMap=*/std::map<PathEndPoint, double> &,
+      /*Value=*/PhysPort, /*Arity=*/4,
+      /*IndexInHeapPropertyMap=*/std::map<PhysPort, uint64_t>,
+      /*DistanceMap=*/std::map<PhysPort, double> &,
       /*Compare=*/std::less<>>
       MutableQueue;
   MutableQueue Q(distance, indexInHeap);
@@ -430,8 +430,8 @@ std::map<PathEndPoint, PathEndPoint> Router::dijkstraShortestPaths(
           if (sb.srcPorts[i] == src.port &&
               sb.connectivity[i][j] == Connectivity::AVAILABLE) {
             // connections within the same switchbox
-            impl->channels[src].push_back(
-                PathEndPoint{src.tileLoc, sb.dstPorts[j]});
+            impl->channels[src].push_back(PhysPort{src.tileLoc, sb.dstPorts[j],
+                                                   PhysPort::Direction::DST});
           }
         }
       }
@@ -447,7 +447,8 @@ std::map<PathEndPoint, PathEndPoint> Router::dijkstraShortestPaths(
           auto &sb = impl->graph[std::make_pair(src.tileLoc, neighborCoords)];
           if (std::find(sb.dstPorts.begin(), sb.dstPorts.end(), neighborPort) !=
               sb.dstPorts.end())
-            impl->channels[src].push_back({neighborCoords, neighborPort});
+            impl->channels[src].push_back(
+                {neighborCoords, neighborPort, PhysPort::Direction::DST});
         }
       }
       std::sort(impl->channels[src].begin(), impl->channels[src].end());
@@ -490,10 +491,10 @@ std::map<PathEndPoint, PathEndPoint> Router::dijkstraShortestPaths(
 // weights and repeat the process until a valid solution is found. Returns a
 // map specifying switchbox settings for all flows. If no legal routing can be
 // found after maxIterations, returns empty vector.
-std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
+std::optional<std::map<PhysPort, SwitchSettings>> Router::findPaths(
     const int maxIterations) {
   LLVM_DEBUG(llvm::dbgs() << "\t---Begin Pathfinder::findPaths---\n");
-  std::map<PathEndPoint, SwitchSettings> routingSolution;
+  std::map<PhysPort, SwitchSettings> routingSolution;
   // initialize all Channel histories to 0
   for (auto &[_, sb] : impl->graph) {
     for (size_t i = 0; i < sb.srcPorts.size(); i++) {
@@ -552,8 +553,8 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
         // switchbox; find the shortest paths to each other switchbox. Output is
         // in the predecessor map, which must then be processed to get
         // individual switchbox settings
-        std::set<PathEndPoint> processed;
-        std::map<PathEndPoint, PathEndPoint> preds = dijkstraShortestPaths(src);
+        DenseSet<PhysPort> processed;
+        std::map<PhysPort, PhysPort> preds = dijkstraShortestPaths(src);
 
         // trace the path of the flow backwards via predecessors
         // increment used_capacity for the associated channels
@@ -653,10 +654,10 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
     }
 
 #ifndef NDEBUG
-    for (const auto &[PathEndPoint, switchSetting] : routingSolution) {
+    for (const auto &[PhysPort, switchSetting] : routingSolution) {
       LLVM_DEBUG(llvm::dbgs()
-                 << "\t\t\tFlow starting at (" << PathEndPoint.tileLoc.col
-                 << "," << PathEndPoint.tileLoc.row << "):\t");
+                 << "\t\t\tFlow starting at (" << PhysPort.tileLoc.col << ","
+                 << PhysPort.tileLoc.row << "):\t");
     }
 #endif
     LLVM_DEBUG(llvm::dbgs()
@@ -674,8 +675,8 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
 /// that directly map to stream switch configuration ops (soon-to-be aie-rt
 /// calls). Namely pairs of (switchbox, internal connections).
 std::map<TileLoc, std::vector<Connect>> emitConnections(
-    const std::map<PathEndPoint, SwitchSettings> &flowSolutions,
-    const PathEndPoint &srcPoint, const AMDAIEDeviceModel &deviceModel) {
+    const std::map<PhysPort, SwitchSettings> &flowSolutions,
+    const PhysPort &srcPoint, const AMDAIEDeviceModel &deviceModel) {
   auto srcBundle = srcPoint.port.bundle;
   auto srcChannel = srcPoint.port.channel;
   TileLoc srcTileLoc = srcPoint.tileLoc;
@@ -1104,7 +1105,6 @@ std::string to_string(const SwitchSettings &settings) {
 
 STRINGIFY_2TUPLE_STRUCT(Port, bundle, channel)
 STRINGIFY_2TUPLE_STRUCT(Connect, src, dst)
-STRINGIFY_2TUPLE_STRUCT(PathEndPoint, tileLoc, port)
 STRINGIFY_3TUPLE_STRUCT(PhysPort, tileLoc, port, direction)
 STRINGIFY_2TUPLE_STRUCT(PhysPortAndID, physPort, id)
 

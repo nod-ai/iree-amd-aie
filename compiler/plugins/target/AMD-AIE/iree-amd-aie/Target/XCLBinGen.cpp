@@ -1477,11 +1477,7 @@ LogicalResult generateControlPackets(
   }
   pm.addPass(createAMDAIEFoldDmaWaitsPass());
   // Lower the DMA instructions for sending control packets.
-  {
-    AMDAIEControlCodeLoweringOptions options;
-    options.lowerCtrlpktDma = true;
-    pm.addPass(createAMDAIEControlCodeLoweringPass(options));
-  }
+  pm.addPass(createAMDAIEControlCodeLoweringPass());
   pm.addPass(createAMDAIEControlCodeToTransactionPass());
 
   // Run the pipeline.

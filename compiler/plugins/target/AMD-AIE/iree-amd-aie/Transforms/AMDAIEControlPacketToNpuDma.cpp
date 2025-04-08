@@ -7,6 +7,7 @@
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/Passes.h"
+#include "iree-amd-aie/Transforms/Utils/AMDAIEDmaUtils.h"
 #include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "mlir/IR/AsmState.h"
@@ -17,6 +18,13 @@
 namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
+
+struct CtrlPktBdTransfer {
+  AMDAIE::ConnectionOp connectionOp;
+  SmallVector<int64_t> offsets;
+  SmallVector<int64_t> sizes;
+  SmallVector<int64_t> strides;
+};
 
 struct ControlPacketDmaBuilder {
   AMDAIE::AMDAIEDeviceModel deviceModel;
@@ -69,74 +77,155 @@ struct ControlPacketDmaBuilder {
     if (res.wasInterrupted()) return failure();
 
     std::vector<AMDAIE::NpuControlPacketOp> ctrlPktOps;
-    // Convert `NpuControlPacketOp` to `NpuDmaCpyNdOp` + `NpuDmaWaitOp`.
+    std::vector<CtrlPktBdTransfer> ctrlPktBdTransfers;
+    // Convert `NpuControlPacketOp` to BD transfers.
     res = workgroupOp->walk([&](AMDAIE::NpuControlPacketOp ctrlPktOp) {
       ctrlPktOps.push_back(ctrlPktOp);
       // Get `ConnectionOp` for the `CTRL` port.
       uint32_t address = ctrlPktOp.getAddress();
       uint32_t addrOffset = deviceModel.getOffsetFromAddress(address);
-      int32_t col = deviceModel.getColumnFromAddress(address);
-      int32_t row = deviceModel.getRowFromAddress(address);
-      if (!tileLocToCtrlConnect.count({col, row})) {
+      int32_t destCol = deviceModel.getColumnFromAddress(address);
+      int32_t destRow = deviceModel.getRowFromAddress(address);
+      if (!tileLocToCtrlConnect.count({destCol, destRow})) {
         ctrlPktOp.emitOpError()
-            << "tries to write to tile (col=" << col << ", row=" << row
-            << "), but it's `CTRL` port is not routed.";
+            << "tries to configure the tile (col=" << destCol
+            << ", row=" << destRow << "), but it's `CTRL` port is not routed.";
         return WalkResult::interrupt();
       }
-      AMDAIE::ConnectionOp connectionOp = tileLocToCtrlConnect[{col, row}];
-
-      // Get the source offsets, sizes, and strides.
+      AMDAIE::ConnectionOp connectionOp =
+          tileLocToCtrlConnect[{destCol, destRow}];
+      // Get the source tile location.
+      SmallVector<Value> srcChannels = connectionOp.getSourceChannels();
+      if (srcChannels.size() != 1) {
+        ctrlPktOp.emitOpError() << "expected exactly one source channel";
+        return WalkResult::interrupt();
+      }
+      AMDAIE::ChannelOp srcChannelOp =
+          dyn_cast<AMDAIE::ChannelOp>(srcChannels[0].getDefiningOp());
+      if (!srcChannelOp) {
+        ctrlPktOp.emitOpError() << "expected an `amdaie.channel` op source";
+        return WalkResult::interrupt();
+      }
+      AMDAIE::TileOp srcTileOp = srcChannelOp.getTileOp();
+      int32_t srcCol = getConstantIndexOrAssert(srcTileOp.getCol());
+      int32_t srcRow = getConstantIndexOrAssert(srcTileOp.getRow());
+      // Get the control packet data length.
       uint32_t dataLength = ctrlPktOp.getLength();
+      // Plus one for the control header, which is always present.
       int64_t headerAndDataLength = dataLength + 1;
-      SmallVector<int64_t> dmaSourceOffsets{
-          0, 0, 0, static_cast<long>(ctrlPktSequence.size())};
-      SmallVector<int64_t> dmaSourceSizes{1, 1, 1, headerAndDataLength};
-      SmallVector<int64_t> dmaSourceStrides{0, 0, 0, 1};
-      // Target offsets, sizes, and strides are left empty.
-      SmallVector<int64_t> dmaTargetOffsets;
-      SmallVector<int64_t> dmaTargetSizes;
-      SmallVector<int64_t> dmaTargetStrides;
 
-      // Store the control packet header.
+      // If the AIE device has the control packet TLAST error disabled,
+      // multiple control packets can be packaged into a single BD transfer to
+      // improve throughput. Otherwise, shim DMA can only issue one control
+      // packet per BD transfer.
+      bool packIntoLastBdTransfer = false;
+      if (deviceModel.getCtrlPktTlastErrorDisabled() &&
+          ctrlPktBdTransfers.size() > 0) {
+        const CtrlPktBdTransfer &lastBdTransfer = ctrlPktBdTransfers.back();
+        // Check if the same connection is used.
+        if (lastBdTransfer.connectionOp == connectionOp) {
+          if (!deviceModel.isShimTile(srcCol, srcRow)) {
+            ctrlPktOp.emitOpError()
+                << "expected the source tile to be a shim tile";
+            return WalkResult::interrupt();
+          }
+          uint32_t maxIntraSize = deviceModel.getDmaBdProp<uint16_t>(
+              AMDAIE::AMDAIETileType::SHIMNOC, 0,
+              AMDAIE::AMDAIEDmaBdProp::WrapMax);
+          // Check if the new sizes are still valid.
+          SmallVector<int64_t> newBdTransferSizes = lastBdTransfer.sizes;
+          // Plus one for the extra packet header.
+          newBdTransferSizes.back() += (headerAndDataLength + 1);
+          // TODO(zhewen): use all dimensions available.
+          packIntoLastBdTransfer = newBdTransferSizes.back() <= maxIntraSize;
+        }
+      }
+      if (packIntoLastBdTransfer) {
+        // Pack into the last BD transfer.
+        // Plus one for the extra packet header.
+        headerAndDataLength++;
+        ctrlPktBdTransfers.back().sizes.back() += headerAndDataLength;
+      } else {
+        // Create a new BD transfer.
+        // TODO(zhewen): use all dimensions available.
+        ctrlPktBdTransfers.push_back(
+            {connectionOp,
+             /*offsets=*/
+             {0, 0, 0, static_cast<int64_t>(ctrlPktSequence.size())},
+             /*sizes=*/{1, 1, 1, headerAndDataLength},
+             /*strides=*/{0, 0, 0, 1}});
+      }
+
       llvm::MutableArrayRef<uint32_t> words =
           reserveAndGetTail(headerAndDataLength);
-      FailureOr<uint32_t> header = deviceModel.getCtrlPktHeader(
+      size_t idx = 0;
+      // Store the optional packet header.
+      if (packIntoLastBdTransfer) {
+        // Each control packet requires a packet header, but only the
+        // first control packet in a BD transfer has its header automatically
+        // inserted by the shim DMA. For all subsequent control packets in the
+        // same BD transfer, we must "manually" insert the packet header.
+        std::optional<AMDAIE::FlowOp> maybeFlowOp = connectionOp.getFlowOp();
+        if (!maybeFlowOp) {
+          ctrlPktOp.emitOpError()
+              << "expected a flow operation for the connection";
+          return WalkResult::interrupt();
+        }
+        std::optional<uint8_t> maybePacketId = maybeFlowOp->getPacketId();
+        if (!maybePacketId) {
+          ctrlPktOp.emitOpError() << "expected a packet ID for the flow";
+          return WalkResult::interrupt();
+        }
+        FailureOr<uint32_t> maybePacketHeader = deviceModel.getPacketHeader(
+            *maybePacketId, /*packetType=*/0, srcRow, srcCol);
+        if (failed(maybePacketHeader)) {
+          ctrlPktOp.emitOpError() << "failed to get packet header.";
+          return WalkResult::interrupt();
+        }
+        words[idx++] = *maybePacketHeader;
+      }
+      // Store the control header.
+      FailureOr<uint32_t> maybeControlHeader = deviceModel.getControlHeader(
           addrOffset, dataLength, static_cast<uint32_t>(ctrlPktOp.getOpcode()),
           ctrlPktOp.getStreamId());
-      if (failed(header)) {
-        ctrlPktOp.emitOpError() << "failed to get control packet header.";
+      if (failed(maybeControlHeader)) {
+        ctrlPktOp.emitOpError() << "failed to get control header.";
         return WalkResult::interrupt();
       }
-
-      words[0] = *header;
+      words[idx++] = *maybeControlHeader;
       // Store the control packet data.
       std::optional<ArrayRef<int32_t>> maybeData =
           ctrlPktOp.getDataFromArrayOrResource();
-      if (maybeData.has_value()) {
-        for (uint32_t i = 0; i < dataLength; ++i) {
-          int32_t data = maybeData.value()[i];
-          words[i + 1] = reinterpret_cast<uint32_t &>(data);
-        }
-      }
-
-      rewriter.setInsertionPoint(ctrlPktOp);
-      // Create token.
-      SmallVector<Type> resultTypes = {
-          rewriter.getType<AMDAIE::AsyncSourceTokenType>()};
-      TypeRange sourceResultTypes = TypeRange{resultTypes};
-
-      // Create `NpuDmaCpyNdOp` and `NpuDmaWaitOp`.
-      auto dmaOp = rewriter.create<AMDAIE::NpuDmaCpyNdOp>(
-          rewriter.getUnknownLoc(), sourceResultTypes, connectionOp, nullptr,
-          dmaTargetOffsets, dmaTargetSizes, dmaTargetStrides,
-          /*target_bd_id=*/nullptr, connectionOp.getSource(), dmaSourceOffsets,
-          dmaSourceSizes, dmaSourceStrides, /*source_bd_id=*/nullptr);
-      rewriter.create<AMDAIE::NpuDmaWaitOp>(rewriter.getUnknownLoc(),
-                                            dmaOp.getResult(0));
+      for (int32_t data : maybeData.value())
+        words[idx++] = reinterpret_cast<uint32_t &>(data);
 
       return WalkResult::advance();
     });
     if (res.wasInterrupted()) return failure();
+
+    // Convert each control packet BD transfer to a `NpuDmaCpyNdOp` and
+    // `NpuDmaWaitOp`.
+    Block *controlCodeBlock = workgroupOp.getControlCode().getBody();
+    rewriter.setInsertionPoint(controlCodeBlock->getTerminator());
+    for (CtrlPktBdTransfer &stream : ctrlPktBdTransfers) {
+      // Target offsets, sizes, and strides are left empty.
+      SmallVector<int64_t> dmaTargetOffsets;
+      SmallVector<int64_t> dmaTargetSizes;
+      SmallVector<int64_t> dmaTargetStrides;
+      // Create token.
+      SmallVector<Type> resultTypes = {
+          rewriter.getType<AMDAIE::AsyncSourceTokenType>()};
+      TypeRange sourceResultTypes = TypeRange{resultTypes};
+      // Create `NpuDmaCpyNdOp` and `NpuDmaWaitOp`.
+      auto dmaOp = rewriter.create<AMDAIE::NpuDmaCpyNdOp>(
+          rewriter.getUnknownLoc(), sourceResultTypes, stream.connectionOp,
+          nullptr, dmaTargetOffsets, dmaTargetSizes, dmaTargetStrides,
+          /*target_bd_id=*/nullptr, stream.connectionOp.getSource(),
+          stream.offsets, stream.sizes, stream.strides,
+          /*source_bd_id=*/nullptr);
+      rewriter.create<AMDAIE::NpuDmaWaitOp>(rewriter.getUnknownLoc(),
+                                            dmaOp.getResult(0));
+    }
 
     // Erase all the `NpuControlPacketOp`.
     for (AMDAIE::NpuControlPacketOp ctrlPktOp : ctrlPktOps)

@@ -21,7 +21,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
     amdaie.workgroup {
       %tile_0_0 = amdaie.tile(%c0, %c0)
       amdaie.controlcode {
-        // expected-error @+1 {{op tries to write to tile (col=0, row=0), but it's `CTRL` port is not routed}}
+        // expected-error @+1 {{op tries to configure the tile (col=0, row=0), but it's `CTRL` port is not routed}}
         amdaie.npu.control_packet write {address = 126976 : ui32, data = array<i32: 1024>, length = 1 : ui32, stream_id = 0 : ui32}
         amdaie.end
       }
@@ -90,7 +90,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %1 = amdaie.logicalobjectfifo.placeholder{%tile_0_2} : !amdaie.logicalobjectfifo<memref<?xi32>>
       %2 = amdaie.connection(%1 {%channel_0}, %0 {%channel}) {connection_type = #amdaie<connection_type Packet>} : (!amdaie.logicalobjectfifo<memref<?xi32>>, !amdaie.logicalobjectfifo<memref<?xi32>>)
       amdaie.controlcode {
-        // expected-error @+1 {{op failed to get control packet header}}
+        // expected-error @+1 {{op failed to get control header}}
         amdaie.npu.control_packet write {address = 2228224 : ui32, data = array<i32: 0, 1, 2, 3, 4>, length = 5 : ui32, stream_id = 0 : ui32}
         amdaie.end
       }
@@ -228,3 +228,69 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-COUNT-21: amdaie.npu.dma_cpy_nd
 // CHECK-NOT:      amdaie.npu.dma_cpy_nd
 // CHECK:       {ctrlpkt_sequence = dense_resource<ctrlpkt_sequence> : tensor<69xui32>}
+
+// -----
+
+// NPU4 can transfer multiple control packets per BD.
+// Expect only one DMA copy operation is generated.
+// CHECK-LABEL: @tlast_error_suppress
+// CHECK-COUNT-1: amdaie.npu.dma_cpy_nd
+// CHECK-NOT:     amdaie.npu.dma_cpy_nd
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu4", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @tlast_error_suppress() {
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    amdaie.workgroup {
+      %tile_0_0 = amdaie.tile(%c0, %c0)
+      %tile_0_2 = amdaie.tile(%c0, %c2)
+      %channel = amdaie.channel(%tile_0_0, 0, port_type = DMA, direction = MM2S)
+      %channel_0 = amdaie.channel(%tile_0_2, 0, port_type = CTRL, direction = S2MM)
+      %0 = amdaie.logicalobjectfifo.placeholder{%tile_0_0} : !amdaie.logicalobjectfifo<memref<?xi32>>
+      %1 = amdaie.logicalobjectfifo.placeholder{%tile_0_2} : !amdaie.logicalobjectfifo<memref<?xi32>>
+      %2 = amdaie.flow({%channel} -> {%channel_0}) {is_packet_flow = true, packet_id = 2 : ui8}
+      %3 = amdaie.connection(%1 {%channel_0}, %0 {%channel}, flow = %2) {connection_type = #amdaie<connection_type Packet>} : (!amdaie.logicalobjectfifo<memref<?xi32>>, !amdaie.logicalobjectfifo<memref<?xi32>>)
+      amdaie.controlcode {
+        amdaie.npu.control_packet write {address = 2228224 : ui32, data = array<i32: 536871189, 5570560, 462048, 65537>, length = 4 : ui32, stream_id = 0 : ui32}
+        amdaie.npu.control_packet write {address = 2228240 : ui32, data = array<i32: 65537, 231479, 0, 0>, length = 4 : ui32, stream_id = 0 : ui32}
+        amdaie.npu.control_packet write {address = 2228256 : ui32, data = array<i32: 231607, 192, 0, 65537>, length = 4 : ui32, stream_id = 0 : ui32}
+        amdaie.npu.control_packet write {address = 2228272 : ui32, data = array<i32: 402657467, 134218176, -2145845248, 67586>, length = 4 : ui32, stream_id = 0 : ui32}
+        amdaie.npu.control_packet write {address = 2228288 : ui32, data = array<i32: 268435733, 538509312, 2123970563, -1030156292>, length = 4 : ui32, stream_id = 0 : ui32}
+        amdaie.npu.control_packet write {address = 2228304 : ui32, data = array<i32: -161935364, 1220222780, 268965891, -3772416>, length = 4 : ui32, stream_id = 0 : ui32}
+        amdaie.npu.control_packet write {address = 2228320 : ui32, data = array<i32: 268437529, 65537, 65537, -1025966079>, length = 4 : ui32, stream_id = 0 : ui32}
+        amdaie.npu.control_packet write {address = 2228336 : ui32, data = array<i32: 67580, 65537, 65537, 133988057>, length = 4 : ui32, stream_id = 0 : ui32}
+        amdaie.npu.control_packet write {address = 2228352 : ui32, data = array<i32: 268441625, 65537, 65537, 1073733657>, length = 4 : ui32, stream_id = 0 : ui32}
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+// When NPU4 tries to transfer multiple control packets per BD,
+// the flow operation is required to get the packet ID information.
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu4", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @no_flow_op() {
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    amdaie.workgroup {
+      %tile_0_0 = amdaie.tile(%c0, %c0)
+      %tile_0_2 = amdaie.tile(%c0, %c2)
+      %channel = amdaie.channel(%tile_0_0, 0, port_type = DMA, direction = MM2S)
+      %channel_0 = amdaie.channel(%tile_0_2, 0, port_type = CTRL, direction = S2MM)
+      %0 = amdaie.logicalobjectfifo.placeholder{%tile_0_0} : !amdaie.logicalobjectfifo<memref<?xi32>>
+      %1 = amdaie.logicalobjectfifo.placeholder{%tile_0_2} : !amdaie.logicalobjectfifo<memref<?xi32>>
+      %2 = amdaie.connection(%1 {%channel_0}, %0 {%channel}) {connection_type = #amdaie<connection_type Packet>} : (!amdaie.logicalobjectfifo<memref<?xi32>>, !amdaie.logicalobjectfifo<memref<?xi32>>)
+      amdaie.controlcode {
+        amdaie.npu.control_packet write {address = 2301952 : ui32, data = array<i32: 0>, length = 1 : ui32, stream_id = 0 : ui32}
+        // expected-error @+1 {{op expected a flow operation for the connection}}
+        amdaie.npu.control_packet write {address = 2219536 : ui32, data = array<i32: 2>, length = 1 : ui32, stream_id = 0 : ui32}
+        amdaie.end
+      }
+    }
+    return
+  }
+}

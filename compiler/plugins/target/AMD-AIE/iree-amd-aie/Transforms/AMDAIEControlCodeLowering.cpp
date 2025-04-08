@@ -24,10 +24,10 @@ struct HalfDmaCpyNdToNpuConverter final
 
   HalfDmaCpyNdToNpuConverter(MLIRContext *context,
                              const AMDAIE::AMDAIEDeviceModel &deviceModel,
-                             bool lowerCtrlpktDma)
+                             int32_t argIdxOffset)
       : OpConversionPattern(context),
         deviceModel(std::move(deviceModel)),
-        lowerCtrlpktDma(lowerCtrlpktDma) {
+        argIdxOffset(argIdxOffset) {
     minStrideBitWidth = deviceModel.getMinStrideBitWidth();
   }
 
@@ -38,8 +38,8 @@ struct HalfDmaCpyNdToNpuConverter final
       AMDAIE::AMDAIETileType tileType, AMDAIE::BdIdOp bdIdOp,
       AMDAIE::ChannelOp channelOp, int64_t bufferLength, int64_t bufferOffset,
       int32_t enablePacket, int32_t packetId, int32_t packetType,
-      SmallVector<OpFoldResult> sizes,
-      SmallVector<OpFoldResult> strides) const {
+      SmallVector<OpFoldResult> sizes, SmallVector<OpFoldResult> strides,
+      bool loweringCtrlpktDma) const {
     uint8_t numIntraAddrDim = deviceModel.getDmaProp<uint8_t>(
         tileType, AMDAIE::AMDAIEDmaProp::NumAddrDim);
     uint8_t numAddrDim =
@@ -52,7 +52,7 @@ struct HalfDmaCpyNdToNpuConverter final
     int64_t argIdx = 0;
     int64_t elemWidthInBits = 32;
     uint8_t memSpace = 0;
-    if (!lowerCtrlpktDma) {
+    if (!loweringCtrlpktDma) {
       // Normal DMAs, update `argIdx`, `elemWidthInBits`, and `memSpace` based
       // on the memref.
       auto logicalObjFifo =
@@ -74,6 +74,9 @@ struct HalfDmaCpyNdToNpuConverter final
       elemWidthInBits = memrefType.getElementTypeBitWidth();
       memSpace = logicalObjFifo.getMemorySpaceAsUInt();
     }
+    // Add the optional offset to the argIdx.
+    argIdx += argIdxOffset;
+    if (argIdx < 0) return op.emitOpError() << "argIdx must be non-negative";
 
     std::optional<AMDAIE::DMAChannelDir> maybeDmaDirection =
         channelOp.getDirection();
@@ -223,6 +226,11 @@ struct HalfDmaCpyNdToNpuConverter final
       }
       packetId = maybePacketId.value();
     }
+    FailureOr<bool> maybeIsControlFlow = maybeFlowOp->isControlFlow();
+    if (failed(maybeIsControlFlow)) {
+      return maybeFlowOp->emitOpError()
+             << "failed to determine if it is control flow";
+    }
     std::optional<AMDAIE::ChannelOp> maybeChannelOp = op.getChannelOp();
     if (!maybeChannelOp)
       return op.emitOpError() << "found non-`amdaie.channel` channel";
@@ -251,7 +259,8 @@ struct HalfDmaCpyNdToNpuConverter final
     FailureOr<AMDAIE::NpuPushToQueueOp> npuPushToQueueOp = insertWriteBdOps(
         op, rewriter, AMDAIE::AMDAIETileType::SHIMNOC, maybeBdIdOp.value(),
         maybeChannelOp.value(), maybeSize.value(), maybeOffset.value(),
-        enablePacket, packetId, packetType, sizes, strides);
+        enablePacket, packetId, packetType, sizes, strides,
+        *maybeIsControlFlow);
     if (failed(npuPushToQueueOp)) return failure();
     rewriter.replaceOp(op, *npuPushToQueueOp);
 
@@ -275,7 +284,8 @@ struct HalfDmaCpyNdToNpuConverter final
  private:
   const AMDAIE::AMDAIEDeviceModel &deviceModel;
   uint8_t minStrideBitWidth;
-  bool lowerCtrlpktDma;
+  // Offset to be added to the `argIdx` field of the write BD operation.
+  int32_t argIdxOffset;
 };
 
 struct DmaWaitToTctSyncConverter final
@@ -372,7 +382,7 @@ void AMDAIEControlCodeLoweringPass::runOnOperation() {
     conversionTarget.addLegalDialect<AMDAIEDialect>();
     conversionTarget.addIllegalOp<AMDAIE::NpuHalfDmaCpyNdOp>();
     patterns.insert<HalfDmaCpyNdToNpuConverter>(context, deviceModel,
-                                                lowerCtrlpktDma);
+                                                argIdxOffset);
 
     if (failed(applyPartialConversion(parentOp, conversionTarget,
                                       std::move(patterns)))) {
