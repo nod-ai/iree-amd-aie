@@ -10,9 +10,12 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
+constexpr unsigned minTileSize = 16;
+constexpr unsigned maxTileSize = 128;
+
 void findLargestTileSizes(uint32_t m, uint32_t n, uint32_t k, uint32_t& curMax,
                           const TileParams& params, TileSize& best) {
-  if (m < 16 || n < 16 || k < 16) return;
+  if (m < minTileSize || n < minTileSize || k < minTileSize) return;
 
   bool isInputDivisible = (params.inputM % m == 0) &&
                           (params.inputN % n == 0) && (params.inputK % k == 0);
@@ -50,13 +53,13 @@ void findLargestTileSizes(uint32_t m, uint32_t n, uint32_t k, uint32_t& curMax,
 
 TileSize selectL1TileSizes(const TileParams& params) {
   uint32_t curMax = 0;
-  TileSize best = {16, 16, 16};
+  TileSize best = {minTileSize, minTileSize, minTileSize};
   uint32_t mStart =
-      detail::findLargestFactor(params.inputM, 128, params.vectorM);
+      detail::findLargestFactor(params.inputM, maxTileSize, params.vectorM);
   uint32_t nStart =
-      detail::findLargestFactor(params.inputN, 128, params.vectorN);
+      detail::findLargestFactor(params.inputN, maxTileSize, params.vectorN);
   uint32_t kStart =
-      detail::findLargestFactor(params.inputK, 128, params.vectorK);
+      detail::findLargestFactor(params.inputK, maxTileSize, params.vectorK);
   findLargestTileSizes(mStart, nStart, kStart, curMax, params, best);
   return best;
 }
