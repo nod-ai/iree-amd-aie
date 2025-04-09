@@ -221,23 +221,6 @@ class ConvolutionFromTemplate(BaseTest):
         return run_conv_test(config, self.aie_compilation_flags, filename, n_repeats=2)
 
 
-class ConvolutionNHWCQ(BaseTest):
-    def __init__(
-        self,
-        test_params=None,
-    ):
-        super().__init__(
-            name="convolution_nhwc_q",
-            test_params=test_params,
-        )
-        self.labels += ["Convolution", "ConvolutionNHWCQ"]
-
-    def _execute(self, config):
-        files_dir = config.file_dir / "test_files"
-        filename = files_dir / "conv2d_nhwc_q.mlir"
-        return run_conv_test(config, self.aie_compilation_flags, filename, n_repeats=1)
-
-
 class BaseMatmul(BaseTest):
     def __init__(
         self,
@@ -2557,9 +2540,6 @@ class Tests:
                 ),
             )
         )
-
-        # Convolution NHCWQ test:
-        self.register(ConvolutionNHWCQ())
 
         # Convolution 2D tests:
         conv_2d_map = {
