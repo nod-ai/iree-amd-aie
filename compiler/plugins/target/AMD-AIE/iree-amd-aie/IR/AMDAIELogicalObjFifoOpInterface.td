@@ -23,6 +23,22 @@ def LogicalObjFifoOpInterface : OpInterface<"LogicalObjFifoOpInterface"> {
   let methods = [
     InterfaceMethod<
       /*desc=*/[{
+        A utility to return the allocation size of a logical objFifo in bytes.
+      }],
+      /*retTy=*/"std::optional<int64_t>",
+      /*methodName=*/"getAllocationSizeInBytes",
+      /*args=*/(ins),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/[{
+        MemRefType memrefType = getMemrefType();
+        size_t allocationSizeInBits =
+          memrefType.getNumElements() * memrefType.getElementTypeBitWidth();
+        if (allocationSizeInBits % 8 != 0) return std::nullopt;
+        return allocationSizeInBits / 8 * getDepth();
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/[{
         Return the consumer copy-like operations of the logical objFifo.
       }],
       /*retTy=*/"::llvm::SmallVector<::mlir::CopyOpInterface>",
