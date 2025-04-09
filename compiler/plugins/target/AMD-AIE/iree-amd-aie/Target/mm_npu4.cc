@@ -20,6 +20,14 @@ R"chess(
 
 #include <aie_api/aie.hpp>
 
+template<int M, int N, int r>
+void trunci_vectorized(v32int32 *__restrict in, int64_t offsetIn, int64_t shift,
+                        v32int8 *__restrict out, int64_t offsetOut) {
+  for (unsigned i = 0; i < M * N / r; i++) {
+    out[offsetOut + i] = ssrs((v32acc32)in[offsetIn + i], shift, 0);
+  }
+}
+
 template<typename T, int M, int N, int r>
 void zero_vectorized(T *__restrict pC, unsigned offsetC)
 {
@@ -163,7 +171,6 @@ void matmul_vectorized_8x8x8_bf16_bf16_f32(const bfloat16 *__restrict pA,
       (pA, offsetA, pB, offsetB, pC, offsetC);
 }
 
-
 template<unsigned rowA, unsigned colA, unsigned colB, unsigned L0_M, unsigned L0_K, unsigned L0_N>
 void matmul_vectorized_i8_i32(const int8 * __restrict pA, unsigned offsetA, const int8 * __restrict pB, unsigned offsetB, int32 * __restrict pC, unsigned offsetC)
 {
@@ -277,9 +284,12 @@ extern "C" {
   X(float, f32, M, N, N/2)         \
   X(int32, i32, M, N, N/2)
 
+#define trunci_combos_i32_i8(X, M, N)  \
+  X(v32int32, i32, v32int8, i8, M, N, 32)
+
 #define matmul_vectorized_c_func(lhs_ctype_in, lhs_mlir_type_in,                                                 \
-                                 rhs_ctype_in, rhs_mlir_type_in,                                                 \
-                                 acc_ctype_out, acc_mlir_type_out, M, N, K, r, s, t)                             \
+                                  rhs_ctype_in, rhs_mlir_type_in,                                                 \
+                                  acc_ctype_out, acc_mlir_type_out, M, N, K, r, s, t)                             \
   void matmul_##lhs_mlir_type_in##_##rhs_mlir_type_in##_##acc_mlir_type_out##_##M##x##N##x##K##_##r##x##s##x##t( \
       lhs_ctype_in *a_in, unsigned offsetA, rhs_ctype_in *b_in, unsigned offsetB,                                \
       acc_ctype_out *c_out, unsigned offsetC) {                                                                  \
@@ -290,6 +300,12 @@ extern "C" {
 #define zero_vectorized_c_func(ctype_out, mlir_type_out, M, N, r)             \
   void zero_##mlir_type_out##_##M##x##N(ctype_out *c_out, unsigned offsetC) { \
     zero_vectorized<ctype_out, M, N, r>(c_out, offsetC);                      \
+  }
+
+#define trunci_c_func(ctype_in, mlir_type_in, ctype_out, mlir_type_out, M, N, r)                  \
+  void trunci_##mlir_type_in##_##mlir_type_out##_##M##x##N(                                       \
+      ctype_in *in, int64_t offsetIn, int64_t shift, ctype_out *out, int64_t offsetOut) {         \
+    trunci_vectorized<M, N, r>(in, offsetIn, shift, out, offsetOut);                              \
   }
 
 matmul_combos(matmul_vectorized_c_func, 16, 8, 32)
@@ -311,6 +327,11 @@ matmul_combos_i8(matmul_vectorized_c_func, 32, 32, 128)
 matmul_combos_i8(matmul_vectorized_c_func, 64, 64, 64)
 matmul_combos_i8(matmul_vectorized_c_func, 64, 32, 128)
 matmul_combos_i8(matmul_vectorized_c_func, 64, 64, 128)
+
+trunci_combos_i32_i8(trunci_c_func, 32, 32)
+trunci_combos_i32_i8(trunci_c_func, 64, 64)
+trunci_combos_i32_i8(trunci_c_func, 32, 64)
+trunci_combos_i32_i8(trunci_c_func, 64, 32)
 
 zero_fill_combos(zero_vectorized_c_func, 16, 8)
 zero_fill_combos(zero_vectorized_c_func, 16, 16)

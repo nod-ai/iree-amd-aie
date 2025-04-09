@@ -1,7 +1,7 @@
 // RUN: iree-opt --split-input-file --pass-pipeline='builtin.module(iree-amdaie-lowering-strategy{use-lower-to-aie-pipeline=air use-tile-pipeline=pack-peel})' %s | FileCheck %s --check-prefix=CHECK-PACK-PEEL
 
-// CHECK-PACK-PEEL{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[512, 256, 0], [0, 0, 1], [1, 1, 0]]>
-// CHECK-PACK-PEEL{LITERAL}: #amdaie.packing_config<packing_config = [{packedSizes = [128, 64, 128], transposePackIndices = [0, 1], unpackEmpty = [false, false], innerPerm = [[0, 1], [1, 0]], outerPerm = [[0, 1], [1, 0]]}, {packedSizes = [0, 0, 0, 4, 8, 8], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [1, 0], [0, 1]], outerPerm = [[0, 1, 3, 2], [0, 1, 3, 2], [0, 1, 3, 2]]}]>
+// CHECK-PACK-PEEL{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[256, 256, 0], [0, 0, 1], [1, 1, 0]]>
+// CHECK-PACK-PEEL{LITERAL}: #amdaie.packing_config<packing_config = [{packedSizes = [64, 64, 128], transposePackIndices = [0, 1], unpackEmpty = [false, false], innerPerm = [[0, 1], [1, 0]], outerPerm = [[0, 1], [1, 0]]}, {packedSizes = [0, 0, 0, 4, 8, 8], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [1, 0], [0, 1]], outerPerm = [[0, 1, 3, 2], [0, 1, 3, 2], [0, 1, 3, 2]]}]>
 #pipeline_layout = #hal.pipeline.layout<bindings = [
   <storage_buffer>,
   <storage_buffer>,
@@ -53,8 +53,8 @@ module {
 
 // -----
 
-// CHECK-PACK-PEEL{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[256, 128, 0], [0, 0, 1], [1, 1, 0]]>
-// CHECK-PACK-PEEL{LITERAL}: #amdaie.packing_config<packing_config = [{packedSizes = [64, 32, 128], transposePackIndices = [0, 1], unpackEmpty = [false, false], innerPerm = [[0, 1], [0, 1]], outerPerm = [[0, 1], [0, 1]]}, {packedSizes = [0, 0, 0, 4, 4, 8], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [0, 1], [0, 1]], outerPerm = [[0, 1, 3, 2], [0, 1, 3, 2], [0, 1, 3, 2]]}]>
+// CHECK-PACK-PEEL{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[128, 128, 0], [0, 0, 1], [1, 1, 0]]>
+// CHECK-PACK-PEEL{LITERAL}: #amdaie.packing_config<packing_config = [{packedSizes = [32, 32, 128], transposePackIndices = [0, 1], unpackEmpty = [false, false], innerPerm = [[0, 1], [0, 1]], outerPerm = [[0, 1], [0, 1]]}, {packedSizes = [0, 0, 0, 4, 4, 8], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [0, 1], [0, 1]], outerPerm = [[0, 1, 3, 2], [0, 1, 3, 2], [0, 1, 3, 2]]}]>
 #pipeline_layout = #hal.pipeline.layout<bindings = [
   <storage_buffer>,
   <storage_buffer>,

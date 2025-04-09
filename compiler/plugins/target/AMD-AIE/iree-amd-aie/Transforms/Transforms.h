@@ -17,7 +17,8 @@ namespace mlir::iree_compiler::AMDAIE {
 /// Assign tile locations to the logical objectfifos.
 LogicalResult assignTiles(
     RewriterBase &rewriter, Operation *op, const AMDAIEDeviceModel &deviceModel,
-    DenseMap<Operation *, DenseSet<Operation *>> uniqueL3L2Pair);
+    DenseMap<Operation *, DenseSet<Operation *>> uniqueL3L2Pair,
+    bool hardwareAware = true);
 
 /// Unroll the loops within the control code regions.
 LogicalResult controlCodeLoopUnroll(RewriterBase &rewriter,
