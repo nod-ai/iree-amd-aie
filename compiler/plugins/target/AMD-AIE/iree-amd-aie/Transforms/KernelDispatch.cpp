@@ -158,7 +158,6 @@ class ParameterSetting {
   uint32_t nBytesLhs;
   uint32_t nBytesRhs;
   uint32_t nBytesInit;
-  uint32_t nBytesOut;
 
   SmallVector<int64_t> getPackSizeL0() const {
     return {m0Pack, n0Pack, k0Pack};
@@ -179,7 +178,7 @@ class ParameterSetting {
                    uint32_t n0Pack, uint32_t k0Pack, uint32_t m1Pack,
                    uint32_t n1Pack, uint32_t k1Pack, uint32_t M, uint32_t N,
                    uint32_t K, uint32_t nBytesLhs, uint32_t nBytesRhs,
-                   uint32_t nBytesInit, uint32_t nBytesOut)
+                   uint32_t nBytesInit)
       : M0(M0),
         N0(N0),
         K0(K0),
@@ -194,8 +193,7 @@ class ParameterSetting {
         K(K),
         nBytesLhs(nBytesLhs),
         nBytesRhs(nBytesRhs),
-        nBytesInit(nBytesInit),
-        nBytesOut(nBytesOut) {}
+        nBytesInit(nBytesInit) {}
 };
 
 FailureOr<ParameterSetting> ParameterSetting::create(
@@ -204,14 +202,13 @@ FailureOr<ParameterSetting> ParameterSetting::create(
     uint32_t kPackScaleL1) {
   auto initType =
       llvm::cast<ShapedType>(linalgOp.getDpsInitOperand(0)->get().getType());
-  uint32_t nBytesInit = initType.getElementTypeBitWidth() / 8;
-  uint32_t nBytesOut = nBytesInit;
+  unsigned nBytesInit = initType.getElementTypeBitWidth() / 8;
   auto lhsType =
       llvm::cast<ShapedType>(linalgOp.getDpsInputOperand(0)->get().getType());
-  uint32_t nBytesLhs = lhsType.getElementTypeBitWidth() / 8;
+  unsigned nBytesLhs = lhsType.getElementTypeBitWidth() / 8;
   auto rhsType =
       llvm::cast<ShapedType>(linalgOp.getDpsInputOperand(1)->get().getType());
-  uint32_t nBytesRhs = rhsType.getElementTypeBitWidth() / 8;
+  unsigned nBytesRhs = rhsType.getElementTypeBitWidth() / 8;
 
   auto getTotalSize = [](ArrayRef<int64_t> sizes) {
     return std::accumulate(sizes.begin(), sizes.end(), 1,
@@ -253,12 +250,13 @@ FailureOr<ParameterSetting> ParameterSetting::create(
   unsigned bufferDepthAcc = isObjectFifo ? 2 : 1;
   // Currently only consider elementwise op that does truncations, i.e.
   // trunci/truncf ops.
+  unsigned nBytesElemOut{0};
   if (isMatmulWithElementwiseConsumer(linalgOp)) {
     for (Operation *userOp : linalgOp->getUsers()) {
       if (auto linalgUser = dyn_cast<linalg::LinalgOp>(userOp)) {
         auto outputType = llvm::cast<ShapedType>(
             linalgUser.getDpsInitOperand(0)->get().getType());
-        nBytesOut = outputType.getElementTypeBitWidth() / 8;
+        nBytesElemOut = outputType.getElementTypeBitWidth() / 8;
         // For bias, we need to count the second input from elementwise op, so
         // reserve another buffer for that.
         bufferDepthAcc = linalgUser.getNumDpsInputs() == 1 ? 1 : 2;
@@ -271,7 +269,7 @@ FailureOr<ParameterSetting> ParameterSetting::create(
       /*memoryLimit=*/deviceModel.getCoreTileLocalMemorySize(),
       /*numBytesA=*/nBytesLhs,
       /*numBytesB=*/nBytesRhs,
-      /*numBytesC=*/nBytesOut,
+      /*numBytesC=*/nBytesElemOut,
       /*numBytesAcc=*/nBytesInit,
       /*bufferDepthA=*/bufferDepthA,
       /*bufferDepthB=*/bufferDepthB,
@@ -306,8 +304,7 @@ FailureOr<ParameterSetting> ParameterSetting::create(
           : maxL0SizeK;
 
   return ParameterSetting(M0, N0, K0, m0Pack, n0Pack, k0Pack, m1Pack, n1Pack,
-                          k1Pack, M, N, K, nBytesLhs, nBytesRhs, nBytesInit,
-                          nBytesOut);
+                          k1Pack, M, N, K, nBytesLhs, nBytesRhs, nBytesInit);
 }
 }  // namespace
 
@@ -489,30 +486,20 @@ static LogicalResult setRootConfigForPackPeel4LevelTilingPipeline(
   // ------------------------------------------------------
   // -------------- Set lowering config -------------------
   // ------------------------------------------------------
-  // Check if we can scale L2 size of A and B with a factor.
-  // TODO(jornt): This assumes double buffering to get an upper bound, but
-  // retrieve this information instead.
+  // Check if we can scale L2 size of A and B with a factor of 2. TODO(jornt):
+  // generalize to find largest scaling factor possible.
   int64_t l2SizeA =
       2 * packPeelTiling.M0 * packPeelTiling.K * packPeelTiling.nBytesLhs;
   int64_t l2SizeB =
-      4 * packPeelTiling.N0 * packPeelTiling.K * packPeelTiling.nBytesRhs;
-  int64_t l2SizeOut =
-      4 * packPeelTiling.M0 * packPeelTiling.N0 * packPeelTiling.nBytesOut;
+      2 * packPeelTiling.N0 * packPeelTiling.K * packPeelTiling.nBytesRhs;
+  int64_t l2SizeInit =
+      4 * packPeelTiling.M0 * packPeelTiling.N0 * packPeelTiling.nBytesInit;
 
-  bool fitsInL2 = (l2SizeA + l2SizeB + l2SizeOut) <
+  bool fitsInL2 = (l2SizeA + l2SizeB + l2SizeInit) <
                   (deviceModel.getMemTileSizeInBytes() * numCols);
-  int64_t largestM0ScaleFactor =
-      ((deviceModel.getMemTileSizeInBytes() * numCols) - l2SizeB) /
-      (l2SizeA + l2SizeOut);
-  if (largestM0ScaleFactor % 2 != 0)
-    largestM0ScaleFactor = llvm::PowerOf2Ceil(largestM0ScaleFactor) / 2;
-  int64_t scaleL0M =
-      (isObjectFifo && !isBatchMatmul) ? largestM0ScaleFactor : 1;
-  int64_t scaleL0N = (isObjectFifo && !isBatchMatmul && fitsInL2) ? 2 : 1;
-  int64_t m0Tile = std::min(static_cast<uint32_t>(packPeelTiling.M0 * scaleL0M),
-                            packPeelTiling.M);
-  int64_t n0Tile = std::min(static_cast<uint32_t>(packPeelTiling.N0 * scaleL0N),
-                            packPeelTiling.N);
+  int64_t scaleL0 = !isBatchMatmul && fitsInL2 ? 2 : 1;
+  int64_t m0Tile = packPeelTiling.M0 * scaleL0;
+  int64_t n0Tile = packPeelTiling.N0 * scaleL0;
 
   SmallVector<int64_t> tileSizeLevel0(numLoops, 0);
   if (isBatchMatmul) {

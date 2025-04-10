@@ -151,11 +151,9 @@ class UsageAndColumnBasedTileAllocator final : public TileAllocatorBase {
 
   UsageAndColumnBasedTileAllocator(
       RewriterBase &rewriter, const AMDAIE::AMDAIEDeviceModel &deviceModel,
-      DenseMap<Operation *, DenseSet<Operation *>> uniqueL3L2Pair,
-      bool hardwareAware)
+      DenseMap<Operation *, DenseSet<Operation *>> uniqueL3L2Pair)
       : TileAllocatorBase(rewriter, deviceModel),
-        uniqueL3L2Pair(uniqueL3L2Pair),
-        hardwareAware(hardwareAware) {}
+        uniqueL3L2Pair(uniqueL3L2Pair) {}
 
   LogicalResult assignTiles(
       SmallVector<AMDAIE::LogicalObjFifoOpInterface> &objFifos,
@@ -252,26 +250,7 @@ class UsageAndColumnBasedTileAllocator final : public TileAllocatorBase {
     }
     uint32_t row = memSpaceRows[0];
 
-    // Sort the logical objectFifos on allocation size so that the largest ones
-    // get assigned first.
-    SmallVector<std::pair<AMDAIE::LogicalObjFifoOpInterface, size_t>>
-        objFifosAndSizes;
-    objFifosAndSizes.reserve(objFifos.size());
-    for (AMDAIE::LogicalObjFifoOpInterface op : objFifos) {
-      std::optional<int64_t> sizeInBytes = op.getAllocationSizeInBytes();
-      if (!sizeInBytes.has_value()) {
-        return op.emitOpError()
-               << "has allocation size that is not a byte-multiple";
-      }
-      objFifosAndSizes.push_back(std::make_pair(op, *sizeInBytes));
-    }
-    llvm::sort(objFifosAndSizes,
-               [&](std::pair<AMDAIE::LogicalObjFifoOpInterface, size_t> a,
-                   std::pair<AMDAIE::LogicalObjFifoOpInterface, size_t> b) {
-                 return a.second > b.second;
-               });
-
-    for (auto [objFifo, allocationSizeInBytes] : objFifosAndSizes) {
+    for (AMDAIE::LogicalObjFifoOpInterface objFifo : objFifos) {
       LLVM_DEBUG(llvm::dbgs()
                  << "Assign tile for objFifo: " << objFifo << "\n");
 
@@ -321,17 +300,9 @@ class UsageAndColumnBasedTileAllocator final : public TileAllocatorBase {
               std::min((size_t)uniqueL3L2Pair[defOp].size(), tiles.size()));
       }
 
-      // Prefer the priority column for tile assignment if enough memory
-      // available.
+      // Assing a tile location.
       TileLoc assignedTileLoc;
-      const auto *tileIt = llvm::find_if(tiles, [&, allocationSizeInBytes =
-                                                        allocationSizeInBytes](
-                                                    const TileLoc &tileLoc) {
-        if (hardwareAware && (tileLocToUsage[tileLoc] + allocationSizeInBytes) >
-                                 deviceModel.getTileMemorySizeInBytes(
-                                     tileLoc.col, tileLoc.row)) {
-          return false;
-        }
+      const auto *tileIt = llvm::find_if(tiles, [&](const TileLoc &tileLoc) {
         return tileLoc.col == priorityCol;
       });
       if (tileIt != tiles.end()) {
@@ -343,13 +314,6 @@ class UsageAndColumnBasedTileAllocator final : public TileAllocatorBase {
         assignedTileLoc =
             *std::min_element(tiles.begin(), tiles.end(), tileLocAndUsageCmp);
       }
-      if (hardwareAware &&
-          (tileLocToUsage[assignedTileLoc] + allocationSizeInBytes) >
-              deviceModel.getTileMemorySizeInBytes(assignedTileLoc.col,
-                                                   assignedTileLoc.row)) {
-        return objFifo.emitOpError()
-               << "could not find allocation space for this logical objFifo";
-      }
 
       // Increase usage of the chosen tile as a new logical objectFifo will be
       // assigned to it. This allows distributing the logical objectFifos
@@ -357,7 +321,7 @@ class UsageAndColumnBasedTileAllocator final : public TileAllocatorBase {
       LLVM_DEBUG(llvm::dbgs()
                  << "Assign to tile (col, row): (" << assignedTileLoc.col
                  << ", " << assignedTileLoc.row << ")\n");
-      tileLocToUsage[assignedTileLoc] += allocationSizeInBytes;
+      tileLocToUsage[assignedTileLoc] += 1;
 
       rewriter.setInsertionPoint(objFifo);
       auto getCol = rewriter.create<arith::ConstantIndexOp>(
@@ -420,10 +384,6 @@ class UsageAndColumnBasedTileAllocator final : public TileAllocatorBase {
     }
     return priorityCol;
   }
-
-  /// Whether to make hardware-aware tile assignment decisions, taking into
-  /// account memory limitations for example.
-  bool hardwareAware{true};
 };
 
 /// Assign tile locations to objectFifos based on available resources. Visit
@@ -431,13 +391,12 @@ class UsageAndColumnBasedTileAllocator final : public TileAllocatorBase {
 /// on L1, then L2, etc.
 LogicalResult assignTiles(
     RewriterBase &rewriter, Operation *op, const AMDAIEDeviceModel &deviceModel,
-    DenseMap<Operation *, DenseSet<Operation *>> uniqueL3L2Pair,
-    bool hardwareAware) {
+    DenseMap<Operation *, DenseSet<Operation *>> uniqueL3L2Pair) {
   if (failed(clearNonLocalTiles(rewriter, op)))
     return op->emitOpError() << "failed to clear non-local tile assignments";
 
   UsageAndColumnBasedTileAllocator tileAllocator(rewriter, deviceModel,
-                                                 uniqueL3L2Pair, hardwareAware);
+                                                 uniqueL3L2Pair);
 
   DenseMap<uint8_t, SmallVector<AMDAIE::LogicalObjFifoOpInterface>>
       memSpaceToObjFifos;
@@ -537,8 +496,7 @@ void AMDAIEAssignTilesPass::runOnOperation() {
     return WalkResult::advance();
   });
   // Assign tile locations to logical objectFifos on non-local (not L1) memory.
-  if (failed(assignTiles(rewriter, parentOp, deviceModel, uniqueL3L2Pair,
-                         /*hardwareAware*/ true))) {
+  if (failed(assignTiles(rewriter, parentOp, deviceModel, uniqueL3L2Pair))) {
     parentOp->emitOpError() << "non-local tile assignment failed";
     return signalPassFailure();
   }
