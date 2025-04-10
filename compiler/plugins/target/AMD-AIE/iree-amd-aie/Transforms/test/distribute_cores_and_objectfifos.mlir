@@ -695,9 +695,9 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-DAG:         %[[FROM_MEMREF_7:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_0]], {%[[TILE_0_2]], %[[TILE_1_2]]}
 // CHECK-DAG:         %[[FROM_MEMREF_8:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC]], {%[[TILE_1_2]]}
 // CHECK-DAG:         %[[FROM_MEMREF_9:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC]], {%[[TILE_0_2]]}
-// CHECK-DAG:         %[[FROM_MEMREF_10:.*]] = amdaie.logicalobjectfifo.from_memref %[[OUTPUT]], {%[[TILE_1_0]]}
+// CHECK-DAG:         %[[FROM_MEMREF_10:.*]] = amdaie.logicalobjectfifo.from_memref %[[OUTPUT]], {%[[TILE_0_0]]}
 // CHECK-DAG:         %[[FROM_MEMREF_11:.*]] = amdaie.logicalobjectfifo.from_memref %[[IN_A]], {%[[TILE_0_0]]}
-// CHECK-DAG:         %[[FROM_MEMREF_12:.*]] = amdaie.logicalobjectfifo.from_memref %[[IN_B]], {%[[TILE_0_0]]}
+// CHECK-DAG:         %[[FROM_MEMREF_12:.*]] = amdaie.logicalobjectfifo.from_memref %[[IN_B]], {%[[TILE_1_0]]}
 // CHECK-DAG:         %[[DMA_0:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_0]]
 // CHECK-SAME:        %[[FROM_MEMREF_11]]
 // CHECK-DAG:         %[[DMA_1:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_7]]

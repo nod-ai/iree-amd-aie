@@ -461,7 +461,6 @@ struct AMDAIEDeviceModel {
   uint32_t getMemTileSizeInBytes() const;
   uint32_t getMemTileSize(uint8_t col, uint8_t row) const;
   uint32_t getCoreTileLocalMemorySize() const;
-  uint32_t getTileMemorySizeInBytes(uint8_t col, uint8_t row) const;
 
   SmallVector<uint32_t> getMemSpaceRows(uint8_t memSpace) const;
 
