@@ -512,8 +512,7 @@ void AMDAIEDistributeCoresAndObjectFifosPass::runOnOperation() {
   // TODO(jornt): This is needed inside this pass to make the output stable with
   // respect to cse. When that gets resolved, we can avoid convoluting this
   // pass.
-  if (failed(assignTiles(rewriter, moduleOp, deviceModel, uniqueL3L2Pair,
-                         /*hardwareAware*/ false))) {
+  if (failed(assignTiles(rewriter, moduleOp, deviceModel, uniqueL3L2Pair))) {
     moduleOp.emitOpError() << "local tile assignment failed";
     return signalPassFailure();
   }
