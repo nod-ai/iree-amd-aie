@@ -224,20 +224,21 @@ class ConvolutionFromTemplate(BaseTest):
 class MultipleDispatches(BaseTest):
     def __init__(
         self,
-        name,
+        file_base_name,
         function_name,
         test_params=None,
     ):
         super().__init__(
-            name=name,
+            name=file_base_name,
             test_params=test_params,
         )
         self.labels += ["Matmul", "MultipleDispatches"]
+        self.file_base_name = file_base_name
         self.function_name = function_name
 
     def _execute(self, config):
         test_files_dir = config.file_dir / "test_files"
-        self.filename = test_files_dir / f"{self.name}.mlir"
+        self.filename = test_files_dir / f"{self.file_base_name}.mlir"
 
         aie_vs_llvm_cpu(
             config,
@@ -2553,7 +2554,7 @@ class Tests:
 
         # MultipleDispatches tests:
         for target in ["npu1_4col", "npu4"]:
-            for name, func_name in [
+            for file_base_name, func_name in [
                 ["two_matmul_switching", "matmul_small"],
                 ["matmul_f32_8_8_4", "matmul_8_8_4"],
                 ["matmul_f32_8_4_8", "matmul_8_4_8"],
@@ -2561,7 +2562,7 @@ class Tests:
             ]:
                 self.register(
                     MultipleDispatches(
-                        name,
+                        file_base_name,
                         func_name,
                         test_params=TestParams(
                             aie_compilation_flags=[
@@ -2569,6 +2570,7 @@ class Tests:
                                 "--iree-amdaie-num-cols=1",
                             ],
                             run_on_target=target,
+                            name_suffix="OneCore_" + target,
                         ),
                     )
                 )
