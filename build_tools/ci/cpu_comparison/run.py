@@ -2552,24 +2552,26 @@ class Tests:
         )
 
         # MultipleDispatches tests:
-        for name, func_name in [
-            ["two_matmul_switching", "matmul_small"],
-            ["matmul_f32_8_8_4", "matmul_8_8_4"],
-            ["matmul_f32_8_4_8", "matmul_8_4_8"],
-            ["three_matmuls", "three_$mm$"],
-        ]:
-            self.register(
-                MultipleDispatches(
-                    name,
-                    func_name,
-                    test_params=TestParams(
-                        aie_compilation_flags=[
-                            "--iree-amdaie-num-rows=1",
-                            "--iree-amdaie-num-cols=1",
-                        ],
-                    ),
+        for target in ["npu1_4col", "npu4"]:
+            for name, func_name in [
+                ["two_matmul_switching", "matmul_small"],
+                ["matmul_f32_8_8_4", "matmul_8_8_4"],
+                ["matmul_f32_8_4_8", "matmul_8_4_8"],
+                ["three_matmuls", "three_$mm$"],
+            ]:
+                self.register(
+                    MultipleDispatches(
+                        name,
+                        func_name,
+                        test_params=TestParams(
+                            aie_compilation_flags=[
+                                "--iree-amdaie-num-rows=1",
+                                "--iree-amdaie-num-cols=1",
+                            ],
+                            run_on_target=target,
+                        ),
+                    )
                 )
-            )
 
         # Convolution 2D tests:
         conv_2d_map = {
