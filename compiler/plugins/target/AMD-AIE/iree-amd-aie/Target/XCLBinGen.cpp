@@ -1482,6 +1482,8 @@ LogicalResult generateControlPackets(
 
   // Run the pipeline.
   auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(deviceOp);
+  if (!targetAttr)
+    return deviceOp.emitError() << "Could not find target attribute";
   ModuleOp moduleOpCopy = cast<ModuleOp>(deviceOp->getParentOp()).clone();
   moduleOpCopy->setAttr("hal.executable.target", targetAttr);
   if (failed(pm.run(moduleOpCopy))) {

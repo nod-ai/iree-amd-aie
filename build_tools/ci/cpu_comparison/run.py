@@ -242,6 +242,7 @@ class MultipleDispatches(BaseTest):
     def __init__(
         self,
         name,
+        function_name,
         test_params=None,
     ):
         super().__init__(
@@ -249,23 +250,24 @@ class MultipleDispatches(BaseTest):
             test_params=test_params,
         )
         self.labels += ["Matmul", "MultipleDispatches"]
+        self.function_name = function_name
+
+        self.aie_compilation_flags += [
+            "--iree-amdaie-enable-input-packet-flow=true",
+            "--iree-amdaie-enable-control-packet=true",
+        ]
 
     def _execute(self, config):
         test_files_dir = config.file_dir / "test_files"
         self.filename = test_files_dir / f"{self.name}.mlir"
-        # TODO(newling) did Maks ever document why this is here, if so add an
-        # explainer.
-        if config.xdna_datetime and config.xdna_datetime < 20240801:
-            aie_vs_llvm_cpu(
-                config,
-                self.aie_compilation_flags,
-                self.filename,
-                function_name="three_$mm$",
-            )
-            return True
-        else:
-            # Return False to indicate that the test did not run.
-            return False
+
+        aie_vs_llvm_cpu(
+            config,
+            self.aie_compilation_flags,
+            self.filename,
+            function_name=self.function_name,
+        )
+        return True
 
 
 class BaseMatmul(BaseTest):
@@ -2582,8 +2584,21 @@ class Tests:
         )
 
         # MultipleDispatches tests:
-        for name in ["two_matmul_switching", "matmul_f32_8_8_4", "matmul_f32_8_4_8"]:
-            self.register(MultipleDispatches(name))
+        self.register(
+            MultipleDispatches(
+                name="two_matmul_switching", function_name="matmul_small"
+            )
+        )
+        # self.register(
+        #     MultipleDispatches(
+        #         name="matmul_f32_8_8_4", function_name="matmul_8_8_4"
+        #     )
+        # )
+        # self.register(
+        #     MultipleDispatches(
+        #         name="matmul_f32_8_4_8", function_name="matmul_8_4_8"
+        #     )
+        # )
 
         # Convolution NHCWQ test:
         self.register(ConvolutionNHWCQ())

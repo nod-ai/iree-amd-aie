@@ -276,18 +276,21 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_dispatch(
             kernel_params.asm_inst_runlist[0]));
   } else {
     for (size_t i = 0; i < num_reconfigurations; i++) {
+      llvm::errs() << "Reconfigure kernel " << i << "\n";
       // Reconfigure the device.
       IREE_RETURN_AND_END_ZONE_IF_ERROR(
           z0, iree_hal_xrt_lite_direct_command_buffer_reconfigure(
                   command_buffer, hwq, cu_idx, kernel_params.n_reconfigure_runs,
                   kernel_params.asm_inst_runlist[2 * i],
                   kernel_params.reconf_data_runlist[i]));
+      llvm::errs() << "Dispatch kernel " << i << "\n";
       // Dispatch the new kernel.
       IREE_RETURN_AND_END_ZONE_IF_ERROR(
           z0, iree_hal_xrt_lite_direct_command_buffer_normal_run(
                   bindings, command_buffer, hwq, cu_idx,
                   kernel_params.n_kernel_runs,
                   kernel_params.asm_inst_runlist[2 * i + 1]));
+      llvm::errs() << "Done!\n";
     }
   }
 
