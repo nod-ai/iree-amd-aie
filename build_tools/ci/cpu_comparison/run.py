@@ -2556,8 +2556,20 @@ class Tests:
             ["two_matmul_switching", "matmul_small"],
             ["matmul_f32_8_8_4", "matmul_8_8_4"],
             ["matmul_f32_8_4_8", "matmul_8_4_8"],
+            ["three_matmuls", "three_$mm$"],
         ]:
-            self.register(MultipleDispatches(name, func_name))
+            self.register(
+                MultipleDispatches(
+                    name,
+                    func_name,
+                    test_params=TestParams(
+                        aie_compilation_flags=[
+                            "--iree-amdaie-num-rows=1",
+                            "--iree-amdaie-num-cols=1",
+                        ],
+                    ),
+                )
+            )
 
         # Convolution 2D tests:
         conv_2d_map = {
