@@ -398,6 +398,22 @@ uint32_t AMDAIEDeviceModel::getCtrlPktMaxOpcode() const {
          1;
 }
 
+uint32_t AMDAIEDeviceModel::getTileMemorySizeInBytes(uint8_t col,
+                                                     uint8_t row) const {
+  AMDAIETileType tileType = getTileType(col, row);
+  switch (tileType) {
+    case AMDAIETileType::AIETILE:
+      return getLocalMemorySize(col, row);
+    case AMDAIETileType::MEMTILE:
+      return getMemTileSize(col, row);
+    case AMDAIETileType::SHIMNOC:
+    case AMDAIETileType::SHIMPL:
+      return std::numeric_limits<uint32_t>::max();
+    default:
+      return 0;
+  }
+}
+
 uint32_t AMDAIEDeviceModel::getMemInternalBaseAddress() const {
   return getMemEastBaseAddress();
 }

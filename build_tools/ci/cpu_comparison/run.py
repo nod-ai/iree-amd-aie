@@ -221,23 +221,6 @@ class ConvolutionFromTemplate(BaseTest):
         return run_conv_test(config, self.aie_compilation_flags, filename, n_repeats=2)
 
 
-class ConvolutionNHWCQ(BaseTest):
-    def __init__(
-        self,
-        test_params=None,
-    ):
-        super().__init__(
-            name="convolution_nhwc_q",
-            test_params=test_params,
-        )
-        self.labels += ["Convolution", "ConvolutionNHWCQ"]
-
-    def _execute(self, config):
-        files_dir = config.file_dir / "test_files"
-        filename = files_dir / "conv2d_nhwc_q.mlir"
-        return run_conv_test(config, self.aie_compilation_flags, filename, n_repeats=1)
-
-
 class BaseMatmul(BaseTest):
     def __init__(
         self,
@@ -1960,20 +1943,10 @@ class Tests:
         )
 
         # MatmulThinBias test(s):
-        self.register(
-            MatmulThinBias(
-                1024,
-                1024,
-                512,
-                "bf16",
-                "f32",
-                test_params=TestParams(use_ukernel=True, lower_to_aie_pipeline="air"),
-            )
-        )
         self.register(MatmulThinBias(1024, 1024, 512, "bf16", "f32"))
 
         # MatmulFullBias test:
-        self.register(MatmulFullBias(128, 128, 256, "i32", "i32"))
+        self.register(MatmulFullBias(128, 128, 256, "bf16", "f32"))
 
         # MatmulTransposeB test(s):
         for input_type, acc_type in zip(["i8", "bf16"], ["i32", "f32"]):
@@ -2348,6 +2321,20 @@ class Tests:
                 "run_on_target": "npu4",
                 "use_chess_for_ukernel": False,
             },
+            {
+                "M": 1024,
+                "N": 4096 * 4,
+                "K": 512,
+                "in_dtype": "i8",
+                "use_ukernel": True,
+                "matmul4d": True,
+                "scale_trunc": True,
+                "tile_pipeline": "pack-peel-4-level-tiling",
+                "run_on_target": "npu4",
+                "use_chess": False,
+                "use_chess_for_ukernel": False,
+                "peano_opt_level": 1,
+            },
         ]
 
         # Some bf16 Performance tests:
@@ -2364,6 +2351,7 @@ class Tests:
             tile_pipeline = test.get("tile_pipeline", "pack-peel")
             matmul4d = test.get("matmul4d", False)
             scale_trunc = test.get("scale_trunc", False)
+            use_chess = test.get("use_chess", False)
             use_chess_for_ukernel = test.get("use_chess_for_ukernel", True)
             run_on_target = test.get("run_on_target", "npu1_4col")
             in_dtype = test.get("in_dtype", "bf16")
@@ -2463,6 +2451,7 @@ class Tests:
                             aie_compilation_flags=aie_compilation_flags,
                             name_suffix=name_suffix,
                             n_repeats=2,
+                            use_chess=use_chess,
                             use_chess_for_ukernel=use_chess_for_ukernel,
                         ),
                         additional_labels=["PerformanceCorrectness"]
@@ -2484,6 +2473,7 @@ class Tests:
                     name_suffix=name_suffix,
                     run_benchmark=True,
                     n_repeats=n_performance_repeats,
+                    use_chess=use_chess,
                     use_chess_for_ukernel=use_chess_for_ukernel,
                 ),
                 additional_labels=["Performance"] + additional_labels,
@@ -2550,9 +2540,6 @@ class Tests:
                 ),
             )
         )
-
-        # Convolution NHCWQ test:
-        self.register(ConvolutionNHWCQ())
 
         # Convolution 2D tests:
         conv_2d_map = {
