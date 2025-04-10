@@ -98,7 +98,7 @@ void AMDAIEFuseConsumerIntoLoopPass::runOnOperation() {
   }
 
   // Step 4. Find outermost nested scf loop and maintain the loop nest count.
-  int64_t loopNestLength = 1;
+  int64_t loopNestDepth = 1;
   do {
     ResultRange results = loop->getResults();
     SmallVector<Operation *> allUsers = std::accumulate(
@@ -118,20 +118,23 @@ void AMDAIEFuseConsumerIntoLoopPass::runOnOperation() {
     }
     computeOp = loop;
     loop = loop->getParentOfType<LoopLikeOpInterface>();
-    loopNestLength++;
+    loopNestDepth++;
   } while (true);
 
   // Step 5. Greedily fuse the consumer ops for a specified fusion depth at each
-  // level of the loopnest.
-  bool changedGlobal{false};
-  bool changedLocal{true};
-  while (loopNestLength != 0) {
+  // level of the loopnest. While doing so we maintain `changeLocal` to track if
+  // consumer fusion has taken place at a particular loopnest; and
+  // `changeGlobal` to track if at least one consumer fusion has taken place at
+  // any level of the loopnest.
+  bool changedGlobal{false}, changedLocal{true};
+  while (loopNestDepth != 0) {
     changedLocal = false;
-    if (loopNestLength > 1) {
+    if (loopNestDepth > 1) {
       computeOp = findPostOrderComputeOpInLoop<LoopLikeOpInterface>(loop);
     } else {
       computeOp = findPostOrderComputeOpInLoop<linalg::LinalgOp>(loop);
     }
+    assert(computeOp && "could not find either a scf loop or a linalg.generic");
     // TODO(jornt): Refactor fuseDepth to avoid hardcoding and fuse greedily
     // with any depth instead.
     for (unsigned depth = 1; depth <= fuseDepth; depth++) {
@@ -168,17 +171,17 @@ void AMDAIEFuseConsumerIntoLoopPass::runOnOperation() {
       } while (computeOp && computeOp->getParentOp() != funcOp);
     }
     if (changedLocal == false) break;
-    if (loopNestLength > 1) {
+    if (loopNestDepth > 1) {
       loop = cast<LoopLikeOpInterface>(
           findPostOrderComputeOpInLoop<LoopLikeOpInterface>(
               computeOp->getParentOfType<LoopLikeOpInterface>()));
     }
-    loopNestLength--;
+    loopNestDepth--;
     // Canonicalize before every iteration to enable more back-to-back fusion
     // opportunities.
     (void)applyPatternsGreedily(funcOp, canonicalizationPatterns);
   }
-  if (changedGlobal) {
+  if (!changedGlobal) {
     LLVM_DEBUG(llvm::dbgs()
                << "Failed to fuse any consumer op into the producer.");
     return;
