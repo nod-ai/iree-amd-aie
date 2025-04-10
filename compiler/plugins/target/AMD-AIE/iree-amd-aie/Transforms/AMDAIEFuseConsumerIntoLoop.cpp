@@ -119,8 +119,13 @@ void AMDAIEFuseConsumerIntoLoopPass::runOnOperation() {
     computeOp = loop;
     loop = loop->getParentOfType<LoopLikeOpInterface>();
     loopNestDepth++;
-  } while (true);
+  } while (loop);
 
+  if (!loop) {
+    LLVM_DEBUG(llvm::dbgs() << "Could not find the outermost scf loop from "
+                               "where consumer fusion can begin.\n");
+    return;
+  }
   // Step 5. Greedily fuse the consumer ops for a specified fusion depth at each
   // level of the loopnest. While doing so we maintain `changeLocal` to track if
   // consumer fusion has taken place at a particular loopnest; and
