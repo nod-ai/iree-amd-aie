@@ -16,6 +16,19 @@
 namespace mlir::iree_compiler::AMDAIE {
 namespace {
 
+template <typename ComputeOp>
+Operation *findPostOrderComputeOpInLoop(LoopLikeOpInterface loop) {
+  Operation *computeOp = nullptr;
+  loop->walk<WalkOrder::PostOrder, ReverseIterator>([&](ComputeOp op) {
+    if (op != loop) {
+      computeOp = op;
+      return WalkResult::interrupt();
+    }
+    return WalkResult::interrupt();
+  });
+  return computeOp;
+}
+
 class AMDAIEFuseConsumerIntoLoopPass
     : public impl::AMDAIEFuseConsumerIntoLoopBase<
           AMDAIEFuseConsumerIntoLoopPass> {
@@ -70,6 +83,7 @@ void AMDAIEFuseConsumerIntoLoopPass::runOnOperation() {
                << "There is no scf.for/forall loop to fuse with\n");
     return;
   }
+  LoopLikeOpInterface loop = cast<LoopLikeOpInterface>(scfLoopOp);
 
   // Step 3. Search the compute op and its consumer slices.
   Operation *computeOp;
@@ -83,22 +97,54 @@ void AMDAIEFuseConsumerIntoLoopPass::runOnOperation() {
     return;
   }
 
-  // Step 4. Greedily fuse the consumer ops for a specified fusion depth and
-  // while fusion keeps occurring or until the maximum number of iterations is
-  // exceeded.
-  bool changed{true};
-  int64_t iter{0};
-  while (changed && iter < maxIterations) {
-    changed = false;
-    // Canonicalize before every iteration to enable more back-to-back fusion
-    // opportunities.
-    (void)applyPatternsGreedily(funcOp, canonicalizationPatterns);
-    Operation *producerOp = computeOp;
+  // Step 4. Find outermost nested scf loop and maintain the loop nest count.
+  int64_t loopNestDepth = 1;
+  do {
+    ResultRange results = loop->getResults();
+    SmallVector<Operation *> allUsers = std::accumulate(
+        results.begin(), results.end(), SmallVector<Operation *>{},
+        [](SmallVector<Operation *> init, OpResult res) {
+          for (Operation *op : res.getUsers()) init.push_back(op);
+          return init;
+        });
+    if (allUsers.size() != 1) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Expected only one user of the compute/loop op.\n");
+      return;
+    }
+    if (!(isa<tensor::InsertSliceOp, tensor::ParallelInsertSliceOp>(
+            allUsers[0]))) {
+      break;
+    }
+    computeOp = loop;
+    loop = loop->getParentOfType<LoopLikeOpInterface>();
+    loopNestDepth++;
+  } while (loop);
+
+  if (!loop) {
+    LLVM_DEBUG(llvm::dbgs() << "Could not find the outermost scf loop from "
+                               "where consumer fusion can begin.\n");
+    return;
+  }
+  // Step 5. Greedily fuse the consumer ops for a specified fusion depth at each
+  // level of the loopnest. While doing so we maintain `changeLocal` to track if
+  // consumer fusion has taken place at a particular loopnest; and
+  // `changeGlobal` to track if at least one consumer fusion has taken place at
+  // any level of the loopnest.
+  bool changedGlobal{false}, changedLocal{true};
+  while (loopNestDepth != 0) {
+    changedLocal = false;
+    if (loopNestDepth > 1) {
+      computeOp = findPostOrderComputeOpInLoop<LoopLikeOpInterface>(loop);
+    } else {
+      computeOp = findPostOrderComputeOpInLoop<linalg::LinalgOp>(loop);
+    }
+    assert(computeOp && "could not find either a scf loop or a linalg.generic");
     // TODO(jornt): Refactor fuseDepth to avoid hardcoding and fuse greedily
     // with any depth instead.
     for (unsigned depth = 1; depth <= fuseDepth; depth++) {
       do {
-        ResultRange results = producerOp->getResults();
+        ResultRange results = computeOp->getResults();
         SmallVector<Operation *> allUsers = std::accumulate(
             results.begin(), results.end(), SmallVector<Operation *>{},
             [](SmallVector<Operation *> init, OpResult res) {
@@ -114,43 +160,36 @@ void AMDAIEFuseConsumerIntoLoopPass::runOnOperation() {
         Operation *candidateSliceOp = allUsers[0];
         if (!(isa<tensor::InsertSliceOp, tensor::ParallelInsertSliceOp>(
                 candidateSliceOp))) {
-          producerOp = producerOp->getParentOfType<LoopLikeOpInterface>();
-          LLVM_DEBUG(
-              llvm::dbgs()
-              << "Going to reattempt fusion because didn't find "
-                 "tensor.insert_slice/tensor.parallel_insert_slice as the "
-                 "user of the compute op\n");
-          continue;
+          break;
         }
         std::optional<scf::SCFFuseConsumerOfSliceResult> fusedConsumer =
-            scf::tileAndFuseConsumerOfSlice(rewriter, candidateSliceOp);
+            scf::tileAndFuseConsumerOfSlice(rewriter, candidateSliceOp,
+                                            MutableArrayRef(loop));
         if (!fusedConsumer) {
-          producerOp = producerOp->getParentOfType<LoopLikeOpInterface>();
-          LLVM_DEBUG(llvm::dbgs()
-                     << "Failed to fuse any consumer op into the producer. "
-                        "Reattempt with loop-like parent operation.\n");
-          continue;
+          break;
         }
-        changed = true;
+        changedLocal = true;
+        changedGlobal = true;
         fusedConsumer->origConsumerOperand->getOwner()->erase();
-        Operation *fusedOp =
-            fusedConsumer->tiledAndFusedConsumerOperand->getOwner();
-        if (getAncestorInBlock(fusedOp, computeOp->getBlock()) != nullptr) {
-          // The consumer is fused all the way into the producer's block, so
-          // operate on this op from now on, but with reduced depth.
-          computeOp = fusedOp;
-          fuseDepth -= 1;
-        }
-        producerOp = fusedOp;
+        computeOp = fusedConsumer->tiledAndFusedConsumerOperand->getOwner();
         break;
-      } while (producerOp && producerOp->getParentOp() != funcOp);
+      } while (computeOp && computeOp->getParentOp() != funcOp);
     }
-    iter++;
+    if (changedLocal == false) break;
+    if (loopNestDepth > 1) {
+      loop = cast<LoopLikeOpInterface>(
+          findPostOrderComputeOpInLoop<LoopLikeOpInterface>(
+              computeOp->getParentOfType<LoopLikeOpInterface>()));
+    }
+    loopNestDepth--;
+    // Canonicalize before every iteration to enable more back-to-back fusion
+    // opportunities.
+    (void)applyPatternsGreedily(funcOp, canonicalizationPatterns);
   }
-  if (iter >= maxIterations) {
-    funcOp.emitOpError() << "Maximum number of iterations reached, consumer "
-                            "fusion is likely stuck in an infinite loop.";
-    return signalPassFailure();
+  if (!changedGlobal) {
+    LLVM_DEBUG(llvm::dbgs()
+               << "Failed to fuse any consumer op into the producer.");
+    return;
   }
 }
 

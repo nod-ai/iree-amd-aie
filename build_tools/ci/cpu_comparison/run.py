@@ -221,6 +221,34 @@ class ConvolutionFromTemplate(BaseTest):
         return run_conv_test(config, self.aie_compilation_flags, filename, n_repeats=2)
 
 
+class MultipleDispatches(BaseTest):
+    def __init__(
+        self,
+        file_base_name,
+        function_name,
+        test_params=None,
+    ):
+        super().__init__(
+            name=file_base_name,
+            test_params=test_params,
+        )
+        self.labels += ["Matmul", "MultipleDispatches"]
+        self.file_base_name = file_base_name
+        self.function_name = function_name
+
+    def _execute(self, config):
+        test_files_dir = config.file_dir / "test_files"
+        self.filename = test_files_dir / f"{self.file_base_name}.mlir"
+
+        aie_vs_llvm_cpu(
+            config,
+            self.aie_compilation_flags,
+            self.filename,
+            function_name=self.function_name,
+        )
+        return True
+
+
 class BaseMatmul(BaseTest):
     def __init__(
         self,
@@ -2523,6 +2551,29 @@ class Tests:
                 ),
             )
         )
+
+        # MultipleDispatches tests:
+        for target in ["npu1_4col", "npu4"]:
+            for file_base_name, func_name in [
+                ["two_matmul_switching", "matmul_small"],
+                ["matmul_f32_8_8_4", "matmul_8_8_4"],
+                ["matmul_f32_8_4_8", "matmul_8_4_8"],
+                ["three_matmuls", "three_$mm$"],
+            ]:
+                self.register(
+                    MultipleDispatches(
+                        file_base_name,
+                        func_name,
+                        test_params=TestParams(
+                            aie_compilation_flags=[
+                                "--iree-amdaie-num-rows=1",
+                                "--iree-amdaie-num-cols=1",
+                            ],
+                            run_on_target=target,
+                            name_suffix="OneCore_" + target,
+                        ),
+                    )
+                )
 
         # Convolution 2D tests:
         conv_2d_map = {

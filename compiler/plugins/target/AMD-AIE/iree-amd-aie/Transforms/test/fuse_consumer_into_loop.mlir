@@ -37,7 +37,6 @@
 #map2 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d1, d4, d3, d6, d7)>
 #map3 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d0, d1, d2, d3, d4, d5)>
 module {
-  // expected-error @+1 {{Maximum number of iterations reached, consumer fusion is likely stuck in an infinite loop.}}
   func.func @fuse_consumer_into_scffor_matmul(%arg0: tensor<1x1x4x8x4x8xi8>, %arg1: tensor<1x1x4x4x8x8xi8>, %arg2: tensor<1x1x8x16x4x8xi32>, %arg3: tensor<1024x1024xi32>) -> tensor<1024x1024xi32> {
     %c4 = arith.constant 4 : index
     %c64 = arith.constant 64 : index
@@ -130,7 +129,6 @@ module {
 #map2 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d1, d4, d3, d6, d7)>
 #map3 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d0, d1, d2, d3, d4, d5)>
 module {
-  // expected-error @+1 {{Maximum number of iterations reached, consumer fusion is likely stuck in an infinite loop.}}
   func.func @fuse_consumer_into_scffor_matmul_elemwise_fusion(%arg0: tensor<1x1x4x8x4x8xi8>, %arg1: tensor<1x1x4x4x8x8xi8>, %arg2: tensor<1x1x8x16x4x8xi32>, %arg3: tensor<1024x1024xi32>) -> tensor<1024x1024xi32> {
     %c4 = arith.constant 4 : index
     %c64 = arith.constant 64 : index
@@ -187,7 +185,6 @@ module {
 // CHECK:       linalg.elemwise_binary
 // CHECK:       tensor.insert_slice
 
-// expected-error @+1 {{Maximum number of iterations reached, consumer fusion is likely stuck in an infinite loop.}}
 func.func @no_consumer_fusion(%arg0: tensor<64xf32>) -> tensor<64xf32> {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -239,7 +236,6 @@ func.func @no_consumer_fusion(%arg0: tensor<64xf32>) -> tensor<64xf32> {
 #map2 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d1, d4, d3, d6, d7)>
 #map3 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d0, d1, d2, d3, d4, d5)>
 module {
-  // expected-error @+1 {{Maximum number of iterations reached, consumer fusion is likely stuck in an infinite loop.}}
   func.func @fuse_consumer_into_scfforall_matmul(%arg0: tensor<1x1x4x8x4x8xi8>, %arg1: tensor<1x1x4x4x8x8xi8>, %arg2: tensor<1x1x8x16x4x8xi32>, %arg3: tensor<1024x1024xi32>) -> tensor<1024x1024xi32> {
     %0 = scf.forall (%arg4, %arg5) in (2, 2) shared_outs(%arg6 = %arg3) -> (tensor<1024x1024xi32>) {
       %1 = scf.forall (%arg7, %arg8) in (2, 2) shared_outs(%arg9 = %arg2) -> (tensor<1x1x8x16x4x8xi32>) {
@@ -331,7 +327,6 @@ module {
 #map2 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d1, d4, d3, d6, d7)>
 #map3 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d0, d1, d2, d3, d4, d5)>
 module {
-  // expected-error @+1 {{Maximum number of iterations reached, consumer fusion is likely stuck in an infinite loop.}}
   func.func @fuse_consumer_into_scfforall_matmul_elemwise_fusion(%arg0: tensor<1x1x4x8x4x8xi8>, %arg1: tensor<1x1x4x4x8x8xi8>, %arg2: tensor<1x1x8x16x4x8xi32>, %arg3: tensor<1024x1024xi32>) -> tensor<1024x1024xi32> {
     %0 = scf.forall (%arg4, %arg5) in (2, 2) shared_outs(%arg6 = %arg3) -> (tensor<1024x1024xi32>) {
       %1 = scf.forall (%arg7, %arg8) in (2, 2) shared_outs(%arg9 = %arg2) -> (tensor<1x1x8x16x4x8xi32>) {
@@ -387,7 +382,6 @@ module {
 // CHECK:       scf.forall.in_parallel
 // CHECK:         tensor.parallel_insert_slice
 
-// expected-error @+1 {{Maximum number of iterations reached, consumer fusion is likely stuck in an infinite loop.}}
 func.func @no_consumer_fusion(%arg0: tensor<64xf32>) -> tensor<64xf32> {
   %0 = scf.forall (%arg1, %arg2) in (1,2) shared_outs(%out = %arg0) -> tensor<64xf32> {
     %1 = linalg.elemwise_binary {fun = #linalg.binary_fn<add>} ins(%arg0, %arg0 : tensor<64xf32>, tensor<64xf32>) outs(%arg0 : tensor<64xf32>) -> tensor<64xf32>
@@ -423,7 +417,6 @@ func.func @no_consumer_fusion(%arg0: tensor<64xf32>) -> tensor<64xf32> {
 #map1 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d2, d1, d4, d5, d8, d7)>
 #map2 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d1, d4, d3, d6, d7)>
 module {
-  // expected-error @+1 {{Maximum number of iterations reached, consumer fusion is likely stuck in an infinite loop.}}
   func.func @fuse_consumer_into_mix_scf_forall_for(%arg0: tensor<1x1x4x8x4x8xi32>, %arg1: tensor<1x1x8x4x8x4xi32>, %arg2: tensor<4x4x8x8x4x4xi32>, %arg3: tensor<128x128xi32>) -> tensor<128x128xi32> {
     %c0 = arith.constant 0 : index
     %c0_i32 = arith.constant 0 : i32
@@ -482,7 +475,6 @@ module {
 #map1 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d1, d2, d4, d5, d8, d7)>
 #map2 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d1, d4, d3, d6, d7)>
 module {
-  // expected-error @+1 {{Maximum number of iterations reached, consumer fusion is likely stuck in an infinite loop.}}
   func.func @matmul_multiple_fusion_iterations() -> tensor<512x4096xf32> {
     %c0 = arith.constant 0 : index
     %alloc = memref.alloc() : memref<1x1x8x8x8x4xbf16, 2 : i32>
@@ -580,7 +572,6 @@ module {
 #map2 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d1, d4, d3, d6, d7)>
 #map3 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d0, d1, d2, d3, d4, d5)>
 module {
-  // expected-error @+1 {{Maximum number of iterations reached, consumer fusion is likely stuck in an infinite loop.}}
   func.func @matmul_elemwise_multiple_fusion_iterations() -> tensor<512x4096xbf16> {
     %alloc = memref.alloc() : memref<1x1x8x8x8x4xbf16, 2 : i32>
     %alloc_0 = memref.alloc() : memref<1x1x8x8x4x8xbf16, 2 : i32>
