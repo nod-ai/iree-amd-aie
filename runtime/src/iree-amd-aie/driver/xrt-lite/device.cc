@@ -203,6 +203,17 @@ static iree_status_t iree_hal_xrt_lite_device_queue_alloca(
   return iree_ok_status();
 }
 
+static iree_status_t iree_hal_xrt_lite_device_queue_dealloca(
+    iree_hal_device_t* base_device, iree_hal_queue_affinity_t queue_affinity,
+    const iree_hal_semaphore_list_t wait_semaphore_list,
+    const iree_hal_semaphore_list_t signal_semaphore_list,
+    iree_hal_buffer_t* buffer, iree_hal_alloca_flags_t flags) {
+  IREE_RETURN_IF_ERROR(iree_hal_semaphore_list_wait(wait_semaphore_list,
+                                                    iree_infinite_timeout()));
+  iree_status_t status = iree_hal_semaphore_list_signal(signal_semaphore_list);
+  return status;
+}
+
 static iree_string_view_t iree_hal_xrt_lite_device_id(
     iree_hal_device_t* base_device) {
   IREE_TRACE_ZONE_BEGIN(z0);
@@ -300,6 +311,7 @@ const iree_hal_device_vtable_t iree_hal_xrt_lite_device_vtable = {
     .create_executable_cache = iree_hal_xrt_lite_device_create_executable_cache,
     .create_semaphore = iree_hal_xrt_lite_device_create_semaphore,
     .queue_alloca = iree_hal_xrt_lite_device_queue_alloca,
+    .queue_dealloca = iree_hal_xrt_lite_device_queue_dealloca,
     .queue_copy = iree_hal_device_queue_emulated_copy,
     .queue_execute = iree_hal_xrt_lite_device_queue_execute,
     .profiling_begin = unimplemented_ok_status,
