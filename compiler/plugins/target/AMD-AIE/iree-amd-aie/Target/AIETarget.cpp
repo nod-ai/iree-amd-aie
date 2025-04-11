@@ -379,11 +379,9 @@ struct Flatbuffer1dStringArrayConverter {
   template <typename FuncCreateStringRef>
   SmallVector<flatbuffers_ref_t> getFlatbufferRefs(
       FlatbufferBuilder &builder, FuncCreateStringRef createStringRef) {
-    SmallVector<flatbuffers_ref_t> dataRefs =
-        llvm::map_to_vector(data, [&](const StringRef &entry) {
-          return createStringRef(builder, builder.createString(entry));
-        });
-    return dataRefs;
+    return llvm::map_to_vector(data, [&](const StringRef &entry) {
+      return createStringRef(builder, builder.createString(entry));
+    });
   }
 };
 
@@ -418,18 +416,15 @@ struct Flatbuffer3dUInt32ArrayConverter {
   SmallVector<flatbuffers_ref_t> getFlatbufferRefs(
       FlatbufferBuilder &builder, FuncCreateArray1d createArray1d,
       FuncCreateArray2d createArray2d) {
-    auto buildArray1d = [&](std::vector<uint32_t> &entry1d) {
-      return createArray1d(builder, builder.createInt32Vec(entry1d));
-    };
-    auto buildArray2d = [&](SmallVector<std::vector<uint32_t>> &entry2d) {
-      SmallVector<Array1dRef> entry2dRefs =
-          llvm::map_to_vector(entry2d, buildArray1d);
+    auto convertToRef = [&](SmallVector<std::vector<uint32_t>> &entry2d) {
+      SmallVector<Array1dRef> entry2dRefs = llvm::map_to_vector(
+          entry2d, [&](std::vector<uint32_t> &entry1d) -> Array1dRef {
+            return createArray1d(builder, builder.createInt32Vec(entry1d));
+          });
       return createArray2d(builder,
                            builder.createOffsetVecDestructive(entry2dRefs));
     };
-    SmallVector<flatbuffers_ref_t> dataRefs =
-        llvm::map_to_vector(data, buildArray2d);
-    return dataRefs;
+    return llvm::map_to_vector(data, convertToRef);
   }
 };
 
