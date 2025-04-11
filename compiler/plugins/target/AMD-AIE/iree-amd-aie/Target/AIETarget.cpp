@@ -379,9 +379,10 @@ struct Flatbuffer1dStringArrayConverter {
   template <typename FuncCreateStringRef>
   SmallVector<flatbuffers_ref_t> getFlatbufferRefs(
       FlatbufferBuilder &builder, FuncCreateStringRef createStringRef) {
-    SmallVector<flatbuffers_ref_t> dataRefs;
-    for (StringRef entry : data)
-      dataRefs.push_back(createStringRef(builder, builder.createString(entry)));
+    SmallVector<flatbuffers_ref_t> dataRefs =
+        llvm::map_to_vector(data, [&](const StringRef &entry) {
+          return createStringRef(builder, builder.createString(entry));
+        });
     return dataRefs;
   }
 };
@@ -417,16 +418,17 @@ struct Flatbuffer3dUInt32ArrayConverter {
   SmallVector<flatbuffers_ref_t> getFlatbufferRefs(
       FlatbufferBuilder &builder, FuncCreateArray1d createArray1d,
       FuncCreateArray2d createArray2d) {
-    SmallVector<flatbuffers_ref_t> dataRefs;
-    for (SmallVector<std::vector<uint32_t>> &entry2d : data) {
-      SmallVector<Array1dRef> entry2dRefs;
-      for (std::vector<uint32_t> &entry1d : entry2d) {
-        entry2dRefs.push_back(
-            createArray1d(builder, builder.createInt32Vec(entry1d)));
-      }
-      dataRefs.push_back(createArray2d(
-          builder, builder.createOffsetVecDestructive(entry2dRefs)));
-    }
+    auto buildArray1d = [&](std::vector<uint32_t> &entry1d) {
+      return createArray1d(builder, builder.createInt32Vec(entry1d));
+    };
+    auto buildArray2d = [&](SmallVector<std::vector<uint32_t>> &entry2d) {
+      SmallVector<Array1dRef> entry2dRefs =
+          llvm::map_to_vector(entry2d, buildArray1d);
+      return createArray2d(builder,
+                           builder.createOffsetVecDestructive(entry2dRefs));
+    };
+    SmallVector<flatbuffers_ref_t> dataRefs =
+        llvm::map_to_vector(data, buildArray2d);
     return dataRefs;
   }
 };
@@ -526,7 +528,7 @@ LogicalResult AIETargetBackend::serializeExecutable(
       return failure();
   }
 
-  // Utilities for converting data into FlatBuffef formats.
+  // Utilities for converting data into FlatBuffer formats.
   Flatbuffer1dStringArrayConverter entryPointNameConvertor(ordinalCount);
   Flatbuffer1dStringArrayConverter artifactConvertor(ordinalCount);
   Flatbuffer3dUInt32ArrayConverter asmInstrConverter(ordinalCount);
