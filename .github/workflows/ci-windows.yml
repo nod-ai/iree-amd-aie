@@ -66,7 +66,7 @@ jobs:
               submodule update --init --recursive --depth 1 --single-branch -j 10
 
       - name: Setup Cpp
-        uses: aminya/setup-cpp@d6447bbe915d7a5c61f9e8be56a219f357696b19 # v1.5.1
+        uses: aminya/setup-cpp@6370aaa0252a93c71dcc4cf49397f46810eeda56 # v1.5.3
         with:
           compiler: llvm
           vcvarsall: true
