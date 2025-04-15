@@ -336,8 +336,7 @@ static iree_status_t iree_hal_xrt_device_queue_execute(
                 device->host_allocator, &xrt_command_buffer));
     IREE_RETURN_AND_END_ZONE_IF_ERROR(
         z0, iree_hal_deferred_command_buffer_apply(
-                command_buffer, xrt_command_buffer,
-                iree_hal_buffer_binding_table_empty()));
+                command_buffer, xrt_command_buffer, binding_table));
   }
   // Do we need to block here like vulkan HAL? Check if we run into some
   // correctness issue in the future.
