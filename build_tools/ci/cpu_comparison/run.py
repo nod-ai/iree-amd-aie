@@ -303,17 +303,6 @@ class BaseMatmul(BaseTest):
     def benchmark(self, config):
         filename = self.get_filename(config)
 
-        # Print some additional information that might have been tagged on earlier.
-        if config.verbose:
-            if hasattr(self, "n_matmul_ops"):
-                print(f"Total ops (2 * M * N * K * repeats) : {self.n_matmul_ops}")
-
-            if hasattr(self, "n_cols"):
-                print(f"Number of columns : {self.n_cols}")
-
-            if hasattr(self, "n_rows"):
-                print(f"Number of rows : {self.n_rows}")
-
         benchmark_aie(
             config=config,
             aie_compilation_flags=self.aie_compilation_flags,
@@ -326,6 +315,17 @@ class BaseMatmul(BaseTest):
             n_kernel_runs=self.n_kernel_runs,
             n_reconfigure_runs=self.n_reconfigure_runs,
         )
+
+        # Print some additional information that might have been tagged on earlier.
+        if config.verbose:
+            if hasattr(self, "n_matmul_ops"):
+                print(f"Total ops (2 * M * N * K * repeats) : {self.n_matmul_ops}")
+
+            if hasattr(self, "n_cols"):
+                print(f"Number of columns : {self.n_cols}")
+
+            if hasattr(self, "n_rows"):
+                print(f"Number of rows : {self.n_rows}")
 
         return True
 
