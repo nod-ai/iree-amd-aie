@@ -27,41 +27,55 @@ using Path = std::filesystem::path;
 namespace mlir::iree_compiler::AMDAIE {
 LogicalResult generateCDOBinariesSeparately(
     const AMDAIEDeviceModel &deviceModel, const Path &workDirPath,
-    DeviceOp &device, bool aieSim, bool enableCores) {
-  if (failed(generateCDOBinary(workDirPath / "aie_cdo_elfs.bin",
-                               [&deviceModel, &device, &workDirPath, &aieSim] {
-                                 return addAllAieElfs(deviceModel, device,
-                                                      workDirPath, aieSim);
-                               })))
-    return failure();
+    DeviceOp &device, bool aieSim, bool enableCtrlPkt) {
+  if (enableCtrlPkt) {
+    // When control packets are enabled, only the switch configuration
+    // binary is needed and all other binaries are skipped
+    if (failed(generateCDOBinary(workDirPath / "aie_cdo_switches.bin",
+                                 [&deviceModel, &device] {
+                                   return addSwitchConfig(deviceModel, device);
+                                 })))
+      return failure();
 
-  if (failed(generateCDOBinary(workDirPath / "aie_cdo_init.bin",
-                               [&deviceModel, &device] {
-                                 return addInitConfig(deviceModel, device);
-                               })))
-    return failure();
+  } else {
+    if (failed(generateCDOBinary(
+            workDirPath / "aie_cdo_elfs.bin",
+            [&deviceModel, &device, &workDirPath, &aieSim] {
+              return addAllAieElfs(deviceModel, device, workDirPath, aieSim);
+            })))
+      return failure();
 
-  if (enableCores && !device.getOps<CoreOp>().empty() &&
-      failed(generateCDOBinary(workDirPath / "aie_cdo_enable.bin",
-                               [&deviceModel, &device] {
-                                 return addAllCoreEnable(deviceModel, device);
-                               })))
-    return failure();
+    if (failed(generateCDOBinary(workDirPath / "aie_cdo_init.bin",
+                                 [&deviceModel, &device] {
+                                   return addInitConfig(deviceModel, device);
+                                 })))
+      return failure();
 
+    if (failed(generateCDOBinary(workDirPath / "aie_cdo_switches.bin",
+                                 [&deviceModel, &device] {
+                                   return addSwitchConfig(deviceModel, device);
+                                 })))
+      return failure();
+
+    if (failed(generateCDOBinary(workDirPath / "aie_cdo_enable.bin",
+                                 [&deviceModel, &device] {
+                                   return addAllCoreEnable(deviceModel, device);
+                                 })))
+      return failure();
+  }
   return success();
 }
 
 LogicalResult AIETranslateToCDODirect(xilinx::AIE::DeviceOp device,
                                       llvm::StringRef workDirPath,
-                                      bool bigEndian, bool emitUnified,
-                                      bool cdoDebug, bool aieSim,
-                                      bool enableCores) {
+                                      bool enableCtrlPkt, bool bigEndian,
+                                      bool cdoDebug, bool aieSim) {
   AMDAIEDeviceModel deviceModel = getDeviceModel(device.getDevice());
   byte_ordering endianness =
       bigEndian ? byte_ordering::Big_Endian : byte_ordering::Little_Endian;
   DEBUG_WITH_TYPE("aie-cdo-driver-debug", cdoDebug = true);
   initializeCDOGenerator(endianness, cdoDebug);
   return generateCDOBinariesSeparately(deviceModel, Path(workDirPath.str()),
-                                       device, aieSim, enableCores);
+                                       device, aieSim, enableCtrlPkt);
 }
 }  // namespace mlir::iree_compiler::AMDAIE

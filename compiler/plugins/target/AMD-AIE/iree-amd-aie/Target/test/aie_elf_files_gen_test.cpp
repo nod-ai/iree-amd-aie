@@ -118,12 +118,8 @@ int main(int argc, char **argv) {
           /*ctx=*/&context,
           /*deviceOp=*/deviceOp,
           /*outputNpuInstPath=*/std::nullopt,
-          /*outputCtrlPktInstPath=*/
-          emitCtrlPkt ? std::make_optional(ctrlpktInstPath.str().str())
-                      : std::nullopt,
-          /*outputCtrlPktSeqPath=*/
-          emitCtrlPkt ? std::make_optional(ctrlpktSeqPath.str().str())
-                      : std::nullopt,
+          /*outputCtrlPktInstPath=*/ctrlpktInstPath.str().str(),
+          /*outputCtrlPktSeqPath=*/ctrlpktSeqPath.str().str(),
           /*artifactPath=*/artifactPath.str().str(),
           /*printIRBeforeAll=*/false,
           /*printIRAfterAll=*/false,
@@ -144,7 +140,8 @@ int main(int argc, char **argv) {
           /*amdAIEInstallDir=*/"",
           /*InputXCLBin=*/std::nullopt,
           /*ukernel=*/std::nullopt,
-          /*additionalPeanoOptFlags=*/""))) {
+          /*additionalPeanoOptFlags=*/"",
+          /*enableCtrlPkt=*/emitCtrlPkt))) {
     llvm::errs() << "Error: failed to generate xclbin\n";
     return 1;
   }

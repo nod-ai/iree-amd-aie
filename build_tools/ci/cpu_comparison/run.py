@@ -11,6 +11,7 @@ import re
 import subprocess
 import sys
 import time
+from itertools import product
 from pathlib import Path
 from textwrap import dedent
 import numpy as np
@@ -52,6 +53,7 @@ class TestParams(ABC):
         use_ukernel=False,
         run_benchmark=False,
         n_repeats=1,
+        enable_ctrlpkt=False,
     ):
         self.run_on_target = run_on_target
         self.aie_compilation_flags = (
@@ -65,6 +67,7 @@ class TestParams(ABC):
         self.use_ukernel = use_ukernel
         self.run_benchmark = run_benchmark
         self.n_repeats = n_repeats
+        self.enable_ctrlpkt = enable_ctrlpkt
 
 
 class BaseTest(ABC):
@@ -111,6 +114,7 @@ class BaseTest(ABC):
         use_ukernel = test_params.use_ukernel
         run_benchmark = test_params.run_benchmark
         n_repeats = test_params.n_repeats
+        enable_ctrlpkt = test_params.enable_ctrlpkt
 
         # Form test name.
         self.name = f"{name}_{name_suffix}" if name_suffix else name
@@ -121,6 +125,7 @@ class BaseTest(ABC):
         self.use_ukernel = use_ukernel
         self.run_benchmark = run_benchmark
         self.n_repeats = n_repeats
+        self.enable_ctrlpkt = enable_ctrlpkt
 
         if tile_pipeline == "pack-peel-4-level-tiling":
             self.name += "_4_level_tiling"
@@ -144,6 +149,16 @@ class BaseTest(ABC):
                 self.add_aie_compilation_flags(
                     [f"--iree-amd-aie-enable-chess-for-ukernel=0"]
                 )
+
+        if enable_ctrlpkt:
+            self.labels.append("CtrlPkt")
+            self.add_aie_compilation_flags(
+                [
+                    "--iree-amdaie-enable-control-packet=true",
+                    "--iree-amdaie-enable-input-packet-flow=true",
+                ]
+            )
+            self.name += "_ctrlpkt"
 
         if run_benchmark:
             self.name += "_benchmark"
@@ -260,6 +275,8 @@ class BaseMatmul(BaseTest):
         name="",
         function_name="matmul",
         n_kernel_runs=1,
+        n_reconfigure_runs=1,
+        n_pdi_loads=1,
         test_params=None,
     ):
         """
@@ -277,7 +294,8 @@ class BaseMatmul(BaseTest):
         self.input_type = input_type
         self.acc_type = acc_type
         self.n_kernel_runs = n_kernel_runs
-        self.n_reconfigure_runs = 0
+        self.n_reconfigure_runs = n_reconfigure_runs
+        self.n_pdi_loads = n_pdi_loads
 
         self.labels.append(self.tile_pipeline)
 
@@ -314,6 +332,7 @@ class BaseMatmul(BaseTest):
             n_repeats=self.n_repeats,
             n_kernel_runs=self.n_kernel_runs,
             n_reconfigure_runs=self.n_reconfigure_runs,
+            n_pdi_loads=self.n_pdi_loads,
         )
 
         # Print some additional information that might have been tagged on earlier.
@@ -355,6 +374,8 @@ class Matmul(BaseMatmul):
         acc_type,
         additional_labels=None,
         n_kernel_runs=1,
+        n_reconfigure_runs=1,
+        n_pdi_loads=1,
         test_params=None,
     ):
         super().__init__(
@@ -366,6 +387,8 @@ class Matmul(BaseMatmul):
             input_type=input_type,
             acc_type=acc_type,
             n_kernel_runs=n_kernel_runs,
+            n_reconfigure_runs=n_reconfigure_runs,
+            n_pdi_loads=n_pdi_loads,
         )
         self.labels.append("Matmul")
 
@@ -638,172 +661,6 @@ class MatmulFullBias(BaseMatmul):
             ]
         )
         return self.vs_cpu(config)
-
-
-class MatmulConstBiasCtrlpkt(BaseMatmul):
-    """
-    A test of the form matmul(A,B) + C, reconfigured at runtime to matmul(A,B) + D,
-    where A:MxK, B:KxN, C and D are constant scalar biases.
-    """
-
-    def __init__(
-        self,
-        M,
-        N,
-        K,
-        input_type,
-        acc_type,
-        constant_bias_C,
-        constant_bias_D,
-        additional_labels=None,
-        n_kernel_runs=1,
-        n_reconfigure_runs=1,
-        test_params=None,
-    ):
-        super().__init__(
-            name=f"matmul_const_bias_ctrlpkt_{M}_{N}_{K}_{input_type}_{acc_type}",
-            test_params=test_params,
-            M=M,
-            N=N,
-            K=K,
-            input_type=input_type,
-            acc_type=acc_type,
-            function_name="matmul_constant_bias",
-            n_kernel_runs=n_kernel_runs,
-        )
-        self.labels.append("MatmulConstBiasCtrlPacket")
-
-        # Only enable packet flows for kernel inputs to prevent potential deadlock.
-        # TODO (zhewen): Support kernel outputs.
-        self.aie_compilation_flags += [
-            "--iree-amdaie-enable-input-packet-flow=true",
-            "--iree-amdaie-emit-control-packet=true",
-        ]
-
-        if additional_labels:
-            self.labels += additional_labels
-        if self.run_benchmark:
-            self.aie_compilation_flags += [
-                "--iree-amdaie-enable-infinite-loop-around-core-block=true"
-            ]
-            self.labels.append("MatmulConstBiasCtrlPacketBenchmark")
-
-        self.constant_bias_C = constant_bias_C
-        self.constant_bias_D = constant_bias_D
-
-        self.n_reconfigure_runs = n_reconfigure_runs
-
-    def generate_vmfb_with_ctrlpkts(self, config, constant_bias, aie_ctrlpkt_flags=[]):
-        # Make a copy of the original name, and append the bias value to differentiate test directories.
-        name_copy = self.name
-        self.name = name_copy + f"_bias_{constant_bias}"
-        matmul_template_dir = config.file_dir / "matmul_template"
-        template_name = matmul_template_dir / "matmul_constant_bias_MxK_KxN.mlir"
-        # Generate MLIR using the specified bias.
-        self.generate(config, template_name, constant_bias)
-        test_dir = self.get_dir(config)
-        test_file = self.get_filename(config)
-        test_name = name_from_mlir_filename(test_file)
-        # Generate the AIE VMFB file, applying control packet flags if provided.
-        aie_vmfb = generate_aie_vmfb(
-            config,
-            self.aie_compilation_flags + aie_ctrlpkt_flags,
-            test_name,
-            self.tile_pipeline,
-            self.lower_to_aie_pipeline,
-            self.use_ukernel,
-            test_file,
-        )
-        # Restore the original test name.
-        self.name = name_copy
-        return test_dir, test_file, test_name, aie_vmfb
-
-    def _execute(self, config):
-        # TODO (zhewen): Generalize this test flow.
-
-        # Compile the test file with an initial constant bias of `D`.
-        # This will also generate the control packets needed for runtime reconfiguration.
-        test_dir_D, test_file_D, test_name_D, _ = self.generate_vmfb_with_ctrlpkts(
-            config, self.constant_bias_D
-        )
-
-        # Compile the test file with an initial constant bias = `C`, and generate the PDI/XCLBIN for it.
-        # The PDI/XCLBIN will be combined with previously generated control packets to generate the final ".vmfb" file.
-        # Without applying the control packets (`aie_ctrlpkt_flags`), the test is expected
-        # to fail, as all values would deviate by `D - C`.
-        aie_ctrlpkt_flags = [f"--iree-amdaie-dir-to-load-control-packet={test_dir_D}"]
-        _, _, test_name_C, aie_vmfb_C = self.generate_vmfb_with_ctrlpkts(
-            config, self.constant_bias_C, aie_ctrlpkt_flags
-        )
-
-        if config.do_not_run_aie:
-            if config.verbose:
-                print(
-                    f"Skipping AIE run for {test_file_D} because 'do_not_run_aie=True'."
-                )
-            return
-
-        # Generate the CPU output for constant bias = `D`.
-        input_args = generate_inputs(
-            test_file_D, config.get_test_dir(test_name_D), seed=1
-        )
-
-        if self.run_benchmark:
-            print(f"Performance benchmark: {test_file_D}")
-            benchmark_aie_kernel_time(
-                config,
-                aie_vmfb_C,
-                input_args,
-                self.function_name,
-                test_name_C,
-                self.n_repeats,
-                self.n_kernel_runs,
-                self.n_reconfigure_runs,
-                time_unit="us",
-            )
-            return True
-
-        output_type = get_output_type(test_file_D)
-        cpu_output = generate_llvm_cpu_output(
-            config,
-            test_name_D,
-            test_file_D,
-            input_args,
-            None,
-            output_type,
-        )
-
-        # Load the PDI/XCLBIN with an initial constant bias of `C`.
-        # The control packets are then applied at runtime to update the bias to `D`.
-        # After reconfiguration, run the new kernel and generate the AIE output.
-        aie_output = generate_aie_output(
-            config,
-            aie_vmfb_C,
-            input_args,
-            None,
-            test_name_C,
-            output_type,
-        )
-
-        # If the control packet successfully reconfigures the bias from `C` to `D`,
-        # the AIE output should match the expected CPU output.
-        summary_string = compare(cpu_output, aie_output, rtol=1e-6, atol=1e-6)
-        if summary_string:
-            print(summary_string)
-            raise RuntimeError("Test failed, exiting.")
-        return True
-
-    def generate(self, config, template_name, constant_bias):
-        generate_matmul_test(
-            self.get_filename(config),
-            template_name,
-            self.M,
-            self.N,
-            self.K,
-            self.input_type,
-            self.acc_type,
-            constant_bias=constant_bias,
-        )
 
 
 class BatchMatmul(BaseMatmul):
@@ -1267,22 +1124,41 @@ def benchmark_aie_kernel_time(
     n_repeats,
     n_kernel_runs,
     n_reconfigure_runs,
+    n_pdi_loads,
     time_unit,
 ):
     """
     Benchmark a compiled AIE module's (aie_vmfb) kernel time, average over the specified number of runs.
     """
     test_dir = config.get_test_dir(name)
-    aie_bin = test_dir / f"{name}_aie.bin"
 
-    if n_kernel_runs > 0 and n_reconfigure_runs > 0:
+    if n_pdi_loads <= 0:
         raise ValueError(
-            "Cannot set both n_kernel_runs and n_reconfigure_runs simultaneously. "
-            "This will produce incorrect performance results. "
-            "To measure kernel execution time, set n_kernel_runs > 1 and n_reconfigure_runs == 0. "
-            "To measure reconfiguration time, set n_kernel_runs == 0 and n_reconfigure_runs > 0."
+            "PDI needs to be loaded at least once for the benchmark to work. "
+            f"Got n_pdi_loads={n_pdi_loads}."
         )
-    batch_size = max(n_kernel_runs, n_reconfigure_runs)
+
+    """
+    Check consistency only for values > 0 (or >1 for PDI loads)
+    Valid Examples:
+    - n_kernel_runs=0, n_reconfigure_runs=0, n_pdi_loads=10 (measure PDI load time)
+    - n_kernel_runs=10, n_reconfigure_runs=0, n_pdi_loads=1 (measure kernel time)
+    - n_kernel_runs=0, n_reconfigure_runs=10, n_pdi_loads=1 (measure reconfigure time)
+    - n_kernel_runs=10, n_reconfigure_runs=10, n_pdi_loads=1 (measure kernel and reconfigure time)
+    """
+    batch_size = max(n_kernel_runs, n_reconfigure_runs, n_pdi_loads)
+    if n_kernel_runs > 0 and n_kernel_runs != batch_size:
+        raise ValueError(
+            f"n_kernel_runs={n_kernel_runs} must match batch size {batch_size}."
+        )
+    if n_reconfigure_runs > 0 and n_reconfigure_runs != batch_size:
+        raise ValueError(
+            f"n_reconfigure_runs={n_reconfigure_runs} must match batch size {batch_size}."
+        )
+    if n_pdi_loads > 1 and n_pdi_loads != batch_size:
+        raise ValueError(
+            f"n_pdi_loads={n_pdi_loads} must match batch size {batch_size} when > 1."
+        )
 
     run_args = [
         config.iree_benchmark_exe,
@@ -1293,6 +1169,7 @@ def benchmark_aie_kernel_time(
         f"--batch_size={batch_size}",
         f"--xrt_lite_n_kernel_runs={n_kernel_runs}",
         f"--xrt_lite_n_reconfigure_runs={n_reconfigure_runs}",
+        f"--xrt_lite_n_pdi_loads={n_pdi_loads}",
         f"--time_unit={time_unit}",
     ]
     if function_name:
@@ -1663,6 +1540,7 @@ def benchmark_aie(
     n_repeats,
     n_kernel_runs,
     n_reconfigure_runs,
+    n_pdi_loads,
     seed=1,
     time_unit="us",
 ):
@@ -1687,6 +1565,8 @@ def benchmark_aie(
         The number of invocations of the kernel, for averaging.
     n_reconfigure_runs:
         The number of reconfiguration invocations, for averaging.
+    n_pdi_loads:
+        The number of PDI loads, for averaging.
     function_name:
         The name of the function to run (the test file may contain multiple
         functions).
@@ -1734,6 +1614,7 @@ def benchmark_aie(
         n_repeats,
         n_kernel_runs,
         n_reconfigure_runs,
+        n_pdi_loads,
         time_unit,
     )
 
@@ -2033,63 +1914,6 @@ class Tests:
                         additional_labels=additional_labels,
                     )
                 )
-
-        # Control packet test with constant biases 1 and 2.
-        for target, in_type, out_type in [
-            ["npu1_4col", "i8", "i32"],
-            ["npu4", "i32", "i32"],
-        ]:
-            # Test on a single core.
-            self.register(
-                MatmulConstBiasCtrlpkt(
-                    8,
-                    8,
-                    8,
-                    in_type,
-                    out_type,
-                    constant_bias_C=1,
-                    constant_bias_D=2,
-                    test_params=TestParams(
-                        aie_compilation_flags=[
-                            "--iree-amdaie-num-rows=1",
-                            "--iree-amdaie-num-cols=1",
-                        ],
-                        name_suffix="OneCore",
-                        run_on_target=target,
-                    ),
-                )
-            )
-            # Numeric test for reconfiguration on the whole AIE array.
-            self.register(
-                MatmulConstBiasCtrlpkt(
-                    1024,
-                    1024,
-                    1024,
-                    in_type,
-                    out_type,
-                    constant_bias_C=1,
-                    constant_bias_D=2,
-                    test_params=TestParams(run_on_target=target),
-                )
-            )
-            # Benchmark reconfiguration time only, do not run the kernel.
-            self.register(
-                MatmulConstBiasCtrlpkt(
-                    1024,
-                    1024,
-                    1024,
-                    in_type,
-                    out_type,
-                    constant_bias_C=1,
-                    constant_bias_D=2,
-                    test_params=TestParams(
-                        run_benchmark=True, n_repeats=2, run_on_target=target
-                    ),
-                    additional_labels=["Performance"],
-                    n_kernel_runs=0,
-                    n_reconfigure_runs=50,
-                )
-            )
 
         performance_tests = []
 
@@ -2552,8 +2376,69 @@ class Tests:
             )
         )
 
+        # Control packet single dispatch tests:
+        for target, in_type, out_type in [
+            ["npu1_4col", "i8", "i32"],
+            ["npu4", "i32", "i32"],
+        ]:
+            # Numeric test for reconfiguration on the whole AIE array.
+            self.register(
+                Matmul(
+                    1024,
+                    1024,
+                    1024,
+                    in_type,
+                    out_type,
+                    test_params=TestParams(
+                        run_on_target=target, enable_ctrlpkt=True, name_suffix=target
+                    ),
+                )
+            )
+            # Benchmark reconfiguration time only, do not run the kernel.
+            self.register(
+                Matmul(
+                    1024,
+                    1024,
+                    1024,
+                    in_type,
+                    out_type,
+                    test_params=TestParams(
+                        run_benchmark=True,
+                        n_repeats=2,
+                        run_on_target=target,
+                        enable_ctrlpkt=True,
+                        name_suffix=target + "_reconfigure_only",
+                    ),
+                    additional_labels=["Performance"],
+                    n_kernel_runs=0,
+                    n_reconfigure_runs=100,
+                    n_pdi_loads=1,
+                )
+            )
+            # Benchmark PDI load time only (control packet disabled), do not run the kernel.
+            self.register(
+                Matmul(
+                    1024,
+                    1024,
+                    1024,
+                    in_type,
+                    out_type,
+                    test_params=TestParams(
+                        run_benchmark=True,
+                        n_repeats=2,
+                        run_on_target=target,
+                        enable_ctrlpkt=False,
+                        name_suffix=target + "_pdi_load_only",
+                    ),
+                    additional_labels=["Performance"],
+                    n_kernel_runs=0,
+                    n_reconfigure_runs=0,
+                    n_pdi_loads=100,
+                )
+            )
+
         # MultipleDispatches tests:
-        for target in ["npu1_4col", "npu4"]:
+        for target, enable_ctrlpkt in product(["npu1_4col", "npu4"], [False, True]):
             for file_base_name, func_name in [
                 ["two_matmul_switching", "matmul_small"],
                 ["matmul_f32_8_8_4", "matmul_8_8_4"],
@@ -2571,6 +2456,7 @@ class Tests:
                             ],
                             run_on_target=target,
                             name_suffix="OneCore_" + target,
+                            enable_ctrlpkt=enable_ctrlpkt,
                         ),
                     )
                 )

@@ -604,7 +604,7 @@ void buildAMDAIETransformPassPipeline(
     const std::string &pathToUkernels, bool enableInputPacketFlow,
     bool enableOutputPacketFlow, bool enableCoalescingLoops,
     bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
-    int callReplication, bool insertLoopAroundCoreBlock, bool emitCtrlPkt) {
+    int callReplication, bool insertLoopAroundCoreBlock, bool enableCtrlPkt) {
   OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
   {
     FunctionLikeNest funcPassManager(modulePassManager);
@@ -637,7 +637,7 @@ void buildAMDAIETransformPassPipeline(
         modulePassManager, enableInputPacketFlow, enableOutputPacketFlow,
         useTilePipeline, enableVectorizationPasses, enableCoalescingLoops,
         enableCollapsingUnitDims, enableFunctionOutlining, callReplication,
-        insertLoopAroundCoreBlock, numCols, emitCtrlPkt);
+        insertLoopAroundCoreBlock, numCols, enableCtrlPkt);
   } else if (useLowerToAIEPipeline == LowerToAIEPassPipeline::AIR) {
     addMLIRAIRLoweringPasses(modulePassManager, device, useTilePipeline,
                              matmulElementwiseFusion,
@@ -663,7 +663,7 @@ void addAMDAIEObjectFifoLoweringPasses(
     bool enableVectorizationPasses, bool enableCoalescingLoops,
     bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
     int callReplication, bool insertLoopAroundCoreBlock, uint32_t numCols,
-    bool emitCtrlPkt) {
+    bool enableCtrlPkt) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
 
@@ -763,7 +763,7 @@ void addAMDAIEObjectFifoLoweringPasses(
 
   {
     AMDAIEGenerateControlOverlayOptions options;
-    options.routeShimToTileCtrl = emitCtrlPkt;
+    options.routeShimToTileCtrl = enableCtrlPkt;
     passManager.addPass(createAMDAIEGenerateControlOverlayPass(options));
     passManager.addPass(createCSEPass());
     passManager.addPass(createCanonicalizerPass());

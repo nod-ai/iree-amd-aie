@@ -26,9 +26,8 @@ mlir::LogicalResult AIETranslateToBCF(xilinx::AIE::DeviceOp,
                                       int tileRow);
 
 mlir::LogicalResult AIETranslateToCDODirect(
-    xilinx::AIE::DeviceOp, llvm::StringRef workDirPath, bool bigEndian = false,
-    bool emitUnified = false, bool cdoDebug = false, bool aieSim = false,
-    bool enableCores = true);
+    xilinx::AIE::DeviceOp, llvm::StringRef workDirPath, bool enableCtrlPkt,
+    bool bigEndian = false, bool cdoDebug = false, bool aieSim = false);
 }  // namespace mlir::iree_compiler::AMDAIE
 
 #endif

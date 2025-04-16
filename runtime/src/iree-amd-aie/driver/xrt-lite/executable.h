@@ -24,6 +24,7 @@ struct iree_hal_xrt_lite_kernel_params {
   std::string kernel_name;
   uint32_t n_kernel_runs{1};
   uint32_t n_reconfigure_runs{1};
+  uint32_t n_pdi_loads{1};
   IREE_TRACE(iree_string_view_t source_filename;)
   IREE_TRACE(uint32_t source_line;)
 };
@@ -35,6 +36,7 @@ struct iree_hal_xrt_lite_executable {
   iree_allocator_t host_allocator;
   iree_host_size_t entry_point_count;
   iree_hal_xrt_lite_kernel_params entry_points[16];
+  std::unique_ptr<shim_xdna::hw_ctx> context;
 };
 
 // `out_executable` must be released by the caller (see

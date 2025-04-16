@@ -14,6 +14,7 @@
 #include "iree-amd-aie/schemas/pdi_executable_def_verifier.h"
 #include "iree/base/api.h"
 #include "iree/base/internal/flags.h"
+#include "llvm/Support/raw_ostream.h"
 
 namespace {
 extern const iree_hal_executable_vtable_t iree_hal_xrt_lite_executable_vtable;
@@ -32,15 +33,24 @@ IREE_FLAG(
     int32_t, xrt_lite_n_reconfigure_runs, 1,
     "Number of reconfiguration invocations to be run per iteration. Can be "
     "set together with `--batch_size=<xrt_lite_n_reconfigure_runs>` to get "
-    "semi-accurate reporting of average execution time per kernel "
+    "semi-accurate reporting of average execution time per reconfiguration "
     "invocation through `iree-benchmark-module` (this still includes "
     "initialization overheads of the first reconfiguration).");
+
+IREE_FLAG(int32_t, xrt_lite_n_pdi_loads, 1,
+          "Number of PDI loading to be repeated per iteration. Can be "
+          "set together with `--batch_size=<xrt_lite_n_pdi_loads>` to get "
+          "semi-accurate reporting of average execution time per PDI  "
+          "loading through `iree-benchmark-module`.");
 
 static const iree_string_view_t key_xrt_lite_n_kernel_runs =
     iree_string_view_literal("xrt_lite_n_kernel_runs");
 
 static const iree_string_view_t key_xrt_lite_n_reconfigure_runs =
     iree_string_view_literal("xrt_lite_n_reconfigure_runs");
+
+static const iree_string_view_t key_xrt_lite_n_pdi_loads =
+    iree_string_view_literal("xrt_lite_n_pdi_loads");
 
 static iree_status_t iree_hal_xrt_lite_executable_parse_flags(
     iree_string_pair_builder_t* builder) {
@@ -53,15 +63,17 @@ static iree_status_t iree_hal_xrt_lite_executable_parse_flags(
       z0, iree_string_pair_builder_add_int32(builder,
                                              key_xrt_lite_n_reconfigure_runs,
                                              FLAG_xrt_lite_n_reconfigure_runs));
-
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(
+      z0, iree_string_pair_builder_add_int32(builder, key_xrt_lite_n_pdi_loads,
+                                             FLAG_xrt_lite_n_pdi_loads));
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
 }
 
 static iree_status_t iree_hal_xrt_lite_executable_populate_options(
     iree_allocator_t host_allocator, uint32_t& n_kernel_runs,
-    uint32_t& n_reconfigure_runs, iree_host_size_t pairs_size,
-    iree_string_pair_t* pairs) {
+    uint32_t& n_reconfigure_runs, uint32_t& n_pdi_loads,
+    iree_host_size_t pairs_size, iree_string_pair_t* pairs) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
   for (iree_host_size_t i = 0; i < pairs_size; ++i) {
@@ -103,6 +115,24 @@ static iree_status_t iree_hal_xrt_lite_executable_populate_options(
             (int)value.size, value.data);
       }
       n_reconfigure_runs = ivalue;
+    } else if (iree_string_view_equal(key, key_xrt_lite_n_pdi_loads)) {
+      if (!iree_string_view_atoi_int32(value, &ivalue)) {
+        IREE_TRACE_ZONE_END(z0);
+        return iree_make_status(
+            IREE_STATUS_FAILED_PRECONDITION,
+            "Option 'xrt_lite_n_pdi_loads' expected to be int. Got: "
+            "'%.*s'",
+            (int)value.size, value.data);
+      }
+      if (ivalue < 0) {
+        IREE_TRACE_ZONE_END(z0);
+        return iree_make_status(
+            IREE_STATUS_FAILED_PRECONDITION,
+            "Option 'xrt_lite_n_pdi_loads' expected to be >= 0. Got: "
+            "'%.*s'",
+            (int)value.size, value.data);
+      }
+      n_pdi_loads = ivalue;
     } else {
       IREE_TRACE_ZONE_END(z0);
       return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
@@ -199,7 +229,7 @@ iree_amd_aie_hal_xrt_lite_native_executable_flatbuffer_verify(
         entry_point_count, number_reconf_data_runlist);
   }
 
-  flatbuffers_uint32_vec_t asm_instr_runlist_indices_vec =
+  flatbuffers_int32_vec_t asm_instr_runlist_indices_vec =
       iree_amd_aie_hal_xrt_lite_ExecutableDef_asm_instr_runlist_indices_get(
           executable_def);
   flatbuffers_int32_vec_t reconf_data_runlist_indices_vec =
@@ -225,8 +255,8 @@ iree_amd_aie_hal_xrt_lite_native_executable_flatbuffer_verify(
       size_t length_reconf_data_runlist =
           iree_amd_aie_hal_xrt_lite_UI32Array1dDef_vec_len(reconf_data_vec);
       // Get the number of asm instructions for the current entry point.
-      uint32_t asm_instr_runlist_index =
-          flatbuffers_uint32_vec_at(asm_instr_runlist_indices_vec, i);
+      int32_t asm_instr_runlist_index =
+          flatbuffers_int32_vec_at(asm_instr_runlist_indices_vec, i);
       iree_amd_aie_hal_xrt_lite_UI32Array2dDef_table_t asm_inst_runlist_def =
           iree_amd_aie_hal_xrt_lite_UI32Array2dDef_vec_at(
               asm_instr_runlists_vec, asm_instr_runlist_index);
@@ -291,9 +321,10 @@ iree_status_t iree_hal_xrt_lite_native_executable_create(
       z0, iree_hal_xrt_lite_executable_parse_flags(&flag_option_builder));
   uint32_t n_kernel_runs{1};
   uint32_t n_reconfigure_runs{1};
+  uint32_t n_pdi_loads{1};
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_hal_xrt_lite_executable_populate_options(
-              host_allocator, n_kernel_runs, n_reconfigure_runs,
+              host_allocator, n_kernel_runs, n_reconfigure_runs, n_pdi_loads,
               iree_string_pair_builder_size(&flag_option_builder),
               iree_string_pair_builder_pairs(&flag_option_builder)));
 
@@ -307,9 +338,9 @@ iree_status_t iree_hal_xrt_lite_native_executable_create(
   iree_amd_aie_hal_xrt_lite_ExecutableDef_table_t executable_def =
       iree_amd_aie_hal_xrt_lite_ExecutableDef_as_root(
           executable_params->executable_data.data);
-  flatbuffers_uint32_vec_t pdi_indices_vec =
+  flatbuffers_int32_vec_t pdi_indices_vec =
       iree_amd_aie_hal_xrt_lite_ExecutableDef_pdi_indices_get(executable_def);
-  flatbuffers_uint32_vec_t asm_instr_runlist_indices_vec =
+  flatbuffers_int32_vec_t asm_instr_runlist_indices_vec =
       iree_amd_aie_hal_xrt_lite_ExecutableDef_asm_instr_runlist_indices_get(
           executable_def);
   flatbuffers_int32_vec_t reconf_data_runlist_indices_vec =
@@ -359,23 +390,27 @@ iree_status_t iree_hal_xrt_lite_native_executable_create(
         &executable->entry_points[entry_ordinal];
     params->n_kernel_runs = n_kernel_runs;
     params->n_reconfigure_runs = n_reconfigure_runs;
+    params->n_pdi_loads = n_pdi_loads;
     params->kernel_name =
         flatbuffers_string_vec_at(entry_points_vec, entry_ordinal);
-    uint32_t pdi_index =
-        flatbuffers_uint32_vec_at(pdi_indices_vec, entry_ordinal);
-    iree_amd_aie_hal_xrt_lite_PdiDef_table_t pdi_def =
-        iree_amd_aie_hal_xrt_lite_PdiDef_vec_at(pdis_vec, pdi_index);
-    flatbuffers_string_t pdi_fb =
-        iree_amd_aie_hal_xrt_lite_PdiDef_pdi_get(pdi_def);
+    int32_t pdi_index =
+        flatbuffers_int32_vec_at(pdi_indices_vec, entry_ordinal);
 
-    std::vector<uint8_t> pdiVector(pdi_fb,
-                                   pdi_fb + flatbuffers_string_len(pdi_fb));
-    params->pdi = pdiVector;
+    // A negative index indicates that no PDI is required for this entry point.
+    if (pdi_index >= 0) {
+      iree_amd_aie_hal_xrt_lite_PdiDef_table_t pdi_def =
+          iree_amd_aie_hal_xrt_lite_PdiDef_vec_at(pdis_vec, pdi_index);
+      flatbuffers_string_t pdi_fb =
+          iree_amd_aie_hal_xrt_lite_PdiDef_pdi_get(pdi_def);
+      std::vector<uint8_t> pdiVector(pdi_fb,
+                                     pdi_fb + flatbuffers_string_len(pdi_fb));
+      params->pdi = pdiVector;
+    }
 
     // Get the asm instructions runlist for the current entry point, and store
     // it in the kernel parameters as a 2D std::vector.
-    uint32_t asm_instr_runlist_index =
-        flatbuffers_uint32_vec_at(asm_instr_runlist_indices_vec, entry_ordinal);
+    int32_t asm_instr_runlist_index =
+        flatbuffers_int32_vec_at(asm_instr_runlist_indices_vec, entry_ordinal);
     iree_amd_aie_hal_xrt_lite_UI32Array2dDef_table_t asm_inst_runlist_def =
         iree_amd_aie_hal_xrt_lite_UI32Array2dDef_vec_at(
             asm_instr_runlists_vec, asm_instr_runlist_index);

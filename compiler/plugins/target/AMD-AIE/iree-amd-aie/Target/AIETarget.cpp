@@ -241,7 +241,7 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
         options.enableInputPacketFlow, options.enableOutputPacketFlow,
         options.enableCoalescingLoops, options.enableCollapsingUnitDims,
         options.enableFunctionOutlining, options.callReplication,
-        options.insertLoopAroundCoreBlock, options.emitCtrlPkt);
+        options.insertLoopAroundCoreBlock, options.enableCtrlPkt);
   }
 
   void buildLinkingPassPipeline(OpPassManager &passManager) override {
@@ -368,8 +368,14 @@ struct Flatbuffer1dStringArrayConverter {
   }
 
   void addEntry(uint64_t ordinal, StringRef entry) {
-    indices[ordinal] = data.size();
-    data.push_back(entry.str());
+    if (entry.empty()) {
+      // FlatBuffer does not support empty strings in an array, so we set the
+      // index to -1 to indicate that this entry is invalid.
+      indices[ordinal] = -1;
+    } else {
+      indices[ordinal] = data.size();
+      data.push_back(entry.str());
+    }
   }
 
   flatbuffers_string_vec_ref_t getFlatbufferVecRef(FlatbufferBuilder &builder) {
@@ -509,7 +515,6 @@ LogicalResult AIETargetBackend::serializeExecutable(
     return moduleOp.emitOpError("should contain some entry points");
   }
 
-  std::unique_ptr<llvm::MemoryBuffer> artifactInput;
   FlatbufferBuilder builder;
   switch (options.deviceHal) {
     case AMDAIEOptions::DeviceHAL::XRT:
@@ -592,6 +597,10 @@ LogicalResult AIETargetBackend::serializeExecutable(
       OpBuilder opBuilder(deviceOps[i].getContext());
       auto moduleWithOneDevice =
           opBuilder.create<ModuleOp>(deviceOps[i].getLoc());
+      auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(deviceOps[i]);
+      if (!targetAttr)
+        return deviceOps[i].emitError() << "Could not find target attribute";
+      moduleWithOneDevice->setAttr("hal.executable.target", targetAttr);
       opBuilder.setInsertionPointToStart(moduleWithOneDevice.getBody());
       Operation *repl = opBuilder.clone(*deviceOps[i].getOperation());
       deviceOps[i] = cast<xilinx::AIE::DeviceOp>(repl);
@@ -611,12 +620,8 @@ LogicalResult AIETargetBackend::serializeExecutable(
             /*ctx=*/variantOp->getContext(),
             /*deviceOp=*/deviceOps[i],
             /*outputNpuInstPath=*/npuInstPath.str().str(),
-            /*outputCtrlPktInstPath=*/options.emitCtrlPkt
-                ? std::make_optional(ctrlpktInstPath.str().str())
-                : std::nullopt,
-            /*outputCtrlPktSeqPath=*/options.emitCtrlPkt
-                ? std::make_optional(ctrlpktSeqPath.str().str())
-                : std::nullopt,
+            /*outputCtrlPktInstPath=*/ctrlpktInstPath.str().str(),
+            /*outputCtrlPktSeqPath=*/ctrlpktSeqPath.str().str(),
             /*artifactPath=*/artifactPath.str().str(),
             /*printIRBeforeAll=*/options.aie2xclbinPrintIrBeforeAll,
             /*printIRAfterAll=*/options.aie2xclbinPrintIrAfterAll,
@@ -639,56 +644,50 @@ LogicalResult AIETargetBackend::serializeExecutable(
             /*amdAIEInstallDir=*/options.amdAieInstallDir,
             /*InputXCLBin=*/std::nullopt,
             /*ukernel=*/options.enableAMDAIEUkernels,
-            /*additionalPeanoOptFlags=*/options.additionalPeanoOptFlags))) {
+            /*additionalPeanoOptFlags=*/options.additionalPeanoOptFlags,
+            /*enableCtrlPkt=*/options.enableCtrlPkt))) {
       return failure();
     }
 
     SmallVector<std::vector<uint32_t>> asmInstrs2d;
     SmallVector<std::vector<uint32_t>> reconfData2d;
-    // TODO (zhewen): support multiple iterations of reconfiguration.
-    if (!options.dirToLoadCtrlPktFiles.empty()) {
-      // Reconfiguration is required.
+    if (options.enableCtrlPkt) {
       // Load control packet instructions from file.
-      SmallString<128> ctrlpktInstPath(options.dirToLoadCtrlPktFiles);
-      llvm::sys::path::append(ctrlpktInstPath, ctrlpktInstFileName);
       FailureOr<std::vector<uint32_t>> ctrlpktInstrs =
           loadUInt32ArrayFromFile(ctrlpktInstPath);
       if (failed(ctrlpktInstrs)) return failure();
       asmInstrs2d.push_back(ctrlpktInstrs.value());
       // Load control packet sequence from file.
-      SmallString<128> ctrlpktSeqPath(options.dirToLoadCtrlPktFiles);
-      llvm::sys::path::append(ctrlpktSeqPath, ctrlpktSeqFileName);
       FailureOr<std::vector<uint32_t>> ctrlpktSeq =
           loadUInt32ArrayFromFile(ctrlpktSeqPath);
       if (failed(ctrlpktSeq)) return failure();
       reconfData2d.push_back(ctrlpktSeq.value());
-      // Load new NPU instructions (executed after reconfiguration) from file.
-      SmallString<128> newNpuInstPath(options.dirToLoadCtrlPktFiles);
-      llvm::sys::path::append(newNpuInstPath, npuInstFileName);
-      FailureOr<std::vector<uint32_t>> newNpuInstrs =
-          loadUInt32ArrayFromFile(newNpuInstPath);
-      if (failed(newNpuInstrs)) return failure();
-      asmInstrs2d.push_back(newNpuInstrs.value());
-    } else {
-      // No reconfiguration is needed.
-      // Load normal NPU instructions from file.
-      FailureOr<std::vector<uint32_t>> npuInstrs =
-          loadUInt32ArrayFromFile(npuInstPath);
-      if (failed(npuInstrs)) return failure();
-      asmInstrs2d.push_back(npuInstrs.value());
     }
+    // Load NPU instructions from file.
+    FailureOr<std::vector<uint32_t>> npuInstrs =
+        loadUInt32ArrayFromFile(npuInstPath);
+    if (failed(npuInstrs)) return failure();
+    asmInstrs2d.push_back(npuInstrs.value());
     // Add the 2D array entry to the converter.
     asmInstrConverter.addEntry(ordinal, asmInstrs2d);
     reconfDataConverter.addEntry(ordinal, reconfData2d);
 
-    // Load the artifact from file (XCLBIN or PDI).
-    artifactInput = openInputFile(artifactPath, &errorMessage);
-    if (!artifactInput) {
-      moduleOp.emitOpError()
-          << "Failed to open artifact file: " << errorMessage;
+    // Get the artifact (XCLBIN or PDI) only if control packet reconfiguration
+    // is disabled or this is the first entry point. Otherwise, leave it as an
+    // empty string.
+    std::string artifactString;
+    if (!options.enableCtrlPkt || i == 0) {
+      // Load the artifact from file.
+      std::unique_ptr<llvm::MemoryBuffer> artifactInput =
+          openInputFile(artifactPath, &errorMessage);
+      if (!artifactInput) {
+        moduleOp.emitOpError()
+            << "Failed to open artifact file: " << errorMessage;
+      }
+      artifactString = artifactInput->getBuffer();
     }
     // Add the artifact to the converter.
-    artifactConvertor.addEntry(ordinal, artifactInput->getBuffer().str());
+    artifactConvertor.addEntry(ordinal, artifactString);
   }
 
   // Serialize the executable to flatbuffer format
