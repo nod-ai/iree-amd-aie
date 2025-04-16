@@ -135,8 +135,7 @@ static iree_status_t iree_hal_xrt_lite_device_queue_execute(
                 device->host_allocator, &xrt_command_buffer));
     IREE_RETURN_AND_END_ZONE_IF_ERROR(
         z0, iree_hal_deferred_command_buffer_apply(
-                command_buffer, xrt_command_buffer,
-                iree_hal_buffer_binding_table_empty()));
+                command_buffer, xrt_command_buffer, binding_table));
   }
 
   IREE_TRACE_ZONE_END(z0);
