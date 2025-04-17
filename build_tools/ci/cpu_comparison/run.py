@@ -275,7 +275,7 @@ class BaseMatmul(BaseTest):
         name="",
         function_name="matmul",
         n_kernel_runs=1,
-        n_reconfigure_runs=1,
+        n_reconfigure_runs=0,
         n_pdi_loads=1,
         test_params=None,
     ):
@@ -374,7 +374,7 @@ class Matmul(BaseMatmul):
         acc_type,
         additional_labels=None,
         n_kernel_runs=1,
-        n_reconfigure_runs=1,
+        n_reconfigure_runs=0,
         n_pdi_loads=1,
         test_params=None,
     ):
@@ -1138,14 +1138,12 @@ def benchmark_aie_kernel_time(
             f"Got n_pdi_loads={n_pdi_loads}."
         )
 
-    """
-    Check consistency only for values > 0 (or >1 for PDI loads)
-    Valid Examples:
-    - n_kernel_runs=0, n_reconfigure_runs=0, n_pdi_loads=10 (measure PDI load time)
-    - n_kernel_runs=10, n_reconfigure_runs=0, n_pdi_loads=1 (measure kernel time)
-    - n_kernel_runs=0, n_reconfigure_runs=10, n_pdi_loads=1 (measure reconfigure time)
-    - n_kernel_runs=10, n_reconfigure_runs=10, n_pdi_loads=1 (measure kernel and reconfigure time)
-    """
+    # Check consistency only for values > 0 (or >1 for PDI loads)
+    # Valid Examples:
+    # - n_kernel_runs=0, n_reconfigure_runs=0, n_pdi_loads=10 (measure PDI load time)
+    # - n_kernel_runs=10, n_reconfigure_runs=0, n_pdi_loads=1 (measure kernel time)
+    # - n_kernel_runs=0, n_reconfigure_runs=10, n_pdi_loads=1 (measure reconfigure time)
+    # - n_kernel_runs=10, n_reconfigure_runs=10, n_pdi_loads=1 (measure kernel and reconfigure time)
     batch_size = max(n_kernel_runs, n_reconfigure_runs, n_pdi_loads)
     if n_kernel_runs > 0 and n_kernel_runs != batch_size:
         raise ValueError(
