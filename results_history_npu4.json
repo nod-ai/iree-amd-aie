@@ -1,31 +1,5 @@
 [
   {
-    "commit_hash": "2fdbd35d0b9c85dff91b699bd2fa5f32bde2e983",
-    "cpu": "AMD Ryzen AI 9 HX 370 w/ Radeon 890M",
-    "tests": [
-      {
-        "name": "matmul_512_4096_512_i8_i32_O3_npu4_outline_ukernel_benchmark",
-        "time_mean": "1716",
-        "time_mean_unit": "us"
-      },
-      {
-        "name": "matmul_512_4096_512_i8_i32_O3_npu4_outline_empty_benchmark",
-        "time_mean": "1188",
-        "time_mean_unit": "us"
-      },
-      {
-        "name": "matmul_512_4096_512_i8_i32_O3_npu4_outline_4_level_tiling_ukernel_benchmark",
-        "time_mean": "1516",
-        "time_mean_unit": "us"
-      },
-      {
-        "name": "matmul_512_4096_512_i8_i32_O3_npu4_outline_empty_4_level_tiling_benchmark",
-        "time_mean": "750",
-        "time_mean_unit": "us"
-      }
-    ]
-  },
-  {
     "commit_hash": "4108e90ba18dad95f3f0be80d71f7ea510bad16d",
     "cpu": "AMD Ryzen AI 9 HX 370 w/ Radeon 890M",
     "tests": [
@@ -4266,6 +4240,102 @@
         "total_ops": "2147483648",
         "n_cols": "8",
         "n_rows": "4"
+      }
+    ]
+  },
+  {
+    "commit_hash": "9c9d0d94a376ca9374dcc153e94f5aa7a8a13927",
+    "cpu": "AMD Ryzen AI 9 365 w/ Radeon 880M",
+    "tests": [
+      {
+        "name": "matmul_512_512_512_i8_i32_O3_npu4_callrepl_100_outline_ukernel_chess_benchmark",
+        "time_mean": "32106",
+        "time_mean_unit": "us",
+        "total_ops": "26843545600",
+        "n_cols": "1",
+        "n_rows": "1"
+      },
+      {
+        "name": "matmul_512_512_512_i8_i32_O3_npu4_callrepl_100_outline_ukernel_peano_benchmark",
+        "time_mean": "60842",
+        "time_mean_unit": "us",
+        "total_ops": "26843545600",
+        "n_cols": "1",
+        "n_rows": "1"
+      },
+      {
+        "name": "matmul_512_4096_512_i8_i32_O3_npu4_outline_ukernel_chess_benchmark",
+        "time_mean": "937",
+        "time_mean_unit": "us",
+        "total_ops": "2147483648",
+        "n_cols": "8",
+        "n_rows": "4"
+      },
+      {
+        "name": "matmul_512_4096_512_i8_i32_O3_npu4_outline_packet_flow_ukernel_chess_benchmark",
+        "time_mean": "977",
+        "time_mean_unit": "us",
+        "total_ops": "2147483648",
+        "n_cols": "8",
+        "n_rows": "4"
+      },
+      {
+        "name": "matmul_512_4096_512_i8_i32_O3_npu4_callrepl_0_outline_benchmark",
+        "time_mean": "1129",
+        "time_mean_unit": "us",
+        "total_ops": "0",
+        "n_cols": "8",
+        "n_rows": "4"
+      },
+      {
+        "name": "matmul_512_4096_512_i8_i32_O3_npu4_outline_4_level_tiling_ukernel_chess_benchmark",
+        "time_mean": "906",
+        "time_mean_unit": "us",
+        "total_ops": "2147483648",
+        "n_cols": "8",
+        "n_rows": "4"
+      },
+      {
+        "name": "matmul4d_512_4096_512_i8_i32_O3_npu4_outline_4_level_tiling_ukernel_chess_benchmark",
+        "time_mean": "525",
+        "time_mean_unit": "us",
+        "total_ops": "2147483648",
+        "n_cols": "8",
+        "n_rows": "4"
+      },
+      {
+        "name": "matmul4d_scale_trunci_512_4096_512_i8_i32_O3_npu4_outline_4_level_tiling_ukernel_peano_benchmark",
+        "time_mean": "333",
+        "time_mean_unit": "us",
+        "total_ops": "2147483648",
+        "n_cols": "8",
+        "n_rows": "4"
+      },
+      {
+        "name": "matmul_512_4096_512_i8_i32_O3_npu4_callrepl_0_outline_4_level_tiling_benchmark",
+        "time_mean": "913",
+        "time_mean_unit": "us",
+        "total_ops": "0",
+        "n_cols": "8",
+        "n_rows": "4"
+      },
+      {
+        "name": "matmul_512_4096_512_i8_i32_O3_npu4_outline_4_level_tiling_ukernel_peano_benchmark",
+        "time_mean": "932",
+        "time_mean_unit": "us",
+        "total_ops": "2147483648",
+        "n_cols": "8",
+        "n_rows": "4"
+      },
+      {
+        "name": "matmul_1024_1024_1024_i32_i32_npu4_reconfigure_only_ctrlpkt_benchmark",
+        "time_mean": "124",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_1024_1024_1024_i32_i32_npu4_pdi_load_only_benchmark",
+        "time_mean": "490",
+        "time_mean_unit": "us"
       }
     ]
   }
