@@ -244,7 +244,7 @@ LogicalResult configureLocksAndBd(Block &block, const TileLoc &tileLoc,
 }
 
 LogicalResult addInitConfig(const AMDAIEDeviceModel &deviceModel,
-                            DeviceOp &device, bool configureSwitches) {
+                            DeviceOp &device) {
   // Reset and unreset all cores.
   for (auto tileOp : device.getOps<TileOp>()) {
     TileLoc tileLoc = {tileOp.getCol(), tileOp.getRow()};
@@ -307,13 +307,17 @@ LogicalResult addInitConfig(const AMDAIEDeviceModel &deviceModel,
     }
   }
 
+  return success();
+}
+LogicalResult addSwitchConfig(const AMDAIEDeviceModel &deviceModel,
+                              DeviceOp &device) {
   // StreamSwitch (switchbox) configuration.
-  if (!configureSwitches) return success();
-
   for (auto switchboxOp : device.getOps<SwitchboxOp>()) {
     TileOp t = xilinx::AIE::getTileOp(*switchboxOp.getOperation());
     TileLoc tileLoc = {t.getCol(), t.getRow()};
     std::vector<Connect> connects;
+
+    // Circuit flow configurations
     for (auto connectOp : switchboxOp.getOps<ConnectOp>()) {
       connects.emplace_back(
           Port{connectOp.getSourceBundle(), connectOp.getSourceChannel()},
@@ -324,6 +328,7 @@ LogicalResult addInitConfig(const AMDAIEDeviceModel &deviceModel,
       return failure();
     }
 
+    // Packet flow configurations.
     Block &b = switchboxOp.getConnections().front();
     for (auto masterSetOp : b.getOps<MasterSetOp>()) {
       std::vector<AMSel> amSels;
@@ -356,6 +361,7 @@ LogicalResult addInitConfig(const AMDAIEDeviceModel &deviceModel,
     }
   }
 
+  // ShimMux configurations.
   for (auto muxOp : device.getOps<ShimMuxOp>()) {
     TileOp t = xilinx::AIE::getTileOp(*muxOp.getOperation());
     TileLoc tileLoc = {t.getCol(), t.getRow()};

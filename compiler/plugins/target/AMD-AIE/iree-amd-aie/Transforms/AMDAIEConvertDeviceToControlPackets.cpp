@@ -66,10 +66,13 @@ LogicalResult generateTransactions(const AMDAIEDeviceModel &deviceModel,
                            /*aieSim=*/false))) {
     return failure();
   }
+
+  if (failed(addInitConfig(deviceModel, deviceOp))) return failure();
+
   // Switchboxes configuration cannot be broadcasted.
-  if (failed(addInitConfig(deviceModel, deviceOp,
-                           /*configureSwitches=*/!broadcastCoreConfig)))
+  if (!broadcastCoreConfig && failed(addSwitchConfig(deviceModel, deviceOp)))
     return failure();
+
   if (failed(addAllCoreEnable(deviceModel, deviceOp))) return failure();
 
   return success();

@@ -86,12 +86,10 @@ struct AMDAIEOptions {
   std::string enableAMDAIEUkernels{"none"};
   bool enableInputPacketFlow{false};
   bool enableOutputPacketFlow{false};
-  std::string dirToLoadCtrlPktFiles{""};
+  bool enableCtrlPkt{false};
 
   enum class DeviceHAL { XRT, XRT_LITE };
   DeviceHAL deviceHal{DeviceHAL::XRT_LITE};
-
-  bool emitCtrlPkt{false};
 
   void bindOptions(OptionsBinder &binder) {
     static llvm::cl::OptionCategory category("AMD AIE Options");
@@ -319,17 +317,11 @@ struct AMDAIEOptions {
                                     "xrt-lite device HAL")));
 
     binder.opt<bool>(
-        "iree-amdaie-emit-control-packet", emitCtrlPkt, llvm::cl::cat(category),
-        llvm::cl::desc("Convert `aie.device` to `ctrlpkt_sequence.txt` and "
-                       "`ctrlpkt_instructions.txt`"));
-
-    binder.opt<std::string>(
-        "iree-amdaie-dir-to-load-control-packet", dirToLoadCtrlPktFiles,
+        "iree-amdaie-enable-control-packet", enableCtrlPkt,
         llvm::cl::cat(category),
         llvm::cl::desc(
-            "Directory to load control packet files. These files will be "
-            "added to the flatbuffer for device reconfiguration. "
-            "Empty string means no reconfiguration."));
+            "Enable conversion of `aie.device` "
+            "operations into control packets for fast reconfiguration."));
   }
 };
 

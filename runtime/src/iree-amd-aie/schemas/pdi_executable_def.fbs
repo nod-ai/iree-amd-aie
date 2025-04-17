@@ -38,8 +38,9 @@ table ExecutableDef {
   // This list has the same size as the `entry_points` list.
   // This list currently is just a range (0, number of entry points] but will change when we start doing
   // kernel merging in the backend.
-  pdi_indices:[uint32];
-
+  // The type is `int32` (instead of `uint32`) to allow `-1` as a special value,
+  // indicating that no PDI is required for the associated entry point.
+  pdi_indices:[int32];
 
   // PDI strings of the entry points.
   // This list has the same size as the `entry_points` list.
@@ -47,7 +48,9 @@ table ExecutableDef {
 
   // A map of entry point ordinals to the indices of the containing `asm_instr_runlists` (the following field).
   // This list has the same size as the `entry_points` list.
-  asm_instr_runlist_indices:[uint32];
+  // The type is `int32` (instead of `uint32`) to allow `-1` as a special value,
+  // indicating that no asm instruction is required for the associated entry point.
+  asm_instr_runlist_indices:[int32];
 
   // Assembly instructions for the LX6 processor to execute.
   // This is a 3D uint32 array:
@@ -63,9 +66,8 @@ table ExecutableDef {
 
   // A map of entry point ordinals to the indices of the containing `reconf_data_runlists` (the following field).
   // This list has the same size as the `entry_points` list.
-  // - The type is `int32` instead of `uint32` to allow `-1` as a special value.
-  // - If an index is `-1`, it indicates that no reconfiguration is required for the corresponding entry point.
-  //   This is a workaround, as `reconf_data_runlists` does not support null elements.
+  // The type is `int32` (instead of `uint32`) to allow `-1` as a special value,
+  // indicating that no reconfiguration is required for the associated entry point.
   reconf_data_runlist_indices:[int32];
 
   // Device reconfiguration data.

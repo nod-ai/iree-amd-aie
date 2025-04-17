@@ -259,14 +259,23 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_dispatch(
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_hal_resource_set_insert(command_buffer->resource_set, 1,
                                        &executable));
-  shim_xdna::hw_ctx context =
-      command_buffer->device->shim_device->create_hw_context(
-          kernel_params.pdi, kernel_params.kernel_name);
-  shim_xdna::hw_q* hwq = context.get_hw_queue();
-  shim_xdna::cuidx_t cu_idx =
-      context.open_cu_context(kernel_params.kernel_name);
 
   size_t num_reconfigurations = kernel_params.reconf_data_runlist.size();
+  // Only create the context when either the context does not exist or no
+  // control packet reconfiguration is present.
+  bool create_context =
+      (executable->context == nullptr || num_reconfigurations == 0);
+  shim_xdna::cuidx_t cu_idx{.index = 0};
+  if (create_context) {
+    for (size_t i = 0; i < kernel_params.n_pdi_loads; i++) {
+      executable->context =
+          command_buffer->device->shim_device->create_hw_context(
+              kernel_params.pdi, kernel_params.kernel_name);
+    };
+    cu_idx = executable->context->open_cu_context(kernel_params.kernel_name);
+  }
+  shim_xdna::hw_q* hwq = executable->context->get_hw_queue();
+
   if (num_reconfigurations == 0) {
     // Normal kernel dispatch.
     IREE_RETURN_AND_END_ZONE_IF_ERROR(

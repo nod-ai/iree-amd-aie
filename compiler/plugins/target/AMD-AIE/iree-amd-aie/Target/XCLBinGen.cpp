@@ -924,11 +924,11 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
 }
 
 LogicalResult generateCDO(MLIRContext *context, AIE::DeviceOp deviceOp,
-                          const Path &tempDir) {
+                          const Path &tempDir, bool enableCtrlPkt) {
   auto copy = cast<ModuleOp>(deviceOp.getParentOp()->clone());
   deviceOp = *copy.getOps<AIE::DeviceOp>().begin();
   if (failed(mlir::iree_compiler::AMDAIE::AIETranslateToCDODirect(
-          deviceOp, tempDir.string()))) {
+          deviceOp, tempDir.string(), enableCtrlPkt))) {
     llvm::errs() << "failed to emit CDO";
     return failure();
   }
@@ -990,7 +990,8 @@ json::Object makeKernelJSON(const std::string &name, const std::string &id,
       {"instances", json::Array{json::Object{{"name", instance}}}}};
 }
 
-LogicalResult generatePDI(const std::string &Output, const Path &tempDir) {
+LogicalResult generatePDI(const std::string &Output, const Path &tempDir,
+                          bool enableCtrlPkt) {
   std::string errorMessage;
   // Create design.bif.
   Path designBifFile = tempDir / "design.bif";
@@ -1008,14 +1009,27 @@ LogicalResult generatePDI(const std::string &Output, const Path &tempDir) {
                        << "  image\n"
                        << "  {\n"
                        << "    name=aie_image, id=0x1c000000\n"
-                       << "    { type=cdo\n"
-                       << "      file=" << tempDir.string()
-                       << "/aie_cdo_elfs.bin\n"
-                       << "      file=" << tempDir.string()
-                       << "/aie_cdo_init.bin\n"
-                       << "      file=" << tempDir.string()
-                       << "/aie_cdo_enable.bin\n"
-                       << "    }\n"
+                       << "    { type=cdo\n";
+
+    if (enableCtrlPkt) {
+      // When control packets are enabled, only the switch configuration
+      // binary is needed and all other binaries are skipped
+      designBifOut->os() << "      file=" << tempDir.string()
+                         << "/aie_cdo_switches.bin\n";
+    } else {
+      // The order of binary is critical for correct behavior, so modify with
+      // care!
+      designBifOut->os() << "      file=" << tempDir.string()
+                         << "/aie_cdo_elfs.bin\n"
+                         << "      file=" << tempDir.string()
+                         << "/aie_cdo_init.bin\n"
+                         << "      file=" << tempDir.string()
+                         << "/aie_cdo_switches.bin\n"
+                         << "      file=" << tempDir.string()
+                         << "/aie_cdo_enable.bin\n";
+    }
+
+    designBifOut->os() << "    }\n"
                        << "  }\n"
                        << "}";
     designBifOut->keep();
@@ -1048,7 +1062,8 @@ LogicalResult generateXCLBin(const std::string &Output, const Path &tempDir,
                              const std::string &xclBinKernelName,
                              const std::string &xclBinInstanceName,
                              const Path &amdAIEInstallDir, bool verbose,
-                             const std::optional<std::string> &inputXclbin) {
+                             const std::optional<std::string> &inputXclbin,
+                             bool enableCtrlPkt) {
   std::string errorMessage;
   // Create mem_topology.json.
   Path memTopologyJsonFile = tempDir / "mem_topology.json";
@@ -1149,7 +1164,8 @@ LogicalResult generateXCLBin(const std::string &Output, const Path &tempDir,
     }
   }
 
-  if (failed(generatePDI((tempDir / "design.pdi").string(), tempDir))) {
+  if (failed(generatePDI((tempDir / "design.pdi").string(), tempDir,
+                         enableCtrlPkt))) {
     return failure();
   }
 
@@ -1563,7 +1579,7 @@ LogicalResult aie2xclbin(
     const std::string &xclBinInstanceName, const std::string &amdAIEInstallDir,
     const std::optional<std::string> &InputXCLBin,
     const std::optional<std::string> &ukernel,
-    const std::string &additionalPeanoOptFlags) {
+    const std::string &additionalPeanoOptFlags, bool enableCtrlPkt) {
   if (outputNpuInstPath.has_value() &&
       failed(emitDenseArrayAttrToFile(deviceOp, "npu_instructions",
                                       outputNpuInstPath.value()))) {
@@ -1595,7 +1611,7 @@ LogicalResult aie2xclbin(
     return failure();
   }
 
-  if (outputCtrlPktInstPath.has_value() && outputCtrlPktSeqPath.has_value() &&
+  if (enableCtrlPkt &&
       failed(generateControlPackets(
           ctx, deviceOp, tempDirPath, outputCtrlPktInstPath.value(),
           outputCtrlPktSeqPath.value(), printIRBeforeAll, printIRAfterAll,
@@ -1604,13 +1620,13 @@ LogicalResult aie2xclbin(
     return failure();
   }
 
-  if (failed(generateCDO(ctx, deviceOp, tempDirPath))) {
+  if (failed(generateCDO(ctx, deviceOp, tempDirPath, enableCtrlPkt))) {
     llvm::errs() << "Failed to generate CDO\n";
     return failure();
   }
 
   Path pdiPath = tempDirPath / "design.pdi";
-  if (failed(generatePDI(pdiPath.string(), tempDirPath))) {
+  if (failed(generatePDI(pdiPath.string(), tempDirPath, enableCtrlPkt))) {
     llvm::errs() << "Failed to generate PDI\n";
     return failure();
   }
@@ -1630,7 +1646,8 @@ LogicalResult aie2xclbin(
          "generating XCLBin for non-XRT HAL");
   if (failed(generateXCLBin(artifactPath, tempDirPath, xclBinKernelID,
                             xclBinKernelName, xclBinInstanceName,
-                            amdAIEInstallDir, verbose, InputXCLBin))) {
+                            amdAIEInstallDir, verbose, InputXCLBin,
+                            enableCtrlPkt))) {
     llvm::errs() << "Failed to generate XCLBin\n";
     return failure();
   }

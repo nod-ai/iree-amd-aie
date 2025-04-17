@@ -21,7 +21,6 @@ def generate_matmul_test(
     m0=0,
     n0=0,
     k0=0,
-    constant_bias=0,
 ):
     """
     Generate mlir file (output_fn) from the template file (input_fn).
@@ -41,9 +40,6 @@ def generate_matmul_test(
     replace["ADD"] = "arith.addi" if acc_is_int else "arith.addf"
     replace["MUL"] = "arith.muli" if acc_is_int else "arith.mulf"
     replace["EXT"] = "arith.extsi" if acc_is_int else "arith.extf"
-
-    # Only used for control packet test.
-    replace["CONSTANT"] = constant_bias
 
     # This is only used for batch matmul.
     replace["B"] = b
