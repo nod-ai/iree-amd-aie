@@ -178,8 +178,7 @@ class ParameterSetting {
   ParameterSetting(uint32_t M0, uint32_t N0, uint32_t K0, uint32_t m0Pack,
                    uint32_t n0Pack, uint32_t k0Pack, uint32_t m1Pack,
                    uint32_t n1Pack, uint32_t k1Pack, uint32_t M, uint32_t N,
-                   uint32_t K, uint32_t nBytesLhs, uint32_t nBytesRhs,
-                   uint32_t nBytesInit, uint32_t nBytesOut)
+                   uint32_t K)
       : M0(M0),
         N0(N0),
         K0(K0),
@@ -191,11 +190,7 @@ class ParameterSetting {
         k1Pack(k1Pack),
         M(M),
         N(N),
-        K(K),
-        nBytesLhs(nBytesLhs),
-        nBytesRhs(nBytesRhs),
-        nBytesInit(nBytesInit),
-        nBytesOut(nBytesOut) {}
+        K(K) {}
 };
 
 FailureOr<ParameterSetting> ParameterSetting::create(
@@ -205,9 +200,6 @@ FailureOr<ParameterSetting> ParameterSetting::create(
   auto initType =
       llvm::cast<ShapedType>(linalgOp.getDpsInitOperand(0)->get().getType());
   uint32_t nBytesInit = initType.getElementTypeBitWidth() / 8;
-  // In case of an elementwise consumer, the output will become different from
-  // init and the value of `nBytesOut` will be updated.
-  uint32_t nBytesOut = nBytesInit;
   auto lhsType =
       llvm::cast<ShapedType>(linalgOp.getDpsInputOperand(0)->get().getType());
   uint32_t nBytesLhs = lhsType.getElementTypeBitWidth() / 8;
@@ -253,22 +245,22 @@ FailureOr<ParameterSetting> ParameterSetting::create(
   unsigned bufferDepthA = isObjectFifo ? 2 : 1;
   unsigned bufferDepthB = isObjectFifo ? 2 : 1;
   unsigned bufferDepthAcc = isObjectFifo ? 2 : 1;
-  // Currently only consider elementwise op that does truncations, i.e.
-  // trunci/truncf ops.
-  uint32_t nBytesElemOut{0};
+  unsigned bufferDepthC = isObjectFifo ? 2 : 1;
+
+  // Consider fusion with elementwise op, then there is only one buffer for
+  // matmul output (accumulation), i.e., bufferDepthAcc = 1.
+  unsigned nBytesElemOut{0};
   if (isMatmulWithElementwiseConsumer(linalgOp)) {
     for (Operation *userOp : linalgOp->getUsers()) {
       if (auto linalgUser = dyn_cast<linalg::LinalgOp>(userOp)) {
         auto outputType = llvm::cast<ShapedType>(
             linalgUser.getDpsInitOperand(0)->get().getType());
         nBytesElemOut = outputType.getElementTypeBitWidth() / 8;
-        // For bias, we need to count the second input from elementwise op, so
-        // reserve another buffer for that.
+        // For elementwise op like bias, we need to count the second input from
+        // elementwise op, so reserve another buffer for that.
         bufferDepthAcc = linalgUser.getNumDpsInputs() == 1 ? 1 : 2;
       }
     }
-    // Update number of output bytes in case if an elementwise consumer.
-    nBytesOut = nBytesElemOut;
   }
 
   // Get the largest tile sizes that can fit in L1 memory.
@@ -280,7 +272,7 @@ FailureOr<ParameterSetting> ParameterSetting::create(
       /*numBytesAcc=*/nBytesInit,
       /*bufferDepthA=*/bufferDepthA,
       /*bufferDepthB=*/bufferDepthB,
-      /*bufferDepthC=*/1,
+      /*bufferDepthC=*/bufferDepthC,
       /*bufferDepthAcc=*/bufferDepthAcc,
       /*inputM=*/static_cast<uint32_t>(M),
       /*inputN=*/static_cast<uint32_t>(N),
@@ -290,6 +282,8 @@ FailureOr<ParameterSetting> ParameterSetting::create(
       /*vectorK=*/k1Pack};
   TileSize maxL1Size = selectL1TileSizes(tileParams);
 
+  // For pack-peel pipeline, the first level tile size has to be numRows/numCols
+  // times of the L1 tile size.
   uint32_t maxL0SizeM = numRows * maxL1Size.M;
   uint32_t maxL0SizeN = numCols * maxL1Size.N;
   uint32_t M0 = findLargestFactor(M, maxL0SizeM, maxL1Size.M);
@@ -297,8 +291,19 @@ FailureOr<ParameterSetting> ParameterSetting::create(
   uint32_t m0Pack = (M0 / numRows) % m1Pack == 0 ? (M0 / numRows) : M0;
   uint32_t n0Pack = (N0 / numCols) % n1Pack == 0 ? (N0 / numCols) : N0;
 
-  // In pack-peel pipeline there is only one level of tiling for K dimension,
-  // so set K1 = 0. The packed outer K dimension needs to be 1, so set K0 = 1.
+  // For pack-peel-4-level-tiling pipeline, we use the largest tile sizes that
+  // can fit in the MemTile memory.
+  if (kPackScaleL1 == 2 && isObjectFifo) {
+    tileParams.memoryLimit = deviceModel.getMemTileSizeInBytes() * numCols;
+    tileParams.bufferDepthAcc =
+        isMatmulWithElementwiseConsumer(linalgOp) ? 0 : 2;
+    TileSize maxL0Size = selectL2TileSizes(tileParams, m0Pack, n0Pack);
+    M0 = maxL0Size.M;
+    N0 = maxL0Size.N;
+  }
+
+  // Currently there is only one level of tiling for K dimension, and the packed
+  // outer K dimension needs to be 1, so set K0 = 1.
   uint32_t K0 = 1;
   uint32_t maxL0SizeK = findLargestFactor(K, maxL1Size.K);
   // For some reason, matmul(bf16, bf16, f32) get best performance when k = 32
@@ -311,8 +316,7 @@ FailureOr<ParameterSetting> ParameterSetting::create(
           : maxL0SizeK;
 
   return ParameterSetting(M0, N0, K0, m0Pack, n0Pack, k0Pack, m1Pack, n1Pack,
-                          k1Pack, M, N, K, nBytesLhs, nBytesRhs, nBytesInit,
-                          nBytesOut);
+                          k1Pack, M, N, K);
 }
 }  // namespace
 
@@ -494,41 +498,14 @@ static LogicalResult setRootConfigForPackPeel4LevelTilingPipeline(
   // ------------------------------------------------------
   // -------------- Set lowering config -------------------
   // ------------------------------------------------------
-  // Check if we can scale L2 size of A and B with a factor.
-  // TODO(jornt): This assumes double buffering to get an upper bound, but
-  // retrieve this information instead.
-  int64_t l2SizeA =
-      2 * packPeelTiling.M0 * packPeelTiling.K * packPeelTiling.nBytesLhs;
-  int64_t l2SizeB =
-      4 * packPeelTiling.N0 * packPeelTiling.K * packPeelTiling.nBytesRhs;
-  int64_t l2SizeOut =
-      4 * packPeelTiling.M0 * packPeelTiling.N0 * packPeelTiling.nBytesOut;
-
-  // Assuming a `scaleL0N` of 1 or 2, find the largest `scaleL0M` that won't
-  // cause overflow of L2 memory. This is only done for the objectFifo pipeline
-  // and for pure matmul operations (no batch matmul) and otherwise we fall back
-  // to pack-peel (scaling factors = 1).
   // TODO(jornt): Make batch matmul work with pack-peel-4-level-tiling.
-  bool fitsInL2 = (l2SizeA + l2SizeB + l2SizeOut) <
-                  (deviceModel.getMemTileSizeInBytes() * numCols);
-  int64_t largestM0ScaleFactor =
-      ((deviceModel.getMemTileSizeInBytes() * numCols) - l2SizeB) /
-      (l2SizeA + l2SizeOut);
-  if (largestM0ScaleFactor % 2 != 0)
-    largestM0ScaleFactor = llvm::PowerOf2Ceil(largestM0ScaleFactor) / 2;
-  int64_t scaleL0M =
-      (isObjectFifo && !isBatchMatmul) ? largestM0ScaleFactor : 1;
-  int64_t scaleL0N = (isObjectFifo && !isBatchMatmul && fitsInL2) ? 2 : 1;
-  int64_t m0Tile = std::min(static_cast<uint32_t>(packPeelTiling.M0 * scaleL0M),
-                            packPeelTiling.M);
-  int64_t n0Tile = std::min(static_cast<uint32_t>(packPeelTiling.N0 * scaleL0N),
-                            packPeelTiling.N);
-
   SmallVector<int64_t> tileSizeLevel0(numLoops, 0);
   if (isBatchMatmul) {
     assert(!batchDims.empty() && "expected batch dims not empty");
     tileSizeLevel0[batchDims[0]] = 1;
   }
+  int64_t m0Tile = packPeelTiling.M0;
+  int64_t n0Tile = packPeelTiling.N0;
   // For 4D matmul-like ops, only tile the outer dims.
   // outer_tile_size = total_tile_size / inner_dim_size
   if (is4DMatmulLikeOp(linalgOp)) {
