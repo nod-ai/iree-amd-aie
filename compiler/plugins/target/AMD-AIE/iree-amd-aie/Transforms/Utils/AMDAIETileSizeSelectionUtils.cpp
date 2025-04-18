@@ -68,7 +68,7 @@ TileSize selectL1TileSizes(const TileParams& params) {
 void findLargestL2TileSizes(uint32_t m, uint32_t n, const uint32_t k,
                             uint32_t& curMax, const TileParams& params,
                             TileSize& best) {
-  if (m > params.inputM || n > params.inputN || curMax >= params.memoryLimit)
+  if (m > params.inputM || n > params.inputN || curMax > params.memoryLimit)
     return;
 
   bool isInputDivisible = (params.inputM % m == 0) && (params.inputN % n == 0);
@@ -79,13 +79,17 @@ void findLargestL2TileSizes(uint32_t m, uint32_t n, const uint32_t k,
     uint32_t Acc = params.numBytesAcc * m * n * params.bufferDepthAcc;
     int64_t memoryUsage = A + B + C + Acc;
 
-    if (memoryUsage < params.memoryLimit && memoryUsage > curMax) {
+    if (memoryUsage <= params.memoryLimit && memoryUsage > curMax) {
       curMax = memoryUsage;
       best = {m, n, k};
     }
   }
 
-  if (n >= m && m * 2 <= params.inputM) {
+  if (m * 2 > params.inputM) {
+    findLargestL2TileSizes(m, n * 2, k, curMax, params, best);
+  } else if (n * 2 > params.inputN) {
+    findLargestL2TileSizes(m * 2, n, k, curMax, params, best);
+  } else if (n >= m) {
     findLargestL2TileSizes(m * 2, n, k, curMax, params, best);
   } else {
     findLargestL2TileSizes(m, n * 2, k, curMax, params, best);
