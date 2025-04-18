@@ -147,11 +147,11 @@ static PacketRulesOp getOrCreatePacketRules(OpBuilder &builder,
 /// `connect` operations in the IR.
 LogicalResult runOnCircuitFlow(
     DeviceOp device, ArrayRef<FlowOp> flowOps,
-    const std::map<PathEndPoint, SwitchSettings> &flowSolutions) {
+    const std::map<PhysPort, SwitchSettings> &flowSolutions) {
   OpBuilder builder(device.getContext());
   AMDAIEDeviceModel deviceModel =
       getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
-  std::set<PathEndPoint> processedFlows;
+  DenseSet<PhysPort> processedFlows;
 
   for (FlowOp flowOp : flowOps) {
     auto srcTile = llvm::cast<TileOp>(flowOp.getSource().getDefiningOp());
@@ -160,15 +160,15 @@ LogicalResult runOnCircuitFlow(
     StrmSwPortType srcBundle = (flowOp.getSourceBundle());
     int srcChannel = flowOp.getSourceChannel();
     Port srcPort = {srcBundle, srcChannel};
-    PathEndPoint srcPe{srcCoords.col, srcCoords.row, srcPort};
-    if (processedFlows.count(srcPe)) {
+    PhysPort srcPhyPort{srcCoords, srcPort, PhysPort::Direction::SRC};
+    if (processedFlows.count(srcPhyPort)) {
       flowOp.erase();
       continue;
     }
 
     builder.setInsertionPointAfter(flowOp);
     for (auto &[curr, conns] :
-         emitConnections(flowSolutions, srcPe, deviceModel)) {
+         emitConnections(flowSolutions, srcPhyPort, deviceModel)) {
       SwitchboxOp switchboxOp =
           getOrCreateSwitchbox(builder, device, curr.col, curr.row);
       for (const auto &conn : conns) {
@@ -190,7 +190,7 @@ LogicalResult runOnCircuitFlow(
       }
     }
 
-    processedFlows.insert(srcPe);
+    processedFlows.insert(srcPhyPort);
     flowOp.erase();
   }
 
@@ -301,7 +301,7 @@ getRoutedPacketFlows(DeviceOp device, AMDAIEDeviceModel &deviceModel) {
 /// `amsel`, `masterSet`, and `packetRules` operations in the IR.
 LogicalResult runOnPacketFlow(
     DeviceOp device, ArrayRef<PacketFlowOp> pktFlowOps,
-    const std::map<PathEndPoint, SwitchSettings> &flowSolutions,
+    const std::map<PhysPort, SwitchSettings> &flowSolutions,
     const PacketFlowMapT &priorPacketFlows,
     ArrayRef<PhysPortAndID> priorSlavePorts) {
   OpBuilder builder(device.getContext());
@@ -341,11 +341,11 @@ LogicalResult runOnPacketFlow(
                srcPort.channel != -1 && "expected srcPort to have been set");
         assert(srcCoords.col != -1 && srcCoords.row != -1 &&
                "expected srcCoords to have been set");
-        PathEndPoint srcPoint = {TileLoc{srcCoords.col, srcCoords.row},
-                                 srcPort};
+        PhysPort srcPhyPort = {TileLoc{srcCoords.col, srcCoords.row}, srcPort,
+                               PhysPort::Direction::SRC};
         // TODO(max): when does this happen???
-        if (!flowSolutions.count(srcPoint)) continue;
-        SwitchSettings settings = flowSolutions.at(srcPoint);
+        if (!flowSolutions.count(srcPhyPort)) continue;
+        SwitchSettings settings = flowSolutions.at(srcPhyPort);
         // add connections for all the Switchboxes in SwitchSettings
         for (const auto &[curr, setting] : settings) {
           TileLoc currTile = {curr.col, curr.row};
@@ -588,7 +588,7 @@ LogicalResult runOnPacketFlow(
 /// `aie.switchboxes`.
 void AMDAIERouteFlowsWithPathfinderPass::runOnOperation() {
   DeviceOp device = getOperation();
-  std::map<PathEndPoint, SwitchSettings> flowSolutions;
+  std::map<PhysPort, SwitchSettings> flowSolutions;
   // don't be clever and remove these initializations because
   // then you're doing a max against garbage data...
   uint8_t maxCol = 0, maxRow = 0;

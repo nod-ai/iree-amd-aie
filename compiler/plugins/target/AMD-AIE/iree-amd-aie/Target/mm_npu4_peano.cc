@@ -301,16 +301,25 @@ extern "C" {
 
 matmul_combos_i8(matmul_vectorized_c_func, 32, 32, 32)
 matmul_combos_i8(matmul_vectorized_c_func, 32, 32, 64)
+matmul_combos_i8(matmul_vectorized_c_func, 64, 32, 128)
+matmul_combos_i8(matmul_vectorized_c_func, 32, 32, 128)
+matmul_combos_i8(matmul_vectorized_c_func, 64, 64, 128)
 
 zero_fill_combos_i32(zero_vectorized_c_func, 32, 32)
+zero_fill_combos_i32(zero_vectorized_c_func, 64, 32)
+zero_fill_combos_i32(zero_vectorized_c_func, 64, 64)
 
 trunci_combos_i32_i8(trunci_c_func, 32, 32)
+trunci_combos_i32_i8(trunci_c_func, 64, 32)
+trunci_combos_i32_i8(trunci_c_func, 64, 64)
 
 matmul_combos_bfp16(matmul_vectorized_c_func, 16, 8, 32)
 matmul_combos_bfp16(matmul_vectorized_c_func, 16, 8, 64)
 matmul_combos_bfp16(matmul_vectorized_c_func, 16, 16, 32)
 matmul_combos_bfp16(matmul_vectorized_c_func, 32, 32, 32)
 matmul_combos_bfp16(matmul_vectorized_c_func, 32, 32, 64)
+matmul_combos_bfp16(matmul_vectorized_c_func, 32, 16, 128)
+matmul_combos_bfp16(matmul_vectorized_c_func, 32, 32, 128)
 
 zero_fill_combos_f32(zero_vectorized_c_func, 16, 8)
 zero_fill_combos_f32(zero_vectorized_c_func, 16, 16)

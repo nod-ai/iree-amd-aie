@@ -137,9 +137,21 @@ void AMDAIEFuseProducerIntoLoopPass::runOnOperation() {
 
     // Materialize each slice of the producer in place.
     for (Value operand : genericOp.getOperands()) {
+      // Case where operand of a generic op is a pack/copy op which is in a
+      // different block than the generic's block.
+      if (isa_and_present<linalg::PackOp, linalg::CopyOp>(
+              operand.getDefiningOp())) {
+        Operation *parent = operand.getDefiningOp();
+        Block *genericBlock = genericOp->getBlock();
+        if (parent->getBlock() != genericBlock && parent->hasOneUse()) {
+          Operation *firstOpInBlock = &genericBlock->front();
+          rewriter.moveOpBefore(parent, firstOpInBlock);
+          continue;
+        }
+      }
+
       FailureOr<tensor::ExtractSliceOp> maybeSliceOp =
           getTensorExtractSliceDefiningOp(operand);
-
       if (succeeded(maybeSliceOp)) {
         tensor::ExtractSliceOp sliceOp = maybeSliceOp.value();
         std::optional<scf::SCFFuseProducerOfSliceResult> fusedProducer =
@@ -148,18 +160,6 @@ void AMDAIEFuseProducerIntoLoopPass::runOnOperation() {
         if (!fusedProducer) {
           funcOp->emitOpError("Failed to fuse pack ops into for loop.");
           return signalPassFailure();
-        }
-      }
-
-      // Case where operand of a generic op is a pack/copy op which is in a
-      // different block than the generic's block.
-      else if (isa_and_present<linalg::PackOp, linalg::CopyOp>(
-                   operand.getDefiningOp())) {
-        Operation *parent = operand.getDefiningOp();
-        Block *genericBlock = genericOp->getBlock();
-        if (parent->getBlock() != genericBlock && parent->hasOneUse()) {
-          Operation *firstOpInBlock = &genericBlock->front();
-          rewriter.moveOpBefore(parent, firstOpInBlock);
         }
       }
     }

@@ -237,11 +237,11 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
         options.getNumRows(deviceModel), options.getNumCols(deviceModel),
         options.useTilePipeline, options.useLowerToAIEPipeline,
         options.matmulElementwiseFusion, options.enableVectorizationPasses,
-        options.pathToUkernels, options.enableInputPacketFlow,
-        options.enableOutputPacketFlow, options.enableCoalescingLoops,
-        options.enableCollapsingUnitDims, options.enableFunctionOutlining,
-        options.callReplication, options.insertLoopAroundCoreBlock,
-        options.emitCtrlPkt);
+        options.enableAMDAIEUkernels, options.pathToUkernels,
+        options.enableInputPacketFlow, options.enableOutputPacketFlow,
+        options.enableCoalescingLoops, options.enableCollapsingUnitDims,
+        options.enableFunctionOutlining, options.callReplication,
+        options.insertLoopAroundCoreBlock, options.enableCtrlPkt);
   }
 
   void buildLinkingPassPipeline(OpPassManager &passManager) override {
@@ -260,8 +260,8 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
 
 void serializeXCLBinToFb(FlatbufferBuilder &builder,
                          flatbuffers_string_vec_ref_t entryPointsRef,
-                         SmallVector<uint32_t> &asmInstrIndices,
-                         SmallVector<uint32_t> &xclbinIndices,
+                         SmallVector<int32_t> &asmInstrIndices,
+                         SmallVector<int32_t> &xclbinIndices,
                          SmallVector<int32_t> &reconfDataIndices,
                          SmallVector<flatbuffers_ref_t> xclbinRefs,
                          SmallVector<flatbuffers_ref_t> asmInstrRefs,
@@ -300,8 +300,8 @@ void serializeXCLBinToFb(FlatbufferBuilder &builder,
 
 void serializePDIToFb(FlatbufferBuilder &builder,
                       flatbuffers_string_vec_ref_t entryPointsRef,
-                      SmallVector<uint32_t> &asmInstrIndices,
-                      SmallVector<uint32_t> &pdiIndices,
+                      SmallVector<int32_t> &asmInstrIndices,
+                      SmallVector<int32_t> &pdiIndices,
                       SmallVector<int32_t> &reconfDataIndices,
                       SmallVector<flatbuffers_ref_t> pdiRefs,
                       SmallVector<flatbuffers_ref_t> asmInstrRefs,
@@ -355,6 +355,84 @@ FailureOr<std::vector<uint32_t>> loadUInt32ArrayFromFile(StringRef filePath) {
   }
   return array;
 }
+
+struct Flatbuffer1dStringArrayConverter {
+  // The 1D array structure that represents the layout expected by the
+  // FlatBuffer schema.
+  SmallVector<std::string> data;
+  // Maps each ordinal to its corresponding index in the `data` array.
+  SmallVector<int32_t> indices;
+
+  Flatbuffer1dStringArrayConverter(uint64_t ordinalCount) {
+    indices.resize(ordinalCount);
+  }
+
+  void addEntry(uint64_t ordinal, StringRef entry) {
+    if (entry.empty()) {
+      // FlatBuffer does not support empty strings in an array, so we set the
+      // index to -1 to indicate that this entry is invalid.
+      indices[ordinal] = -1;
+    } else {
+      indices[ordinal] = data.size();
+      data.push_back(entry.str());
+    }
+  }
+
+  flatbuffers_string_vec_ref_t getFlatbufferVecRef(FlatbufferBuilder &builder) {
+    return builder.createStringVec(data);
+  }
+
+  template <typename FuncCreateStringRef>
+  SmallVector<flatbuffers_ref_t> getFlatbufferRefs(
+      FlatbufferBuilder &builder, FuncCreateStringRef createStringRef) {
+    return llvm::map_to_vector(data, [&](const StringRef &entry) {
+      return createStringRef(builder, builder.createString(entry));
+    });
+  }
+};
+
+struct Flatbuffer3dUInt32ArrayConverter {
+  // The 3D array structure that represents the layout expected by the
+  // FlatBuffer schema.
+  SmallVector<SmallVector<std::vector<uint32_t>>> data;
+  // Maps an ordinal to the corresponding index in the outermost dimension of
+  // `data`. A value of -1 indicates that the given ordinal does not have a
+  // corresponding entry in `data`.
+  SmallVector<int32_t> indices;
+
+  Flatbuffer3dUInt32ArrayConverter(uint64_t ordinalCount) {
+    indices.resize(ordinalCount);
+  }
+
+  void addEntry(uint64_t ordinal,
+                const SmallVector<std::vector<uint32_t>> &entry2d) {
+    if (entry2d.empty()) {
+      // FlatBuffer does not support multidimensional arrays where any inner
+      // vector is empty, e.g., {{1, 2}, {}, {3, 4}} is invalid due to the empty
+      // second element. Handle this by setting the index to -1.
+      indices[ordinal] = -1;
+    } else {
+      indices[ordinal] = data.size();
+      data.push_back(entry2d);
+    }
+  }
+
+  template <typename Array1dRef, typename FuncCreateArray1d,
+            typename FuncCreateArray2d>
+  SmallVector<flatbuffers_ref_t> getFlatbufferRefs(
+      FlatbufferBuilder &builder, FuncCreateArray1d createArray1d,
+      FuncCreateArray2d createArray2d) {
+    auto convertToRef = [&](SmallVector<std::vector<uint32_t>> &entry2d) {
+      SmallVector<Array1dRef> entry2dRefs = llvm::map_to_vector(
+          entry2d, [&](std::vector<uint32_t> &entry1d) -> Array1dRef {
+            return createArray1d(builder, builder.createInt32Vec(entry1d));
+          });
+      return createArray2d(builder,
+                           builder.createOffsetVecDestructive(entry2dRefs));
+    };
+    return llvm::map_to_vector(data, convertToRef);
+  }
+};
 
 LogicalResult AIETargetBackend::serializeExecutable(
     const SerializationOptions &serOptions,
@@ -437,7 +515,6 @@ LogicalResult AIETargetBackend::serializeExecutable(
     return moduleOp.emitOpError("should contain some entry points");
   }
 
-  std::unique_ptr<llvm::MemoryBuffer> artifactInput;
   FlatbufferBuilder builder;
   switch (options.deviceHal) {
     case AMDAIEOptions::DeviceHAL::XRT:
@@ -451,21 +528,15 @@ LogicalResult AIETargetBackend::serializeExecutable(
       return failure();
   }
 
-  SmallVector<flatbuffers_ref_t> refs;
-  SmallVector<flatbuffers_ref_t> asmInstrRefs;
-  SmallVector<flatbuffers_ref_t> reconfDataRefs;
-
-  // Per entry-point data.
-  // Note that the following vectors should all be of the same size and
-  // element at index #i is for entry point with ordinal #i!
-  SmallVector<std::string> entryPointNamesFb(ordinalCount);
-  SmallVector<uint32_t> indices(ordinalCount);
-  SmallVector<uint32_t> asmInstrIndices(ordinalCount);
-  SmallVector<int32_t> reconfDataIndices(ordinalCount);
+  // Utilities for converting data into FlatBuffer formats.
+  Flatbuffer1dStringArrayConverter entryPointNameConvertor(ordinalCount);
+  Flatbuffer1dStringArrayConverter artifactConvertor(ordinalCount);
+  Flatbuffer3dUInt32ArrayConverter asmInstrConverter(ordinalCount);
+  Flatbuffer3dUInt32ArrayConverter reconfDataConverter(ordinalCount);
 
   for (size_t i = 0; i < entryPointNames.size(); i++) {
     uint64_t ordinal = entryPointOrdinals.at(entryPointNames[i]);
-    entryPointNamesFb[ordinal] = entryPointNames[i];
+    entryPointNameConvertor.addEntry(ordinal, entryPointNames[i]);
     std::string errorMessage;
     // we add the entry point to the working directory for artifacts if
     // there are multiple entry points so that we don't overwrite the
@@ -473,7 +544,7 @@ LogicalResult AIETargetBackend::serializeExecutable(
     // will have the same exact names.
     SmallString<128> entryPointWorkDir(workDir);
     if (ordinalCount > 1) {
-      llvm::sys::path::append(entryPointWorkDir, entryPointNamesFb[ordinal]);
+      llvm::sys::path::append(entryPointWorkDir, entryPointNames[i]);
     }
 
     if (auto err = llvm::sys::fs::create_directories(entryPointWorkDir)) {
@@ -486,12 +557,10 @@ LogicalResult AIETargetBackend::serializeExecutable(
     SmallString<128> artifactPath(entryPointWorkDir);
     switch (options.deviceHal) {
       case AMDAIEOptions::DeviceHAL::XRT:
-        llvm::sys::path::append(artifactPath,
-                                entryPointNamesFb[ordinal] + ".xclbin");
+        llvm::sys::path::append(artifactPath, entryPointNames[i] + ".xclbin");
         break;
       case AMDAIEOptions::DeviceHAL::XRT_LITE:
-        llvm::sys::path::append(artifactPath,
-                                entryPointNamesFb[ordinal] + ".pdi");
+        llvm::sys::path::append(artifactPath, entryPointNames[i] + ".pdi");
         break;
       default:
         llvm::errs() << "Unsupported device HAL\n";
@@ -499,17 +568,16 @@ LogicalResult AIETargetBackend::serializeExecutable(
     }
     // Path to store the NPU instructions.
     SmallString<128> npuInstPath(entryPointWorkDir);
-    SmallString<128> npuInstFileName(entryPointNamesFb[ordinal] +
-                                     ".npu_inst.txt");
+    SmallString<128> npuInstFileName(entryPointNames[i] + ".npu_inst.txt");
     llvm::sys::path::append(npuInstPath, npuInstFileName);
     // Path to store the control packet instructions.
     SmallString<128> ctrlpktInstPath(entryPointWorkDir);
-    SmallString<128> ctrlpktInstFileName(entryPointNamesFb[ordinal] +
+    SmallString<128> ctrlpktInstFileName(entryPointNames[i] +
                                          ".ctrlpkt_inst.txt");
     llvm::sys::path::append(ctrlpktInstPath, ctrlpktInstFileName);
     // Path to store the control packet sequence.
     SmallString<128> ctrlpktSeqPath(entryPointWorkDir);
-    SmallString<128> ctrlpktSeqFileName(entryPointNamesFb[ordinal] +
+    SmallString<128> ctrlpktSeqFileName(entryPointNames[i] +
                                         ".ctrlpkt_seq.txt");
     llvm::sys::path::append(ctrlpktSeqPath, ctrlpktSeqFileName);
 
@@ -529,6 +597,10 @@ LogicalResult AIETargetBackend::serializeExecutable(
       OpBuilder opBuilder(deviceOps[i].getContext());
       auto moduleWithOneDevice =
           opBuilder.create<ModuleOp>(deviceOps[i].getLoc());
+      auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(deviceOps[i]);
+      if (!targetAttr)
+        return deviceOps[i].emitError() << "Could not find target attribute";
+      moduleWithOneDevice->setAttr("hal.executable.target", targetAttr);
       opBuilder.setInsertionPointToStart(moduleWithOneDevice.getBody());
       Operation *repl = opBuilder.clone(*deviceOps[i].getOperation());
       deviceOps[i] = cast<xilinx::AIE::DeviceOp>(repl);
@@ -548,12 +620,8 @@ LogicalResult AIETargetBackend::serializeExecutable(
             /*ctx=*/variantOp->getContext(),
             /*deviceOp=*/deviceOps[i],
             /*outputNpuInstPath=*/npuInstPath.str().str(),
-            /*outputCtrlPktInstPath=*/options.emitCtrlPkt
-                ? std::make_optional(ctrlpktInstPath.str().str())
-                : std::nullopt,
-            /*outputCtrlPktSeqPath=*/options.emitCtrlPkt
-                ? std::make_optional(ctrlpktSeqPath.str().str())
-                : std::nullopt,
+            /*outputCtrlPktInstPath=*/ctrlpktInstPath.str().str(),
+            /*outputCtrlPktSeqPath=*/ctrlpktSeqPath.str().str(),
             /*artifactPath=*/artifactPath.str().str(),
             /*printIRBeforeAll=*/options.aie2xclbinPrintIrBeforeAll,
             /*printIRAfterAll=*/options.aie2xclbinPrintIrAfterAll,
@@ -571,137 +639,95 @@ LogicalResult AIETargetBackend::serializeExecutable(
             /*peanoDir=*/options.peanoInstallDir,
             /*deviceHal=*/options.deviceHal,
             /*xclBinKernelID=*/ordinalHex.str(),
-            /*xclBinKernelName=*/entryPointNamesFb[ordinal],
+            /*xclBinKernelName=*/entryPointNames[i],
             /*xclBinInstanceName=*/"IREE",
             /*amdAIEInstallDir=*/options.amdAieInstallDir,
             /*InputXCLBin=*/std::nullopt,
             /*ukernel=*/options.enableAMDAIEUkernels,
-            /*additionalPeanoOptFlags=*/options.additionalPeanoOptFlags))) {
+            /*additionalPeanoOptFlags=*/options.additionalPeanoOptFlags,
+            /*enableCtrlPkt=*/options.enableCtrlPkt))) {
       return failure();
     }
 
-    SmallVector<flatbuffers_int32_vec_ref_t> asmInstrsRunlist;
-    SmallVector<flatbuffers_int32_vec_ref_t> reconfDataRunlist;
-    asmInstrIndices[ordinal] = asmInstrRefs.size();
-    // TODO (zhewen): support multiple iterations of reconfiguration.
-    if (!options.dirToLoadCtrlPktFiles.empty()) {
-      // Reconfiguration is required.
+    SmallVector<std::vector<uint32_t>> asmInstrs2d;
+    SmallVector<std::vector<uint32_t>> reconfData2d;
+    if (options.enableCtrlPkt) {
       // Load control packet instructions from file.
-      SmallString<128> ctrlpktInstPath(options.dirToLoadCtrlPktFiles);
-      llvm::sys::path::append(ctrlpktInstPath, ctrlpktInstFileName);
       FailureOr<std::vector<uint32_t>> ctrlpktInstrs =
           loadUInt32ArrayFromFile(ctrlpktInstPath);
       if (failed(ctrlpktInstrs)) return failure();
-      asmInstrsRunlist.push_back(builder.createInt32Vec(ctrlpktInstrs.value()));
+      asmInstrs2d.push_back(ctrlpktInstrs.value());
       // Load control packet sequence from file.
-      SmallString<128> ctrlpktSeqPath(options.dirToLoadCtrlPktFiles);
-      llvm::sys::path::append(ctrlpktSeqPath, ctrlpktSeqFileName);
       FailureOr<std::vector<uint32_t>> ctrlpktSeq =
           loadUInt32ArrayFromFile(ctrlpktSeqPath);
       if (failed(ctrlpktSeq)) return failure();
-      reconfDataRunlist.push_back(builder.createInt32Vec(ctrlpktSeq.value()));
-      reconfDataIndices[ordinal] = reconfDataRefs.size();
-      // Load new NPU instructions (executed after reconfiguration) from file.
-      SmallString<128> newNpuInstPath(options.dirToLoadCtrlPktFiles);
-      llvm::sys::path::append(newNpuInstPath, npuInstFileName);
-      FailureOr<std::vector<uint32_t>> newNpuInstrs =
-          loadUInt32ArrayFromFile(newNpuInstPath);
-      if (failed(newNpuInstrs)) return failure();
-      asmInstrsRunlist.push_back(builder.createInt32Vec(newNpuInstrs.value()));
-    } else {
-      // No reconfiguration is needed.
-      // Load normal NPU instructions from file.
-      FailureOr<std::vector<uint32_t>> npuInstrs =
-          loadUInt32ArrayFromFile(npuInstPath);
-      if (failed(npuInstrs)) return failure();
-      asmInstrsRunlist.push_back(builder.createInt32Vec(npuInstrs.value()));
-      // Use "-1" as a special value to indicate that no reconfiguration data is
-      // needed for this entry point ordinal.
-      reconfDataIndices[ordinal] = -1;
+      reconfData2d.push_back(ctrlpktSeq.value());
     }
+    // Load NPU instructions from file.
+    FailureOr<std::vector<uint32_t>> npuInstrs =
+        loadUInt32ArrayFromFile(npuInstPath);
+    if (failed(npuInstrs)) return failure();
+    asmInstrs2d.push_back(npuInstrs.value());
+    // Add the 2D array entry to the converter.
+    asmInstrConverter.addEntry(ordinal, asmInstrs2d);
+    reconfDataConverter.addEntry(ordinal, reconfData2d);
 
-    if (options.deviceHal == AMDAIEOptions::DeviceHAL::XRT_LITE) {
-      // Convert the asm instruction runlist to a flatbuffer vector.
-      SmallVector<iree_amd_aie_hal_xrt_lite_UI32Array1dDef_ref_t> asmInstrsVec;
-      for (auto &asmInstr : asmInstrsRunlist) {
-        asmInstrsVec.push_back(
-            iree_amd_aie_hal_xrt_lite_UI32Array1dDef_create(builder, asmInstr));
+    // Get the artifact (XCLBIN or PDI) only if control packet reconfiguration
+    // is disabled or this is the first entry point. Otherwise, leave it as an
+    // empty string.
+    std::string artifactString;
+    if (!options.enableCtrlPkt || i == 0) {
+      // Load the artifact from file.
+      std::unique_ptr<llvm::MemoryBuffer> artifactInput =
+          openInputFile(artifactPath, &errorMessage);
+      if (!artifactInput) {
+        moduleOp.emitOpError()
+            << "Failed to open artifact file: " << errorMessage;
       }
-      asmInstrRefs.push_back(iree_amd_aie_hal_xrt_lite_UI32Array2dDef_create(
-          builder, builder.createOffsetVecDestructive(asmInstrsVec)));
-      if (reconfDataRunlist.size() > 0) {
-        // Convert the reconfiguration data runlist to a flatbuffer vector.
-        SmallVector<iree_amd_aie_hal_xrt_lite_UI32Array1dDef_ref_t>
-            reconfDataVec;
-        for (auto &reconfData : reconfDataRunlist) {
-          reconfDataVec.push_back(
-              iree_amd_aie_hal_xrt_lite_UI32Array1dDef_create(builder,
-                                                              reconfData));
-        }
-        reconfDataRefs.push_back(
-            iree_amd_aie_hal_xrt_lite_UI32Array2dDef_create(
-                builder, builder.createOffsetVecDestructive(reconfDataVec)));
-      }
-    } else if (options.deviceHal == AMDAIEOptions::DeviceHAL::XRT) {
-      // Convert the asm instruction runlist to a flatbuffer vector.
-      SmallVector<iree_amd_aie_hal_xrt_UI32Array1dDef_ref_t> asmInstrsVec;
-      for (auto &asmInstr : asmInstrsRunlist) {
-        asmInstrsVec.push_back(
-            iree_amd_aie_hal_xrt_UI32Array1dDef_create(builder, asmInstr));
-      }
-      asmInstrRefs.push_back(iree_amd_aie_hal_xrt_UI32Array2dDef_create(
-          builder, builder.createOffsetVecDestructive(asmInstrsVec)));
-      if (reconfDataRunlist.size() > 0) {
-        // Convert the reconfiguration data runlist to a flatbuffer vector.
-        SmallVector<iree_amd_aie_hal_xrt_UI32Array1dDef_ref_t> reconfDataVec;
-        for (auto &reconfData : reconfDataRunlist) {
-          reconfDataVec.push_back(
-              iree_amd_aie_hal_xrt_UI32Array1dDef_create(builder, reconfData));
-        }
-        reconfDataRefs.push_back(iree_amd_aie_hal_xrt_UI32Array2dDef_create(
-            builder, builder.createOffsetVecDestructive(reconfDataVec)));
-      }
-    } else {
-      llvm::report_fatal_error("unsupported backend");
+      artifactString = artifactInput->getBuffer();
     }
-
-    artifactInput = openInputFile(artifactPath, &errorMessage);
-    if (!artifactInput) {
-      moduleOp.emitOpError()
-          << "Failed to open artifact file: " << errorMessage;
-    }
-    flatbuffers_string_ref_t artifactStringRef =
-        builder.createString(artifactInput->getBuffer());
-    indices[ordinal] = refs.size();
-
-    switch (options.deviceHal) {
-      case AMDAIEOptions::DeviceHAL::XRT:
-        refs.push_back(
-            iree_amd_aie_hal_xrt_XclbinDef_create(builder, artifactStringRef));
-        break;
-      case AMDAIEOptions::DeviceHAL::XRT_LITE:
-        refs.push_back(iree_amd_aie_hal_xrt_lite_PdiDef_create(
-            builder, artifactStringRef));
-        break;
-      default:
-        llvm::errs() << "Unsupported device HAL\n";
-        return failure();
-    }
+    // Add the artifact to the converter.
+    artifactConvertor.addEntry(ordinal, artifactString);
   }
 
   // Serialize the executable to flatbuffer format
-  flatbuffers_string_vec_ref_t entryPointsRef =
-      builder.createStringVec(entryPointNamesFb);
   switch (options.deviceHal) {
-    case AMDAIEOptions::DeviceHAL::XRT:
-      serializeXCLBinToFb(builder, entryPointsRef, asmInstrIndices, indices,
-                          reconfDataIndices, refs, asmInstrRefs,
-                          reconfDataRefs);
+    case AMDAIEOptions::DeviceHAL::XRT: {
+      auto get3dUInt32ArrayRefs =
+          [&](Flatbuffer3dUInt32ArrayConverter &converter) {
+            return converter
+                .getFlatbufferRefs<iree_amd_aie_hal_xrt_UI32Array1dDef_ref_t>(
+                    builder, iree_amd_aie_hal_xrt_UI32Array1dDef_create,
+                    iree_amd_aie_hal_xrt_UI32Array2dDef_create);
+          };
+      serializeXCLBinToFb(builder,
+                          entryPointNameConvertor.getFlatbufferVecRef(builder),
+                          asmInstrConverter.indices, artifactConvertor.indices,
+                          reconfDataConverter.indices,
+                          artifactConvertor.getFlatbufferRefs(
+                              builder, iree_amd_aie_hal_xrt_XclbinDef_create),
+                          get3dUInt32ArrayRefs(asmInstrConverter),
+                          get3dUInt32ArrayRefs(reconfDataConverter));
       break;
-    case AMDAIEOptions::DeviceHAL::XRT_LITE:
-      serializePDIToFb(builder, entryPointsRef, asmInstrIndices, indices,
-                       reconfDataIndices, refs, asmInstrRefs, reconfDataRefs);
+    }
+    case AMDAIEOptions::DeviceHAL::XRT_LITE: {
+      auto get3dUInt32ArrayRefs = [&](Flatbuffer3dUInt32ArrayConverter
+                                          &converter) {
+        return converter
+            .getFlatbufferRefs<iree_amd_aie_hal_xrt_lite_UI32Array1dDef_ref_t>(
+                builder, iree_amd_aie_hal_xrt_lite_UI32Array1dDef_create,
+                iree_amd_aie_hal_xrt_lite_UI32Array2dDef_create);
+      };
+      serializePDIToFb(builder,
+                       entryPointNameConvertor.getFlatbufferVecRef(builder),
+                       asmInstrConverter.indices, artifactConvertor.indices,
+                       reconfDataConverter.indices,
+                       artifactConvertor.getFlatbufferRefs(
+                           builder, iree_amd_aie_hal_xrt_lite_PdiDef_create),
+                       get3dUInt32ArrayRefs(asmInstrConverter),
+                       get3dUInt32ArrayRefs(reconfDataConverter));
       break;
+    }
     default:
       llvm::errs() << "Unsupported device HAL\n";
       return failure();

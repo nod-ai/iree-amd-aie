@@ -41,11 +41,12 @@ void buildAMDAIETransformPassPipeline(
     OpPassManager &variantPassManager, AMDAIEDevice device, uint32_t numRows,
     uint32_t numCols, TilePassPipeline useTilePipeline,
     LowerToAIEPassPipeline useLowerToAIEPipeline, bool matmulElementwiseFusion,
-    bool enableVectorizationPasses, const std::string &pathToUkernels,
-    bool enableInputPacketFlow, bool enableOutputPacketFlow,
-    bool enableCoalescingLoops, bool enableCollapsingUnitDims,
-    OutliningStrategy enableFunctionOutlining, int outliningLoopInCallCount,
-    bool insertLoopAroundCoreBlock, bool emitCtrlPkt);
+    bool enableVectorizationPasses, std::string enableAMDAIEUkernels,
+    const std::string &pathToUkernels, bool enableInputPacketFlow,
+    bool enableOutputPacketFlow, bool enableCoalescingLoops,
+    bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
+    int outliningLoopInCallCount, bool insertLoopAroundCoreBlock,
+    bool emitCtrlPkt);
 
 /// Populates passes needed to lower the IR via a Pack-Peel based approach.
 void addPackPeelBasedPassPipeline(OpPassManager &passManager,
@@ -217,7 +218,8 @@ std::unique_ptr<Pass> createAMDAIEHoistForLoopAffineApplyPass();
 std::unique_ptr<Pass> createAMDAIEHoistLogicalObjFifoPass();
 
 /// Create pass to chain DMA BD IDs by updating next_bd operands.
-std::unique_ptr<Pass> createAMDAIEInsertDmaBdChainPass();
+std::unique_ptr<Pass> createAMDAIEInsertDmaBdChainPass(
+    AMDAIEInsertDmaBdChainOptions options = {});
 
 /// Create a pass to transform linalg.generics into a form which benefits later
 /// vectorization passes (to vector and aievec dialects).

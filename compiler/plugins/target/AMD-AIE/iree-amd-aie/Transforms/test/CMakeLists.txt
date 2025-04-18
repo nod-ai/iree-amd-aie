@@ -28,7 +28,6 @@ iree_lit_test_suite(
     "controlcode_forall_to_for.mlir"
     "controlcode_loop_unrolling.mlir"
     "controlcode_lowering.mlir"
-    "controlcode_lowering_ctrlpkt.mlir"
     "controlcode_to_transaction.mlir"
     "control_packet_to_npu_dma.mlir"
     "convert_core_forall_to_for.mlir"
@@ -124,4 +123,14 @@ iree_cc_test(
     iree::target::amd-aie::Transforms
     iree::compiler::Dialect::HAL::IR
     iree::compiler::Dialect::HAL::IR::HALDialect
+)
+
+iree_cc_test(
+  NAME
+    AMDAIETileSizeSelectionUtilsCppTest
+  SRCS
+    "AMDAIETileSizeSelectionUtilsTest.cpp"
+  DEPS
+    gtest
+    iree::target::amd-aie::Transforms
 )

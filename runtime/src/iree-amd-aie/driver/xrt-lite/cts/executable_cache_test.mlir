@@ -7,7 +7,7 @@
   flags = Indirect
 >
 !t_lhs = tensor<512x4096xbf16>
-!fdt_lhs = !flow.dispatch.tensor<readonly:tensor<4096x512xbf16>>
+!fdt_lhs = !flow.dispatch.tensor<readonly:tensor<512x4096xbf16>>
 !t_rhs = tensor<4096x512xbf16>
 !fdt_rhs = !flow.dispatch.tensor<readonly:tensor<4096x512xbf16>>
 !t_res = tensor<512x512xf32>

@@ -176,8 +176,8 @@ def AMDAIEControlCodeLowering :
   let summary = "Lower control code ops to the most basic NPU write/sync/patch instructions";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEControlCodeLoweringPass()";
   let options = [
-    Option<"lowerCtrlpktDma", "lower-ctrlpkt-dma", "bool", /*default=*/"false",
-      "Enable the special handling for lowering the control packet DMA operations.">
+    Option<"argIdxOffset", "arg-idx-offset", "int32_t", /*default=*/"0",
+      "The offset to be added to the argument index.">,
   ];
 }
 
@@ -406,6 +406,10 @@ def AMDAIEInsertDmaBdChain :
     Pass<"iree-amdaie-insert-dma-bd-chain"> {
   let summary = "Chain DMA BD IDs by updating next_bd operands.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEInsertDmaBdChainPass()";
+  let options = [
+    Option<"enableInterleave", "enable-interleave", "bool", /*default=*/"true",
+      "Enable multiple BD chains to be built in an interleaved way.">,
+  ];
 }
 
 
@@ -555,7 +559,9 @@ def AMDAIELoweringStrategy :
     Option<"numRows", "num-rows", "uint32_t", /*default=*/"4",
       "Number of rows used in an AIE core array">,
     Option<"numCols", "num-cols", "uint32_t", /*default=*/"4",
-      "Number of columns used in an AIE core array">
+      "Number of columns used in an AIE core array">,
+    Option<"enableAMDAIEUkernels", "enable-ukernels", "std::string", /*default=*/"",
+      "Enables microkernels in the amdaie backend. May be `none`, `all`, or a comma-separated list of specific unprefixed microkernels to enable, e.g. `matmul`.">,
   ];
 }
 

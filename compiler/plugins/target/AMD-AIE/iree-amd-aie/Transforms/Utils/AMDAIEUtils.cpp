@@ -99,13 +99,6 @@ FailureOr<uint32_t> getAIEMacNumElements(Type inputType, Type outputType) {
   return failure();
 }
 
-FailureOr<unsigned> getTilingScaleFactor(Type elemType) {
-  unsigned bitWidth = elemType.getIntOrFloatBitWidth();
-  if (bitWidth % 8 != 0) return failure();
-  if (bitWidth > 64) return failure();
-  return 64 / bitWidth;
-}
-
 /// Get the m/n/k dimension of a matmul-like op from its affine map.
 static mlir::AffineExpr getAffineMapDim(ArrayAttr indexingMaps,
                                         uint32_t mapIndex, uint32_t mnkIndex) {

@@ -54,7 +54,9 @@ int main(int argc, char **argv) {
                                "iree-aie-cdo-emitter"};
   llvm::setCurrentDebugTypes(debugTypes, 3);
 #endif
-  auto status = AIETranslateToCDODirect(deviceOp, workDir, false, false, false);
+  auto status =
+      AIETranslateToCDODirect(deviceOp, workDir, /*enableCtrlPkt=*/false,
+                              /*bigEndian=*/false, /*cdoDebug=*/false);
   std::vector<std::string> diagnostics;
   ScopedDiagnosticHandler handler(moduleOp.getContext(), [&](Diagnostic &d) {
     llvm::raw_string_ostream(diagnostics.emplace_back())
@@ -68,7 +70,8 @@ int main(int argc, char **argv) {
 #ifndef NDEBUG
   llvm::setCurrentDebugType("aie-cdo-driver-debug");
 #endif
-  status = AIETranslateToCDODirect(deviceOp, workDir, false, false, true);
+  status = AIETranslateToCDODirect(deviceOp, workDir, /*enableCtrlPkt=*/false,
+                                   /*bigEndian=*/false, /*cdoDebug=*/true);
   if (failed(status))
     for (const auto &diagnostic : diagnostics) std::cerr << diagnostic << "\n";
 }

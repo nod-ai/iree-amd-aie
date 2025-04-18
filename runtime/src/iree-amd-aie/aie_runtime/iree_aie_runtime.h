@@ -271,6 +271,11 @@ struct AMDAIEDeviceModel {
     uint8_t minStrideBitWidth{32};
     /// The max packet id.
     uint8_t packetIdMaxIdx{0};
+    /// The max packet type.
+    uint8_t packetTypeMax{0};
+    /// Suppress Tlast error in control packets.
+    bool ctrlPktTlastErrorDisabled{false};
+
     /// The bitwidth of the packet ID mask. This is currently buried in
     /// aie-rt and not exposed for configuration.
     uint8_t packetIdMaskWidth{5};
@@ -321,7 +326,28 @@ struct AMDAIEDeviceModel {
     AMDAIEDeviceConfig() = default;
   };
 
-  /// Struct representing the format of the control packet header, which
+  /// Struct representing the format of the packet header, which includes the
+  /// following fields:
+  /// - [4:0] Stream ID,
+  /// - [11:5] Reserved,
+  /// - [14:12] Packet type,
+  /// - [15] Reserved,
+  /// - [20:16] Source row,
+  /// - [27:21] Source column,
+  /// - [30:28] Reserved,
+  /// - [31] Odd parity bit.
+  struct AMDAIEPacketHeaderFormat {
+    uint8_t streamIdShift{0};
+    uint8_t reservedShift0{5};
+    uint8_t packetTypeShift{12};
+    uint8_t reservedShift1{15};
+    uint8_t srcRowShift{16};
+    uint8_t srcColShift{21};
+    uint8_t reservedShift2{28};
+    uint8_t parityShift{31};
+  };
+
+  /// Struct representing the format of the control header, which
   /// includes the following fields:
   /// - [19:0] Address,
   /// - [21:20] Beat, the number of 32-bit words data in the packet,
@@ -329,7 +355,7 @@ struct AMDAIEDeviceModel {
   /// - [28:24] Stream ID, for return packet,
   /// - [30:29] Reserved,
   /// - [31] Odd parity bit.
-  struct AMDAIECtrlPktHeaderFormat {
+  struct AMDAIEControlHeaderFormat {
     uint8_t addressShift{0};
     uint8_t beatShift{20};
     uint8_t operationShift{22};
@@ -341,7 +367,8 @@ struct AMDAIEDeviceModel {
   XAie_Config configPtr;
   XAie_DevInst devInst;
   AMDAIEDeviceConfig deviceConfig;
-  AMDAIECtrlPktHeaderFormat ctrlPktHeaderFormat;
+  AMDAIEPacketHeaderFormat packetHeaderFormat;
+  AMDAIEControlHeaderFormat controlHeaderFormat;
 
   explicit AMDAIEDeviceModel(uint8_t aieGen, uint64_t baseAddr,
                              uint8_t colShift, uint8_t rowShift,
@@ -406,8 +433,12 @@ struct AMDAIEDeviceModel {
   bool hasLegalMemAffinity(uint8_t coreCol, uint8_t coreRow, uint8_t memCol,
                            uint8_t memRow) const;
 
-  /// Construct a control packet header from the specified fields.
-  FailureOr<uint32_t> getCtrlPktHeader(uint32_t address, uint32_t beat,
+  /// Construct a packet header from the specified fields.
+  FailureOr<uint32_t> getPacketHeader(uint32_t packetId, uint32_t packetType,
+                                      uint32_t srcRow, uint32_t srcCol) const;
+
+  /// Construct a control header from the specified fields.
+  FailureOr<uint32_t> getControlHeader(uint32_t address, uint32_t beat,
                                        uint32_t opcode,
                                        uint32_t streamId) const;
 
@@ -420,8 +451,6 @@ struct AMDAIEDeviceModel {
   uint32_t getCtrlPktMaxLength() const;
   /// Get the maximum for the `opcode` field in the control packet header.
   uint32_t getCtrlPktMaxOpcode() const;
-  /// Get the maximum for the `streamId` field in the control packet header.
-  uint32_t getCtrlPktMaxStreamId() const;
 
   uint32_t getMemInternalBaseAddress() const;
   uint32_t getMemSouthBaseAddress() const;
@@ -432,6 +461,7 @@ struct AMDAIEDeviceModel {
   uint32_t getMemTileSizeInBytes() const;
   uint32_t getMemTileSize(uint8_t col, uint8_t row) const;
   uint32_t getCoreTileLocalMemorySize() const;
+  uint32_t getTileMemorySizeInBytes(uint8_t col, uint8_t row) const;
 
   SmallVector<uint32_t> getMemSpaceRows(uint8_t memSpace) const;
 
@@ -495,11 +525,17 @@ struct AMDAIEDeviceModel {
   /// Extract the offset from a register address.
   uint32_t getOffsetFromAddress(uint32_t address) const;
 
+  /// Get the maximum for the `packetId` field in the packet header.
   uint8_t getPacketIdMaxIdx() const;
+  /// Get the maximum for the `packetType` field in the packet header.
+  uint8_t getpacketTypeMax() const;
   /// Get the bitwidth of the packet id mask.
   uint8_t getPacketIdMaskWidth() const;
   /// Get the maximum number of packet rule slots available for each slave port.
   uint8_t getNumPacketRuleSlots(uint8_t col, uint8_t row) const;
+  /// Get the boolean flag indicating whether the device has the control packet
+  /// TLAST missing error disabled.
+  bool getCtrlPktTlastErrorDisabled() const;
 
   uint8_t getStreamSwitchArbiterMax(uint8_t col, uint8_t row) const;
   uint8_t getStreamSwitchMSelMax(uint8_t col, uint8_t row) const;
@@ -545,6 +581,9 @@ struct AMDAIEDeviceModel {
 struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device);
 StrmSwPortType getConnectingBundle(StrmSwPortType dir);
 bool isNPUDevice(mlir::iree_compiler::AMDAIE::AMDAIEDevice d);
+
+/// Given a 32-bit word, set its most significant bit for odd parity.
+void setOddParityBit(uint32_t &word);
 
 /// ============================= BEGIN ==================================
 /// ================== stringification utils =============================

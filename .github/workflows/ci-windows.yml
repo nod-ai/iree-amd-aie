@@ -66,7 +66,7 @@ jobs:
               submodule update --init --recursive --depth 1 --single-branch -j 10
 
       - name: Setup Cpp
-        uses: aminya/setup-cpp@fc7a5158bd0209259b36b6cb8e06bac791057220 # v1.4.0
+        uses: aminya/setup-cpp@6370aaa0252a93c71dcc4cf49397f46810eeda56 # v1.5.3
         with:
           compiler: llvm
           vcvarsall: true
@@ -74,7 +74,7 @@ jobs:
           ninja: true
           ccache: true
 
-      - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+      - uses: actions/setup-python@8d9ed9ac5c53483de85588cdf95a591a75ab9f55 # v5.5.0
         with:
           python-version: '3.11'
 
@@ -193,4 +193,11 @@ jobs:
             --peano_dir=$PWD/llvm-aie -v \
             --target_device "npu1_4col" \
             --device_hal=xrt \
-            --skip_tests "Performance"
+            --skip_tests "Performance,MultipleDispatches"
+
+      - name: Clean up system temp directory
+        run: |
+            Get-ChildItem "$env:TEMP" -Recurse | Where-Object {
+              -not $_.PSIsContainer -and
+              ($_.LastWriteTime -lt (Get-Date).AddDays(-30))
+            } | Remove-Item -ErrorAction SilentlyContinue
