@@ -645,7 +645,10 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectfifo.subview.access"> {
 
 def AIE_ExternalBufferOp: AIE_Op<"external_buffer">, Results<(outs AnyMemRef)> {
   let summary = "Declare a buffer in external memory";
-  let arguments = (ins OptionalAttr<StrAttr>:$sym_name);
+  let arguments = (
+    ins OptionalAttr<StrAttr>:$sym_name,
+        OptionalAttr<I64Attr>:$address
+  );
 
   let results = (outs AnyMemRef:$buffer);
   let assemblyFormat = [{ attr-dict `:` type($buffer) }];

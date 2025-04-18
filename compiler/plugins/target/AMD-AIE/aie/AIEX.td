@@ -97,6 +97,21 @@ def AIE_NpuDmaWaitOp: AIEX_Op<"npu.dma_wait"> {
   }];
 }
 
+def AIE_NpuWriteRTPOp: AIEX_Op<"npu.rtp_write", []> {
+  let summary = "rtp write operator";
+  let arguments = (
+    ins FlatSymbolRefAttr:$buffer,
+        UI32Attr:$index,
+        I32Attr:$value
+  );
+  let results = (outs );
+  let assemblyFormat = [{ `(` $buffer `,` $index `,` $value `)` attr-dict
+  }];
+  let description = [{
+    rtp write operator
+  }];
+}
+
 def AIE_NpuPushQueueOp: AIEX_Op<"npu.push_queue"> {
   let summary = "bd queue push operator";
   let arguments = (
