@@ -498,7 +498,6 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:         scf.for %{{.+}} = %[[C0]] to %[[C64]] step %[[C1]]
 // CHECK:           amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [0, 0, 0] [2, 8, 16] [128, 16, 1])
 // CHECK:         }
-// CHECK:         amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [0, 0, 0] [1024, 8, 16] [0, 16, 1])
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @exceed_max_size_source(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32>>) {
@@ -516,9 +515,6 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
         }
         scf.for %arg5 = %c0 to %c64 step %c1 {
           amdaie.npu.dma_cpy_nd %0([] [] [], [0, 0, 0] [2, 8, 16] [128, 16, 1])
-        }
-        scf.for %arg6 = %c0 to %c1024 step %c1 {
-          amdaie.npu.dma_cpy_nd %0([] [] [], [0, 0] [8, 16] [16, 1])
         }
         amdaie.end
       }
@@ -542,7 +538,6 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:         scf.for %{{.+}} = %[[C0]] to %[[C64]] step %[[C1]]
 // CHECK:           amdaie.npu.dma_cpy_nd %[[CONNECTION]]([0, 0, 0] [2, 8, 16] [128, 16, 1], [] [] [])
 // CHECK:         }
-// CHECK:         amdaie.npu.dma_cpy_nd %[[CONNECTION]]([0, 0, 0] [1024, 8, 16] [0, 16, 1], [] [] [])
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @exceed_max_size_target(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
@@ -560,9 +555,6 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
         }
         scf.for %arg5 = %c0 to %c64 step %c1 {
           amdaie.npu.dma_cpy_nd %0([0, 0, 0] [2, 8, 16] [128, 16, 1], [] [] [])
-        }
-        scf.for %arg6 = %c0 to %c1024 step %c1 {
-          amdaie.npu.dma_cpy_nd %0([0, 0] [8, 16] [16, 1], [] [] [])
         }
         amdaie.end
       }
@@ -1515,6 +1507,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 }
 
 // -----
+
+
 
 #map = affine_map<(d0) -> (d0 * 16)>
 module {

@@ -184,6 +184,8 @@ struct SubsumeLoopIntoDMA
     SmallVector<OpFoldResult> newTargetSizes = op.getTargetMixedSizes();
     SmallVector<OpFoldResult> newTargetStrides = op.getTargetMixedStrides();
 
+    uint64_t maxRepeatCount =
+        deviceModel.getMaxRepeatCount(AMDAIE::AMDAIETileType::SHIMNOC);
     // Verify number of dimensions needed to subsume this loop into the strided
     // access pattern and fail early if there aren't enough dimensions.
     size_t nbNonUnitIterations{0};
@@ -191,6 +193,11 @@ struct SubsumeLoopIntoDMA
       const int64_t nbIterations = calculateNbIterations(lb, ub, step);
       // We should not do any rewrite if we encounter a loop with no iterations.
       if (nbIterations == 0) return failure();
+      // We should not do any rewrite if the total loop iteration is greater
+      // than the maximum repeat count allowed and the op in concern is a
+      // non-circular DmaCpyNd op.
+      if (nbIterations > maxRepeatCount && isa<AMDAIE::NpuDmaCpyNdOp>(op))
+        return failure();
       if (nbIterations > 1) nbNonUnitIterations++;
     }
 

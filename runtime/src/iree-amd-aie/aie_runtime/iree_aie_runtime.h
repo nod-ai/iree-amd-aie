@@ -557,6 +557,10 @@ struct AMDAIEDeviceModel {
     return deviceConfig.preferredLoadBytes;
   }
 
+  uint64_t getMaxRepeatCount(AMDAIETileType tileType) const {
+    return devInst.DevProp.DevMod[static_cast<uint8_t>(tileType)]
+        .DmaMod->ChProp->MaxRepeatCount;
+  }
   /// Return a map from channels to valid BD ids for the requested tile type.
   /// TODO(jornt): find these ranges in the device model.
   DenseMap<uint32_t, SmallVector<uint32_t>> getChannelToValidBdIds(
