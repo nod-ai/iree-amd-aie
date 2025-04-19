@@ -38,7 +38,7 @@ module {
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaDesc=ptr, nextBdId.value()=0, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 0, row: 1), bdId=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=0, direction=0, bdId=0, repeatCount=2, enTokenIssue=0
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
 // CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=0, direction=0
 
 // CHECK: cdo-driver: (NOP Command): Payload Length: 0
@@ -57,5 +57,5 @@ module {
 // CHECK: cdo-driver:     Address: 0x00000000001A0018  Data is: 0x00000000
 // CHECK: cdo-driver:     Address: 0x00000000001A001C  Data is: 0x8140FF41
 
-// CHECK: cdo-driver: (Write64): Address:  0x00000000001A0604 Data:  0x00010000
+// CHECK: cdo-driver: (Write64): Address:  0x00000000001A0604 Data:  0x00000000
 // CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000001A0600  Mask: 0x00000000  Data: 0x00000001

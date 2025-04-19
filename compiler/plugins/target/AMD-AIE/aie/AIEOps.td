@@ -368,8 +368,8 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
   let arguments = (
     ins DMAChannelDir:$channel_dir,
         ConfinedAttr<I8Attr, [IntMinValue<0>]>:$channel_index,
-        // repeat_count==0 means "do it once" and don't repeat
-        DefaultValuedAttr<I8Attr, "0">:$repeat_count
+        // `repeat_count==1` means "do it once".
+        DefaultValuedAttr<I8Attr, "1">:$repeat_count
   );
   let successors = (successor AnySuccessor:$dest, AnySuccessor:$chain);
   let assemblyFormat = [{

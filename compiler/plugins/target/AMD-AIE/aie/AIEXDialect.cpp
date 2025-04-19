@@ -166,3 +166,14 @@ LogicalResult xilinx::AIE::myVerifyOffsetSizeAndStrideOp(
 
   return success();
 }
+
+//===----------------------------------------------------------------------===//
+// NpuPushQueueOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AIEX::NpuPushQueueOp::verify() {
+  if (getRepeatCount() < 1)
+    return emitOpError() << "repeat_count must be greater than or equal to 1";
+
+  return success();
+}

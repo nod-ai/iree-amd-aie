@@ -210,9 +210,6 @@ LogicalResult configurePushToBdQueue(const AMDAIEDeviceModel &deviceModel,
                                      uint8_t bdId, uint32_t repeatCount,
                                      bool enTokenIssue, bool setChannelEnable) {
   XAie_DmaDirection direction = static_cast<XAie_DmaDirection>(channelDir);
-  // in english repeat_count==0 means "do it once" and don't repeat but
-  // libxaie treats repeat_count=1 as do it once.
-  repeatCount += 1;
   auto devInst = const_cast<XAie_DevInst *>(&deviceModel.devInst);
   TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelSetStartQueue, devInst, tileLoc,
                               chNum, direction, bdId, repeatCount,
