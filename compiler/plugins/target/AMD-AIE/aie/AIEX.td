@@ -44,9 +44,7 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
   ]> {
   let summary = "half DMA operator";
   let arguments = (
-    ins I64Attr:$x,
-        I64Attr:$y,
-        AnyMemRef:$memref,
+    ins AnyMemRef:$memref,
         // NOTE: these are in reverse order: offset3, offset2, ...
         Variadic<I64>:$offsets,
         Variadic<I64>:$sizes,
@@ -67,7 +65,7 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
   );
 
   let assemblyFormat = [{
-    `(` $x `,` $y `,` $memref ``
+    `(` $memref ``
     custom<DynamicIndexList>($offsets, $static_offsets) ``
     custom<DynamicIndexList>($sizes, $static_sizes) ``
     custom<DynamicIndexList>($strides, $static_strides) ``
@@ -96,6 +94,21 @@ def AIE_NpuDmaWaitOp: AIEX_Op<"npu.dma_wait"> {
   );
   let assemblyFormat = [{
     attr-dict
+  }];
+}
+
+def AIE_NpuWriteRTPOp: AIEX_Op<"npu.rtp_write", []> {
+  let summary = "rtp write operator";
+  let arguments = (
+    ins FlatSymbolRefAttr:$buffer,
+        UI32Attr:$index,
+        I32Attr:$value
+  );
+  let results = (outs );
+  let assemblyFormat = [{ `(` $buffer `,` $index `,` $value `)` attr-dict
+  }];
+  let description = [{
+    rtp write operator
   }];
 }
 

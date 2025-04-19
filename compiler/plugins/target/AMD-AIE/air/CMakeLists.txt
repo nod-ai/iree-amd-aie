@@ -221,6 +221,14 @@ replace_string_in_file(
   "false")
 replace_string_in_file(
   ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIEPass.cpp
+  "isa<AIE::AIE1TargetModel>(device.getTargetModel())"
+  "false")
+replace_string_in_file(
+  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIEPass.cpp
+  "isa<AIE::AIE2TargetModel>(device.getTargetModel())"
+  "true")
+replace_string_in_file(
+  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIEPass.cpp
   "AIE::getTargetModel(*device)"
   "getDeviceModel(*device)")
 
