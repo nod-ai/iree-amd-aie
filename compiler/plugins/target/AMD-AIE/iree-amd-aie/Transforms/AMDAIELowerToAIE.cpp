@@ -179,7 +179,7 @@ LogicalResult AIEDeviceBuilder::createDMABlocks(
   // Create DMA channel.
   rewriter.setInsertionPointToStart(dmaBlock);
   rewriter.create<AIE::DMAStartOp>(rewriter.getUnknownLoc(), channelDir,
-                                   channelIndex, /*repeatCount*/ 0, bdBlock,
+                                   channelIndex, /*repeatCount=*/1, bdBlock,
                                    &endBlock);
   if (lastDmaBlock) lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 

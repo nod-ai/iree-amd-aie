@@ -31,11 +31,14 @@ std::unique_ptr<OperationPass<ModuleOp>> createAMDAIECoreToStandardPass(
     AMDAIECoreToStandardOptions options = {});
 std::unique_ptr<OperationPass<xilinx::AIE::DeviceOp>>
 createAMDAIEDmaToNpuPass();
+std::unique_ptr<OperationPass<xilinx::AIE::DeviceOp>>
+createAMDAIEIncrementRepeatCountPass();
 
 void registerAMDAIEAssignBufferDescriptorIDs();
 void registerAMDAIELocalizeLocks();
 void registerAMDAIENormalizeAddressSpaces();
 void registerAMDAIEDmaToNpu();
+void registerAMDAIEIncrementRepeatCount();
 
 }  // namespace mlir::iree_compiler::AMDAIE
 

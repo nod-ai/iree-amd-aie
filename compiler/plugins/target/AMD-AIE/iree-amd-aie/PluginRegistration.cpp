@@ -37,6 +37,7 @@ struct AMDAIESession
     AMDAIE::registerAMDAIENormalizeAddressSpaces();
     registerAMDAIERouteFlowsWithPathfinder();
     AMDAIE::registerAMDAIEDmaToNpu();
+    AMDAIE::registerAMDAIEIncrementRepeatCount();
     AMDAIE::registerAIRConversionPasses();
     AMDAIE::registerAIRTransformPasses();
     aievec::registerConvertAIEVecToLLVMPass();

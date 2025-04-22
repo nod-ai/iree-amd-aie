@@ -14,6 +14,8 @@
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/BuiltinTypes.h"
 
+#define DEBUG_TYPE "iree-amdaie-utils"
+
 namespace mlir::iree_compiler::AMDAIE {
 
 std::string getConstantIntValuesString(ArrayRef<OpFoldResult> ofrs) {

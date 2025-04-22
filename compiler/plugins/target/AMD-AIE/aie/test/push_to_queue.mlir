@@ -1,5 +1,16 @@
+// RUN: iree-opt --amdaie-dma-to-npu --split-input-file --verify-diagnostics %s | FileCheck %s
 
-// RUN: iree-opt --amdaie-dma-to-npu %s | FileCheck %s
+module {
+  aie.device(npu1_4col) {
+    func.func @sequence() {
+      // expected-error @+1 {{repeat_count must be greater than or equal to 1}}
+      aiex.npu.push_queue (0, 0, S2MM:1) {issue_token = true, repeat_count = 0 : i32, bd_id = 0 : i32 }
+      return
+    }
+  }
+}
+
+// -----
 
 // CHECK: module {
 // CHECK:   aie.device(npu1_4col) {
@@ -17,8 +28,8 @@
 module {
   aie.device(npu1_4col) {
     func.func @sequence() {
-      aiex.npu.push_queue (0, 0, S2MM:1) {issue_token = true, repeat_count = 0 : i32, bd_id = 3 : i32 }
-      aiex.npu.push_queue (2, 0, MM2S:0) {issue_token = false, repeat_count = 3 : i32, bd_id = 2 : i32 }
+      aiex.npu.push_queue (0, 0, S2MM:1) {issue_token = true, repeat_count = 1 : i32, bd_id = 3 : i32 }
+      aiex.npu.push_queue (2, 0, MM2S:0) {issue_token = false, repeat_count = 4 : i32, bd_id = 2 : i32 }
       return
     }
   }
