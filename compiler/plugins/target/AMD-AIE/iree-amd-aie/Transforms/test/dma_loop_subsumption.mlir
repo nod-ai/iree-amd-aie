@@ -486,19 +486,30 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
-// Don't subsume if inter size (dim 0 in a four dimensional size array) or intra size
-// (dim 1, 2, 3 in a four dimensional size array) is too large.
+// Don't subsume if :-
+// a. inter size (dim 0 in a four dimensional size array) is too large or,
+// b. intra size (dim 1, 2, 3 in a four dimensional size array) is too large or,
+// c. the total loop iteration count exceeds max repeat count (which is 256 in the following test)
+//
 // CHECK-LABEL: @exceed_max_size_source
 // CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
 // CHECK-DAG:   %[[C1:.+]] = arith.constant 1 : index
 // CHECK-DAG:   %[[C64:.+]] = arith.constant 64 : index
+// CHECK-DAG:   %[[C257:.+]] = arith.constant 257 : index
+// CHECK-DAG:   %[[C1024:.+]] = arith.constant 1024 : index
 // CHECK:       %[[CONNECTION:.+]] = amdaie.connection
 // CHECK:       amdaie.controlcode
 // CHECK:         amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [0, 0, 0, 0] [63, 2, 8, 16] [0, 64, 16, 1])
 // CHECK:         scf.for %{{.+}} = %[[C0]] to %[[C64]] step %[[C1]]
 // CHECK:           amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [0, 0, 0] [2, 8, 16] [128, 16, 1])
 // CHECK:         }
-// CHECK:         amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [0, 0, 0] [1024, 8, 16] [0, 16, 1])
+// CHECK:         amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [0, 0, 0] [256, 8, 16] [0, 16, 1])
+// CHECK:         scf.for %{{.+}} = %[[C0]] to %[[C257]] step %[[C1]]
+// CHECK:           amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [0, 0] [8, 16] [16, 1])
+// CHECK:         }
+// CHECK:         scf.for %{{.+}} = %[[C0]] to %[[C1024]] step %[[C1]]
+// CHECK:           amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [0, 0] [8, 16] [16, 1])
+// CHECK:         }
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @exceed_max_size_source(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32>>) {
@@ -506,6 +517,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
     %c1 = arith.constant 1 : index
     %c63 = arith.constant 63 : index
     %c64 = arith.constant 64 : index
+    %c256 = arith.constant 256 : index
+    %c257 = arith.constant 257 : index
     %c1023 = arith.constant 1023 : index
     %c1024 = arith.constant 1024 : index
     amdaie.workgroup {
@@ -517,7 +530,13 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
         scf.for %arg5 = %c0 to %c64 step %c1 {
           amdaie.npu.dma_cpy_nd %0([] [] [], [0, 0, 0] [2, 8, 16] [128, 16, 1])
         }
-        scf.for %arg6 = %c0 to %c1024 step %c1 {
+        scf.for %arg6 = %c0 to %c256 step %c1 {
+          amdaie.npu.dma_cpy_nd %0([] [] [], [0, 0] [8, 16] [16, 1])
+        }
+        scf.for %arg7 = %c0 to %c257 step %c1 {
+          amdaie.npu.dma_cpy_nd %0([] [] [], [0, 0] [8, 16] [16, 1])
+        }
+        scf.for %arg8 = %c0 to %c1024 step %c1 {
           amdaie.npu.dma_cpy_nd %0([] [] [], [0, 0] [8, 16] [16, 1])
         }
         amdaie.end
@@ -530,19 +549,30 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
-// Don't subsume if inter size (dim 0 in a four dimensional size array) or intra size
-// (dim 1, 2, 3 in a four dimensional size array) is too large.
+// Don't subsume if :-
+// a. inter size (dim 0 in a four dimensional size array) is too large or,
+// b. intra size (dim 1, 2, 3 in a four dimensional size array) is too large or,
+// c. the total loop iteration count exceeds max repeat count (which is 256 in the following test)
+//
 // CHECK-LABEL: @exceed_max_size_target
 // CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
 // CHECK-DAG:   %[[C1:.+]] = arith.constant 1 : index
 // CHECK-DAG:   %[[C64:.+]] = arith.constant 64 : index
+// CHECK-DAG:   %[[C257:.+]] = arith.constant 257 : index
+// CHECK-DAG:   %[[C1024:.+]] = arith.constant 1024 : index
 // CHECK:       %[[CONNECTION:.+]] = amdaie.connection
 // CHECK:       amdaie.controlcode
 // CHECK:         amdaie.npu.dma_cpy_nd %[[CONNECTION]]([0, 0, 0, 0] [63, 2, 8, 16] [0, 64, 16, 1], [] [] [])
 // CHECK:         scf.for %{{.+}} = %[[C0]] to %[[C64]] step %[[C1]]
 // CHECK:           amdaie.npu.dma_cpy_nd %[[CONNECTION]]([0, 0, 0] [2, 8, 16] [128, 16, 1], [] [] [])
 // CHECK:         }
-// CHECK:         amdaie.npu.dma_cpy_nd %[[CONNECTION]]([0, 0, 0] [1024, 8, 16] [0, 16, 1], [] [] [])
+// CHECK:         amdaie.npu.dma_cpy_nd %[[CONNECTION]]([0, 0, 0] [256, 8, 16] [0, 16, 1], [] [] [])
+// CHECK:         scf.for %{{.+}} = %[[C0]] to %[[C257]] step %[[C1]]
+// CHECK:           amdaie.npu.dma_cpy_nd %[[CONNECTION]]([0, 0] [8, 16] [16, 1], [] [] [])
+// CHECK:         }
+// CHECK:         scf.for %{{.+}} = %[[C0]] to %[[C1024]] step %[[C1]]
+// CHECK:           amdaie.npu.dma_cpy_nd %[[CONNECTION]]([0, 0] [8, 16] [16, 1], [] [] [])
+// CHECK:         }
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @exceed_max_size_target(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
@@ -550,6 +580,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
     %c1 = arith.constant 1 : index
     %c63 = arith.constant 63 : index
     %c64 = arith.constant 64 : index
+    %c256 = arith.constant 256 : index
+    %c257 = arith.constant 257 : index
     %c1023 = arith.constant 1023 : index
     %c1024 = arith.constant 1024 : index
     amdaie.workgroup {
@@ -560,6 +592,12 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
         }
         scf.for %arg5 = %c0 to %c64 step %c1 {
           amdaie.npu.dma_cpy_nd %0([0, 0, 0] [2, 8, 16] [128, 16, 1], [] [] [])
+        }
+        scf.for %arg6 = %c0 to %c256 step %c1 {
+          amdaie.npu.dma_cpy_nd %0([0, 0] [8, 16] [16, 1], [] [] [])
+        }
+        scf.for %arg7 = %c0 to %c257 step %c1 {
+          amdaie.npu.dma_cpy_nd %0([0, 0] [8, 16] [16, 1], [] [] [])
         }
         scf.for %arg6 = %c0 to %c1024 step %c1 {
           amdaie.npu.dma_cpy_nd %0([0, 0] [8, 16] [16, 1], [] [] [])
