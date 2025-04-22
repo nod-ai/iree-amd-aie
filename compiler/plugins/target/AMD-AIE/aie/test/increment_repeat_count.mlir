@@ -1,7 +1,7 @@
 // RUN: iree-opt --amdaie-increment-repeat-count %s | FileCheck %s
 
 // repeat_count is omitted because the default value is 1
-// CHECK: aie.dma_start(S2MM, 0, ^bb4, ^bb1)  
+// CHECK: aie.dma_start(S2MM, 0, ^bb4, ^bb1)
 
 // CHECK: aie.dma_start(S2MM, 1, ^bb4, ^bb2, repeat_count = 2)
 // CHECK: aie.dma_start(MM2S, 2, ^bb4, ^bb3, repeat_count = 3)
