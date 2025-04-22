@@ -482,6 +482,14 @@ func.func @npu_dma_cpy_nd_negative_source_stride(%arg0: !amdaie.logicalobjectfif
 
 // -----
 
+func.func @npu_push_to_queue_zero_repeat_count() {
+  // expected-error @+1 {{repeat_count must be greater than or equal to 1}}
+  amdaie.npu.push_to_queue {bd_id = 0 : ui32, channel = 0 : ui32, col = 0 : ui32, direction = 1 : i32, repeat_count = 0 : ui32, row = 0 : ui32}
+  return
+}
+
+// -----
+
 func.func @npu_control_packet_mismatched_length_dense_array() {
   // expected-error @+1 {{data length does not match the specified `length` attribute}}
   amdaie.npu.control_packet write {address = 0 : ui32, data = array<i32: 1, 2, 3, 4>, length = 1 : ui32, stream_id = 0 : ui32}
