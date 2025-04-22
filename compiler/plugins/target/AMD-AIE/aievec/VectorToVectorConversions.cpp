@@ -1244,7 +1244,7 @@ struct ConvertLeadingUnitDimInsertToReshapePattern
 
   LogicalResult matchAndRewrite(vector::InsertOp insOp,
                                 PatternRewriter &rewriter) const override {
-    auto insSrcTy = dyn_cast<VectorType>(insOp.getSourceType());
+    auto insSrcTy = dyn_cast<VectorType>(insOp.getValueToStoreType());
     if (!insSrcTy) return failure();
 
     auto srcShape = insSrcTy.getShape();
@@ -1270,7 +1270,7 @@ struct ConvertLeadingUnitDimInsertToReshapePattern
     if (nonLeadUnitDimSrcShape != nonLeadUnitDimDstShape) return failure();
 
     rewriter.replaceOpWithNewOp<vector::ShapeCastOp>(
-        insOp, insOp.getDestVectorType(), insOp.getSource());
+        insOp, insOp.getDestVectorType(), insOp.getValueToStore());
     return success();
   }
 };
@@ -1343,7 +1343,6 @@ struct CanonicalizeVectorForAIEVecPass
           .add<copied_from_mlir::FlattenContiguousRowMajorTransferReadPattern,
                copied_from_mlir::FlattenContiguousRowMajorTransferWritePattern>(
               context, std::numeric_limits<unsigned>::max(), 1);
-      mlir::vector::populateShapeCastFoldingPatterns(patterns);
       mlir::vector::populateDropUnitDimWithShapeCastPatterns(patterns);
       mlir::vector::populateVectorBroadcastLoweringPatterns(patterns);
       (void)applyPatternsGreedily(op, std::move(patterns));
