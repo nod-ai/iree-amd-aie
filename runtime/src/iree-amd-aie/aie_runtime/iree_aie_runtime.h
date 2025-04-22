@@ -557,7 +557,7 @@ struct AMDAIEDeviceModel {
     return deviceConfig.preferredLoadBytes;
   }
 
-  uint64_t getMaxRepeatCount(AMDAIETileType tileType) const {
+  uint32_t getMaxRepeatCount(AMDAIETileType tileType) const {
     return devInst.DevProp.DevMod[static_cast<uint8_t>(tileType)]
         .DmaMod->ChProp->MaxRepeatCount;
   }

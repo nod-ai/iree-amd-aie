@@ -184,7 +184,7 @@ struct SubsumeLoopIntoDMA
     SmallVector<OpFoldResult> newTargetSizes = op.getTargetMixedSizes();
     SmallVector<OpFoldResult> newTargetStrides = op.getTargetMixedStrides();
 
-    uint64_t maxRepeatCount =
+    uint32_t maxRepeatCount =
         deviceModel.getMaxRepeatCount(AMDAIE::AMDAIETileType::SHIMNOC);
     // Verify number of dimensions needed to subsume this loop into the strided
     // access pattern and fail early if there aren't enough dimensions.
