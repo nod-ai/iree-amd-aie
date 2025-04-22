@@ -120,6 +120,7 @@ def AIE_NpuPushQueueOp: AIEX_Op<"npu.push_queue"> {
         DMAChannelDir:$direction,
         I32Attr:$channel,
         BoolAttr:$issue_token,
+        // `repeat_count==1` means "do it once".
         I32Attr:$repeat_count,
         I32Attr:$bd_id
   );
@@ -127,6 +128,7 @@ def AIE_NpuPushQueueOp: AIEX_Op<"npu.push_queue"> {
   let assemblyFormat = [{
     `(` $column `,` $row `,` $direction `:` $channel `)` attr-dict
   }];
+  let hasVerifier = 1;
 }
 
 def AIE_NpuWrite32Op: AIEX_Op<"npu.write32"> {

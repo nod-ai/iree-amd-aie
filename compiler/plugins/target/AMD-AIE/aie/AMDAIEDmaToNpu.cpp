@@ -244,7 +244,7 @@ struct PushToNpuPattern : OpConversionPattern<NpuPushQueueOp> {
 
     // the value to write
     uint32_t bd_id = op.getBdId();
-    uint32_t repeat_cnt = op.getRepeatCount();
+    uint32_t repeat_cnt = op.getRepeatCount() - 1;
     uint32_t cmd = 0;
     cmd |= bd_id & 0xF;
     cmd |= (repeat_cnt & 0xFF) << 16;
@@ -384,7 +384,7 @@ struct DmaToNpuPattern : OpConversionPattern<NpuDmaMemcpyNdOp> {
     valid_bd = IntegerAttr::get(i32ty, 1);
 
     // repeat_count
-    repeat_count = IntegerAttr::get(i32ty, sizes[3] - 1);
+    repeat_count = IntegerAttr::get(i32ty, sizes[3]);
 
     // enable_packet
     if (auto packetInfo = op.getPacket()) {

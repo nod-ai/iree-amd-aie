@@ -973,8 +973,8 @@ def AMDAIE_NpuPushToQueueOp: AMDAIE_Op<"npu.push_to_queue">,
   let description = [{
     This NPU controller operation to push a buffer descriptor with specified
     `bd_id` to the queue of the (`channel`, `direction`) DMA port on tile
-    (`col`, `row`). The BD will be repeated for a `repeat_count` number of
-    times.
+    (`col`, `row`). The BD will be executed for  `repeat_count` times, where
+    `repeat_count` must be greater than or equal to 1.
 
     Example:
 
@@ -995,6 +995,7 @@ def AMDAIE_NpuPushToQueueOp: AMDAIE_Op<"npu.push_to_queue">,
   let assemblyFormat = [{
     custom<AsyncTokenType>(type($async_token)) attr-dict
   }];
+  let hasVerifier = 1;
 }
 
 def AMDAIE_NpuWriteBdOp: AMDAIE_Op<"npu.write_bd"> {

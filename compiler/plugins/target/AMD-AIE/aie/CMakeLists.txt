@@ -164,6 +164,7 @@ iree_cc_library(
     AMDAIECoreToStandard.cpp
     AMDAIECreatePathFindFlows.cpp
     AMDAIEDmaToNpu.cpp
+    AMDAIEIncrementRepeatCount.cpp
     AMDAIELocalizeLocks.cpp
     AMDAIENormalizeAddressSpaces.cpp
   DEPS

@@ -1464,6 +1464,17 @@ SmallVector<AMDAIE::NpuDmaCpyNdOp> NpuDmaWaitOp::getDmaOps() {
 }
 
 //===----------------------------------------------------------------------===//
+// AMDAIE_NpuPushToQueueOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult NpuPushToQueueOp::verify() {
+  if (getRepeatCount() < 1)
+    return emitOpError() << "repeat_count must be greater than or equal to 1";
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // AMDAIE_NpuControlPacketOp
 //===----------------------------------------------------------------------===//
 

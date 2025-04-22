@@ -1057,10 +1057,12 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
   passManager.addPass(createCanonicalizerPass());
 
   {
-    // createAMDAIEDmaToNpuPass only needed for AIR.
+    // `AMDAIEDmaToNpuPass` and `AMDAIEIncrementRepeatCountPass` are only needed
+    // for AIR.
     OpPassManager &devicePM = passManager.nest<xilinx::AIE::DeviceOp>();
     devicePM.addPass(createCanonicalizerPass());
     devicePM.addPass(createAMDAIEDmaToNpuPass());
+    devicePM.addPass(createAMDAIEIncrementRepeatCountPass());
   }
 
   // Now lower using the AIE passes from MLIR-AIE.
