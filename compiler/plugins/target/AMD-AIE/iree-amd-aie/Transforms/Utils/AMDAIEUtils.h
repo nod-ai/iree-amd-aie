@@ -8,8 +8,6 @@
 #define IREE_AMD_AIE_TRANSFORMS_AMDAIEUTILS_H_
 
 #include "iree-amd-aie/aie_runtime/AMDAIEEnums.h"
-#include "iree-amd-aie/aie_runtime/iree_aie_configure.h"
-#include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "iree/compiler/Dialect/HAL/IR/HALTypes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
@@ -154,42 +152,6 @@ scf::ForOp createForOpWithUnrollingDisabled(OpBuilder &builder, Location loc,
 /// func.call operations inside `rootOp` that call the func.func ops.
 SmallVector<std::pair<func::FuncOp, SmallVector<func::CallOp>>>
 getFunctionsAndTheirCallers(Operation *rootOp);
-
-class TransactionBuilder {
- public:
-  AMDAIE::AMDAIEDeviceModel deviceModel;
-  TransactionBuilder(AMDAIE::AMDAIEDeviceModel deviceModel)
-      : deviceModel(std::move(deviceModel)) {}
-
-  void clearAndInitialize();
-  void dumpTransactionAsHex() const;
-  size_t getInstructionSize() const;
-  ArrayRef<uint32_t> finalizeAndReturnInstructions();
-
-  LogicalResult appendAddressPatch(uint32_t addr, uint32_t argIdx,
-                                   uint32_t offset);
-
-  LogicalResult appendTCTSync(uint32_t col, uint32_t row, uint32_t direction,
-                              uint32_t rowNum, uint32_t colNum,
-                              uint32_t channel);
-
-  LogicalResult appendPushToQueueOp(uint32_t col, uint32_t row,
-                                    AMDAIE::DMAChannelDir direction,
-                                    uint32_t channel, uint32_t bdId,
-                                    uint32_t repeatCount, bool issueToken);
-
-  LogicalResult appendWriteBdOp(
-      uint32_t col, uint32_t row, uint32_t bdId, uint32_t bufferLength,
-      uint32_t bufferOffset, bool enablePacket, uint32_t packetId,
-      uint32_t packetType, ArrayRef<int32_t> sizes,
-      SmallVector<int32_t> strides, uint32_t iterationCurrent,
-      uint32_t iterationSize, uint32_t iterationStride, uint32_t nextBd,
-      bool useNextBd, bool validBd, int32_t lockRelVal, uint32_t lockRelId,
-      bool lockAcqEnable, int32_t lockAcqVal, uint32_t lockAcqId);
-
- private:
-  std::vector<uint32_t> instructions;
-};
 
 }  // namespace mlir::iree_compiler::AMDAIE
 
