@@ -296,7 +296,7 @@ FailureOr<ParameterSetting> ParameterSetting::create(
   if (kPackScaleL1 == 2 && isObjectFifo) {
     tileParams.memoryLimit = deviceModel.getMemTileSizeInBytes() * numCols;
     // For matmul-elementwise case, the output buffer from L1 to L2 is only from
-    // elementwise op, so set `bufferDepthAcc` = 0.
+    // elementwise op, so set `bufferDepthAcc` = 0 in L2 memory space.
     tileParams.bufferDepthAcc =
         isMatmulWithElementwiseConsumer(linalgOp) ? 0 : 2;
     TileSize maxL0Size = selectL2TileSizes(tileParams, m0Pack, n0Pack);
