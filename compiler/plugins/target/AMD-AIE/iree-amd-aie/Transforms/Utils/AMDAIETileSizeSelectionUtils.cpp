@@ -99,6 +99,8 @@ void findLargestL2TileSizes(uint32_t m, uint32_t n, const uint32_t k,
 TileSize selectL2TileSizes(const TileParams& params, const uint32_t maxL1TileM,
                            const uint32_t maxL1TileN) {
   uint32_t curMax = 0;
+  assert((params.inputM >= maxL1TileM && params.inputN >= maxL1TileN) &&
+         "the max L1 tile sizes should be smaller than the input sizes");
   // Start with the L1 tile sizes for m, n dimension. The k dimension is kept
   // as constant (for now it's the input K size).
   TileSize best = {maxL1TileM, maxL1TileN, params.inputK};
