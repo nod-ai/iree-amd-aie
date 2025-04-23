@@ -1018,7 +1018,7 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
   {
     xilinx::air::AIROptimizeShimDMABDsOptions options;
     options.clDevice = stringifyEnum(device);
-    const static llvm::SmallVector<unsigned> tile_sizes = {2, 4};
+    const static llvm::SmallVector<unsigned> tile_sizes = {2, 2};
     options.clTileSizes = tile_sizes;
     passManager.addNestedPass<func::FuncOp>(
         xilinx::air::createAIROptimizeShimDMABDs(options));
