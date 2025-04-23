@@ -7,6 +7,7 @@
 #include "AIEDialect.h"
 #include "AIEXDialect.h"
 #include "Passes.h"
+#include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
@@ -22,163 +23,73 @@ using namespace xilinx::AIEX;
 
 #define DEBUG_TYPE "amdaie-dma-to-npu"
 
-#define TXN_OPC_WRITE 0x0
-#define TXN_OPC_BLOCKWRITE 0x1
-#define TXN_OPC_TCT 0x80
-#define TXN_OPC_DDR_PATCH 0x81
-
-// Example:
-// - instructions = {3,4,5}
-// - tailSize = 2
-// instructions becomes {3,4,5,0,0} and
-// a mutable reference to the tail {0,0} is returned.
-llvm::MutableArrayRef<uint32_t> reserveAndGetTail(
-    std::vector<uint32_t> &instructions, uint64_t tailSize) {
-  auto oldSize = instructions.size();
-  auto newSize = oldSize + tailSize;
-  instructions.resize(newSize, 0);
-  return llvm::MutableArrayRef<uint32_t>(instructions.data() + oldSize,
-                                         tailSize);
+LogicalResult appendSync(NpuSyncOp op, TransactionBuilder &transactionBuilder) {
+  if (failed(transactionBuilder.appendTCTSync(
+          op.getColumn(), op.getRow(), static_cast<uint32_t>(op.getDirection()),
+          op.getRowNum(), op.getColumnNum(), op.getChannel()))) {
+    return failure();
+  }
+  return success();
 }
 
-void appendSync(std::vector<uint32_t> &instructions, NpuSyncOp op) {
-  auto words = reserveAndGetTail(instructions, 4);
-
-  // XAIE_IO_CUSTOM_OP_TCT
-  words[0] = TXN_OPC_TCT;
-
-  words[1] = words.size() * sizeof(uint32_t);  // Operation Size
-
-  words[2] |= static_cast<uint32_t>(op.getDirection()) & 0xff;
-  words[2] |= (op.getRow() & 0xff) << 8;
-  words[2] |= (op.getColumn() & 0xff) << 16;
-
-  words[3] |= (op.getRowNum() & 0xff) << 8;
-  words[3] |= (op.getColumnNum() & 0xff) << 16;
-  words[3] |= (op.getChannel() & 0xff) << 24;
+LogicalResult appendAddressPatch(NpuAddressPatchOp op,
+                                 TransactionBuilder &transactionBuilder) {
+  if (failed(transactionBuilder.appendAddressPatch(op.getAddr(), op.getArgIdx(),
+                                                   op.getArgPlus()))) {
+    return failure();
+  }
+  return success();
 }
 
-void appendWrite32(std::vector<uint32_t> &instructions, NpuWrite32Op op) {
-  auto words = reserveAndGetTail(instructions, 6);
-  DeviceOp device = op->getParentOfType<DeviceOp>();
-  AMDAIEDeviceModel tm =
-      getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
-
-  // XAIE_IO_WRITE
-  words[0] = TXN_OPC_WRITE;
-  words[1] = 0;
-  words[2] = op.getAddress();
-  auto col = op.getColumn();
-  auto row = op.getRow();
-  if (col && row)
-    words[2] = ((*col & 0xff) << tm.getColumnShift()) |
-               ((*row & 0xff) << tm.getRowShift()) | (words[2] & 0xFFFFF);
-  words[3] = 0;
-  words[4] = op.getValue();                    // Value
-  words[5] = words.size() * sizeof(uint32_t);  // Operation Size
+LogicalResult appendPushToQueue(NpuPushQueueOp op,
+                                TransactionBuilder &transactionBuilder) {
+  if (failed(transactionBuilder.appendPushToQueueOp(
+          op.getColumn(), op.getRow(), op.getDirection(), op.getChannel(),
+          op.getBdId(), op.getRepeatCount(), op.getIssueToken()))) {
+    return failure();
+  }
+  return success();
 }
 
-void appendAddressPatch(std::vector<uint32_t> &instructions,
-                        NpuAddressPatchOp op) {
-  auto words = reserveAndGetTail(instructions, 12);
-
-  // XAIE_IO_CUSTOM_OP_DDR_PATCH
-  words[0] = TXN_OPC_DDR_PATCH;
-  words[1] = words.size() * sizeof(uint32_t);  // Operation Size
-
-  words[6] = op.getAddr();
-  words[7] = 0;
-
-  words[8] = op.getArgIdx();
-  words[9] = 0;
-
-  words[10] = op.getArgPlus();
-  words[11] = 0;
-}
-
-void appendWriteBdShimTile(std::vector<uint32_t> &instructions,
-                           NpuWriteBdOp op) {
-  auto words = reserveAndGetTail(instructions, 12);
-  DeviceOp device = op->getParentOfType<DeviceOp>();
-  AMDAIEDeviceModel tm =
-      getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
-
-  // XAIE_IO_BLOCKWRITE
-  words[0] = TXN_OPC_BLOCKWRITE;
-  words[1] = 0;
-
-  // RegOff
-  auto bd_id = op.getBdId();
-  uint32_t bd_addr = (op.getColumn() << tm.getColumnShift()) |
-                     (op.getRow() << tm.getRowShift()) |
-                     (0x1D000 + bd_id * 0x20);
-  words[2] = bd_addr;                          // ADDR
-  words[3] = words.size() * sizeof(uint32_t);  // Operation Size
-
-  // DMA_BDX_0
-  words[4] = op.getBufferLength();
-
-  // DMA_BDX_1
-  words[5] = op.getBufferOffset();
-
-  // DMA_BDX_2
-  // En Packet , OoO BD ID , Packet ID , Packet Type
-  words[6] |= (op.getEnablePacket() & 0x1) << 30;
-  words[6] |= (op.getOutOfOrderId() & 0x3f) << 24;
-  words[6] |= (op.getPacketId() & 0x1f) << 19;
-  words[6] |= (op.getPacketType() & 0x7) << 16;
-
-  // DMA_BDX_3
-  // TODO: Secure Access
-  words[7] |= (op.getD0Size() & 0x3ff) << 20;
-  words[7] |= op.getD0Stride() & 0xfffff;
-
-  // DMA_BDX_4
-  words[8] = 0x80000000;  // burst length;
-  words[8] |= (op.getD1Size() & 0x3ff) << 20;
-  words[8] |= op.getD1Stride() & 0xfffff;
-
-  // DMA_BDX_5
-  // TODO: SIMID, AxCache, AXQoS
-  words[9] = op.getD2Stride() & 0xfffff;
-
-  // DMA_BDX_6
-  words[10] |= (op.getIterationCurrent() & 0x3f) << 26;
-  words[10] |= (op.getIterationSize() & 0x3f) << 20;
-  words[10] |= op.getIterationStride() & 0xfffff;
-
-  // DMA_BDX_7
-  // TODO: TLAST Suppress
-  words[11] |= (op.getNextBd() & 0xf) << 27;
-  words[11] |= (op.getUseNextBd() & 0x1) << 26;
-  words[11] |= (op.getValidBd() & 0x1) << 25;
-  words[11] |= (op.getLockRelVal() & 0xef) << 18;
-  words[11] |= (op.getLockRelId() & 0xf) << 13;
-  words[11] |= (op.getLockAcqEnable() & 0x1) << 12;
-  words[11] |= (op.getLockAcqVal() & 0xef) << 5;
-  words[11] |= op.getLockAcqId() & 0xf;
+LogicalResult appendWriteBd(NpuWriteBdOp op,
+                            TransactionBuilder &transactionBuilder) {
+  SmallVector<int32_t> sizes{static_cast<int32_t>(op.getD2Size()),
+                             static_cast<int32_t>(op.getD1Size()),
+                             static_cast<int32_t>(op.getD0Size())};
+  SmallVector<int32_t> strides{static_cast<int32_t>(op.getD2Stride()),
+                               static_cast<int32_t>(op.getD1Stride()),
+                               static_cast<int32_t>(op.getD0Stride())};
+  if (failed(transactionBuilder.appendWriteBdOp(
+          op.getColumn(), op.getRow(), op.getBdId(), op.getBufferLength(),
+          op.getBufferOffset(), op.getEnablePacket(), op.getPacketId(),
+          op.getPacketType(), sizes, strides, op.getIterationCurrent(),
+          op.getIterationSize(), op.getIterationStride(), op.getNextBd(),
+          op.getUseNextBd(), op.getValidBd(), op.getLockRelVal(),
+          op.getLockRelId(), op.getLockAcqEnable(), op.getLockAcqVal(),
+          op.getLockAcqId()))) {
+    return failure();
+  }
+  return success();
 }
 
 template <typename SourceOp>
 class ConvertNpuOp : public OpConversionPattern<SourceOp> {
  public:
-  std::vector<uint32_t> &instructions;
-  using AppenderTy = function_ref<void(std::vector<uint32_t> &, SourceOp)>;
+  using AppenderTy =
+      function_ref<LogicalResult(SourceOp, TransactionBuilder &)>;
   AppenderTy appender;
-  uint32_t &count;
-  ConvertNpuOp(MLIRContext *ctx, std::vector<uint32_t> &instructions,
-               AppenderTy appender, uint32_t &count)
+  TransactionBuilder &transactionBuilder;
+  ConvertNpuOp(MLIRContext *ctx, AppenderTy appender,
+               TransactionBuilder &transactionBuilder)
       : OpConversionPattern<SourceOp>(ctx),
-        instructions(instructions),
         appender(appender),
-        count(count) {}
+        transactionBuilder(transactionBuilder) {}
 
   LogicalResult matchAndRewrite(
       SourceOp op, typename SourceOp::Adaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    appender(instructions, op);
+    if (failed(appender(op, transactionBuilder))) return failure();
     rewriter.eraseOp(op);
-    count++;
     return success();
   }
 };
@@ -222,42 +133,6 @@ struct ShimDMAllocationGetter {
         return infoOp;
 
     return std::nullopt;
-  }
-};
-
-struct PushToNpuPattern : OpConversionPattern<NpuPushQueueOp> {
-  using OpConversionPattern::OpConversionPattern;
-
-  PushToNpuPattern(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit) {}
-
-  LogicalResult matchAndRewrite(
-      NpuPushQueueOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
-    // the offset of the task queue register in the tile
-    uint32_t queue_offset;
-    if (op.getDirection() == AIE::DMAChannelDir::MM2S)
-      queue_offset = 0x1D214;
-    else
-      queue_offset = 0x1D204;
-    if (op.getChannel() == 1) queue_offset += 0x8;
-
-    // the value to write
-    uint32_t bd_id = op.getBdId();
-    uint32_t repeat_cnt = op.getRepeatCount() - 1;
-    uint32_t cmd = 0;
-    cmd |= bd_id & 0xF;
-    cmd |= (repeat_cnt & 0xFF) << 16;
-    if (op.getIssueToken()) cmd |= 0x80000000;
-
-    auto i32ty = IntegerType::get(op->getContext(), 32);
-    auto column = IntegerAttr::get(i32ty, op.getColumn());
-    auto row = IntegerAttr::get(i32ty, 0);
-    rewriter.create<NpuWrite32Op>(op->getLoc(), queue_offset, cmd, nullptr,
-                                  column, row);
-    rewriter.eraseOp(op);
-
-    return success();
   }
 };
 
@@ -360,25 +235,25 @@ struct DmaToNpuPattern : OpConversionPattern<NpuDmaMemcpyNdOp> {
     if (strides[1]) d0_size = IntegerAttr::get(i32ty, sizes[0]);
 
     // d0_stride
-    if (strides[0]) d0_stride = IntegerAttr::get(i32ty, strides[0] - 1);
+    if (strides[0]) d0_stride = IntegerAttr::get(i32ty, strides[0]);
 
     // d1_size
     if (strides[2]) d1_size = IntegerAttr::get(i32ty, sizes[1]);
 
     // d1_stride
-    if (strides[1]) d1_stride = IntegerAttr::get(i32ty, strides[1] - 1);
+    if (strides[1]) d1_stride = IntegerAttr::get(i32ty, strides[1]);
 
     // d2_size
     if (strides[3]) d2_size = IntegerAttr::get(i32ty, sizes[2]);
 
     // d2_stride
-    if (strides[2]) d2_stride = IntegerAttr::get(i32ty, strides[2] - 1);
+    if (strides[2]) d2_stride = IntegerAttr::get(i32ty, strides[2]);
 
     // iteration_size
-    if (strides[3]) iteration_size = IntegerAttr::get(i32ty, sizes[3] - 1);
+    if (strides[3]) iteration_size = IntegerAttr::get(i32ty, sizes[3]);
 
     // iteration_stride
-    if (strides[3]) iteration_stride = IntegerAttr::get(i32ty, strides[3] - 1);
+    if (strides[3]) iteration_stride = IntegerAttr::get(i32ty, strides[3]);
 
     // valid_bd
     valid_bd = IntegerAttr::get(i32ty, 1);
@@ -500,6 +375,9 @@ struct AMDAIEDmaToNpuPass : mlir::OperationPass<DeviceOp> {
   }
 
   void runOnOperation() override {
+    // Lower NpuDmaMemcpyNdOp to "NpuWriteBdOp + NpuAddressPatchOp +
+    // NpuPushQueueOp".
+    // Lower NpuDmaWaitOp to NpuSyncOp.
     ShimDMAllocationGetter cachingGetter;
 
     AIE::DeviceOp device = getOperation();
@@ -510,54 +388,49 @@ struct AMDAIEDmaToNpuPass : mlir::OperationPass<DeviceOp> {
     target.addLegalOp<AIE::ShimDMAAllocationOp>();
     target.addIllegalOp<NpuDmaMemcpyNdOp>();
     target.addIllegalOp<NpuDmaWaitOp>();
-    target.addIllegalOp<NpuPushQueueOp>();
 
     RewritePatternSet patterns(&getContext());
     patterns.insert<DmaToNpuPattern>(&getContext(), cachingGetter);
     patterns.insert<DmaWaitToNpuPattern>(&getContext(), cachingGetter);
-    patterns.insert<PushToNpuPattern>(&getContext());
 
     if (failed(applyPartialConversion(device, target, std::move(patterns))))
       signalPassFailure();
 
+    // Convert NpuWriteBdOp, NpuAddressPatchOp, NpuPushQueueOp, and NpuSyncOp to
+    // transactions using aie-rt.
     patterns.clear();
     target.addIllegalOp<NpuSyncOp>();
-    target.addIllegalOp<NpuWrite32Op>();
+    target.addIllegalOp<NpuPushQueueOp>();
     target.addIllegalOp<NpuAddressPatchOp>();
     target.addIllegalOp<NpuWriteBdOp>();
 
-    std::vector<uint32_t> instructions;
-    auto words = reserveAndGetTail(instructions, 4);
+    TransactionBuilder transactionBuilder(
+        getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice())));
+    transactionBuilder.clearAndInitialize();
 
-    // setup txn header
-    words[0] = 0x06030100;
-    words[1] = 0x00000105;
-    uint32_t count = 0;
-
-    patterns.insert<ConvertNpuOp<NpuSyncOp>>(&getContext(), instructions,
-                                             appendSync, count);
-    patterns.insert<ConvertNpuOp<NpuWrite32Op>>(&getContext(), instructions,
-                                                appendWrite32, count);
+    patterns.insert<ConvertNpuOp<NpuSyncOp>>(&getContext(), appendSync,
+                                             transactionBuilder);
+    patterns.insert<ConvertNpuOp<NpuPushQueueOp>>(
+        &getContext(), appendPushToQueue, transactionBuilder);
     patterns.insert<ConvertNpuOp<NpuAddressPatchOp>>(
-        &getContext(), instructions, appendAddressPatch, count);
-    patterns.insert<ConvertNpuOp<NpuWriteBdOp>>(&getContext(), instructions,
-                                                appendWriteBdShimTile, count);
+        &getContext(), appendAddressPatch, transactionBuilder);
+    patterns.insert<ConvertNpuOp<NpuWriteBdOp>>(&getContext(), appendWriteBd,
+                                                transactionBuilder);
 
     if (failed(applyPartialConversion(device, target, std::move(patterns))))
       signalPassFailure();
 
-    instructions[2] = count;
-    instructions[3] = instructions.size() * sizeof(uint32_t);
-
-    ArrayRef<uint32_t> instsArrRef(instructions.data(), instructions.size());
+    // Finalize the instructions and set as an attribute.
+    ArrayRef<uint32_t> instructions =
+        transactionBuilder.finalizeAndReturnInstructions();
     device->setAttr(
         "npu_instructions",
         DenseUI32ResourceElementsAttr::get(
             RankedTensorType::get(
-                instsArrRef.size(),
+                instructions.size(),
                 IntegerType::get(&getContext(), 32, IntegerType::Unsigned)),
             "npu_instructions",
-            HeapAsmResourceBlob::allocateAndCopyInferAlign(instsArrRef)));
+            HeapAsmResourceBlob::allocateAndCopyInferAlign(instructions)));
 
     SmallVector<RuntimeSequenceOp> seqOps;
     device->walk([&](RuntimeSequenceOp seqOp) { seqOps.push_back(seqOp); });
