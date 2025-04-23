@@ -1,3 +1,6 @@
+// TODO (zhewen): re-enable this test once the issue of MLIR-AIR bump is fixed.
+// XFAIL: *
+
 // RUN: iree-compile --iree-hal-target-backends=amd-aie --compile-to=executable-targets --iree-amdaie-num-rows=2 --iree-amdaie-num-cols=2 --iree-amdaie-lower-to-aie-pipeline=air --iree-amdaie-tile-pipeline=pack-peel --iree-amdaie-matmul-elementwise-fusion --split-input-file %s | FileCheck %s
 
 func.func @matmul_elementwise_i32(%lhs: tensor<1024x512xi32>, %rhs: tensor<512x1024xi32>, %ele: tensor<1024x1024xi32>) -> tensor<1024x1024xi32>
