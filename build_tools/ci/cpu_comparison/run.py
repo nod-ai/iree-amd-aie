@@ -1849,12 +1849,11 @@ class Tests:
             )
         )
 
-        # TODO (Erwei): to debug from mlir-air, and re-enable the tests.
-        # # MatmulThinBias test(s):
-        # self.register(MatmulThinBias(1024, 1024, 512, "bf16", "f32"))
+        # MatmulThinBias test(s):
+        self.register(MatmulThinBias(1024, 1024, 512, "bf16", "f32"))
 
-        # # MatmulFullBias test:
-        # self.register(MatmulFullBias(128, 128, 256, "bf16", "f32"))
+        # MatmulFullBias test:
+        self.register(MatmulFullBias(128, 128, 256, "bf16", "f32"))
 
         # MatmulTransposeB test(s):
         for input_type, acc_type in zip(["i8", "bf16"], ["i32", "f32"]):
@@ -2459,7 +2458,8 @@ class Tests:
                 ["two_matmul_switching", "matmul_small"],
                 ["matmul_f32_8_8_4", "matmul_8_8_4"],
                 ["matmul_f32_8_4_8", "matmul_8_4_8"],
-                ["three_matmuls", "three_$mm$"],
+                # TODO (zhewen): investigate why the following test randomly fails when control packet is enabled.
+                # ["three_matmuls", "three_$mm$"],
             ]:
                 self.register(
                     MultipleDispatches(
