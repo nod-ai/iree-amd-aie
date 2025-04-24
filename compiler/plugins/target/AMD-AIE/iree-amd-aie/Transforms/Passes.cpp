@@ -1018,43 +1018,16 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
   {
     xilinx::air::AIROptimizeShimDMABDsOptions options;
     options.clDevice = stringifyEnum(device);
+    const static llvm::SmallVector<unsigned> tile_sizes = {2, 2};
+    options.clTileSizes = tile_sizes;
     passManager.addNestedPass<func::FuncOp>(
         xilinx::air::createAIROptimizeShimDMABDs(options));
   }
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(xilinx::air::createAIRLoweringPass());
-  {
-    xilinx::air::AffineLoopOptPassOptions options;
-    // tile_sizes contains a list of N tiling factors for the N innermost loop
-    // nests lowered from the outer scf.forall. The N innermost loops were tiled
-    // with given factors, and subsequently unrolled in
-    // AIRUnrollOuterPerfectlyNestedLoopsPass, to enforce SHIM DMA BD count
-    // within the hardware limit.
-    if (useTilePipeline == TilePassPipeline::PackPeelPipeline ||
-        useTilePipeline == TilePassPipeline::PackPeel4LevelTilingPipeline) {
-      const static llvm::SmallVector<unsigned> tile_sizes = {2, 2};
-      options.clTileSizes = tile_sizes;
-    }
-    passManager.addNestedPass<func::FuncOp>(
-        xilinx::air::createAffineLoopOptPass(options));
-  }
-  passManager.addPass(createCanonicalizerPass());
-  {
-    // AIRUnrollOuterPerfectlyNestedLoopsPass unrolls the remaining outer loop
-    // nests that were left untiled by the previous AffineLoopOptPass,
-    // generating NPU sequence representing the SHIM DMA BDs.
-    xilinx::air::AIRUnrollOuterPerfectlyNestedLoopsPassOptions options;
-    if (useTilePipeline == TilePassPipeline::ConvDecomposePipeline)
-      options.clDepth = 4;
-    else
-      options.clDepth = 2;
-    passManager.addNestedPass<func::FuncOp>(
-        xilinx::air::createAIRUnrollOuterPerfectlyNestedLoopsPass(options));
-  }
   passManager.addPass(mlir::affine::createAffineExpandIndexOpsPass());
   passManager.addPass(createAMDAIELowerFuncArgsPass());
   passManager.addPass(xilinx::airrt::createAIRRtToNpuPass());
-  passManager.addPass(createCanonicalizerPass());
 
   {
     // `AMDAIEDmaToNpuPass` and `AMDAIEIncrementRepeatCountPass` are only needed
