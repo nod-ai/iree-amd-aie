@@ -200,6 +200,9 @@ FailureOr<ParameterSetting> ParameterSetting::create(
   auto initType =
       llvm::cast<ShapedType>(linalgOp.getDpsInitOperand(0)->get().getType());
   uint32_t nBytesInit = initType.getElementTypeBitWidth() / 8;
+  // In case of an elementwise consumer, the output will become different from
+  // init and the value of `nBytesOut` will be updated.
+  uint32_t nBytesOut = nBytesInit;
   auto lhsType =
       llvm::cast<ShapedType>(linalgOp.getDpsInputOperand(0)->get().getType());
   uint32_t nBytesLhs = lhsType.getElementTypeBitWidth() / 8;
@@ -249,18 +252,20 @@ FailureOr<ParameterSetting> ParameterSetting::create(
 
   // Consider fusion with elementwise op, then there is only one buffer for
   // matmul output (accumulation), i.e., bufferDepthAcc = 1.
-  unsigned nBytesElemOut{0};
   if (isMatmulWithElementwiseConsumer(linalgOp)) {
     for (Operation *userOp : linalgOp->getUsers()) {
       if (auto linalgUser = dyn_cast<linalg::LinalgOp>(userOp)) {
         auto outputType = llvm::cast<ShapedType>(
             linalgUser.getDpsInitOperand(0)->get().getType());
-        nBytesElemOut = outputType.getElementTypeBitWidth() / 8;
+        nBytesOut = outputType.getElementTypeBitWidth() / 8;
         // For elementwise op like bias, we need to count the second input from
         // elementwise op, so reserve another buffer for that.
         bufferDepthAcc = linalgUser.getNumDpsInputs() == 1 ? 1 : 2;
       }
     }
+  } else {
+    // For pure matmul, set the buffer depth as 0 for accumulation.
+    bufferDepthAcc = 0;
   }
 
   // Get the largest tile sizes that can fit in L1 memory.
@@ -268,7 +273,7 @@ FailureOr<ParameterSetting> ParameterSetting::create(
       /*memoryLimit=*/deviceModel.getCoreTileLocalMemorySize(),
       /*numBytesA=*/nBytesLhs,
       /*numBytesB=*/nBytesRhs,
-      /*numBytesC=*/nBytesElemOut,
+      /*numBytesC=*/nBytesOut,
       /*numBytesAcc=*/nBytesInit,
       /*bufferDepthA=*/bufferDepthA,
       /*bufferDepthB=*/bufferDepthB,
@@ -295,10 +300,6 @@ FailureOr<ParameterSetting> ParameterSetting::create(
   // can fit in the MemTile memory.
   if (kPackScaleL1 == 2 && isObjectFifo) {
     tileParams.memoryLimit = deviceModel.getMemTileSizeInBytes() * numCols;
-    // For matmul-elementwise case, the output buffer from L1 to L2 is only from
-    // elementwise op, so set `bufferDepthAcc` = 0 in L2 memory space.
-    tileParams.bufferDepthAcc =
-        isMatmulWithElementwiseConsumer(linalgOp) ? 0 : 2;
     TileSize maxL0Size = selectL2TileSizes(tileParams, m0Pack, n0Pack);
     M0 = maxL0Size.M;
     N0 = maxL0Size.N;
