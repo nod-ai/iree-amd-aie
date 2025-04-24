@@ -28,6 +28,9 @@ struct TileSize {
 
 TileSize selectL1TileSizes(const TileParams& params);
 
+TileSize selectL2TileSizes(const TileParams& params, const uint32_t maxL1TileM,
+                           const uint32_t maxL1TileN);
+
 }  // namespace mlir::iree_compiler::AMDAIE
 
 #endif
