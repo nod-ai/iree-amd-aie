@@ -477,8 +477,9 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
-// Expect all DMA ops operating within same scf.for's block and on same tile to have equal BD ID distribution.
-
+// Expect all DMA ops, between the first DMA op and its corresponding DMA wait op, operating
+// within same scf.for's block and on same tile to have equal BD ID distribution.
+//
 //       CHECK: #map1 = affine_map<(d0) -> (d0 mod 5)>
 //       CHECK: #map2 = affine_map<(d0) -> (d0 mod 5 + 5)>
 //       CHECK: #map3 = affine_map<(d0) -> (d0 mod 5 + 10)>
