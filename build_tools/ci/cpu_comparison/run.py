@@ -2185,6 +2185,20 @@ class Tests:
                 "use_chess_for_ukernel": True,
                 "peano_opt_level": 1,
             },
+            {
+                "M": 1024,
+                "N": 4096 * 4,
+                "K": 512,
+                "in_dtype": "i8",
+                "use_ukernel": True,
+                "matmul4d": True,
+                "scale_trunc": True,
+                "tile_pipeline": "pack-peel-4-level-tiling",
+                "run_on_target": "npu4",
+                "use_chess": False,
+                "use_chess_for_ukernel": False,
+                "peano_opt_level": 1,
+            },
         ]
 
         # Some bf16 Performance tests:
