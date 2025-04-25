@@ -189,8 +189,10 @@ FailureOr<AMDAIE::BdIdOp> getBdIdOp(
     Value iv = loop.getInductionVar();
 
     // Step 1: Get the number of BD IDs will be required by the current DMA op.
-    // Also fetch other DMA ops within the same scf.for block that are operating
-    // on the same tile.
+    // While fetching the required BD IDs for the current DMA op, keep a track
+    // of the DMA ops within the same scf.for block that are operating on the
+    // same tile and lies between the current DMA op and its corresponding DMA
+    // wait op.
     uint32_t numRequired = 0;
     SmallVector<AMDAIE::NpuDmaCpyNdOp> dmaOps = getNumRequiredBdIdsAndDMAOps(
         loop, npuDmaOp, tileOp, shimTileToGeneratorMap, numRequired);
@@ -199,7 +201,7 @@ FailureOr<AMDAIE::BdIdOp> getBdIdOp(
     uint32_t numAvailable = generator.getNumAvailableBdIds(channel);
     uint32_t totalDmaOps = dmaOps.size();
     uint32_t size = std::max(numAvailable / numRequired, 1u);
-    // In case an equal split of BD IDs is not possible, return failure.
+    // In case there are not enough BD ids available, return failure.
     if (size * totalDmaOps > numAvailable) return failure();
 
     // Step 3: Traverse each DMA op found in step 1, assign BD IDs and keep a
