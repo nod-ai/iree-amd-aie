@@ -24,16 +24,29 @@ void zero_vectorized(v16int32 *__restrict pC, unsigned offsetC)
 }
 
 template<unsigned rowA, unsigned colA, unsigned colB, unsigned L0_M, unsigned L0_K, unsigned L0_N>
-void matmul_vectorized_i8_i32(const int8 * __restrict pA, unsigned offsetA, const int8 * __restrict pB, unsigned offsetB, int32 * __restrict pC, unsigned offsetC)
+void matmul_vectorized_i8_i32(const int8 * __restrict pA, unsigned offsetA, const int8 * __restrict pB,
+                              unsigned offsetB, int32 * __restrict pC, unsigned offsetC)
 {
   const unsigned size_A = L0_M * L0_K;
   const unsigned size_B = L0_K * L0_N;
   const unsigned size_C = L0_M * L0_N;
 
+  // Use a double set of A/B variables to help the compiler in finding better pipelining solutions.
+  // The number of registers needed among them should stay within vector register limits, sp we expect
+  // these to be mapped to actual vector registers.
   v64int8 A0;
   v64int8 A1;
   v64int8 B0;
   v64int8 B1;
+
+  v64int8 A0_1;
+  v64int8 A1_1;
+  v64int8 B0_1;
+  v64int8 B1_1;
+
+  // The accumulator variables for calculating the results of the AxB MAC operations.
+  // This should fit within the number of available accumulator registers, so we expect these to be mapped
+  // to actual accumulator registers.
   v64acc32 acc_C00;
   v64acc32 acc_C01;
   v64acc32 acc_C10;
@@ -50,6 +63,12 @@ void matmul_vectorized_i8_i32(const int8 * __restrict pA, unsigned offsetA, cons
       const v64int8 *__restrict pB0 = (v64int8 *)(pB + offsetB + (j)*colA*size_B);
       const v64int8 *__restrict pB1 = (v64int8 *)(pB + offsetB + ((j + 1))*colA * size_B);
 
+      acc_C00 = *pC0;
+      acc_C01 = *(pC0 + rowA);
+
+      acc_C10 = *pC1;
+      acc_C11 = *(pC1 + rowA);
+
       A0 = *pA0;
       pA0 += rowA;
       A1 = *pA1;
@@ -58,18 +77,20 @@ void matmul_vectorized_i8_i32(const int8 * __restrict pA, unsigned offsetA, cons
       B0 = *pB0++;
       B1 = *pB1++;
 
-      acc_C00 = *pC0;
-      acc_C01 = *(pC0 + rowA);
+      A0_1 = *pA0;
+      pA0 += rowA;
+      A1_1 = *pA1;
+      pA1 += rowA;
 
-      acc_C10 = *pC1;
-      acc_C11 = *(pC1 + rowA);
-
+      B0_1 = *pB0++;
+      B1_1 = *pB1++;
       acc_C00 = mac_8x8_8x8(A0, B0, acc_C00);
       acc_C01 = mac_8x8_8x8(A0, B1, acc_C01);
       acc_C10 = mac_8x8_8x8(A1, B0, acc_C10);
       acc_C11 = mac_8x8_8x8(A1, B1, acc_C11);
 
-      for (unsigned i = 1; i < colA; ++i) {
+      for (unsigned i = 1; i <  colA - 1; i += 2) {
+
         A0 = *pA0;
         pA0 += rowA;
         A1 = *pA1;
@@ -78,11 +99,29 @@ void matmul_vectorized_i8_i32(const int8 * __restrict pA, unsigned offsetA, cons
         B0 = *pB0++;
         B1 = *pB1++;
 
+        acc_C00 = mac_8x8_8x8(A0_1, B0_1, acc_C00);
+        acc_C01 = mac_8x8_8x8(A0_1, B1_1, acc_C01);
+        acc_C10 = mac_8x8_8x8(A1_1, B0_1, acc_C10);
+        acc_C11 = mac_8x8_8x8(A1_1, B1_1, acc_C11);
+
+        A0_1 = *pA0;
+        pA0 += rowA;
+        A1_1 = *pA1;
+        pA1 += rowA;
+
+        B0_1 = *pB0++;
+        B1_1 = *pB1++;
+
         acc_C00 = mac_8x8_8x8(A0, B0, acc_C00);
         acc_C01 = mac_8x8_8x8(A0, B1, acc_C01);
         acc_C10 = mac_8x8_8x8(A1, B0, acc_C10);
         acc_C11 = mac_8x8_8x8(A1, B1, acc_C11);
       }
+
+      acc_C00 = mac_8x8_8x8(A0_1, B0_1, acc_C00);
+      acc_C01 = mac_8x8_8x8(A0_1, B1_1, acc_C01);
+      acc_C10 = mac_8x8_8x8(A1_1, B0_1, acc_C10);
+      acc_C11 = mac_8x8_8x8(A1_1, B1_1, acc_C11);
 
       // -----
 
@@ -116,9 +155,11 @@ void matmul_vectorized_8x8x8_i8_i8_i32(const int8 *__restrict pA,
   constexpr int r = 8;
   constexpr int s = 8;
   constexpr int t = 8;
-  static_assert(m / r > 0);
-  static_assert(k / s > 0);
-  static_assert(n / t > 0);
+  static_assert(m / r > 0, "There should be at least one iteration on the M dimension.");
+  static_assert(k / s % 2 == 0,
+                "The ukernel is manually unrolled in the K iteration with a factor of 2,"
+                "so the number of K iterations should be a factor of 2.");
+  static_assert(n / t > 0, "There should be at least one iteration on the N dimension.");
   return matmul_vectorized_i8_i32<m / r, k / s, n / t, r, s, t>
       (pA, offsetA, pB, offsetB, pC, offsetC);
 }
