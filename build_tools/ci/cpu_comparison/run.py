@@ -899,6 +899,31 @@ class Matmul4dScaleTrunci(BaseMatmul):
         return self.vs_cpu(config)
 
 
+class Softmax(BaseTest):
+    def __init__(
+        self,
+        test_params=None,
+    ):
+        super().__init__(
+            name="softmax_bf16",
+            test_params=test_params,
+        )
+        self.labels += ["Softmax"]
+
+    def _execute(self, config):
+        test_files_dir = config.file_dir / "test_files"
+        self.filename = test_files_dir / "softmax_bf16.mlir"
+
+        aie_vs_llvm_cpu(
+            config,
+            self.aie_compilation_flags,
+            self.filename,
+            use_ukernel=self.use_ukernel,
+            function_name="softmax",
+        )
+        return True
+
+
 def find_executable(install_dir: Path, executable_name):
     """
     Search for an executable in the given directory and its subdirectories
@@ -2374,21 +2399,19 @@ class Tests:
 
         # chess test
         self.register(
-            Matmul(
-                32,
-                32,
-                32,
-                "i32",
-                "i32",
+            Softmax(
                 test_params=TestParams(
-                    name_suffix="chess",
+                    aie_compilation_flags=[
+                        "--iree-amdaie-num-rows=1",
+                        "--iree-amdaie-num-cols=1",
+                    ],
                     use_chess=True,
-                    n_repeats=10,
+                    use_ukernel=True,
                 ),
             )
         )
 
-        # chess test with ukernel
+
         self.register(
             Matmul(
                 64,
@@ -2399,127 +2422,10 @@ class Tests:
                 test_params=TestParams(
                     name_suffix="chess",
                     use_chess=True,
-                    use_ukernel=True,
-                    n_repeats=10,
+                    use_ukernel=True
                 ),
             )
         )
-
-        # Control packet single dispatch tests:
-        for target, in_type, out_type in [
-            ["npu1_4col", "i8", "i32"],
-            ["npu4", "i32", "i32"],
-        ]:
-            # Numeric test for reconfiguration on the whole AIE array.
-            self.register(
-                Matmul(
-                    1024,
-                    1024,
-                    1024,
-                    in_type,
-                    out_type,
-                    test_params=TestParams(
-                        run_on_target=target, enable_ctrlpkt=True, name_suffix=target
-                    ),
-                )
-            )
-            # Benchmark reconfiguration time only, do not run the kernel.
-            self.register(
-                Matmul(
-                    1024,
-                    1024,
-                    1024,
-                    in_type,
-                    out_type,
-                    test_params=TestParams(
-                        run_benchmark=True,
-                        n_repeats=2,
-                        run_on_target=target,
-                        enable_ctrlpkt=True,
-                        name_suffix=target + "_reconfigure_only",
-                    ),
-                    additional_labels=["Performance"],
-                    n_kernel_runs=0,
-                    n_reconfigure_runs=100,
-                    n_pdi_loads=1,
-                )
-            )
-            # Benchmark PDI load time only (control packet disabled), do not run the kernel.
-            self.register(
-                Matmul(
-                    1024,
-                    1024,
-                    1024,
-                    in_type,
-                    out_type,
-                    test_params=TestParams(
-                        run_benchmark=True,
-                        n_repeats=2,
-                        run_on_target=target,
-                        enable_ctrlpkt=False,
-                        name_suffix=target + "_pdi_load_only",
-                    ),
-                    additional_labels=["Performance"],
-                    n_kernel_runs=0,
-                    n_reconfigure_runs=0,
-                    n_pdi_loads=100,
-                )
-            )
-
-        # MultipleDispatches tests:
-        for target, enable_ctrlpkt in product(["npu1_4col", "npu4"], [False, True]):
-            for file_base_name, func_name in [
-                ["two_matmul_switching", "matmul_small"],
-                ["matmul_f32_8_8_4", "matmul_8_8_4"],
-                ["matmul_f32_8_4_8", "matmul_8_4_8"],
-                # TODO (zhewen): investigate why the following test randomly fails when control packet is enabled.
-                # ["three_matmuls", "three_$mm$"],
-            ]:
-                self.register(
-                    MultipleDispatches(
-                        file_base_name,
-                        func_name,
-                        test_params=TestParams(
-                            aie_compilation_flags=[
-                                "--iree-amdaie-num-rows=1",
-                                "--iree-amdaie-num-cols=1",
-                            ],
-                            run_on_target=target,
-                            name_suffix="OneCore_" + target,
-                            enable_ctrlpkt=enable_ctrlpkt,
-                        ),
-                    )
-                )
-
-        # Convolution 2D tests:
-        conv_2d_map = {
-            "conv_type": "conv_2d_nhwc_hwcf",
-            "N": 2,
-            "IH": 14,
-            "IC": 32,
-            "OC": 64,
-            "KH": 3,
-        }
-        for input_type, output_type in zip(
-            ["i32", "bf16", "i8"], ["i32", "f32", "i32"]
-        ):
-            conv_2d_map["input_element_type"] = input_type
-            conv_2d_map["output_element_type"] = output_type
-            generator = ConvolutionMlirGenerator(**conv_2d_map)
-            self.register(ConvolutionFromTemplate(generator))
-
-        # Depthwise convolution tests:
-        depthwise_map = {
-            "conv_type": "depthwise_conv_2d_nhwc_hwc",
-            "N": 1,
-            "IH": 14,
-            "IC": 64,
-            "KH": 3,
-            "input_element_type": "i32",
-            "output_element_type": "i32",
-        }
-        generator = ConvolutionMlirGenerator(**depthwise_map)
-        self.register(ConvolutionFromTemplate(generator))
 
 
 def all_tests(

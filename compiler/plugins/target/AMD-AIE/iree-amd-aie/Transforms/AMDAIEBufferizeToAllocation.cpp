@@ -43,11 +43,15 @@ static LogicalResult applyBufferizeToAllocation(RewriterBase &rewriter,
 /// elementwise op). For matmul-elementwise special case, since one of the
 /// elementwise op's input is the output of the matmul op and has already been
 /// promoted, there is no need to promote such operand again.
-static SmallVector<Value> getInputOutputOperands(linalg::LinalgOp &linalgOp) {
+static SmallVector<Value> getInputOutputOperands(
+    DestinationStyleOpInterface targetOp) {
   SmallVector<Value> operands;
-  for (Value operand : linalgOp->getOperands()) {
+  for (Value operand : targetOp->getOperands()) {
     if (!isa<RankedTensorType>(operand.getType())) continue;
-    if (isElementwise(linalgOp) && isMatmulInDefChain(operand)) continue;
+    if (auto linalgOp = dyn_cast<linalg::LinalgOp>(targetOp.getOperation())) {
+      if (isElementwise(linalgOp) && isMatmulInDefChain(operand)) continue;
+    }
+
     operands.push_back(operand);
   }
   return operands;
@@ -57,11 +61,14 @@ static SmallVector<Value> getInputOutputOperands(linalg::LinalgOp &linalgOp) {
 /// op). For matmul-elementwise special case, since one of the elementwise op's
 /// input is the output of the matmul op and has already been promoted, there is
 /// no need to promote such operand again.
-static SmallVector<Value> getInputOperands(linalg::LinalgOp &linalgOp) {
+static SmallVector<Value> getInputOperands(
+    DestinationStyleOpInterface targetOp) {
   SmallVector<Value> operands;
-  for (Value operand : linalgOp.getDpsInputs()) {
+  for (Value operand : targetOp.getDpsInputs()) {
     if (!isa<RankedTensorType>(operand.getType())) continue;
-    if (isElementwise(linalgOp) && isMatmulInDefChain(operand)) continue;
+    if (auto linalgOp = dyn_cast<linalg::LinalgOp>(targetOp.getOperation())) {
+      if (isElementwise(linalgOp) && isMatmulInDefChain(operand)) continue;
+    }
     operands.push_back(operand);
   }
   return operands;
@@ -70,9 +77,9 @@ static SmallVector<Value> getInputOperands(linalg::LinalgOp &linalgOp) {
 /// Utility to fetch pack operands at a specified depth from the LinalgOp's
 /// input operands.
 static FailureOr<SmallVector<Value>> getPackOrCopyOperands(
-    linalg::LinalgOp linalgOp, uint32_t depthLevel) {
+    DestinationStyleOpInterface targetOp, uint32_t depthLevel) {
   SmallVector<Value> operands;
-  for (auto input : llvm::enumerate(linalgOp.getDpsInputs())) {
+  for (auto input : llvm::enumerate(targetOp.getDpsInputs())) {
     uint32_t currentLevel{0};
     Operation *currentOp = input.value().getDefiningOp();
     while (currentLevel < depthLevel && currentOp != nullptr) {
@@ -87,7 +94,7 @@ static FailureOr<SmallVector<Value>> getPackOrCopyOperands(
     }
     // The defining op has to be a pack or a copy op, fail otherwise.
     if (!currentOp) {
-      return linalgOp.emitOpError()
+      return targetOp.emitOpError()
              << "operand #" << input.index()
              << " only has pack/copy ops to depth " << currentLevel
              << ", but request is for a depth " << depthLevel
@@ -103,21 +110,24 @@ static FailureOr<SmallVector<Value>> getPackOrCopyOperands(
 // ops, based on which operands the caller wants to bufferize via
 // `bufferizeOperand` parameter.
 static FailureOr<SmallVector<Value>> getOperandsToBufferize(
-    BufferizeOperand bufferizeOperand, linalg::LinalgOp &linalgOp,
-    uint32_t inputDepth) {
+    BufferizeOperand bufferizeOperand, Operation *op, uint32_t inputDepth) {
+  DestinationStyleOpInterface targetOp =
+      dyn_cast<DestinationStyleOpInterface>(op);
+  if (!targetOp) return op->emitOpError("expected a destination style op");
+
   switch (bufferizeOperand) {
     /// Create new allocations for Lhs, Rhs and Out.
     case BufferizeOperand::LinalgInputOutput:
-      return getInputOutputOperands(linalgOp);
+      return getInputOutputOperands(targetOp);
     /// Create new allocation only for Lhs, Rhs.
     case BufferizeOperand::LinalgInput:
-      return getInputOperands(linalgOp);
+      return getInputOperands(targetOp);
     /// Create new allocations only for Out.
     case BufferizeOperand::LinalgOutput:
-      return SmallVector<Value>(linalgOp.getDpsInits());
+      return SmallVector<Value>(targetOp.getDpsInits());
     /// Create new allocations for operands from the pack ops.
     case BufferizeOperand::PackOrCopyInput:
-      return getPackOrCopyOperands(linalgOp, inputDepth);
+      return getPackOrCopyOperands(targetOp, inputDepth);
     default:
       return failure();
   }
@@ -166,29 +176,35 @@ class AMDAIEBufferizeToAllocationPass
 void AMDAIEBufferizeToAllocationPass::runOnOperation() {
   MLIRContext *context = &getContext();
   mlir::FunctionOpInterface funcOp = getOperation();
-  linalg::LinalgOp linalgOp;
-  funcOp->walk<WalkOrder::PostOrder, ReverseIterator>([&](linalg::LinalgOp op) {
-    if (!isElementwise(op) && !linalg::isaContractionOpInterface(op) &&
-        !linalg::isaConvolutionOpInterface(op)) {
-      return WalkResult::advance();
+  Operation *targetOp;
+  funcOp->walk<WalkOrder::PostOrder, ReverseIterator>([&](Operation *op) {
+    if (auto linalgOp = dyn_cast<linalg::LinalgOp>(op)) {
+      if (!isElementwise(linalgOp) &&
+          !linalg::isaContractionOpInterface(linalgOp) &&
+          !linalg::isaConvolutionOpInterface(linalgOp)) {
+        return WalkResult::advance();
+      }
+      if (isa<linalg::FillOp, linalg::CopyOp>(linalgOp)) {
+        return WalkResult::advance();
+      }
+      // Use flag `bufferizeElementwise` to indicate whether the target for
+      // bufferization is an elementwise op.
+      if (bufferizeElementwise && !isElementwise(linalgOp)) {
+        return WalkResult::advance();
+      }
+      if (!bufferizeElementwise && isElementwise(linalgOp)) {
+        return WalkResult::advance();
+      }
     }
-    if (isa<linalg::FillOp, linalg::CopyOp>(op)) {
-      return WalkResult::advance();
-    }
-    // Use flag `bufferizeElementwise` to indicate whether the target for
-    // bufferization is an elementwise op.
-    if (bufferizeElementwise && !isElementwise(op)) {
-      return WalkResult::advance();
-    }
-    if (!bufferizeElementwise && isElementwise(op)) {
-      return WalkResult::advance();
-    }
-    linalgOp = op;
+
+    if (!isa<linalg::SoftmaxOp>(op)) return WalkResult::advance();
+
+    targetOp = op;
     return WalkResult::interrupt();
   });
 
-  if (!linalgOp) {
-    LLVM_DEBUG(llvm::dbgs() << "----- skip, no linalg op -----\n");
+  if (!targetOp) {
+    LLVM_DEBUG(llvm::dbgs() << "----- skip, no valid op -----\n");
     return;
   }
 
@@ -197,9 +213,9 @@ void AMDAIEBufferizeToAllocationPass::runOnOperation() {
   // Find the producer ops for linalg (matmul) op, and bufferizes them in new
   // allocations.
   FailureOr<SmallVector<Value>> operandsToBufferize =
-      getOperandsToBufferize(bufferizeOperand, linalgOp, inputDepth);
+      getOperandsToBufferize(bufferizeOperand, targetOp, inputDepth);
   if (failed(operandsToBufferize)) {
-    linalgOp->emitOpError("could not fetch operands to bufferize");
+    targetOp->emitOpError("could not fetch operands to bufferize");
     return signalPassFailure();
   }
 
