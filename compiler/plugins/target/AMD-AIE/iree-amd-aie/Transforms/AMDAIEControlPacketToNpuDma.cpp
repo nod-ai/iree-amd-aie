@@ -24,6 +24,7 @@ struct CtrlPktBdTransfer {
   SmallVector<int64_t> offsets;
   SmallVector<int64_t> sizes;
   SmallVector<int64_t> strides;
+  bool syncBarrier;
 };
 
 struct ControlPacketDmaBuilder {
@@ -78,6 +79,7 @@ struct ControlPacketDmaBuilder {
 
     std::vector<AMDAIE::NpuControlPacketOp> ctrlPktOps;
     std::vector<CtrlPktBdTransfer> ctrlPktBdTransfers;
+    AMDAIE::AMDAIETileType lastDestTileType = AMDAIE::AMDAIETileType::MAX;
     // Convert `NpuControlPacketOp` to BD transfers.
     res = workgroupOp->walk([&](AMDAIE::NpuControlPacketOp ctrlPktOp) {
       ctrlPktOps.push_back(ctrlPktOp);
@@ -113,6 +115,13 @@ struct ControlPacketDmaBuilder {
       uint32_t dataLength = ctrlPktOp.getLength();
       // Plus one for the control header, which is always present.
       int64_t headerAndDataLength = dataLength + 1;
+
+      AMDAIE::AMDAIETileType destTileType =
+          deviceModel.getTileType(destCol, destRow);
+      // If the destination tile type is different from the last one, we need
+      // to maintain the issuing order of control packets.
+      if (lastDestTileType != destTileType && ctrlPktBdTransfers.size() > 0)
+        ctrlPktBdTransfers.back().syncBarrier = true;
 
       // If the AIE device has the control packet TLAST error disabled,
       // multiple control packets can be packaged into a single BD transfer to
@@ -198,7 +207,8 @@ struct ControlPacketDmaBuilder {
           ctrlPktOp.getDataFromArrayOrResource();
       for (int32_t data : maybeData.value())
         words[idx++] = reinterpret_cast<uint32_t &>(data);
-
+      // Update the last destination tile type.
+      lastDestTileType = destTileType;
       return WalkResult::advance();
     });
     if (res.wasInterrupted()) return failure();
@@ -225,6 +235,8 @@ struct ControlPacketDmaBuilder {
           /*source_bd_id=*/nullptr);
       rewriter.create<AMDAIE::NpuDmaWaitOp>(rewriter.getUnknownLoc(),
                                             dmaOp.getResult(0));
+      if (stream.syncBarrier)
+        rewriter.create<AMDAIE::NpuBarrierOp>(rewriter.getUnknownLoc());
     }
 
     // Erase all the `NpuControlPacketOp`.

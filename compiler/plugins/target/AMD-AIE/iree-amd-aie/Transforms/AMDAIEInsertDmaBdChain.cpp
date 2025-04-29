@@ -101,8 +101,7 @@ void checkForChainsWithDuplicateBdId(
 /// traversal simplifies handling duplicate BD IDs, preventing the need to
 /// revisit and modify earlier operations after processing later ones.
 LogicalResult insertDmaBdChain(const AMDAIE::AMDAIEDeviceModel &deviceModel,
-                               AMDAIE::ControlCodeOp controlCodeOp,
-                               bool enableInterleave) {
+                               AMDAIE::ControlCodeOp controlCodeOp) {
   IRRewriter rewriter(controlCodeOp->getContext());
 
   // Move all BdIdOps to the beginning of the control code.
@@ -123,6 +122,7 @@ LogicalResult insertDmaBdChain(const AMDAIE::AMDAIEDeviceModel &deviceModel,
   // Buffers the DMA ops that will be chained.
   DenseMap<DmaChain, SmallVector<AMDAIE::NpuHalfDmaCpyNdOp>> dmaChainToDmaOps;
 
+  llvm::SmallSetVector<DmaChain, 4> chainsToBreak;
   res = controlCodeOp->walk<WalkOrder::PostOrder,
                             ReverseIterator>([&](Operation *op) {
     if (auto npuHalfDmaCpyNdOp = dyn_cast<AMDAIE::NpuHalfDmaCpyNdOp>(op)) {
@@ -183,14 +183,7 @@ LogicalResult insertDmaBdChain(const AMDAIE::AMDAIEDeviceModel &deviceModel,
         return WalkResult::interrupt();
       }
 
-      llvm::SmallSetVector<DmaChain, 4> chainsToBreak;
       DmaChain currDmaChain = {tileOp, connectionOp};
-      // Check if there are other chains being built in an interleaved way.
-      if (!enableInterleave) {
-        for (auto &entry : dmaChainToBdIds) {
-          if (entry.first != currDmaChain) chainsToBreak.insert(entry.first);
-        }
-      }
       // Any duplicate BD ID from the same tile indicates that the chain
       // cannot grow further and requires breaking to release the
       // conflicting BD ID.
@@ -210,9 +203,13 @@ LogicalResult insertDmaBdChain(const AMDAIE::AMDAIEDeviceModel &deviceModel,
           dmaChainToBdIds.erase(entry);
           dmaChainToDmaOps.erase(entry);
         }
+        chainsToBreak.clear();
       }
       dmaChainToBdIds[currDmaChain].insert(bdId);
       dmaChainToDmaOps[currDmaChain].push_back(npuHalfDmaCpyNdOp);
+    } else if (auto npuBarrierOp = dyn_cast<AMDAIE::NpuBarrierOp>(op)) {
+      // Clear all chains if a sync barrier is encountered.
+      for (auto &entry : dmaChainToBdIds) chainsToBreak.insert(entry.first);
     }
     return WalkResult::advance();
   });
@@ -240,8 +237,6 @@ class AMDAIEInsertDmaBdChainPass
 
   AMDAIEInsertDmaBdChainPass() = default;
   AMDAIEInsertDmaBdChainPass(const AMDAIEInsertDmaBdChainPass &pass){};
-  AMDAIEInsertDmaBdChainPass(const AMDAIEInsertDmaBdChainOptions &options)
-      : AMDAIEInsertDmaBdChainBase(options) {}
   void runOnOperation() override;
 };
 
@@ -262,8 +257,7 @@ void AMDAIEInsertDmaBdChainPass::runOnOperation() {
 
   WalkResult res = parentOp->walk([&](AMDAIE::WorkgroupOp workgroupOp) {
     AMDAIE::ControlCodeOp controlCodeOp = workgroupOp.getControlCode();
-    if (failed(
-            insertDmaBdChain(deviceModel, controlCodeOp, enableInterleave))) {
+    if (failed(insertDmaBdChain(deviceModel, controlCodeOp))) {
       return WalkResult::interrupt();
     }
     return WalkResult::advance();
@@ -273,9 +267,8 @@ void AMDAIEInsertDmaBdChainPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<Pass> createAMDAIEInsertDmaBdChainPass(
-    AMDAIEInsertDmaBdChainOptions options) {
-  return std::make_unique<AMDAIEInsertDmaBdChainPass>(options);
+std::unique_ptr<Pass> createAMDAIEInsertDmaBdChainPass() {
+  return std::make_unique<AMDAIEInsertDmaBdChainPass>();
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE

@@ -434,6 +434,25 @@ func.func @npu_patch_address() {
 
 // -----
 
+// CHECK-LABEL: func.func @npu_dma_wait
+// CHECK:       amdaie.npu.dma_wait(%arg0 : !amdaie.async_source_token)
+// CHECK:       amdaie.npu.dma_wait(%arg1 : !amdaie.async_target_token)
+func.func @npu_dma_wait(%arg0: !amdaie.async_source_token, %arg1: !amdaie.async_target_token) {
+  amdaie.npu.dma_wait(%arg0 : !amdaie.async_source_token)
+  amdaie.npu.dma_wait(%arg1 : !amdaie.async_target_token)
+  return
+}
+
+// -----
+// CHECK-LABEL: func.func @npu_barrier
+// CHECK:       amdaie.npu.barrier
+func.func @npu_barrier() {
+  amdaie.npu.barrier
+  return
+}
+
+// -----
+
 // CHECK-LABEL: func.func @npu_push_to_queue
 // CHECK:       amdaie.npu.push_to_queue {bd_id = 0 : ui32, channel = 0 : ui32, col = 0 : ui32, direction = 1 : i32, repeat_count = 1 : ui32, row = 0 : ui32}
 // CHECK:       %{{.+}} = amdaie.npu.push_to_queue async {bd_id = 15 : ui32, channel = 0 : ui32, col = 2 : ui32, direction = 1 : i32, repeat_count = 256 : ui32, row = 0 : ui32}
