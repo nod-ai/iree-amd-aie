@@ -204,10 +204,10 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:         %[[TILE_0_0:.+]] = amdaie.tile(%[[C0]], %[[C0]])
 // CHECK:         amdaie.controlcode
 // CHECK:           %[[BD_ID_0:.+]] = amdaie.bd_id(%[[TILE_0_0]], %[[C0]])
-// CHECK:           %[[NPU_DMA_0:.+]] = amdaie.npu.dma_cpy_nd async_source %{{.+}}([] [] [], %{{.+}}[0, 0, 0] [1, 8, 16] [128, 16, 1] bd_id = %[[BD_ID_0]])
 // CHECK:           %[[BD_ID_1:.+]] = amdaie.bd_id(%[[TILE_0_0]], %[[C1]])
-// CHECK:           %[[NPU_DMA_1:.+]] = amdaie.npu.dma_cpy_nd async_source %{{.+}}([] [] [], %{{.+}}[0, 0] [8, 16] [16, 1] bd_id = %[[BD_ID_1]])
 // CHECK:           %[[BD_ID_2:.+]] = amdaie.bd_id(%[[TILE_0_0]], %[[C2]])
+// CHECK:           %[[NPU_DMA_0:.+]] = amdaie.npu.dma_cpy_nd async_source %{{.+}}([] [] [], %{{.+}}[0, 0, 0] [1, 8, 16] [128, 16, 1] bd_id = %[[BD_ID_0]])
+// CHECK:           %[[NPU_DMA_1:.+]] = amdaie.npu.dma_cpy_nd async_source %{{.+}}([] [] [], %{{.+}}[0, 0] [8, 16] [16, 1] bd_id = %[[BD_ID_1]])
 // CHECK:           %[[NPU_DMA_2:.+]] = amdaie.npu.dma_cpy_nd async_source %{{.+}}([] [] [], %{{.+}}[0] [128] [1] bd_id = %[[BD_ID_2]])
 // CHECK:           amdaie.npu.dma_wait(%[[NPU_DMA_0]] : !amdaie.async_source_token)
 // CHECK:           amdaie.npu.dma_wait(%[[NPU_DMA_1]] : !amdaie.async_source_token)
@@ -534,6 +534,96 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
           %0 = amdaie.npu.dma_cpy_nd async_target %connection_1(%from_memref_2[%iv_map, 0] [4, 16] [16, 1], [] [] []) : target_type = !amdaie.logicalobjectfifo<memref<8x16xi32>>
           %1 = amdaie.npu.dma_cpy_nd async_source %connection_0([] [] [], %from_memref_1[0,0] [8, 16] [16, 1]) : source_type = !amdaie.logicalobjectfifo<memref<8x16xi32>>
           %2 = amdaie.npu.dma_cpy_nd async_source %connection_2([] [] [], %from_memref_3[%iv_map, 0] [8, 16] [16, 1]) : source_type = !amdaie.logicalobjectfifo<memref<8x16xi32>>
+          amdaie.npu.dma_wait(%0 : !amdaie.async_target_token)
+          amdaie.npu.dma_wait(%1 : !amdaie.async_source_token)
+          amdaie.npu.dma_wait(%2 : !amdaie.async_source_token)
+        }
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+// Expect all DMA ops, between the first DMA op and its corresponding DMA wait op, operating
+// within same scf.for's block and on same tile to have equal BD ID distribution for the
+// corresponding source/target. This test demonstrates how even with different tile distribution
+// amongst the DMA ops a well distributed BD ID assignment split is ensured.
+//
+//       CHECK: #map1 = affine_map<(d0) -> (d0 mod 16)>
+//       CHECK: #map2 = affine_map<(d0) -> (d0 mod 5)>
+//       CHECK: #map3 = affine_map<(d0) -> (d0 mod 5 + 5)>
+//       CHECK: #map4 = affine_map<(d0) -> (d0 mod 5 + 10)>
+//       CHECK: #map5 = affine_map<(d0) -> (d0 mod 8)>
+//       CHECK: #map6 = affine_map<(d0) -> (d0 mod 8 + 8)>
+// CHECK-LABEL: @multi_dma_users_within_same_block_and_different_source_target_tile
+//   CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
+//   CHECK-DAG:   %[[C1:.+]] = arith.constant 1 : index
+//   CHECK-DAG:   %[[C2:.+]] = arith.constant 2 : index
+//   CHECK-DAG:   %[[C4:.+]] = arith.constant 4 : index
+//       CHECK:       amdaie.workgroup
+//       CHECK:         %[[TILE_0_0:.+]] = amdaie.tile(%[[C0]], %[[C0]])
+//       CHECK:         %[[TILE_1_0:.+]] = amdaie.tile(%[[C1]], %[[C0]])
+//       CHECK:         %[[TILE_2_0:.+]] = amdaie.tile(%[[C2]], %[[C0]])
+//       CHECK:         amdaie.controlcode
+//       CHECK:             scf.for %[[LOOP_VAR_0:.+]] = %[[C0]] to %[[C4]] step %[[C1]]
+//       CHECK:               %[[VAR_1:.+]] = affine.apply #map1(%[[LOOP_VAR_0]])
+//       CHECK:               %[[BD_ID_1:.+]] = amdaie.bd_id(%[[TILE_1_0]], %[[VAR_1]])
+//       CHECK:               %[[VAR_2:.+]] = affine.apply #map2(%[[LOOP_VAR_0]])
+//       CHECK:               %[[BD_ID_2:.+]] = amdaie.bd_id(%[[TILE_0_0]], %[[VAR_2]])
+//       CHECK:               %[[VAR_3:.+]] = affine.apply #map3(%[[LOOP_VAR_0]])
+//       CHECK:               %[[BD_ID_3:.+]] = amdaie.bd_id(%[[TILE_0_0]], %[[VAR_3]])
+//       CHECK:               %[[VAR_4:.+]] = affine.apply #map4(%[[LOOP_VAR_0]])
+//       CHECK:               %[[BD_ID_4:.+]] = amdaie.bd_id(%[[TILE_0_0]], %[[VAR_4]])
+//       CHECK:               %[[NPU_DMA_1:.+]] = amdaie.npu.dma_cpy_nd async_target %{{.+}}(%{{.+}} bd_id = %[[BD_ID_2]], %{{.+}} bd_id = %[[BD_ID_1]])
+//       CHECK:               %[[VAR_5:.+]] = affine.apply #map5(%[[LOOP_VAR_0]])
+//       CHECK:               %[[BD_ID_5:.+]] = amdaie.bd_id(%[[TILE_2_0]], %[[VAR_5]])
+//       CHECK:               %[[VAR_6:.+]] = affine.apply #map6(%[[LOOP_VAR_0]])
+//       CHECK:               %[[BD_ID_6:.+]] = amdaie.bd_id(%[[TILE_2_0]], %[[VAR_6]])
+//       CHECK:               %[[NPU_DMA_2:.+]] = amdaie.npu.dma_cpy_nd async_source %{{.+}}(%{{.+}} bd_id = %[[BD_ID_5]], %{{.+}} bd_id = %[[BD_ID_3]])
+//       CHECK:               %[[NPU_DMA_3:.+]] = amdaie.npu.dma_cpy_nd async_source %{{.+}}(%{{.+}} bd_id = %[[BD_ID_6]], %{{.+}} bd_id = %[[BD_ID_4]])
+//       CHECK:               amdaie.npu.dma_wait(%[[NPU_DMA_1]] : !amdaie.async_target_token)
+//       CHECK:               amdaie.npu.dma_wait(%[[NPU_DMA_2]] : !amdaie.async_source_token)
+//       CHECK:               amdaie.npu.dma_wait(%[[NPU_DMA_3]] : !amdaie.async_source_token)
+//       CHECK:             }
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu4", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @multi_dma_users_within_same_block_and_different_source_target_tile(
+    %arg0: memref<8x16xi32>, %arg1: memref<8x16xi32>, %arg2: memref<8x16xi32>, %arg3: memref<1x1x8x16xi32, 1>) {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c2 = arith.constant 2 : index
+    %c4 = arith.constant 4 : index
+    amdaie.workgroup {
+      %tile_0_0 = amdaie.tile(%c0, %c0)
+      %tile_1_0 = amdaie.tile(%c1, %c0)
+      %tile_2_0 = amdaie.tile(%c2, %c0)
+      %tile_0_1 = amdaie.tile(%c0, %c1)
+      %channel_0 = amdaie.channel(%tile_0_0, 0, port_type = DMA, direction = MM2S)
+      %channel_1 = amdaie.channel(%tile_0_0, 0, port_type = DMA, direction = S2MM)
+      %channel_2 = amdaie.channel(%tile_0_0, 1, port_type = DMA, direction = MM2S)
+      %channel_3 = amdaie.channel(%tile_0_1, 0, port_type = DMA, direction = S2MM)
+      %channel_4 = amdaie.channel(%tile_0_1, 0, port_type = DMA, direction = MM2S)
+      %channel_5 = amdaie.channel(%tile_0_1, 1, port_type = DMA, direction = S2MM)
+      %from_memref_0 = amdaie.logicalobjectfifo.from_memref %arg3, {%tile_0_1} : memref<1x1x8x16xi32, 1> -> !amdaie.logicalobjectfifo<memref<128xi32, 1>, 2>
+      %placeholder = amdaie.logicalobjectfifo.placeholder{%tile_0_0} : !amdaie.logicalobjectfifo<memref<8x16xi32>>
+      %connection_0 = amdaie.connection(%from_memref_0 {%channel_3}, %placeholder {%channel_0}) {connection_type = #amdaie<connection_type Circuit>} : (!amdaie.logicalobjectfifo<memref<128xi32, 1>, 2>, !amdaie.logicalobjectfifo<memref<8x16xi32>>)
+      %connection_1 = amdaie.connection(%placeholder {%channel_1}, %from_memref_0 {%channel_4}) {connection_type = #amdaie<connection_type Circuit>} : (!amdaie.logicalobjectfifo<memref<8x16xi32>>, !amdaie.logicalobjectfifo<memref<128xi32, 1>, 2>)
+      %connection_2 = amdaie.connection(%from_memref_0 {%channel_5}, %placeholder {%channel_2}) {connection_type = #amdaie<connection_type Circuit>} : (!amdaie.logicalobjectfifo<memref<128xi32, 1>, 2>, !amdaie.logicalobjectfifo<memref<8x16xi32>>)
+      amdaie.controlcode {
+        %from_memref_1 = amdaie.logicalobjectfifo.from_memref %arg0, {%tile_0_0} : memref<8x16xi32> -> !amdaie.logicalobjectfifo<memref<8x16xi32>>
+        %from_memref_2 = amdaie.logicalobjectfifo.from_memref %arg1, {%tile_0_0} : memref<8x16xi32> -> !amdaie.logicalobjectfifo<memref<8x16xi32>>
+        %from_memref_3 = amdaie.logicalobjectfifo.from_memref %arg2, {%tile_0_0} : memref<8x16xi32> -> !amdaie.logicalobjectfifo<memref<8x16xi32>>
+        %from_memref_11 = amdaie.logicalobjectfifo.from_memref %arg0, {%tile_1_0} : memref<8x16xi32> -> !amdaie.logicalobjectfifo<memref<8x16xi32>>
+        %from_memref_22 = amdaie.logicalobjectfifo.from_memref %arg1, {%tile_2_0} : memref<8x16xi32> -> !amdaie.logicalobjectfifo<memref<8x16xi32>>
+        %from_memref_33 = amdaie.logicalobjectfifo.from_memref %arg2, {%tile_2_0} : memref<8x16xi32> -> !amdaie.logicalobjectfifo<memref<8x16xi32>>
+        scf.for %arg4 = %c0 to %c4 step %c1 {
+          %iv_map = affine.apply affine_map<(d0) -> (d0 * 4)>(%arg4)
+          %0 = amdaie.npu.dma_cpy_nd async_target %connection_1(%from_memref_2[%iv_map, 0] [4, 16] [16, 1], %from_memref_11[] [] []) : target_type = !amdaie.logicalobjectfifo<memref<8x16xi32>> source_type = !amdaie.logicalobjectfifo<memref<8x16xi32>>
+          %1 = amdaie.npu.dma_cpy_nd async_source %connection_0(%from_memref_22[] [] [], %from_memref_1[0,0] [8, 16] [16, 1]) : target_type = !amdaie.logicalobjectfifo<memref<8x16xi32>> source_type = !amdaie.logicalobjectfifo<memref<8x16xi32>>
+          %2 = amdaie.npu.dma_cpy_nd async_source %connection_2(%from_memref_33[] [] [], %from_memref_3[%iv_map, 0] [8, 16] [16, 1]) : target_type = !amdaie.logicalobjectfifo<memref<8x16xi32>> source_type = !amdaie.logicalobjectfifo<memref<8x16xi32>>
           amdaie.npu.dma_wait(%0 : !amdaie.async_target_token)
           amdaie.npu.dma_wait(%1 : !amdaie.async_source_token)
           amdaie.npu.dma_wait(%2 : !amdaie.async_source_token)
