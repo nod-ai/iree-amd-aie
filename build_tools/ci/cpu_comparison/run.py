@@ -53,7 +53,7 @@ class TestParams(ABC):
         use_ukernel=False,
         run_benchmark=False,
         n_repeats=1,
-        enable_ctrlpkt=False,
+        enable_ctrlpkt=True,
     ):
         self.run_on_target = run_on_target
         self.aie_compilation_flags = (
@@ -275,7 +275,7 @@ class BaseMatmul(BaseTest):
         name="",
         function_name="matmul",
         n_kernel_runs=1,
-        n_reconfigure_runs=0,
+        n_reconfigure_runs=1,
         n_pdi_loads=1,
         test_params=None,
     ):
@@ -329,6 +329,7 @@ class BaseMatmul(BaseTest):
             tile_pipeline=self.tile_pipeline,
             lower_to_aie_pipeline=self.lower_to_aie_pipeline,
             function_name=self.function_name,
+            enable_ctrlpkt=self.enable_ctrlpkt,
             n_repeats=self.n_repeats,
             n_kernel_runs=self.n_kernel_runs,
             n_reconfigure_runs=self.n_reconfigure_runs,
@@ -374,7 +375,7 @@ class Matmul(BaseMatmul):
         acc_type,
         additional_labels=None,
         n_kernel_runs=1,
-        n_reconfigure_runs=0,
+        n_reconfigure_runs=1,
         n_pdi_loads=1,
         test_params=None,
     ):
@@ -596,7 +597,7 @@ class MatmulThinBias(BaseMatmul):
             test_params=(
                 test_params
                 if test_params is not None
-                else TestParams(lower_to_aie_pipeline="air")
+                else TestParams(lower_to_aie_pipeline="air", enable_ctrlpkt=False)
             ),
             M=M,
             N=N,
@@ -639,7 +640,7 @@ class MatmulFullBias(BaseMatmul):
             test_params=(
                 test_params
                 if test_params is not None
-                else TestParams(lower_to_aie_pipeline="air")
+                else TestParams(lower_to_aie_pipeline="air", enable_ctrlpkt=False)
             ),
             M=M,
             N=N,
@@ -1115,12 +1116,60 @@ def generate_aie_output(config, aie_vmfb, input_args, function_name, name, outpu
     return np_from_binfile(aie_bin, output_type)
 
 
+def validate_run_params(
+    n_kernel_runs, n_reconfigure_runs, n_pdi_loads, enable_ctrlpkt, batch_size=None
+):
+    # Valid Examples:
+    # - n_kernel_runs=0, n_reconfigure_runs=0, n_pdi_loads=10 (measure PDI load time)
+    # - n_kernel_runs=10, n_reconfigure_runs=0, n_pdi_loads=1 (measure kernel time, control packet reconfiguration disabled)
+    # - n_kernel_runs=10, n_reconfigure_runs=1, n_pdi_loads=1 (measure kernel time, control packet reconfiguration enabled)
+    # - n_kernel_runs=0, n_reconfigure_runs=10, n_pdi_loads=1 (measure reconfigure time)
+    # - n_kernel_runs=10, n_reconfigure_runs=10, n_pdi_loads=1 (measure kernel and reconfigure time)
+
+    # Check minimum values.
+    min_kernel_runs = 0
+    # When control packet enabled, reconfiguration run needs to be at least 1 for any subsequent kernel to work.
+    min_reconfigure_runs = 1 if (n_kernel_runs > 0 and enable_ctrlpkt) else 0
+    # PDI needs to be loaded at least once for any subsequent reconfiguration/kernel to work.
+    min_pdi_loads = 1
+    if n_kernel_runs < min_kernel_runs:
+        raise ValueError(
+            f"n_kernel_runs must be >= {min_kernel_runs}, got {n_kernel_runs}"
+        )
+    if n_reconfigure_runs < min_reconfigure_runs:
+        raise ValueError(
+            f"n_reconfigure_runs must be >= {min_reconfigure_runs}, got {n_reconfigure_runs}"
+        )
+    if n_pdi_loads < min_pdi_loads:
+        raise ValueError(f"n_pdi_loads must be >= {min_pdi_loads}, got {n_pdi_loads}")
+
+    # When batch size is provided, we are doing performance benchmarking.
+    # Check consistency between run values and batch size so that performance results can be averaged correctly.
+    if batch_size is not None:
+        if n_kernel_runs > min_kernel_runs and n_kernel_runs != batch_size:
+            raise ValueError(
+                f"n_kernel_runs={n_kernel_runs} must match batch size {batch_size}."
+            )
+        if (
+            n_reconfigure_runs > min_reconfigure_runs
+            and n_reconfigure_runs != batch_size
+        ):
+            raise ValueError(
+                f"n_reconfigure_runs={n_reconfigure_runs} must match batch size {batch_size}."
+            )
+        if n_pdi_loads > min_pdi_loads and n_pdi_loads != batch_size:
+            raise ValueError(
+                f"n_pdi_loads={n_pdi_loads} must match batch size {batch_size} when > 1."
+            )
+
+
 def benchmark_aie_kernel_time(
     config,
     aie_vmfb,
     input_args,
     function_name,
     name,
+    enable_ctrlpkt,
     n_repeats,
     n_kernel_runs,
     n_reconfigure_runs,
@@ -1132,31 +1181,10 @@ def benchmark_aie_kernel_time(
     """
     test_dir = config.get_test_dir(name)
 
-    if n_pdi_loads <= 0:
-        raise ValueError(
-            "PDI needs to be loaded at least once for the benchmark to work. "
-            f"Got n_pdi_loads={n_pdi_loads}."
-        )
-
-    # Check consistency only for values > 0 (or >1 for PDI loads)
-    # Valid Examples:
-    # - n_kernel_runs=0, n_reconfigure_runs=0, n_pdi_loads=10 (measure PDI load time)
-    # - n_kernel_runs=10, n_reconfigure_runs=0, n_pdi_loads=1 (measure kernel time)
-    # - n_kernel_runs=0, n_reconfigure_runs=10, n_pdi_loads=1 (measure reconfigure time)
-    # - n_kernel_runs=10, n_reconfigure_runs=10, n_pdi_loads=1 (measure kernel and reconfigure time)
     batch_size = max(n_kernel_runs, n_reconfigure_runs, n_pdi_loads)
-    if n_kernel_runs > 0 and n_kernel_runs != batch_size:
-        raise ValueError(
-            f"n_kernel_runs={n_kernel_runs} must match batch size {batch_size}."
-        )
-    if n_reconfigure_runs > 0 and n_reconfigure_runs != batch_size:
-        raise ValueError(
-            f"n_reconfigure_runs={n_reconfigure_runs} must match batch size {batch_size}."
-        )
-    if n_pdi_loads > 1 and n_pdi_loads != batch_size:
-        raise ValueError(
-            f"n_pdi_loads={n_pdi_loads} must match batch size {batch_size} when > 1."
-        )
+    validate_run_params(
+        n_kernel_runs, n_reconfigure_runs, n_pdi_loads, enable_ctrlpkt, batch_size
+    )
 
     run_args = [
         config.iree_benchmark_exe,
@@ -1535,6 +1563,7 @@ def benchmark_aie(
     tile_pipeline,
     lower_to_aie_pipeline,
     function_name,
+    enable_ctrlpkt,
     n_repeats,
     n_kernel_runs,
     n_reconfigure_runs,
@@ -1557,6 +1586,8 @@ def benchmark_aie(
         The tiling pipeline to use when compiling for the AIE backend
     lower_to_aie_pipeline:
         The pipeline to be used for lowering to AIE (objectFifo, AIR).
+    enable_ctrlpkt:
+        Whether to enable control packet reconfiguration.
     n_repeats:
         The number of repetitions to be used for getting statistics (mean, median, stddev)
     n_kernel_runs:
@@ -1609,6 +1640,7 @@ def benchmark_aie(
         input_args,
         function_name,
         name,
+        enable_ctrlpkt,
         n_repeats,
         n_kernel_runs,
         n_reconfigure_runs,
@@ -2506,7 +2538,14 @@ class Tests:
             conv_2d_map["input_element_type"] = input_type
             conv_2d_map["output_element_type"] = output_type
             generator = ConvolutionMlirGenerator(**conv_2d_map)
-            self.register(ConvolutionFromTemplate(generator))
+            self.register(
+                ConvolutionFromTemplate(
+                    generator,
+                    test_params=TestParams(
+                        enable_ctrlpkt=False,
+                    ),
+                )
+            )
 
         # Depthwise convolution tests:
         depthwise_map = {
@@ -2519,7 +2558,14 @@ class Tests:
             "output_element_type": "i32",
         }
         generator = ConvolutionMlirGenerator(**depthwise_map)
-        self.register(ConvolutionFromTemplate(generator))
+        self.register(
+            ConvolutionFromTemplate(
+                generator,
+                test_params=TestParams(
+                    enable_ctrlpkt=False,
+                ),
+            )
+        )
 
 
 def all_tests(

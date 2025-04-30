@@ -33,6 +33,7 @@ def get_canonical_name(name):
     """
     # replace callrepl_0_outline with outline_empty:
     name = name.replace("callrepl_0_outline", "outline_empty")
+    name = name.replace("ctrlpkt_benchmark", "benchmark")
     name = name.replace("chess_benchmark", "benchmark")
     name = name.replace("matmul4d_16_128_8", "matmul4d_512_4096_512")
     return name
