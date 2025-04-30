@@ -23,7 +23,7 @@ namespace {
 /// appropriate verifications.
 template <CopyOpOperateOn OperateOn>
 FailureOr<AMDAIE::TileOp> getGeneratorTileOp(
-    AMDAIE::NpuDmaCpyNdOp &npuDmaOp,
+    AMDAIE::NpuDmaCpyNdOp npuDmaOp,
     DenseMap<Value, ChannelBdIdGenerator> &shimTileToGeneratorMap) {
   SmallVector<Value> tiles;
   if constexpr (OperateOn == CopyOpOperateOn::Source) {
@@ -263,7 +263,7 @@ LogicalResult assignBdIdsToDMAOps(
 /// be assigned.
 template <CopyOpOperateOn OperateOn>
 LogicalResult processCurrentDmaOpBlockForAssigningBdId(
-    IRRewriter &rewriter, AMDAIE::NpuDmaCpyNdOp &npuDmaOp,
+    IRRewriter &rewriter, AMDAIE::NpuDmaCpyNdOp npuDmaOp,
     DenseMap<Value, ChannelBdIdGenerator> &shimTileToGeneratorMap,
     DenseMap<AMDAIE::BdIdOp, SmallVector<uint32_t>> &bdIdOpToBdIdsMap,
     DenseMap<AMDAIE::NpuDmaCpyNdOp, SmallVector<AMDAIE::BdIdOp>>
@@ -288,9 +288,9 @@ LogicalResult processCurrentDmaOpBlockForAssigningBdId(
   uint32_t channel = maybeChannelOp.value().getValue();
 
   // Get the number of BD IDs that will be required by the current DMA op.
-  // While fetching the required BD IDs for the current DMA op, keep a track
+  // While fetching the required BD IDs for the current DMA op, keep track
   // of the DMA ops within the same scf.for block that are operating on the
-  // same tile and lies between the current DMA op and its corresponding DMA
+  // same tile and lie between the current DMA op and its corresponding DMA
   // wait op.
   uint32_t numRequiredBdIds = 0;
   SmallVector<AMDAIE::NpuDmaCpyNdOp> dmaOps =
