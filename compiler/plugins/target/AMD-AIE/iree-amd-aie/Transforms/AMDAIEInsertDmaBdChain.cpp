@@ -193,15 +193,15 @@ LogicalResult insertDmaBdChain(const AMDAIE::AMDAIEDeviceModel &deviceModel,
       // If the chains are not to be continued, update DMA operands using
       // the `updateChainOperands` function.
       if (!chainsToBreak.empty()) {
-        for (auto &entry : chainsToBreak) {
+        for (auto &chain : chainsToBreak) {
           // Since the controlcode is traversed in reverse order, we need to
           // restore the original order of the DMA operations.
-          std::reverse(dmaChainToDmaOps[entry].begin(),
-                       dmaChainToDmaOps[entry].end());
-          if (failed(updateChainOperands(rewriter, dmaChainToDmaOps[entry])))
+          std::reverse(dmaChainToDmaOps[chain].begin(),
+                       dmaChainToDmaOps[chain].end());
+          if (failed(updateChainOperands(rewriter, dmaChainToDmaOps[chain])))
             WalkResult::interrupt();
-          dmaChainToBdIds.erase(entry);
-          dmaChainToDmaOps.erase(entry);
+          dmaChainToBdIds.erase(chain);
+          dmaChainToDmaOps.erase(chain);
         }
         chainsToBreak.clear();
       }
@@ -209,18 +209,18 @@ LogicalResult insertDmaBdChain(const AMDAIE::AMDAIEDeviceModel &deviceModel,
       dmaChainToDmaOps[currDmaChain].push_back(npuHalfDmaCpyNdOp);
     } else if (auto npuBarrierOp = dyn_cast<AMDAIE::NpuBarrierOp>(op)) {
       // Clear all chains if a sync barrier is encountered.
-      for (auto &entry : dmaChainToBdIds) chainsToBreak.insert(entry.first);
+      for (auto &[chain, _] : dmaChainToBdIds) chainsToBreak.insert(chain);
     }
     return WalkResult::advance();
   });
 
   // Build the remaining chains.
-  for (auto &[entry, _] : dmaChainToBdIds) {
+  for (auto &[chain, _] : dmaChainToBdIds) {
     // Since the controlcode is traversed in reverse order, we need to
     // restore the original order of the DMA operations.
-    std::reverse(dmaChainToDmaOps[entry].begin(),
-                 dmaChainToDmaOps[entry].end());
-    if (failed(updateChainOperands(rewriter, dmaChainToDmaOps[entry])))
+    std::reverse(dmaChainToDmaOps[chain].begin(),
+                 dmaChainToDmaOps[chain].end());
+    if (failed(updateChainOperands(rewriter, dmaChainToDmaOps[chain])))
       return failure();
   }
 

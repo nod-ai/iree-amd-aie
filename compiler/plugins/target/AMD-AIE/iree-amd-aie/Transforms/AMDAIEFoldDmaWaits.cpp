@@ -198,7 +198,7 @@ LogicalResult foldDmaWaitsByQueue(const AMDAIE::AMDAIEDeviceModel &deviceModel,
           }
         } else if (auto npuBarrierOp = dyn_cast<AMDAIE::NpuBarrierOp>(op)) {
           // Clear all queues if a sync barrier is encountered.
-          for (auto &entry : dmaBdIdsMap) entry.second.clear();
+          for (auto &[_, bdIds] : dmaBdIdsMap) bdIds.clear();
         }
         return WalkResult::advance();
       });
@@ -353,7 +353,7 @@ LogicalResult foldDmaWaitsByBatch(AMDAIE::ControlCodeOp controlCodeOp) {
         } else if (auto npuBarrierOp = dyn_cast<AMDAIE::NpuBarrierOp>(op)) {
           // Clear all batches if a sync barrier is encountered.
           connectionOps.clear();
-          for (auto &entry : dmaBdIdsMap) entry.second.clear();
+          for (auto &[_, bdIds] : dmaBdIdsMap) bdIds.clear();
         }
         return WalkResult::advance();
       });
