@@ -154,7 +154,6 @@ class BaseTest(ABC):
             self.labels.append("CtrlPkt")
             self.add_aie_compilation_flags(
                 [
-                    "--iree-amdaie-enable-control-packet=true",
                     "--iree-amdaie-enable-input-packet-flow=true",
                 ]
             )
@@ -1931,6 +1930,8 @@ class Tests:
                     test_params.tile_pipeline = test["tile_pipeline"]
                 if "aie_compilation_flags" in test:
                     test_params.aie_compilation_flags = test["aie_compilation_flags"]
+                if "enable_ctrlpkt" in test:
+                    test_params.enable_ctrlpkt = test["enable_ctrlpkt"]
                 additional_labels = (
                     test["additional_labels"] if "additional_labels" in test else None
                 )
