@@ -26,11 +26,11 @@ func.func @matmul_tensor_extract_slice() {
   %c8 = arith.constant 8 : index
   %cst = arith.constant 0.000000e+00 : f32
   %c0 = arith.constant 0 : index
-  %0 = hal.interface.binding.subspan layout(<bindings = [#hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, Indirect>], flags = Indirect>) binding(0) alignment(64) offset(%c0) flags("ReadOnly|Indirect") : !flow.dispatch.tensor<readonly:tensor<512x512xbf16>>
-  %1 = hal.interface.binding.subspan layout(<bindings = [#hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, Indirect>], flags = Indirect>) binding(1) alignment(64) offset(%c0) flags("ReadOnly|Indirect") : !flow.dispatch.tensor<readonly:tensor<512x4096xbf16>>
-  %2 = hal.interface.binding.subspan layout(<bindings = [#hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, Indirect>], flags = Indirect>) binding(2) alignment(64) offset(%c0) flags(Indirect) : !flow.dispatch.tensor<writeonly:tensor<512x4096xf32>>
-  %3 = flow.dispatch.tensor.load %0, offsets = [0, 0], sizes = [512, 512], strides = [1, 1] : !flow.dispatch.tensor<readonly:tensor<512x512xbf16>> -> tensor<512x512xbf16>
-  %4 = flow.dispatch.tensor.load %1, offsets = [0, 0], sizes = [512, 4096], strides = [1, 1] : !flow.dispatch.tensor<readonly:tensor<512x4096xbf16>> -> tensor<512x4096xbf16>
+  %0 = hal.interface.binding.subspan layout(<bindings = [#hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, Indirect>], flags = Indirect>) binding(0) alignment(64) offset(%c0) flags("ReadOnly|Indirect") : !iree_tensor_ext.dispatch.tensor<readonly:tensor<512x512xbf16>>
+  %1 = hal.interface.binding.subspan layout(<bindings = [#hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, Indirect>], flags = Indirect>) binding(1) alignment(64) offset(%c0) flags("ReadOnly|Indirect") : !iree_tensor_ext.dispatch.tensor<readonly:tensor<512x4096xbf16>>
+  %2 = hal.interface.binding.subspan layout(<bindings = [#hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, Indirect>], flags = Indirect>) binding(2) alignment(64) offset(%c0) flags(Indirect) : !iree_tensor_ext.dispatch.tensor<writeonly:tensor<512x4096xf32>>
+  %3 = iree_tensor_ext.dispatch.tensor.load %0, offsets = [0, 0], sizes = [512, 512], strides = [1, 1] : !iree_tensor_ext.dispatch.tensor<readonly:tensor<512x512xbf16>> -> tensor<512x512xbf16>
+  %4 = iree_tensor_ext.dispatch.tensor.load %1, offsets = [0, 0], sizes = [512, 4096], strides = [1, 1] : !iree_tensor_ext.dispatch.tensor<readonly:tensor<512x4096xbf16>> -> tensor<512x4096xbf16>
   %5 = tensor.empty() : tensor<512x4096xf32>
   %6 = scf.forall (%arg0, %arg1) = (0, 0) to (512, 4096) step (128, 128) shared_outs(%arg2 = %5) -> (tensor<512x4096xf32>) {
     %extracted_slice = tensor.extract_slice %3[%arg0, 0] [128, 512] [1, 1] : tensor<512x512xbf16> to tensor<128x512xbf16>
@@ -78,7 +78,7 @@ func.func @matmul_tensor_extract_slice() {
       tensor.parallel_insert_slice %unpack_3 into %arg2[%arg0, %arg1] [128, 128] [1, 1] : tensor<128x128xf32> into tensor<512x4096xf32>
     }
   } {mapping = [#gpu.block<y>, #gpu.block<x>]}
-  flow.dispatch.tensor.store %6, %2, offsets = [0, 0], sizes = [512, 4096], strides = [1, 1] : tensor<512x4096xf32> -> !flow.dispatch.tensor<writeonly:tensor<512x4096xf32>>
+  iree_tensor_ext.dispatch.tensor.store %6, %2, offsets = [0, 0], sizes = [512, 4096], strides = [1, 1] : tensor<512x4096xf32> -> !iree_tensor_ext.dispatch.tensor<writeonly:tensor<512x4096xf32>>
   return
 }
 

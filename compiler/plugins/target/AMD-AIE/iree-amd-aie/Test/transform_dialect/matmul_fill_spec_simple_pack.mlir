@@ -10,16 +10,16 @@
 func.func @matmul_i32() {
   %c0_i32 = arith.constant 0: i32
   %c0 = arith.constant 0 : index
-  %arg0_binding = hal.interface.binding.subspan layout(#pipeline_layout)  binding(0) offset(%c0) flags(ReadOnly) : !flow.dispatch.tensor<readonly:tensor<2048x512xi32>>
-  %arg0 = flow.dispatch.tensor.load %arg0_binding, offsets = [0, 0], sizes = [2048, 512], strides = [1, 1] : !flow.dispatch.tensor<readonly:tensor<2048x512xi32>> -> tensor<2048x512xi32>
-  %arg1_binding = hal.interface.binding.subspan layout(#pipeline_layout)  binding(1) offset(%c0) flags(ReadOnly) : !flow.dispatch.tensor<readonly:tensor<512x2048xi32>>
-  %arg1 = flow.dispatch.tensor.load %arg1_binding, offsets = [0, 0], sizes = [512, 2048], strides = [1, 1] : !flow.dispatch.tensor<readonly:tensor<512x2048xi32>> -> tensor<512x2048xi32>
-  %arg2_binding = hal.interface.binding.subspan layout(#pipeline_layout)  binding(2) offset(%c0) flags(None) : !flow.dispatch.tensor<writeonly:tensor<2048x2048xi32>>
+  %arg0_binding = hal.interface.binding.subspan layout(#pipeline_layout)  binding(0) offset(%c0) flags(ReadOnly) : !iree_tensor_ext.dispatch.tensor<readonly:tensor<2048x512xi32>>
+  %arg0 = iree_tensor_ext.dispatch.tensor.load %arg0_binding, offsets = [0, 0], sizes = [2048, 512], strides = [1, 1] : !iree_tensor_ext.dispatch.tensor<readonly:tensor<2048x512xi32>> -> tensor<2048x512xi32>
+  %arg1_binding = hal.interface.binding.subspan layout(#pipeline_layout)  binding(1) offset(%c0) flags(ReadOnly) : !iree_tensor_ext.dispatch.tensor<readonly:tensor<512x2048xi32>>
+  %arg1 = iree_tensor_ext.dispatch.tensor.load %arg1_binding, offsets = [0, 0], sizes = [512, 2048], strides = [1, 1] : !iree_tensor_ext.dispatch.tensor<readonly:tensor<512x2048xi32>> -> tensor<512x2048xi32>
+  %arg2_binding = hal.interface.binding.subspan layout(#pipeline_layout)  binding(2) offset(%c0) flags(None) : !iree_tensor_ext.dispatch.tensor<writeonly:tensor<2048x2048xi32>>
   %empty = tensor.empty() : tensor<2048x2048xi32>
   %0 = linalg.fill ins(%c0_i32 : i32) outs(%empty : tensor<2048x2048xi32>) -> tensor<2048x2048xi32>
   %1 = linalg.matmul ins(%arg0, %arg1 : tensor<2048x512xi32>, tensor<512x2048xi32>)
       outs(%0 : tensor<2048x2048xi32>) -> tensor<2048x2048xi32>
-  flow.dispatch.tensor.store %1, %arg2_binding, offsets = [0, 0], sizes = [2048, 2048], strides = [1, 1] : tensor<2048x2048xi32> -> !flow.dispatch.tensor<writeonly:tensor<2048x2048xi32>>
+  iree_tensor_ext.dispatch.tensor.store %1, %arg2_binding, offsets = [0, 0], sizes = [2048, 2048], strides = [1, 1] : tensor<2048x2048xi32> -> !iree_tensor_ext.dispatch.tensor<writeonly:tensor<2048x2048xi32>>
   return
 }
 
