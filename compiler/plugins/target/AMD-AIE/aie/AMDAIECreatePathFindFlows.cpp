@@ -303,7 +303,7 @@ LogicalResult runOnPacketFlow(
     DeviceOp device, ArrayRef<PacketFlowOp> pktFlowOps,
     const std::map<PhysPort, SwitchSettings> &flowSolutions,
     const PacketFlowMapT &priorPacketFlows,
-    ArrayRef<PhysPortAndID> priorSlavePorts) {
+    ArrayRef<PhysPortAndID> priorSlavePorts, bool detectArbiterDeadlock) {
   OpBuilder builder(device.getContext());
   AMDAIEDeviceModel deviceModel =
       getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
@@ -444,8 +444,15 @@ LogicalResult runOnPacketFlow(
         numArbiters, std::vector<bool>(numMSels, false));
     for (const auto &[physPort, masterSet] : masterSets) {
       if (tileLoc != physPort.tileLoc) continue;
-      for (auto [arbiter, msel] : masterSet)
+      for (auto [arbiter, msel] : masterSet) {
+        if (msel > 0 && detectArbiterDeadlock) {
+          return device.emitOpError()
+                 << "Potential arbiter deadlock detected. Consider disabling "
+                    "packet flows and control packets, or disable DMA loop "
+                    "subsumption to avoid this issue.";
+        }
         amselOpNeededVector.at(arbiter).at(msel) = true;
+      }
     }
     // Create all the amsel Ops
     DenseMap<std::pair<uint8_t, uint8_t>, AMSelOp> amselOps;
@@ -719,9 +726,9 @@ void AMDAIERouteFlowsWithPathfinderPass::runOnOperation() {
   }
 
   // Convert the packet flow solutions into actual IR operations.
-  if (routePacket &&
-      failed(runOnPacketFlow(device, packetFlowOps, flowSolutions,
-                             priorPacketFlows, priorSlavePorts))) {
+  if (routePacket && failed(runOnPacketFlow(
+                         device, packetFlowOps, flowSolutions, priorPacketFlows,
+                         priorSlavePorts, detectArbiterDeadlock))) {
     device.emitError("failed to convert packet flows to amsels and rules");
     return signalPassFailure();
   }

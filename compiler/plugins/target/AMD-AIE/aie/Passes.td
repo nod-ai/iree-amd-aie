@@ -40,6 +40,8 @@ def AMDAIERouteFlowsWithPathfinder :
       "Enable routing for control flows, i.e., flows where a `CTRL` port is either the source or the destination.">,
     Option<"routeData", "route-data", "bool", /*default=*/"true",
        "Enable routing for data flows, i.e., flows where both the source and destination are non-`CTRL` ports.">,
+    Option<"detectArbiterDeadlock", "detect-arbiter-deadlock", "bool", /*default=*/"true",
+       "Enable deadlock detection for packet flow arbiters.">,
   ];
 }
 
