@@ -260,6 +260,7 @@ class MultipleDispatches(BaseTest):
             self.aie_compilation_flags,
             self.filename,
             function_name=self.function_name,
+            n_repeats=self.n_repeats,
         )
         return True
 
@@ -2451,7 +2452,10 @@ class Tests:
                     in_type,
                     out_type,
                     test_params=TestParams(
-                        run_on_target=target, enable_ctrlpkt=True, name_suffix=target
+                        run_on_target=target,
+                        enable_ctrlpkt=True,
+                        name_suffix=target,
+                        n_repeats=10,
                     ),
                 )
             )
@@ -2504,8 +2508,7 @@ class Tests:
                 ["two_matmul_switching", "matmul_small"],
                 ["matmul_f32_8_8_4", "matmul_8_8_4"],
                 ["matmul_f32_8_4_8", "matmul_8_4_8"],
-                # TODO (zhewen): investigate why the following test randomly fails when control packet is enabled.
-                # ["three_matmuls", "three_$mm$"],
+                ["three_matmuls", "three_$mm$"],
             ]:
                 self.register(
                     MultipleDispatches(
@@ -2519,6 +2522,7 @@ class Tests:
                             run_on_target=target,
                             name_suffix="OneCore_" + target,
                             enable_ctrlpkt=enable_ctrlpkt,
+                            n_repeats=50 if enable_ctrlpkt else 2,
                         ),
                     )
                 )

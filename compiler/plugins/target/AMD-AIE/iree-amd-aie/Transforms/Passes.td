@@ -406,10 +406,6 @@ def AMDAIEInsertDmaBdChain :
     Pass<"iree-amdaie-insert-dma-bd-chain"> {
   let summary = "Chain DMA BD IDs by updating next_bd operands.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEInsertDmaBdChainPass()";
-  let options = [
-    Option<"enableInterleave", "enable-interleave", "bool", /*default=*/"true",
-      "Enable multiple BD chains to be built in an interleaved way.">,
-  ];
 }
 
 
