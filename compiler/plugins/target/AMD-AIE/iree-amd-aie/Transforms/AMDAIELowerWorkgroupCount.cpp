@@ -5,8 +5,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "iree-amd-aie/Transforms/Passes.h"
-#include "iree/compiler/Dialect/Flow/IR/FlowOps.h"
 #include "iree/compiler/Dialect/HAL/IR/HALOps.h"
+#include "iree/compiler/Dialect/TensorExt/IR/TensorExtOps.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
@@ -35,7 +35,8 @@ static LogicalResult lowerWorkgroupCount(
   }
   OpBuilder::InsertionGuard g(rewriter);
   for (auto workgroupCountOp : llvm::make_early_inc_range(
-           body->getOps<IREE::Flow::DispatchWorkgroupCountFromSliceOp>())) {
+           body->getOps<
+               IREE::TensorExt::DispatchWorkgroupCountFromSliceOp>())) {
     rewriter.setInsertionPoint(workgroupCountOp);
     Location loc = workgroupCountOp.getLoc();
     SmallVector<OpFoldResult> results;

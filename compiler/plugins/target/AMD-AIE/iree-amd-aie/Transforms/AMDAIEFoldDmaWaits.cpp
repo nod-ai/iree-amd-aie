@@ -163,37 +163,42 @@ LogicalResult foldDmaWaitsByQueue(const AMDAIE::AMDAIEDeviceModel &deviceModel,
 
   // Traverse the control code in reverse.
   WalkResult res = controlCodeOp->walk<WalkOrder::PostOrder, ReverseIterator>(
-      [&](AMDAIE::NpuDmaWaitOp waitOp) {
-        bool toQueue = true;
-        Operation *queueParentOp =
-            waitOpQueues.empty() ? waitOp->getParentOp()
-                                 : waitOpQueues.back().front()->getParentOp();
-        for (Value token : waitOp.getAsyncTokens()) {
-          if (auto npuHalfDmaCpyNdOp =
-                  dyn_cast_if_present<AMDAIE::NpuHalfDmaCpyNdOp>(
-                      token.getDefiningOp())) {
-            // Retrieve the TileOp, ConnectionOp, and BD ID.
-            FailureOr<DmaBdIdPair> currBdIdPair =
-                retrieveDmaBdIdPair(npuHalfDmaCpyNdOp);
-            if (failed(currBdIdPair)) return WalkResult::interrupt();
-            // Check if the current DMA wait op can be folded into the queue.
-            FailureOr<bool> canFold =
-                canFoldByQueue(deviceModel, queueParentOp, dmaBdIdsMap,
-                               npuHalfDmaCpyNdOp, *currBdIdPair);
-            if (failed(canFold)) return WalkResult::interrupt();
-            // Update the `dmaBdIdsMap`.
-            updateWithCurrBdId(*canFold, *currBdIdPair, dmaBdIdsMap);
-            toQueue &= *canFold;
+      [&](Operation *op) {
+        if (auto waitOp = dyn_cast<AMDAIE::NpuDmaWaitOp>(op)) {
+          bool toQueue = true;
+          Operation *queueParentOp =
+              waitOpQueues.empty() ? waitOp->getParentOp()
+                                   : waitOpQueues.back().front()->getParentOp();
+          for (Value token : waitOp.getAsyncTokens()) {
+            if (auto npuHalfDmaCpyNdOp =
+                    dyn_cast_if_present<AMDAIE::NpuHalfDmaCpyNdOp>(
+                        token.getDefiningOp())) {
+              // Retrieve the TileOp, ConnectionOp, and BD ID.
+              FailureOr<DmaBdIdPair> currBdIdPair =
+                  retrieveDmaBdIdPair(npuHalfDmaCpyNdOp);
+              if (failed(currBdIdPair)) return WalkResult::interrupt();
+              // Check if the current DMA wait op can be folded into the queue.
+              FailureOr<bool> canFold =
+                  canFoldByQueue(deviceModel, queueParentOp, dmaBdIdsMap,
+                                 npuHalfDmaCpyNdOp, *currBdIdPair);
+              if (failed(canFold)) return WalkResult::interrupt();
+              // Update the `dmaBdIdsMap`.
+              updateWithCurrBdId(*canFold, *currBdIdPair, dmaBdIdsMap);
+              toQueue &= *canFold;
+            }
           }
-        }
-        // Store all the queues, and modify later to avoid invalidating the
-        // iterator.
-        if (toQueue) {
-          // Append the wait op to the last queue if it can be folded.
-          waitOpQueues.back().push_back(waitOp);
-        } else {
-          // Create a new queue if the wait op cannot be folded.
-          waitOpQueues.push_back({waitOp});
+          // Store all the queues, and modify later to avoid invalidating the
+          // iterator.
+          if (toQueue) {
+            // Append the wait op to the last queue if it can be folded.
+            waitOpQueues.back().push_back(waitOp);
+          } else {
+            // Create a new queue if the wait op cannot be folded.
+            waitOpQueues.push_back({waitOp});
+          }
+        } else if (auto npuBarrierOp = dyn_cast<AMDAIE::NpuBarrierOp>(op)) {
+          // Clear all queues if a sync barrier is encountered.
+          for (auto &[_, bdIds] : dmaBdIdsMap) bdIds.clear();
         }
         return WalkResult::advance();
       });
@@ -310,39 +315,46 @@ LogicalResult foldDmaWaitsByBatch(AMDAIE::ControlCodeOp controlCodeOp) {
 
   // Traverse the control code in reverse.
   WalkResult res = controlCodeOp->walk<WalkOrder::PostOrder, ReverseIterator>(
-      [&](AMDAIE::NpuDmaWaitOp waitOp) {
-        bool toBatch = true;
-        Operation *batchParentOp =
-            waitOps.empty() ? waitOp->getParentOp() : waitOps[0]->getParentOp();
-        for (Value token : waitOp.getAsyncTokens()) {
-          if (auto npuHalfDmaCpyNdOp =
-                  dyn_cast_if_present<AMDAIE::NpuHalfDmaCpyNdOp>(
-                      token.getDefiningOp())) {
-            // Retrieve the TileOp, ConnectionOp, and BD ID.
-            FailureOr<DmaBdIdPair> currBdIdPair =
-                retrieveDmaBdIdPair(npuHalfDmaCpyNdOp);
-            if (failed(currBdIdPair)) return WalkResult::interrupt();
-            // Check if the current DMA wait op can be folded into the batch.
-            FailureOr<bool> canFold =
-                canFoldByBatch(batchParentOp, connectionOps, dmaBdIdsMap,
-                               npuHalfDmaCpyNdOp, *currBdIdPair);
-            if (failed(canFold)) return WalkResult::interrupt();
-            // Update the `connectionOps` and `dmaBdIdsMap`.
-            updateWithCurrBdId(*canFold, *currBdIdPair, connectionOps,
-                               dmaBdIdsMap);
-            toBatch &= *canFold;
+      [&](Operation *op) {
+        if (auto waitOp = dyn_cast<AMDAIE::NpuDmaWaitOp>(op)) {
+          bool toBatch = true;
+          Operation *batchParentOp = waitOps.empty()
+                                         ? waitOp->getParentOp()
+                                         : waitOps[0]->getParentOp();
+          for (Value token : waitOp.getAsyncTokens()) {
+            if (auto npuHalfDmaCpyNdOp =
+                    dyn_cast_if_present<AMDAIE::NpuHalfDmaCpyNdOp>(
+                        token.getDefiningOp())) {
+              // Retrieve the TileOp, ConnectionOp, and BD ID.
+              FailureOr<DmaBdIdPair> currBdIdPair =
+                  retrieveDmaBdIdPair(npuHalfDmaCpyNdOp);
+              if (failed(currBdIdPair)) return WalkResult::interrupt();
+              // Check if the current DMA wait op can be folded into the batch.
+              FailureOr<bool> canFold =
+                  canFoldByBatch(batchParentOp, connectionOps, dmaBdIdsMap,
+                                 npuHalfDmaCpyNdOp, *currBdIdPair);
+              if (failed(canFold)) return WalkResult::interrupt();
+              // Update the `connectionOps` and `dmaBdIdsMap`.
+              updateWithCurrBdId(*canFold, *currBdIdPair, connectionOps,
+                                 dmaBdIdsMap);
+              toBatch &= *canFold;
+            }
           }
+          // Process the previous batch of wait ops, and start a new batch.
+          if (!toBatch) {
+            // Since the controlcode is traversed in reverse order, we need to
+            // restore the original order of the DMA operations.
+            std::reverse(waitOps.begin(), waitOps.end());
+            if (failed(eraseBatchOperations(rewriter, waitOps)))
+              return WalkResult::interrupt();
+            waitOps.clear();
+          }
+          waitOps.push_back(waitOp);
+        } else if (auto npuBarrierOp = dyn_cast<AMDAIE::NpuBarrierOp>(op)) {
+          // Clear all batches if a sync barrier is encountered.
+          connectionOps.clear();
+          for (auto &[_, bdIds] : dmaBdIdsMap) bdIds.clear();
         }
-        // Process the previous batch of wait ops, and start a new batch.
-        if (!toBatch) {
-          // Since the controlcode is traversed in reverse order, we need to
-          // restore the original order of the DMA operations.
-          std::reverse(waitOps.begin(), waitOps.end());
-          if (failed(eraseBatchOperations(rewriter, waitOps)))
-            return WalkResult::interrupt();
-          waitOps.clear();
-        }
-        waitOps.push_back(waitOp);
         return WalkResult::advance();
       });
 

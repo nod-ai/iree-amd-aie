@@ -967,6 +967,11 @@ def AMDAIE_NpuDmaWaitOp: AMDAIE_Op<"npu.dma_wait", []> {
   }];
 }
 
+def AMDAIE_NpuBarrierOp: AMDAIE_Op<"npu.barrier"> {
+  let summary = "Boundaries to stop wait/sync optimizations in NPU controller";
+  let assemblyFormat = [{ attr-dict }];
+}
+
 def AMDAIE_NpuPushToQueueOp: AMDAIE_Op<"npu.push_to_queue">,
   Results<(outs Optional<AMDAIE_AsyncTokenType>:$async_token)> {
   let summary = "Push the provided BD to the specified channel's queue.";
