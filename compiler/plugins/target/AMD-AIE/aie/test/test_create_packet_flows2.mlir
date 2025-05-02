@@ -1,4 +1,4 @@
-// RUN: iree-opt --amdaie-create-pathfinder-flows %s | FileCheck %s
+// RUN: iree-opt --amdaie-create-pathfinder-flows="detect-arbiter-deadlock=false" %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcvc1902) {
 // CHECK:           %[[TILE_1_1:.*]] = aie.tile(1, 1)
