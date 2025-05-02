@@ -487,22 +487,19 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // -----
 
 // Don't subsume if :-
-// a. inter size (dim 0 in a four dimensional size array) is too large or,
-// b. intra size (dim 1, 2, 3 in a four dimensional size array) is too large or,
+// a. inter size (dim 0 in a four dimensional size array) is too large for a non-zero stride or,
+// b. intra size (dim 1, 2, 3 in a four dimensional size array) is too large for a non-zero stride or,
 // c. the total loop iteration count exceeds max repeat count (which is 256 in the following test)
 //
 // CHECK-LABEL: @exceed_max_size_source
 // CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
 // CHECK-DAG:   %[[C1:.+]] = arith.constant 1 : index
-// CHECK-DAG:   %[[C64:.+]] = arith.constant 64 : index
 // CHECK-DAG:   %[[C257:.+]] = arith.constant 257 : index
 // CHECK-DAG:   %[[C1024:.+]] = arith.constant 1024 : index
 // CHECK:       %[[CONNECTION:.+]] = amdaie.connection
 // CHECK:       amdaie.controlcode
 // CHECK:         amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [0, 0, 0, 0] [63, 2, 8, 16] [0, 64, 16, 1])
-// CHECK:         scf.for %{{.+}} = %[[C0]] to %[[C64]] step %[[C1]]
-// CHECK:           amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [0, 0, 0] [2, 8, 16] [128, 16, 1])
-// CHECK:         }
+// CHECK:         amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [0, 0, 0, 0] [64, 2, 8, 16] [0, 128, 16, 1])
 // CHECK:         amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [0, 0, 0] [256, 8, 16] [0, 16, 1])
 // CHECK:         scf.for %{{.+}} = %[[C0]] to %[[C257]] step %[[C1]]
 // CHECK:           amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [0, 0] [8, 16] [16, 1])
@@ -550,22 +547,19 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // -----
 
 // Don't subsume if :-
-// a. inter size (dim 0 in a four dimensional size array) is too large or,
-// b. intra size (dim 1, 2, 3 in a four dimensional size array) is too large or,
+// a. inter size (dim 0 in a four dimensional size array) is too large for a non-zero stride or,
+// b. intra size (dim 1, 2, 3 in a four dimensional size array) is too large for a non-zero stride or,
 // c. the total loop iteration count exceeds max repeat count (which is 256 in the following test)
 //
 // CHECK-LABEL: @exceed_max_size_target
 // CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
 // CHECK-DAG:   %[[C1:.+]] = arith.constant 1 : index
-// CHECK-DAG:   %[[C64:.+]] = arith.constant 64 : index
 // CHECK-DAG:   %[[C257:.+]] = arith.constant 257 : index
 // CHECK-DAG:   %[[C1024:.+]] = arith.constant 1024 : index
 // CHECK:       %[[CONNECTION:.+]] = amdaie.connection
 // CHECK:       amdaie.controlcode
 // CHECK:         amdaie.npu.dma_cpy_nd %[[CONNECTION]]([0, 0, 0, 0] [63, 2, 8, 16] [0, 64, 16, 1], [] [] [])
-// CHECK:         scf.for %{{.+}} = %[[C0]] to %[[C64]] step %[[C1]]
-// CHECK:           amdaie.npu.dma_cpy_nd %[[CONNECTION]]([0, 0, 0] [2, 8, 16] [128, 16, 1], [] [] [])
-// CHECK:         }
+// CHECK:         mdaie.npu.dma_cpy_nd %[[CONNECTION]]([0, 0, 0, 0] [64, 2, 8, 16] [0, 128, 16, 1], [] [] [])
 // CHECK:         amdaie.npu.dma_cpy_nd %[[CONNECTION]]([0, 0, 0] [256, 8, 16] [0, 16, 1], [] [] [])
 // CHECK:         scf.for %{{.+}} = %[[C0]] to %[[C257]] step %[[C1]]
 // CHECK:           amdaie.npu.dma_cpy_nd %[[CONNECTION]]([0, 0] [8, 16] [16, 1], [] [] [])
@@ -1565,6 +1559,40 @@ module {
           %1 = affine.apply #map(%arg2)
           %2 = amdaie.npu.dma_cpy_nd async_target %0([0, %1] [8, 16] [16, 1], [] [] [])
           amdaie.npu.dma_wait(%2 : !amdaie.async_target_token)
+        }
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+// CHECK-LABEL: @valid_access_pattern_for_unit_size_or_zero_stride
+//       CHECK: amdaie.controlcode {
+//       CHECK:   amdaie.npu.circular_dma_cpy_nd %{{.+}}([0, 0, 0] [503, 32, 64] [0, 64, 1], [0, 0, 0, 0] [503, 32, 16, 4] [0, 4, 128, 1])
+//       CHECK:   amdaie.npu.circular_dma_cpy_nd %{{.+}}([0, 0, 0, 0] [503, 32, 4, 8] [0, 8, 256, 1], [0, 0, 0] [503, 32, 32] [0, 32, 1])
+//       CHECK:   amdaie.npu.circular_dma_cpy_nd %{{.+}}([0, 0, 0, 0] [503, 32, 16, 4] [0, 4, 128, 1], [0, 0, 0] [503, 32, 64] [0, 64, 1])
+//   CHECK-NOT:   scf.for
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu4", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @valid_access_pattern_for_unit_size_or_zero_stride(
+    %arg0: !amdaie.logicalobjectfifo<memref<2048xi32, 2 : i32>, 2>, %arg1: !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 2>,
+    %arg2: !amdaie.logicalobjectfifo<memref<1024xi32, 2 : i32>, 2>, %arg3: !amdaie.logicalobjectfifo<memref<1024xi32, 1 : i32>, 2>) {
+    %c503 = arith.constant 503 : index
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    %c1 = arith.constant 1 : index
+    amdaie.workgroup {
+      %7 = amdaie.connection(%arg0, %arg1) {connection_type = #amdaie<connection_type Circuit>} : (!amdaie.logicalobjectfifo<memref<2048xi32, 2 : i32>, 2>, !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 2>)
+      %8 = amdaie.connection(%arg2, %arg3) {connection_type = #amdaie<connection_type Circuit>} : (!amdaie.logicalobjectfifo<memref<1024xi32, 2 : i32>, 2>, !amdaie.logicalobjectfifo<memref<1024xi32, 1 : i32>, 2>)
+      %9 = amdaie.connection(%arg1, %arg0) {connection_type = #amdaie<connection_type Circuit>} : (!amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 2>, !amdaie.logicalobjectfifo<memref<2048xi32, 2 : i32>, 2>)
+      amdaie.controlcode {
+        scf.for %arg4 = %c0 to %c503 step %c1 {
+          %17 = amdaie.npu.circular_dma_cpy_nd %7([0, 0, 0] [32, 16, 4] [4, 128, 1], [0, 0] [32, 64] [64, 1])
+          %18 = amdaie.npu.circular_dma_cpy_nd %8([0, 0, 0] [32, 4, 8] [8, 256, 1], [0, 0] [32, 32] [32, 1])
+          %19 = amdaie.npu.circular_dma_cpy_nd %9([0, 0] [32, 64] [64, 1], [0, 0, 0] [32, 16, 4] [4, 128, 1])
         }
         amdaie.end
       }
