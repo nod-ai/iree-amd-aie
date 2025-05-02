@@ -28,26 +28,23 @@ static uint32_t getMaxMemorySize(AMDAIEDeviceModel deviceModel, TileOp tile) {
 }
 
 //===----------------------------------------------------------------------===//
-// BasicAllocation : sequential alloc from largest to smallest
+// BasicAllocation : sequential allocation for all buffers
 //===----------------------------------------------------------------------===//
-static LogicalResult basicAllocation(
-    DenseMap<TileOp, SetVector<BufferOp>> &tileToBuffers,
-    AMDAIEDeviceModel deviceModel) {
-  for (auto &&[tile, buffers] : tileToBuffers) {
-    // Leave room at the bottom of the address range for stack.
-    int64_t address = 0;
-    if (CoreOp core = getCoreOp(tile)) address += core.getStackSize();
+static LogicalResult basicAllocation(TileOp tile, SetVector<BufferOp> buffers,
+                                     AMDAIEDeviceModel deviceModel) {
+  // Leave room at the bottom of the address range for stack.
+  int64_t address = 0;
+  if (CoreOp core = getCoreOp(tile)) address += core.getStackSize();
 
-    for (BufferOp buffer : buffers) {
-      buffer.setAddress(address);
-      address += getAllocationSize(buffer);
-    }
+  for (BufferOp buffer : buffers) {
+    buffer.setAddress(address);
+    address += getAllocationSize(buffer);
+  }
 
-    uint32_t maxDataMemorySize = getMaxMemorySize(deviceModel, tile);
-    if (address > maxDataMemorySize) {
-      return tile.emitOpError("allocated buffers exceeded available memory (")
-             << address << ">" << maxDataMemorySize << ")\n";
-    }
+  uint32_t maxDataMemorySize = getMaxMemorySize(deviceModel, tile);
+  if (address > maxDataMemorySize) {
+    return tile.emitOpError("allocated buffers exceeded available memory (")
+           << address << ">" << maxDataMemorySize << ")\n";
   }
   return success();
 }
@@ -131,41 +128,88 @@ FailureOr<bool> checkAndAddBufferWithMemBank(
   return true;
 }
 
-// Function that given a buffer will iterate over all the memory banks starting
-// from the given index to try and find a bank with enough space. If it does,
-// it will set the buffer's address and mem_bank attributes and update the
-// nextAddrInBanks vector. If it does not find one with enough space, it will
-// emit an error. Returns true if the buffer was successfully allocated, false
-// otherwise.
-bool setBufferAddress(BufferOp buffer, uint32_t numBanks, int &startBankIndex,
+// Function that attempts to allocate the buffer in a single bank or a
+// contiguous group of banks, starting from the given index and wrapping around
+// if needed. It finds the minimal number of contiguous banks required to hold
+// the buffer and checks if sufficient space is available. On success, it sets
+// the buffer's memory bank attribute and address, and updates
+// `nextAddrInBanks`. If no suitable banks are found, it emits an error and
+// returns false.
+bool setBufferAddress(BufferOp buffer, uint32_t numBanks, uint32_t bankSize,
+                      int &startBankIndex,
                       SmallVector<int64_t> &nextAddrInBanks,
                       const SmallVector<BankLimits> &bankLimits) {
   assert(startBankIndex < numBanks &&
          "Unexpected input value for startBankIndex");
-  int bankIndex = startBankIndex;
-  bool allocated = false;
-  for (int i = 0; i < numBanks; i++) {
-    int64_t startAddr = nextAddrInBanks[bankIndex];
-    int64_t endAddr = startAddr + getAllocationSize(buffer);
-    if (endAddr <= bankLimits[bankIndex].endAddr) {
-      buffer.setMemBank(bankIndex);
-      setAndUpdateAddressInBank(buffer, startAddr, endAddr, nextAddrInBanks);
-      allocated = true;
-      bankIndex = (bankIndex + 1) % numBanks;
-      startBankIndex = bankIndex;
-      break;
-    }
-    // Move to the next bank
-    bankIndex = (bankIndex + 1) % numBanks;
+
+  // Early exit if buffer is larger than total available space.
+  int64_t bufferSize = getAllocationSize(buffer);
+  int64_t totalAvailable = 0;
+  for (uint32_t i = 0; i < numBanks; ++i) {
+    int64_t available =
+        std::max<int64_t>(0, bankLimits[i].endAddr - nextAddrInBanks[i]);
+    totalAvailable += available;
+    LLVM_DEBUG(llvm::dbgs() << "Bank " << i << ": next=" << nextAddrInBanks[i]
+                            << ", limit=" << bankLimits[i].endAddr
+                            << ", available=" << available << "\n");
   }
-  // If no bank has enough space, emits an error.
-  if (!allocated) {
-    buffer.emitError("Failed to allocate buffer: ")
-        << buffer.name() << " with size: " << getAllocationSize(buffer)
-        << " bytes on any of the bank.";
+  if (bufferSize > totalAvailable) {
+    buffer.emitError(
+        "Buffer size exceeds total available memory across all banks (")
+        << bufferSize << " > " << totalAvailable << ")";
     return false;
   }
-  return true;
+
+  int minNumBanksNeeded = std::ceil(float(bufferSize) / float(bankSize));
+
+  // For large buffers, try to allocate on minimum number of contiguous banks.
+  for (int offset = 0; offset < numBanks; ++offset) {
+    int bankStart = (startBankIndex + offset) % numBanks;
+
+    bool canAllocate = true;
+    SmallVector<int64_t> tempStartAddr, tempEndAddr;
+    int64_t remainingSize = bufferSize;
+
+    for (int i = 0; i < minNumBanksNeeded; ++i) {
+      int bankIndex = (bankStart + i) % numBanks;
+      int64_t startAddr = nextAddrInBanks[bankIndex];
+      int64_t available = bankLimits[bankIndex].endAddr - startAddr;
+
+      // If there is no space available in the current bank, break and try other
+      // window of contiguous banks.
+      if (available <= 0) {
+        canAllocate = false;
+        break;
+      }
+
+      int64_t allocated = std::min(remainingSize, available);
+      int64_t endAddr = startAddr + allocated;
+
+      tempStartAddr.push_back(startAddr);
+      tempEndAddr.push_back(endAddr);
+      remainingSize -= allocated;
+    }
+
+    if (canAllocate && remainingSize == 0) {
+      // Set the next available address for all allocated banks.
+      for (int i = 0; i < minNumBanksNeeded; ++i) {
+        int bankIndex = (bankStart + i) % numBanks;
+        nextAddrInBanks[bankIndex] = tempEndAddr[i];
+      }
+      // Set `mem_bank` attribute, address and update `startBankIndex`.
+      buffer.setMemBank(bankStart);
+      startBankIndex = (bankStart + minNumBanksNeeded) % numBanks;
+      setAndUpdateAddressInBank(buffer, tempStartAddr[0],
+                                tempEndAddr[minNumBanksNeeded - 1],
+                                nextAddrInBanks);
+      return true;
+    }
+  }
+
+  buffer.emitError("Failed to allocate buffer: ")
+      << buffer.name() << " with size: " << bufferSize << " bytes across "
+      << numBanks << " banks.";
+  return false;
 }
 
 // Function to deallocate attributes of buffers in case of a failure.
@@ -176,73 +220,70 @@ void deAllocateBuffers(SmallVector<BufferOp> &buffers) {
   }
 }
 
-LogicalResult bankAwareAllocation(
-    DenseMap<TileOp, SetVector<BufferOp>> &tileToBuffers,
-    AMDAIEDeviceModel deviceModel) {
-  for (auto &&[tile, buffers] : tileToBuffers) {
-    uint32_t maxDataMemorySize = getMaxMemorySize(deviceModel, tile);
-    uint32_t numBanks = deviceModel.getNumBanks(tile.getCol(), tile.getRow());
-    uint32_t bankSize = maxDataMemorySize / numBanks;
+LogicalResult bankAwareAllocation(TileOp tile, SetVector<BufferOp> buffers,
+                                  AMDAIEDeviceModel deviceModel) {
+  uint32_t maxDataMemorySize = getMaxMemorySize(deviceModel, tile);
+  uint32_t numBanks = deviceModel.getNumBanks(tile.getCol(), tile.getRow());
+  uint32_t bankSize = maxDataMemorySize / numBanks;
 
-    // Each entry of `nextAddrInBanks` is the next address available for use
-    // in that bank, and the index is the bank number.
-    SmallVector<int64_t> nextAddrInBanks;
-    for (int i = 0; i < numBanks; i++) nextAddrInBanks.push_back(bankSize * i);
-    // Leave room at the bottom of the address range for stack.
-    if (CoreOp core = tile.getCoreOp()) {
-      int64_t stackSize = core.getStackSize();
-      if (stackSize > bankSize)
-        return tile.emitOpError("stack size: ")
-               << stackSize
-               << " should not be larger than the bank size: " << bankSize;
-      nextAddrInBanks[0] += stackSize;
-    }
+  // Each entry of `nextAddrInBanks` is the next address available for use
+  // in that bank, and the index is the bank number.
+  SmallVector<int64_t> nextAddrInBanks;
+  for (int i = 0; i < numBanks; i++) nextAddrInBanks.push_back(bankSize * i);
+  // Leave room at the bottom of the address range for stack.
+  if (CoreOp core = tile.getCoreOp()) {
+    int64_t stackSize = core.getStackSize();
+    if (stackSize > bankSize)
+      return tile.emitOpError("stack size: ")
+             << stackSize
+             << " should not be larger than the bank size: " << bankSize;
+    nextAddrInBanks[0] += stackSize;
+  }
 
-    // Each entry of `bankLimits` contains pairs of start and end addresses for
-    // that bank.
-    SmallVector<BankLimits> bankLimits;
-    for (int i = 0; i < numBanks; i++) {
-      bankLimits.emplace_back(i * bankSize, (i + 1) * bankSize);
-    }
+  // Each entry of `bankLimits` contains pairs of start and end addresses for
+  // that bank.
+  SmallVector<BankLimits> bankLimits;
+  for (int i = 0; i < numBanks; i++) {
+    bankLimits.emplace_back(i * bankSize, (i + 1) * bankSize);
+  }
 
-    // The buffers with an already specified address will not be overwritten
-    // (the available address range of the bank the buffers are in will start
-    // AFTER the specified address + buffer size). Buffers with a specified
-    // memory bank will be assigned first, after the above.
-    SmallVector<BufferOp> preAllocatedBuffers;
-    SmallVector<BufferOp> buffersToAlloc;
-    for (BufferOp buffer : buffers) {
-      FailureOr<bool> has_bank =
-          checkAndAddBufferWithMemBank(buffer, nextAddrInBanks, bankLimits);
-      FailureOr<bool> has_addr = checkAndAddBufferWithAddress(
-          buffer, bankSize, nextAddrInBanks, bankLimits);
-      if (failed(has_addr) || failed(has_bank)) return failure();
-      if (!has_addr.value() && !has_bank.value())
-        buffersToAlloc.push_back(buffer);
-      else
-        preAllocatedBuffers.push_back(buffer);
-    }
+  // The buffers with an already specified address will not be overwritten
+  // (the available address range of the bank the buffers are in will start
+  // AFTER the specified address + buffer size). Buffers with a specified
+  // memory bank will be assigned first, after the above.
+  SmallVector<BufferOp> preAllocatedBuffers;
+  SmallVector<BufferOp> buffersToAlloc;
+  for (BufferOp buffer : buffers) {
+    FailureOr<bool> has_bank =
+        checkAndAddBufferWithMemBank(buffer, nextAddrInBanks, bankLimits);
+    FailureOr<bool> has_addr = checkAndAddBufferWithAddress(
+        buffer, bankSize, nextAddrInBanks, bankLimits);
+    if (failed(has_addr) || failed(has_bank)) return failure();
+    if (!has_addr.value() && !has_bank.value())
+      buffersToAlloc.push_back(buffer);
+    else
+      preAllocatedBuffers.push_back(buffer);
+  }
 
-    // Sort by largest allocation size before allocating.
-    // Note: The sorting may cause numerical error for depthwise conv2d op.
-    std::sort(buffersToAlloc.begin(), buffersToAlloc.end(),
-              [](BufferOp a, BufferOp b) {
-                return getAllocationSize(a) > getAllocationSize(b);
-              });
+  // Sort by largest allocation size before allocating.
+  // Note: The sorting may cause numerical error for depthwise conv2d op.
+  std::sort(buffersToAlloc.begin(), buffersToAlloc.end(),
+            [](BufferOp a, BufferOp b) {
+              return getAllocationSize(a) > getAllocationSize(b);
+            });
 
-    // Set addresses for remaining buffers.
-    SmallVector<BufferOp> allocatedBuffers;
-    int bankIndex = 0;
-    for (BufferOp buffer : buffersToAlloc) {
-      // If the buffer doesn't fit in any of the bank space, it emits an error
-      // and then deallocates all the buffers.
-      if (!setBufferAddress(buffer, numBanks, bankIndex, nextAddrInBanks,
-                            bankLimits)) {
-        deAllocateBuffers(allocatedBuffers);
-        return failure();
-      } else {
-        allocatedBuffers.push_back(buffer);
-      }
+  // Set addresses for remaining buffers.
+  SmallVector<BufferOp> allocatedBuffers;
+  int bankIndex = 0;
+  for (BufferOp buffer : buffersToAlloc) {
+    // If the buffer doesn't fit in any of the bank space, it emits an error
+    // and then deallocates all the buffers.
+    if (!setBufferAddress(buffer, numBanks, bankSize, bankIndex,
+                          nextAddrInBanks, bankLimits)) {
+      deAllocateBuffers(allocatedBuffers);
+      return failure();
+    } else {
+      allocatedBuffers.push_back(buffer);
     }
   }
   return success();
@@ -275,26 +316,28 @@ struct AMDAIEAssignBufferAddressesPass
     AMDAIEDeviceModel deviceModel =
         getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
 
-    // Select buffer allocation scheme.
+    // Select buffer allocation scheme per tile.
     MLIRContext *ctx = &getContext();
-    switch (allocScheme) {
-      case AllocScheme::Sequential:
-        if (failed(basicAllocation(tileToBuffers, deviceModel)))
-          return signalPassFailure();
-        break;
-      case AllocScheme::BankAware:
-        if (failed(bankAwareAllocation(tileToBuffers, deviceModel)))
-          return signalPassFailure();
-        break;
-      default:
-        if (failed(bankAwareAllocation(tileToBuffers, deviceModel))) {
-          emitWarning(UnknownLoc::get(ctx))
-              << "Bank-aware scheme for buffer address assignment is failed. "
-                 "Try the basic sequential scheme.";
-          if (failed(basicAllocation(tileToBuffers, deviceModel)))
+    for (auto &&[tile, buffers] : tileToBuffers) {
+      switch (allocScheme) {
+        case AllocScheme::Sequential:
+          if (failed(basicAllocation(tile, buffers, deviceModel)))
             return signalPassFailure();
-        }
-        break;
+          break;
+        case AllocScheme::BankAware:
+          if (failed(bankAwareAllocation(tile, buffers, deviceModel)))
+            return signalPassFailure();
+          break;
+        default:
+          if (failed(bankAwareAllocation(tile, buffers, deviceModel))) {
+            emitWarning(UnknownLoc::get(ctx))
+                << "Bank-aware scheme for buffer address assignment is failed. "
+                   "Try the basic sequential scheme.";
+            if (failed(basicAllocation(tile, buffers, deviceModel)))
+              return signalPassFailure();
+          }
+          break;
+      }
     }
   }
 };
