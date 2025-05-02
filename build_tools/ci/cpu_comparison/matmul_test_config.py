@@ -113,6 +113,20 @@ npu4_matmul_tests = [
             "--iree-amdaie-num-cols=1",
         ],
     },
+    {
+        "M": 32,
+        "N": 32192,
+        "K": 32,
+        "input_type": "i32",
+        "acc_type": "i32",
+        "tile_pipeline": "pack-peel-4-level-tiling",
+        "name_suffix": "OneCore_npu4",
+        "additional_labels": ["OneCore"],
+        "aie_compilation_flags": [
+            "--iree-amdaie-num-rows=1",
+            "--iree-amdaie-num-cols=1",
+        ],
+    },
     # 4x2 core tests.
     {
         "M": 32,

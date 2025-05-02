@@ -662,13 +662,13 @@ bool DmaDimConfig::isValidAccessPattern(ArrayRef<int64_t> sizes,
                                         ArrayRef<int64_t> strides) const {
   assert(sizes.size() == strides.size() &&
          "`sizes` and `strides` should have the same size");
-  // No need to check the unit dimensions.
+  // No need to check the unit dimensions and those with zero strides.
   SmallVector<int64_t> nonUnitSizes;
-  SmallVector<int64_t> nonUnitStrides;
+  SmallVector<int64_t> nonZeroStrides;
   for (size_t i = 0; i < sizes.size(); ++i) {
-    if (sizes[i] != 1) {
+    if (sizes[i] != 1 && strides[i] != 0) {
       nonUnitSizes.push_back(sizes[i]);
-      nonUnitStrides.push_back(strides[i]);
+      nonZeroStrides.push_back(strides[i]);
     }
   }
   SmallVector<int64_t> maxSizes = getMaxSizes(nonUnitSizes.size());
@@ -677,7 +677,7 @@ bool DmaDimConfig::isValidAccessPattern(ArrayRef<int64_t> sizes,
   size_t frontToDrop = maxSizes.size() - nonUnitSizes.size();
   if (anyOutOfRange(nonUnitSizes, maxSizes, frontToDrop)) return false;
   SmallVector<int64_t> maxStrides = getMaxStrides(nonUnitSizes.size());
-  if (anyOutOfRange(nonUnitStrides, maxStrides, frontToDrop)) return false;
+  if (anyOutOfRange(nonZeroStrides, maxStrides, frontToDrop)) return false;
   return true;
 }
 
