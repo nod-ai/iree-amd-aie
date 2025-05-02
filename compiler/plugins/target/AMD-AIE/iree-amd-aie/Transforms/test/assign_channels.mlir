@@ -68,6 +68,49 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
   }
 }
 
+
+// -----
+
+// This test verifies that connection channel IDs are assigned in a specific order:
+// Circuit connections are assigned *before* packet connections.
+// In this case, there are two packet flows and one circuit flow.
+// The circuit connection is declared last in IR, but should be assigned first, so its channel ID is 0.
+// CHECK-LABEL: @assign_circuit_first
+// CHECK:       %[[C0:.+]] = arith.constant 0 : index
+// CHECK:       %[[C1:.+]] = arith.constant 1 : index
+// CHECK:       amdaie.workgroup
+// CHECK:         %[[tile_0_0:.+]] = amdaie.tile(%[[C0]], %[[C0]])
+// CHECK:         %[[tile_0_1:.+]] = amdaie.tile(%[[C0]], %[[C1]])
+// CHECK:         %[[CHANNEL_0:.+]] = amdaie.channel(%[[tile_0_0]], 1, port_type = DMA, direction = MM2S)
+// CHECK:         %[[CHANNEL_1:.+]] = amdaie.channel(%[[tile_0_1]], 1, port_type = DMA, direction = S2MM)
+// CHECK:         amdaie.connection(%{{.+}} {%[[CHANNEL_1]]}, %{{.+}} {%[[CHANNEL_0]]}) {connection_type = #amdaie<connection_type Packet>}
+// CHECK:         %[[CHANNEL_2:.+]] = amdaie.channel(%[[tile_0_0]], 1, port_type = DMA, direction = MM2S)
+// CHECK:         %[[CHANNEL_3:.+]] = amdaie.channel(%[[tile_0_1]], 2, port_type = DMA, direction = S2MM)
+// CHECK:         amdaie.connection(%{{.+}} {%[[CHANNEL_3]]}, %{{.+}} {%[[CHANNEL_2]]}) {connection_type = #amdaie<connection_type Packet>}
+// CHECK:         %[[CHANNEL_4:.+]] = amdaie.channel(%[[tile_0_0]], 0, port_type = DMA, direction = MM2S)
+// CHECK:         %[[CHANNEL_5:.+]] = amdaie.channel(%[[tile_0_1]], 0, port_type = DMA, direction = S2MM)
+// CHECK:         amdaie.connection(%{{.+}} {%[[CHANNEL_5]]}, %{{.+}} {%[[CHANNEL_4]]}) {connection_type = #amdaie<connection_type Circuit>}
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @assign_circuit_first(%arg0: memref<1x1x8x16xi32, 1>, %arg1: memref<8x16xi32>) {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    amdaie.workgroup {
+      %tile_0_0 = amdaie.tile(%c0, %c0)
+      %tile_0_1 = amdaie.tile(%c0, %c1)
+      %0 = amdaie.logicalobjectfifo.from_memref %arg0, {%tile_0_1} : memref<1x1x8x16xi32, 1> -> !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>
+      %1 = amdaie.logicalobjectfifo.from_memref %arg1, {%tile_0_0} : memref<8x16xi32> -> !amdaie.logicalobjectfifo<memref<8x16xi32>>
+      %2 = amdaie.connection(%0, %1) {connection_type = #amdaie<connection_type Packet>} : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32>>)
+      %3 = amdaie.connection(%0, %1) {connection_type = #amdaie<connection_type Packet>} : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32>>)
+      %4 = amdaie.connection(%0, %1) {connection_type = #amdaie<connection_type Circuit>} : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32>>)
+      amdaie.controlcode {
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
 // -----
 
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>

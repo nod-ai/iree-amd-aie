@@ -90,10 +90,20 @@ LogicalResult assignChannels(AMDAIE::WorkgroupOp workgroupOp) {
     return failure();
   }
   // Get all `amdaie.connection` ops.
-  SmallVector<AMDAIE::ConnectionOp> connectionOps;
-  workgroupOp->walk([&](AMDAIE::ConnectionOp connectionOp) {
-    connectionOps.push_back(connectionOp);
+  SmallVector<AMDAIE::ConnectionOp> circuitConnections, packetConnections;
+  workgroupOp->walk([&](AMDAIE::ConnectionOp op) {
+    if (op.getConnectionType() == AMDAIE::ConnectionType::Packet) {
+      packetConnections.push_back(op);
+    } else {
+      circuitConnections.push_back(op);
+    }
   });
+  SmallVector<AMDAIE::ConnectionOp> connectionOps;
+  connectionOps.reserve(circuitConnections.size() + packetConnections.size());
+  // Append cicuit connections first, so that they are also assigned first.
+  connectionOps.append(circuitConnections.begin(), circuitConnections.end());
+  connectionOps.append(packetConnections.begin(), packetConnections.end());
+
   for (AMDAIE::ConnectionOp connectionOp : connectionOps) {
     auto sourceLogicalObjFifo =
         dyn_cast_if_present<AMDAIE::LogicalObjFifoOpInterface>(
