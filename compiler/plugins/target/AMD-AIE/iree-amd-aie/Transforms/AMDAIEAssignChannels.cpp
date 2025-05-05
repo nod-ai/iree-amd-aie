@@ -100,7 +100,7 @@ LogicalResult assignChannels(AMDAIE::WorkgroupOp workgroupOp) {
   });
   SmallVector<AMDAIE::ConnectionOp> connectionOps;
   connectionOps.reserve(circuitConnections.size() + packetConnections.size());
-  // Append cicuit connections first, so that they are also assigned first.
+  // Append circuit connections first, so that they are also assigned first.
   connectionOps.append(circuitConnections.begin(), circuitConnections.end());
   connectionOps.append(packetConnections.begin(), packetConnections.end());
 
