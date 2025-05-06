@@ -78,200 +78,6 @@ std::optional<uint32_t> getNumberIterations(scf::ForOp loop) {
 /// Given a list of DMA Ops and the number of required BD IDs by the first DMA
 /// op in the list, split the available BD IDs equally amongst all and assign it
 /// to the DMA ops.
-// LogicalResult assignBdIdsToDMAOpsBatch(
-//     IRRewriter &rewriter, SmallVector<AMDAIE::NpuDmaCpyNdOp> &dmaOps,
-//     AMDAIE::TileOp tileOp,
-//     DenseMap<Value, ChannelBdIdGenerator> &shimTileToGeneratorMap,
-//     DenseMap<AMDAIE::BdIdOp, SmallVector<uint32_t>> &bdIdOpToBdIdsMap,
-//     DenseMap<AMDAIE::NpuDmaCpyNdOp, SmallVector<AMDAIE::BdIdOp>>
-//         &dmaOpToBdIdMap,
-//     uint32_t numRequiredBdIds) {
-//   // Get the channel.
-//   FailureOr<AMDAIE::ChannelOp> maybeChannelOp;
-//   if (dmaOps[0].getSource()) {
-//     FailureOr<AMDAIE::TileOp> tile =
-//         getGeneratorTileOp<CopyOpOperateOn::Source>(dmaOps[0],
-//                                                     shimTileToGeneratorMap);
-//     if (succeeded(tile)) maybeChannelOp = dmaOps[0].getSourceChannelOp();
-//   }
-//   if (dmaOps[0].getTarget()) {
-//     FailureOr<AMDAIE::TileOp> tile =
-//         getGeneratorTileOp<CopyOpOperateOn::Target>(dmaOps[0],
-//                                                     shimTileToGeneratorMap);
-//     if (succeeded(tile)) maybeChannelOp = dmaOps[0].getTargetChannelOp();
-//   }
-//   if (failed(maybeChannelOp)) return failure();
-//   uint32_t channel = maybeChannelOp.value().getValue();
-//   // Compute BD ID split amongst all DMA ops.
-//   ChannelBdIdGenerator &generator =
-//   shimTileToGeneratorMap[tileOp.getResult()]; uint32_t numAvailable =
-//   generator.getNumAvailableBdIds(channel); uint32_t totalDmaOps =
-//   dmaOps.size(); uint32_t size = std::max(numAvailable / numRequiredBdIds,
-//   1u); scf::ForOp loop = nullptr; AffineExpr ivExpr = nullptr; Value iv =
-//   nullptr;
-//   // In case the parent of the DMA ops is a scf.for we need to keep track of
-//   the
-//   // loop induction variable in order to create a semi affine expression
-//   later
-//   // for distributing BD IDs for each iteration.
-//   if (loop = dmaOps[0]->getParentOfType<scf::ForOp>();
-//       loop && getNumberIterations(loop)) {
-//     iv = loop.getInductionVar();
-//     bindDims(loop.getContext(), ivExpr);
-//   } else {
-//     // In case the DMA ops are not surrounded by scf.for, we will assign only
-//     // one BD ID.
-//     size = 1;
-//   }
-//   llvm::outs() << "DB - 3\n";
-//   llvm::outs().flush();
-//   // In case there are not enough BD ids available, return failure.
-//   if (size * totalDmaOps > numAvailable) return failure();
-
-//   llvm::outs() << "DB - 4\n";
-//   llvm::outs().flush();
-//   // Traverse each DMA op found in step 1, assign BD IDs and keep a track of
-//   the
-//   // first BD ID op assigned.
-//   rewriter.setInsertionPoint(dmaOps[0]);
-//   llvm::outs() << "DMAOps batch size = " << dmaOps.size() << "\n";
-//   llvm::outs().flush();
-//   for (AMDAIE::NpuDmaCpyNdOp dmaOp : dmaOps) {
-//     uint32_t bdIdMapIndex = 0;
-//     if (dmaOp.getSource()) {
-//       FailureOr<AMDAIE::TileOp> tile =
-//           getGeneratorTileOp<CopyOpOperateOn::Source>(dmaOp,
-//                                                       shimTileToGeneratorMap);
-//       if (succeeded(tile) && *tile == tileOp) {
-//         bdIdMapIndex = 0;
-//       }
-//     }
-//     if (dmaOp.getTarget()) {
-//       FailureOr<AMDAIE::TileOp> tile =
-//           getGeneratorTileOp<CopyOpOperateOn::Target>(dmaOp,
-//                                                       shimTileToGeneratorMap);
-//       if (succeeded(tile) && *tile == tileOp) {
-//         bdIdMapIndex = 1;
-//       }
-//     }
-//     // Only create expression if more than 1 BD ID is needed and if,
-//     // otherwise, fall back to constant BD ID.
-//     if (size > 1) {
-//       // Assigning BD IDs for all iterations in the loop.
-//       SmallVector<uint32_t> bdIds;
-//       llvm::outs() << "DB - 1.0\n";
-//       llvm::outs().flush();
-//       for (uint32_t i = 0; i < size; i++) {
-//         std::optional<uint32_t> bdId = generator.getAndAssignBdId(
-//             channel, BdIdAssignmentMode::Incremental);
-//         if (!bdId) return failure();
-//         bdIds.push_back(bdId.value());
-//       }
-//       llvm::outs() << "DB - 1.1\n";
-//       llvm::outs().flush();
-//       // Get the BD ID for the first iteration as the offset.
-//       uint32_t offset = bdIds.front();
-
-//       // Create the semi-affine expression.
-//       auto affineApply = rewriter.create<affine::AffineApplyOp>(
-//           loop.getLoc(), ivExpr % size + offset,
-//           ValueRange{
-//               iv,
-//           });
-//       AMDAIE::BdIdOp bdIdOp = rewriter.create<AMDAIE::BdIdOp>(
-//           rewriter.getUnknownLoc(), tileOp, affineApply.getResult());
-//       bdIdOpToBdIdsMap[bdIdOp] = bdIds;
-//       if (!dmaOpToBdIdMap.contains(dmaOp)) {
-//         SmallVector<AMDAIE::BdIdOp> bdIdOps = {nullptr, nullptr};
-//         dmaOpToBdIdMap[dmaOp] = bdIdOps;
-//       }
-
-//       dmaOpToBdIdMap[dmaOp][bdIdMapIndex] = bdIdOp;
-//     } else {
-//       // Assign a constant BD ID.
-//       std::optional<uint32_t> bdId =
-//           generator.getAndAssignBdId(channel,
-//           BdIdAssignmentMode::Incremental);
-//       llvm::outs() << "DB - 2.0\n";
-//       llvm::outs().flush();
-//       if (!bdId) return dmaOp.emitOpError() << "no BD ID available";
-//       llvm::outs() << "DB - 2.1\n";
-//       llvm::outs().flush();
-//       auto constant = rewriter.create<arith::ConstantOp>(
-//           rewriter.getUnknownLoc(), rewriter.getIndexAttr(bdId.value()));
-//       AMDAIE::BdIdOp bdIdOp = rewriter.create<AMDAIE::BdIdOp>(
-//           rewriter.getUnknownLoc(), tileOp, constant.getResult());
-//       if (!dmaOpToBdIdMap.contains(dmaOp)) {
-//         SmallVector<AMDAIE::BdIdOp> bdIdOps = {nullptr, nullptr};
-//         dmaOpToBdIdMap[dmaOp] = bdIdOps;
-//       }
-//       dmaOpToBdIdMap[dmaOp][bdIdMapIndex] = bdIdOp;
-//     }
-//   }
-//   llvm::outs() << "END =================\n";
-//   llvm::outs().flush();
-//   return success();
-// }
-
-LogicalResult releaseBdId(
-    AMDAIE::BdIdOp bdIdOp,
-    DenseMap<Value, ChannelBdIdGenerator> &shimTileToGeneratorMap,
-    DenseMap<AMDAIE::BdIdOp, SmallVector<uint32_t>> &bdIdOpToBdIdsMap) {
-  auto tileOp =
-      dyn_cast_if_present<AMDAIE::TileOp>(bdIdOp.getTile().getDefiningOp());
-  if (!tileOp)
-    return bdIdOp.emitOpError()
-           << "doesn't operate on a `amdaie.tile` operation";
-
-  if (!shimTileToGeneratorMap.contains(tileOp.getResult()))
-    return bdIdOp.emitOpError()
-           << "no BD ID generator found for this BD ID op's tile";
-
-  ChannelBdIdGenerator &generator = shimTileToGeneratorMap[tileOp.getResult()];
-  Value value = bdIdOp.getValue();
-  if (auto op = value.getDefiningOp<affine::AffineApplyOp>()) {
-    // If the BD ID is a semi-affine expression.
-    if (bdIdOpToBdIdsMap.contains(bdIdOp)) {
-      for (uint32_t bdId : bdIdOpToBdIdsMap[bdIdOp]) {
-        generator.releaseBdId(bdId);
-      }
-    } else {
-      return bdIdOp.emitOpError() << "no BD IDs found for this expression";
-    }
-  } else {
-    // Else, must be a constant BD ID.
-    uint32_t bdId = getConstantIndexOrAssert(value);
-    generator.releaseBdId(bdId);
-  }
-  return success();
-}
-
-static LogicalResult releaseAllBdIds(
-    SmallVector<AMDAIE::NpuDmaCpyNdOp> dmaOps,
-    DenseMap<Value, ChannelBdIdGenerator> &shimTileToGeneratorMap,
-    DenseMap<AMDAIE::BdIdOp, SmallVector<uint32_t>> &bdIdOpToBdIdsMap) {
-  // Release BD ID used by input DMA op.
-  for (AMDAIE::NpuDmaCpyNdOp npuDmaOp : dmaOps) {
-    AMDAIE::BdIdOp bdIdOp;
-    if (npuDmaOp.getSourceBdId()) {
-      bdIdOp = dyn_cast_if_present<AMDAIE::BdIdOp>(
-          npuDmaOp.getSourceBdId().getDefiningOp());
-      if (!bdIdOp) continue;
-      if (failed(releaseBdId(bdIdOp, shimTileToGeneratorMap, bdIdOpToBdIdsMap)))
-        return failure();
-    }
-
-    if (npuDmaOp.getTargetBdId()) {
-      bdIdOp = dyn_cast_if_present<AMDAIE::BdIdOp>(
-          npuDmaOp.getTargetBdId().getDefiningOp());
-      if (!bdIdOp) continue;
-      if (failed(releaseBdId(bdIdOp, shimTileToGeneratorMap, bdIdOpToBdIdsMap)))
-        return failure();
-    }
-  }
-  return success();
-}
-
 typedef struct DmaBatchStruct {
   SmallVector<AMDAIE::NpuDmaCpyNdOp> currentDmaOps = {};
   int32_t requiredBdIds = 0;
@@ -291,10 +97,13 @@ static ControlCodeGraph initControlCodeGraph(AMDAIE::WorkgroupOp workgroupOp) {
 }
 
 static void updateCurrentControlCodeGraph(
-    ControlCodeGraph &currentControlCodeGraph,
+    DenseMap<AMDAIE::TileOp, DmaBatch *> &currentTileBatch,
     ControlCodeGraph &innerControlCodeGraph) {
-  for (auto [tile, DmaBatch] : innerControlCodeGraph) {
-    currentControlCodeGraph[tile]->immediateInnerBatches.push_back(DmaBatch);
+  for (auto [tile, dmaBatch] : innerControlCodeGraph) {
+    if (dmaBatch->currentDmaOps.empty() &&
+        dmaBatch->immediateInnerBatches.empty())
+      continue;
+    currentTileBatch[tile]->immediateInnerBatches.push_back(dmaBatch);
   }
 }
 
@@ -304,11 +113,11 @@ static ControlCodeGraph formControlCodeGraph(
   ControlCodeGraph controlCodeGraph = initControlCodeGraph(workgroupOp);
 
   DenseMap<AMDAIE::TileOp, DmaBatch *> currentTileBatch;
+  for (auto [tile, dmaBatch] : controlCodeGraph) {
+    currentTileBatch[tile] = dmaBatch;
+  }
   auto addDmaToBatch = [&](AMDAIE::TileOp tile, AMDAIE::NpuDmaCpyNdOp dmaOp) {
     assert(controlCodeGraph.contains(tile) && "Tile op not found");
-    if (!currentTileBatch.contains(tile)) {
-      currentTileBatch[tile] = controlCodeGraph[tile];
-    }
     currentTileBatch[tile]->currentDmaOps.push_back(dmaOp);
   };
 
@@ -324,7 +133,7 @@ static ControlCodeGraph formControlCodeGraph(
     if (isa<scf::ForOp, scf::ForallOp>(op)) {
       ControlCodeGraph innerControlCodeGraph =
           formControlCodeGraph(workgroupOp, &op, shimTileToGeneratorMap);
-      updateCurrentControlCodeGraph(controlCodeGraph, innerControlCodeGraph);
+      updateCurrentControlCodeGraph(currentTileBatch, innerControlCodeGraph);
     } else if (auto dmaOp = dyn_cast<AMDAIE::NpuDmaCpyNdOp>(op)) {
       if (dmaOp.getSource()) {
         FailureOr<AMDAIE::TileOp> tile =
@@ -364,21 +173,36 @@ static ControlCodeGraph formControlCodeGraph(
   return controlCodeGraph;
 }
 
+static Operation *findParentOpOfBatch(DmaBatch *dmaBatch) {
+  if (!dmaBatch->currentDmaOps.empty())
+    return dmaBatch->currentDmaOps[0]->getParentOp();
+  assert(!dmaBatch->immediateInnerBatches.empty() &&
+         "DmaBatch found with no DmaOps and no immediate inner batches");
+  Operation *parentOp = findParentOpOfBatch(dmaBatch->immediateInnerBatches[0]);
+  assert(parentOp && "Found inner DmaBatch with no parent");
+  return parentOp->getParentOp();
+}
+
 static int32_t getRequiredBdIdsForInnerBatches(DmaBatch *outerDmaBatch) {
   if (outerDmaBatch->immediateInnerBatches.empty()) return 0;
   int32_t requiredBdIds = 0;
   for (DmaBatch *dmaBatch : outerDmaBatch->immediateInnerBatches) {
+    if (dmaBatch->currentDmaOps.empty() &&
+        dmaBatch->immediateInnerBatches.empty())
+      continue;
     DmaBatch *currDmaBatch = dmaBatch;
     do {
+      if (currDmaBatch->currentDmaOps.empty() &&
+          currDmaBatch->immediateInnerBatches.empty())
+        break;
       int32_t totalDmaOpsInCurrentBatch = currDmaBatch->currentDmaOps.size();
       int32_t requiredBdIdsForInnerBatches =
           getRequiredBdIdsForInnerBatches(currDmaBatch);
       currDmaBatch->requiredBdIds =
           requiredBdIdsForInnerBatches + totalDmaOpsInCurrentBatch;
       requiredBdIds += totalDmaOpsInCurrentBatch;
-      assert(totalDmaOpsInCurrentBatch != 0);
-      if (auto forOp =
-              currDmaBatch->currentDmaOps[0]->getParentOfType<scf::ForOp>()) {
+      Operation *parentOp = findParentOpOfBatch(currDmaBatch);
+      if (auto forOp = dyn_cast_if_present<scf::ForOp>(parentOp)) {
         std::optional<uint32_t> numIterations = getNumberIterations(forOp);
         if (numIterations) {
           requiredBdIds += requiredBdIdsForInnerBatches * numIterations.value();
@@ -394,9 +218,9 @@ static int32_t getRequiredBdIdsForInnerBatches(DmaBatch *outerDmaBatch) {
 
 static void inferBdIdsRequiredInBatches(ControlCodeGraph &controlCodeGraph) {
   for (auto [tile, dmaBatch] : controlCodeGraph) {
-    // Find required BD ID by the DMA Ops in current batch.
-    // Required Bd Id = Total Dma Ops in current Batch + Bd Ids required by
-    // nested batches.
+    if (dmaBatch->currentDmaOps.empty() &&
+        dmaBatch->immediateInnerBatches.empty())
+      continue;
     DmaBatch *currDmaBatch = dmaBatch;
     do {
       int32_t totalDmaOpsInCurrentBatch = currDmaBatch->currentDmaOps.size();
@@ -407,6 +231,219 @@ static void inferBdIdsRequiredInBatches(ControlCodeGraph &controlCodeGraph) {
       currDmaBatch = currDmaBatch->nextDmaBatch;
     } while (currDmaBatch != nullptr);
   }
+}
+
+typedef struct DmaTileDataStruct {
+  uint32_t channel;
+  uint32_t bdIdMapIndex;
+} DmaTileData;
+
+static FailureOr<DmaTileData> getDmaTileData(
+    AMDAIE::NpuDmaCpyNdOp npuDmaOp, AMDAIE::TileOp tileOp,
+    DenseMap<Value, ChannelBdIdGenerator> &shimTileToGeneratorMap) {
+  FailureOr<AMDAIE::ChannelOp> maybeChannelOp;
+  uint32_t bdIdMapIndex;
+  if (npuDmaOp.getSource()) {
+    FailureOr<AMDAIE::TileOp> tile =
+        getGeneratorTileOp<CopyOpOperateOn::Source>(npuDmaOp,
+                                                    shimTileToGeneratorMap);
+    if (succeeded(tile) && *tile == tileOp) {
+      maybeChannelOp = npuDmaOp.getSourceChannelOp();
+      bdIdMapIndex = 0;
+    }
+  }
+  if (npuDmaOp.getTarget()) {
+    FailureOr<AMDAIE::TileOp> tile =
+        getGeneratorTileOp<CopyOpOperateOn::Target>(npuDmaOp,
+                                                    shimTileToGeneratorMap);
+    if (succeeded(tile) && *tile == tileOp) {
+      maybeChannelOp = npuDmaOp.getTargetChannelOp();
+      bdIdMapIndex = 1;
+    }
+  }
+
+  if (failed(maybeChannelOp)) return failure();
+
+  DmaTileData dmaTileData = {maybeChannelOp.value().getValue(), bdIdMapIndex};
+  return dmaTileData;
+}
+
+static LogicalResult assignRequiredBdIdsInCurrentBatch(
+    IRRewriter &rewriter, AMDAIE::TileOp tileOp, DmaBatch *dmaBatch,
+    DenseMap<Value, ChannelBdIdGenerator> &shimTileToGeneratorMap,
+    DenseMap<AMDAIE::BdIdOp, SmallVector<uint32_t>> &bdIdOpToBdIdsMap,
+    DenseMap<AMDAIE::NpuDmaCpyNdOp, SmallVector<AMDAIE::BdIdOp>>
+        &dmaOpToBdIdMap) {
+  // Get the channel.
+  if (dmaBatch->currentDmaOps.empty()) return success();
+  FailureOr<DmaTileData> maybeDmaTileData = getDmaTileData(
+      dmaBatch->currentDmaOps[0], tileOp, shimTileToGeneratorMap);
+  if (failed(maybeDmaTileData)) return failure();
+  DmaTileData dmaTileData = *maybeDmaTileData;
+  ChannelBdIdGenerator &generator = shimTileToGeneratorMap[tileOp.getResult()];
+  uint32_t numAvailableBdIds =
+      generator.getNumAvailableBdIds(dmaTileData.channel);
+  uint32_t size = std::max(numAvailableBdIds / dmaBatch->requiredBdIds, 1u);
+  scf::ForOp loop = nullptr;
+  AffineExpr ivExpr = nullptr;
+  Value iv = nullptr;
+  // In case the parent of the DMA ops is a scf.for we need to keep track of
+  // the loop induction variable in order to create a semi affine expression
+  // later for distributing BD IDs for each iteration.
+  if (loop = dmaBatch->currentDmaOps[0]->getParentOfType<scf::ForOp>();
+      loop && getNumberIterations(loop)) {
+    iv = loop.getInductionVar();
+    bindDims(loop.getContext(), ivExpr);
+  } else {
+    // In case the DMA ops are not surrounded by scf.for, we will assign
+    // only one BD ID.
+    size = 1;
+  }
+
+  rewriter.setInsertionPoint(dmaBatch->currentDmaOps[0]);
+  for (AMDAIE::NpuDmaCpyNdOp dmaOp : dmaBatch->currentDmaOps) {
+    maybeDmaTileData = getDmaTileData(dmaOp, tileOp, shimTileToGeneratorMap);
+    if (failed(maybeDmaTileData)) return failure();
+    dmaTileData = *maybeDmaTileData;
+    // Only create expression if more than 1 BD ID is needed and if,
+    // otherwise, fall back to constant BD ID.
+    if (size > 1) {
+      // Assigning BD IDs for all iterations in the loop.
+      SmallVector<uint32_t> bdIds;
+      for (uint32_t i = 0; i < size; i++) {
+        std::optional<uint32_t> bdId = generator.getAndAssignBdId(
+            dmaTileData.channel, BdIdAssignmentMode::Incremental);
+        if (!bdId) return failure();
+        bdIds.push_back(bdId.value());
+      }
+      // Get the BD ID for the first iteration as the offset.
+      uint32_t offset = bdIds.front();
+
+      // Create the semi-affine expression.
+      auto affineApply = rewriter.create<affine::AffineApplyOp>(
+          loop.getLoc(), ivExpr % size + offset,
+          ValueRange{
+              iv,
+          });
+      AMDAIE::BdIdOp bdIdOp = rewriter.create<AMDAIE::BdIdOp>(
+          rewriter.getUnknownLoc(), tileOp, affineApply.getResult());
+      bdIdOpToBdIdsMap[bdIdOp] = bdIds;
+      if (!dmaOpToBdIdMap.contains(dmaOp)) {
+        SmallVector<AMDAIE::BdIdOp> bdIdOps = {nullptr, nullptr};
+        dmaOpToBdIdMap[dmaOp] = bdIdOps;
+      }
+
+      dmaOpToBdIdMap[dmaOp][dmaTileData.bdIdMapIndex] = bdIdOp;
+    } else {
+      // Assign a constant BD ID.
+      std::optional<uint32_t> bdId = generator.getAndAssignBdId(
+          dmaTileData.channel, BdIdAssignmentMode::Incremental);
+      if (!bdId) return dmaOp.emitOpError() << "no BD ID available";
+      auto constant = rewriter.create<arith::ConstantOp>(
+          rewriter.getUnknownLoc(), rewriter.getIndexAttr(bdId.value()));
+      AMDAIE::BdIdOp bdIdOp = rewriter.create<AMDAIE::BdIdOp>(
+          rewriter.getUnknownLoc(), tileOp, constant.getResult());
+      if (!dmaOpToBdIdMap.contains(dmaOp)) {
+        SmallVector<AMDAIE::BdIdOp> bdIdOps = {nullptr, nullptr};
+        dmaOpToBdIdMap[dmaOp] = bdIdOps;
+      }
+      dmaOpToBdIdMap[dmaOp][dmaTileData.bdIdMapIndex] = bdIdOp;
+    }
+  }
+  return success();
+}
+
+LogicalResult releaseBdId(
+    AMDAIE::BdIdOp bdIdOp,
+    DenseMap<Value, ChannelBdIdGenerator> &shimTileToGeneratorMap,
+    DenseMap<AMDAIE::BdIdOp, SmallVector<uint32_t>> &bdIdOpToBdIdsMap) {
+  auto tileOp =
+      dyn_cast_if_present<AMDAIE::TileOp>(bdIdOp.getTile().getDefiningOp());
+  if (!tileOp)
+    return bdIdOp.emitOpError()
+           << "doesn't operate on a `amdaie.tile` operation";
+
+  if (!shimTileToGeneratorMap.contains(tileOp.getResult()))
+    return bdIdOp.emitOpError()
+           << "no BD ID generator found for this BD ID op's tile";
+
+  ChannelBdIdGenerator &generator = shimTileToGeneratorMap[tileOp.getResult()];
+  Value value = bdIdOp.getValue();
+  if (auto op = value.getDefiningOp<affine::AffineApplyOp>()) {
+    // If the BD ID is a semi-affine expression.
+    if (bdIdOpToBdIdsMap.contains(bdIdOp)) {
+      for (uint32_t bdId : bdIdOpToBdIdsMap[bdIdOp]) {
+        generator.releaseBdId(bdId);
+      }
+    } else {
+      return bdIdOp.emitOpError() << "no BD IDs found for this expression";
+    }
+  } else {
+    // Else, must be a constant BD ID.
+    uint32_t bdId = getConstantIndexOrAssert(value);
+    generator.releaseBdId(bdId);
+  }
+  return success();
+}
+
+static LogicalResult releaseAssignedBdIdsInCurrentBatch(
+    SmallVector<AMDAIE::NpuDmaCpyNdOp> dmaOps,
+    DenseMap<Value, ChannelBdIdGenerator> &shimTileToGeneratorMap,
+    DenseMap<AMDAIE::BdIdOp, SmallVector<uint32_t>> &bdIdOpToBdIdsMap,
+    DenseMap<AMDAIE::NpuDmaCpyNdOp, SmallVector<AMDAIE::BdIdOp>>
+        &dmaOpToBdIdMap) {
+  // Release BD ID used by input DMA op.
+  for (AMDAIE::NpuDmaCpyNdOp npuDmaOp : dmaOps) {
+    if (dmaOpToBdIdMap[npuDmaOp][0]) {
+      if (failed(releaseBdId(dmaOpToBdIdMap[npuDmaOp][0],
+                             shimTileToGeneratorMap, bdIdOpToBdIdsMap)))
+        return failure();
+    }
+
+    if (dmaOpToBdIdMap[npuDmaOp][1]) {
+      if (failed(releaseBdId(dmaOpToBdIdMap[npuDmaOp][1],
+                             shimTileToGeneratorMap, bdIdOpToBdIdsMap)))
+        return failure();
+    }
+  }
+  return success();
+}
+
+static bool isEmptyDmaBatch(DmaBatch *dmaBatch) {
+  return (dmaBatch->currentDmaOps.empty() &&
+          dmaBatch->immediateInnerBatches.empty());
+}
+
+static LogicalResult assignRequiredBdIdsInInnerBatch(
+    IRRewriter &rewriter, AMDAIE::TileOp tileOp, DmaBatch *parentDmaBatch,
+    DenseMap<Value, ChannelBdIdGenerator> &shimTileToGeneratorMap,
+    DenseMap<AMDAIE::BdIdOp, SmallVector<uint32_t>> &bdIdOpToBdIdsMap,
+    DenseMap<AMDAIE::NpuDmaCpyNdOp, SmallVector<AMDAIE::BdIdOp>>
+        &dmaOpToBdIdMap) {
+  for (DmaBatch *dmaBatch : parentDmaBatch->immediateInnerBatches) {
+    DmaBatch *currDmaBatch = dmaBatch;
+    do {
+      if (isEmptyDmaBatch(currDmaBatch)) break;
+      if (failed(assignRequiredBdIdsInCurrentBatch(
+              rewriter, tileOp, currDmaBatch, shimTileToGeneratorMap,
+              bdIdOpToBdIdsMap, dmaOpToBdIdMap)))
+        return failure();
+
+      if (failed(assignRequiredBdIdsInInnerBatch(
+              rewriter, tileOp, currDmaBatch, shimTileToGeneratorMap,
+              bdIdOpToBdIdsMap, dmaOpToBdIdMap)))
+        return failure();
+
+      if (failed(releaseAssignedBdIdsInCurrentBatch(
+              currDmaBatch->currentDmaOps, shimTileToGeneratorMap,
+              bdIdOpToBdIdsMap, dmaOpToBdIdMap)))
+        return failure();
+
+      // Now release assigned BdIds.
+      currDmaBatch = currDmaBatch->nextDmaBatch;
+    } while (currDmaBatch != nullptr);
+  }
+  return success();
 }
 
 static LogicalResult assignRequiredBdIdsInBatch(
@@ -421,208 +458,28 @@ static LogicalResult assignRequiredBdIdsInBatch(
     // nested batches.
     DmaBatch *currDmaBatch = dmaBatch;
     do {
-      // Get the channel.
-      if (currDmaBatch->currentDmaOps.empty()) return failure();
-      FailureOr<AMDAIE::ChannelOp> maybeChannelOp;
-      AMDAIE::NpuDmaCpyNdOp npuDmaOp = currDmaBatch->currentDmaOps[0];
-      if (npuDmaOp.getSource()) {
-        FailureOr<AMDAIE::TileOp> tile =
-            getGeneratorTileOp<CopyOpOperateOn::Source>(npuDmaOp,
-                                                        shimTileToGeneratorMap);
-        if (succeeded(tile) && *tile == tileOp) {
-          maybeChannelOp = npuDmaOp.getSourceChannelOp();
-        }
-      }
-      if (npuDmaOp.getTarget()) {
-        FailureOr<AMDAIE::TileOp> tile =
-            getGeneratorTileOp<CopyOpOperateOn::Target>(npuDmaOp,
-                                                        shimTileToGeneratorMap);
-        if (succeeded(tile) && *tile == tileOp) {
-          maybeChannelOp = npuDmaOp.getTargetChannelOp();
-        }
-      }
-      if (failed(maybeChannelOp)) return failure();
-      uint32_t channel = maybeChannelOp.value().getValue();
-      ChannelBdIdGenerator &generator =
-          shimTileToGeneratorMap[tileOp.getResult()];
-      uint32_t numAvailableBdIds = generator.getNumAvailableBdIds(channel);
-      uint32_t size = std::max(numAvailable / currDmaBatch->requiredBdIds, 1u);
+      if (isEmptyDmaBatch(currDmaBatch)) break;
+      if (failed(assignRequiredBdIdsInCurrentBatch(
+              rewriter, tileOp, currDmaBatch, shimTileToGeneratorMap,
+              bdIdOpToBdIdsMap, dmaOpToBdIdMap)))
+        return failure();
 
-      scf::ForOp loop = nullptr;
-      AffineExpr ivExpr = nullptr;
-      Value iv = nullptr;
-      // In case the parent of the DMA ops is a scf.for we need to keep track of
-      // the loop induction variable in order to create a semi affine expression
-      // later for distributing BD IDs for each iteration.
-      if (loop = npuDmaOp->getParentOfType<scf::ForOp>();
-          loop && getNumberIterations(loop)) {
-        iv = loop.getInductionVar();
-        bindDims(loop.getContext(), ivExpr);
-      } else {
-        // In case the DMA ops are not surrounded by scf.for, we will assign
-        // only one BD ID.
-        size = 1;
-      }
+      if (failed(assignRequiredBdIdsInInnerBatch(
+              rewriter, tileOp, currDmaBatch, shimTileToGeneratorMap,
+              bdIdOpToBdIdsMap, dmaOpToBdIdMap)))
+        return failure();
 
-      // CHECK BASED ON CHANNEL IF FOR EACH DMA OP YOU CAN ASSIGN `size` NUMBER
-      // OF BD IDS.
-
-      // -----
-      rewriter.setInsertionPoint(npuDmaOp);
-      for (AMDAIE::NpuDmaCpyNdOp dmaOp : currDmaBatch->currentDmaOps) {
-        CopyOpOperateOn bdIdMapIndex = CopyOpOperateOn::Source;
-        if (dmaOp.getSource()) {
-          FailureOr<AMDAIE::TileOp> tile =
-              getGeneratorTileOp<CopyOpOperateOn::Source>(
-                  dmaOp, shimTileToGeneratorMap);
-          if (succeeded(tile) && *tile == tileOp) {
-            channel = npuDmaOp.getSourceChannelOp();
-            bdIdMapIndex = CopyOpOperateOn::Source;
-          }
-        }
-        if (dmaOp.getTarget()) {
-          FailureOr<AMDAIE::TileOp> tile =
-              getGeneratorTileOp<CopyOpOperateOn::Target>(
-                  dmaOp, shimTileToGeneratorMap);
-          if (succeeded(tile) && *tile == tileOp) {
-            channel = npuDmaOp.getTargetChannelOp();
-            bdIdMapIndex = CopyOpOperateOn::Target;
-          }
-        }
-        // Only create expression if more than 1 BD ID is needed and if,
-        // otherwise, fall back to constant BD ID.
-        if (size > 1) {
-          // Assigning BD IDs for all iterations in the loop.
-          SmallVector<uint32_t> bdIds;
-          for (uint32_t i = 0; i < size; i++) {
-            std::optional<uint32_t> bdId = generator.getAndAssignBdId(
-                channel, BdIdAssignmentMode::Incremental);
-            if (!bdId) return failure();
-            bdIds.push_back(bdId.value());
-          }
-          // Get the BD ID for the first iteration as the offset.
-          uint32_t offset = bdIds.front();
-
-          // Create the semi-affine expression.
-          auto affineApply = rewriter.create<affine::AffineApplyOp>(
-              loop.getLoc(), ivExpr % size + offset,
-              ValueRange{
-                  iv,
-              });
-          AMDAIE::BdIdOp bdIdOp = rewriter.create<AMDAIE::BdIdOp>(
-              rewriter.getUnknownLoc(), tileOp, affineApply.getResult());
-          bdIdOpToBdIdsMap[bdIdOp] = bdIds;
-          if (!dmaOpToBdIdMap.contains(dmaOp)) {
-            SmallVector<AMDAIE::BdIdOp> bdIdOps = {nullptr, nullptr};
-            dmaOpToBdIdMap[dmaOp] = bdIdOps;
-          }
-
-          dmaOpToBdIdMap[dmaOp][bdIdMapIndex] = bdIdOp;
-        } else {
-          // Assign a constant BD ID.
-          std::optional<uint32_t> bdId = generator.getAndAssignBdId(
-              channel, BdIdAssignmentMode::Incremental);
-          if (!bdId) return dmaOp.emitOpError() << "no BD ID available";
-          auto constant = rewriter.create<arith::ConstantOp>(
-              rewriter.getUnknownLoc(), rewriter.getIndexAttr(bdId.value()));
-          AMDAIE::BdIdOp bdIdOp = rewriter.create<AMDAIE::BdIdOp>(
-              rewriter.getUnknownLoc(), tileOp, constant.getResult());
-          if (!dmaOpToBdIdMap.contains(dmaOp)) {
-            SmallVector<AMDAIE::BdIdOp> bdIdOps = {nullptr, nullptr};
-            dmaOpToBdIdMap[dmaOp] = bdIdOps;
-          }
-          dmaOpToBdIdMap[dmaOp][bdIdMapIndex] = bdIdOp;
-        }
-      }
-
-      assignRequiredBdIdsInInnerBatch(rewriter, currDmaBatch,
-                                      shimTileToGeneratorMap, bdIdOpToBdIdsMap,
-                                      dmaOpToBdIdMap);
+      if (failed(releaseAssignedBdIdsInCurrentBatch(
+              currDmaBatch->currentDmaOps, shimTileToGeneratorMap,
+              bdIdOpToBdIdsMap, dmaOpToBdIdMap)))
+        return failure();
 
       // Now release assigned BdIds.
       currDmaBatch = currDmaBatch->nextDmaBatch;
     } while (currDmaBatch != nullptr);
   }
+  return success();
 }
-
-// static uint32_t traverseInnerParentOpChain(AMDAIE::TileOp tile,
-//                                            Operation *parentOp,
-//                                            ControlCodeGraph
-//                                            &controlCodeGraph) {
-//   uint32_t requiredBdIds = 0;
-//   if (isa<scf::ForallOp>(parentOp)) return 0;
-//   if (!controlCodeGraph.tileParentOpDmaBatchMap[tile].contains(parentOp)) {
-//     requiredBdIds = 0;
-//   } else {
-//     SmallVector<SmallVector<AMDAIE::NpuDmaCpyNdOp>> batches =
-//         controlCodeGraph.tileParentOpDmaBatchMap[tile][parentOp];
-//     uint32_t totalDmaOpsInParentOpOperatingOnTile = 0;
-//     for (SmallVector<AMDAIE::NpuDmaCpyNdOp> batch : batches) {
-//       totalDmaOpsInParentOpOperatingOnTile += batch.size();
-//     }
-//     requiredBdIds = totalDmaOpsInParentOpOperatingOnTile;
-//   }
-//   for (Operation *immediateInnerParentOp :
-//        controlCodeGraph.parentOpToImmediateInnerParentOps[parentOp]) {
-//     uint32_t requiredBdIdsByInnerParentOp = traverseInnerParentOpChain(
-//         tile, immediateInnerParentOp, controlCodeGraph);
-//     std::optional<uint32_t> loopIterations =
-//         getNumberIterations(cast<scf::ForOp>(immediateInnerParentOp));
-//     if (loopIterations) {
-//       requiredBdIds += requiredBdIdsByInnerParentOp * loopIterations.value();
-//     } else {
-//       requiredBdIds += requiredBdIdsByInnerParentOp;
-//     }
-//   }
-//   return requiredBdIds;
-// }
-
-// /// Computes the number of BD IDs required between the current
-// /// DMA copy operation and its corresponding DMA wait operation; returns the
-// DMA
-// /// ops it traverses within same block and on same tile. If a sub-loop is
-// /// encountered, it takes into account any DMA ops being used on the same
-// tile.
-// /// This approach ensures that the inner loop has access to a greater
-// /// number of BD IDs, which is favorable for enabling efficient BD chaining
-// in
-// /// subsequent passes.
-// ///
-// /// Example:
-// /// %0 = dma_copy {bd_id = 0}   // Current DMA copy
-// /// scf.for %arg0 = %c0 to %c1 step %c2 {
-// ///   %1 = dma_copy {bd_id = %arg0 + 1}  // DMA copy inside a sub-loop
-// ///   dma_wait(%1)                       // Wait for the sub-loop DMA copy
-// /// }
-// /// dma_wait(%0)   // Current DMA wait
-// ///
-// /// In this example:
-// /// - The current DMA copy (%0) requires 1 BD ID.
-// /// - The sub-loop executes 2 iterations, each requiring 1 BD ID.
-// /// - Therefore, the required number of BD IDs is:
-// ///  3 = 1 (current) + 2 * 1(sub-loop).
-// static uint32_t traverseParentOpChainToGetBdIds(
-//     AMDAIE::TileOp tile, Operation *parentOp,
-//     ControlCodeGraph &controlCodeGraph, AMDAIE::NpuDmaCpyNdOp npuDmaOp) {
-//   uint32_t requiredBdIds = 0;
-//   AMDAIE::NpuDmaWaitOp npuWaitOp = controlCodeGraph.dmaOpToWaitOp[npuDmaOp];
-//   for (Operation *immediateInnerParentOp :
-//        controlCodeGraph.parentOpToImmediateInnerParentOps[parentOp]) {
-//     if (!immediateInnerParentOp->isBeforeInBlock(npuWaitOp)) break;
-//     if (auto forOp = dyn_cast<scf::ForOp>(immediateInnerParentOp)) {
-//       uint32_t requiredBdIdsByInnerParentOp = traverseInnerParentOpChain(
-//           tile, immediateInnerParentOp, controlCodeGraph);
-//       std::optional<uint32_t> loopIterations = getNumberIterations(forOp);
-//       if (loopIterations) {
-//         requiredBdIds += requiredBdIdsByInnerParentOp *
-//         loopIterations.value();
-//       } else {
-//         requiredBdIds += requiredBdIdsByInnerParentOp;
-//       }
-//     }
-//   }
-//   return requiredBdIds;
-// }
 
 /// Assign BD ids to NPU dma operations using the BD generator.
 LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
@@ -658,37 +515,10 @@ LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
   ControlCodeGraph controlCodeGraph =
       formControlCodeGraph(workgroupOp, controlCodeOp, shimTileToGeneratorMap);
   inferBdIdsRequiredInBatches(controlCodeGraph);
-  assignRequiredBdIdsInBatch(rewriter, controlCodeGraph, shimTileToGeneratorMap,
-                             bdIdOpToBdIdsMap, dmaOpToBdIdMap);
-  // For each (tile, parentOp) pair assign BD Ids to DMA Ops batch by updating
-  // `dmaOpToBdIdMap`.
-  // for (auto tileParentOpDmaBatch : controlCodeGraph.tileParentOpDmaBatchMap)
-  // {
-  //   AMDAIE::TileOp tile = tileParentOpDmaBatch.first;
-  //   llvm::outs() << "Tile = " << tile << "\n";
-  //   llvm::outs().flush();
-  //   for (auto parentOpDmaBatch : tileParentOpDmaBatch.second) {
-  //     Operation *parentOp = parentOpDmaBatch.first;
-  //     llvm::outs() << "ParentOp = " << (*parentOp) << "\n";
-  //     llvm::outs().flush();
-  //     for (SmallVector<AMDAIE::NpuDmaCpyNdOp> batch :
-  //     parentOpDmaBatch.second) {
-  //       uint32_t requiredBdIdsByInnerOpChain =
-  //       traverseParentOpChainToGetBdIds(
-  //           tile, parentOp, controlCodeGraph, batch[0]);
-  //       uint32_t totalBdIdsRequiredPerIteration =
-  //           requiredBdIdsByInnerOpChain + batch.size();
-  //       if (failed(assignBdIdsToDMAOpsBatch(
-  //               rewriter, batch, tile, shimTileToGeneratorMap,
-  //               bdIdOpToBdIdsMap, dmaOpToBdIdMap,
-  //               totalBdIdsRequiredPerIteration)))
-  //         return failure();
-  //       if (failed(releaseAllBdIds(batch, shimTileToGeneratorMap,
-  //                                  bdIdOpToBdIdsMap)))
-  //         return failure();
-  //     }
-  //   }
-  // }
+  if (failed(assignRequiredBdIdsInBatch(rewriter, controlCodeGraph,
+                                        shimTileToGeneratorMap,
+                                        bdIdOpToBdIdsMap, dmaOpToBdIdMap)))
+    return failure();
   // At this step we have all the information to traverse and perform the
   // replacements of the DMA Ops.
   WalkResult res = controlCodeOp->walk([&](Operation *op) {
@@ -727,29 +557,6 @@ LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
             npuDmaOp.getSourceBdId());
       }
       return WalkResult::advance();
-    } else if (auto npuWaitOp = dyn_cast<AMDAIE::NpuDmaWaitOp>(op)) {
-      // // Release BD ID used by input DMA op.
-      // for (AMDAIE::NpuDmaCpyNdOp npuDmaOp : npuWaitOp.getDmaOps()) {
-      //   AMDAIE::BdIdOp bdIdOp;
-      //   if (npuDmaOp.getSourceBdId()) {
-      //     bdIdOp = dyn_cast_if_present<AMDAIE::BdIdOp>(
-      //         npuDmaOp.getSourceBdId().getDefiningOp());
-      //     if (!bdIdOp) return WalkResult::advance();
-      //     if (failed(releaseBdId(bdIdOp, shimTileToGeneratorMap,
-      //                            bdIdOpToBdIdsMap)))
-      //       return WalkResult::interrupt();
-      //   }
-
-      //   if (npuDmaOp.getTargetBdId()) {
-      //     bdIdOp = dyn_cast_if_present<AMDAIE::BdIdOp>(
-      //         npuDmaOp.getTargetBdId().getDefiningOp());
-      //     if (!bdIdOp) return WalkResult::advance();
-      //     if (failed(releaseBdId(bdIdOp, shimTileToGeneratorMap,
-      //                            bdIdOpToBdIdsMap)))
-      //       return WalkResult::interrupt();
-      //   }
-      // }
-      // return WalkResult::advance();
     }
     return WalkResult::advance();
   });
