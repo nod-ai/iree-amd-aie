@@ -154,6 +154,7 @@ class BaseTest(ABC):
             self.labels.append("CtrlPkt")
             self.add_aie_compilation_flags(
                 [
+                    "--iree-amdaie-enable-control-packet=true",
                     "--iree-amdaie-enable-input-packet-flow=true",
                 ]
             )
