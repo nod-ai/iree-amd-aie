@@ -152,11 +152,15 @@ class BaseTest(ABC):
 
         if enable_ctrlpkt:
             self.labels.append("CtrlPkt")
-            self.add_aie_compilation_flags(
-                [
-                    "--iree-amdaie-enable-input-packet-flow=true",
-                ]
-            )
+            self.add_aie_compilation_flags(["--iree-amdaie-enable-control-packet=true"])
+            # Ensure the packet flow flag is also set; add as `auto` if missing.
+            if not any(
+                flag.startswith("--iree-amdaie-enable-packet-flow=")
+                for flag in self.aie_compilation_flags
+            ):
+                self.add_aie_compilation_flags(
+                    ["--iree-amdaie-enable-packet-flow=auto"]
+                )
             self.name += "_ctrlpkt"
 
         if run_benchmark:
@@ -2325,9 +2329,7 @@ class Tests:
             if use_packet_flow:
                 # Only enable packet flows for kernel inputs to prevent potential deadlock.
                 # TODO (zhewen): Support kernel outputs.
-                aie_compilation_flags.append(
-                    "--iree-amdaie-enable-input-packet-flow=true"
-                )
+                aie_compilation_flags.append("--iree-amdaie-enable-packet-flow=inputs")
                 name_suffix += "_packet_flow"
 
             # This should only be the case for benchmark tests which we expect
@@ -2546,9 +2548,6 @@ class Tests:
             self.register(
                 ConvolutionFromTemplate(
                     generator,
-                    test_params=TestParams(
-                        enable_ctrlpkt=False,
-                    ),
                 )
             )
 
@@ -2566,9 +2565,6 @@ class Tests:
         self.register(
             ConvolutionFromTemplate(
                 generator,
-                test_params=TestParams(
-                    enable_ctrlpkt=False,
-                ),
             )
         )
 

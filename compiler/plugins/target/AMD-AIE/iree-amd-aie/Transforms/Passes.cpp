@@ -601,10 +601,10 @@ void buildAMDAIETransformPassPipeline(
     uint32_t numCols, TilePassPipeline useTilePipeline,
     LowerToAIEPassPipeline useLowerToAIEPipeline, bool matmulElementwiseFusion,
     bool enableVectorizationPasses, std::string enableAMDAIEUkernels,
-    const std::string &pathToUkernels, bool enableInputPacketFlow,
-    bool enableOutputPacketFlow, bool enableCoalescingLoops,
-    bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
-    int callReplication, bool insertLoopAroundCoreBlock, bool enableCtrlPkt) {
+    const std::string &pathToUkernels, PacketFlowStrategy enablePacketFlow,
+    bool enableCoalescingLoops, bool enableCollapsingUnitDims,
+    OutliningStrategy enableFunctionOutlining, int callReplication,
+    bool insertLoopAroundCoreBlock, bool enableCtrlPkt) {
   OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
   {
     FunctionLikeNest funcPassManager(modulePassManager);
@@ -634,8 +634,8 @@ void buildAMDAIETransformPassPipeline(
   modulePassManager.addPass(createLowerUKernelOpsToCallsPass());
   if (useLowerToAIEPipeline == LowerToAIEPassPipeline::ObjectFifo) {
     addAMDAIEObjectFifoLoweringPasses(
-        modulePassManager, enableInputPacketFlow, enableOutputPacketFlow,
-        useTilePipeline, enableVectorizationPasses, enableCoalescingLoops,
+        modulePassManager, enablePacketFlow, useTilePipeline,
+        enableVectorizationPasses, enableCoalescingLoops,
         enableCollapsingUnitDims, enableFunctionOutlining, callReplication,
         insertLoopAroundCoreBlock, numCols, enableCtrlPkt);
   } else if (useLowerToAIEPipeline == LowerToAIEPassPipeline::AIR) {
@@ -658,12 +658,11 @@ void buildAMDAIETransformPassPipeline(
 }
 
 void addAMDAIEObjectFifoLoweringPasses(
-    OpPassManager &passManager, bool enableInputPacketFlow,
-    bool enableOutputPacketFlow, TilePassPipeline useTilePipeline,
-    bool enableVectorizationPasses, bool enableCoalescingLoops,
-    bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
-    int callReplication, bool insertLoopAroundCoreBlock, uint32_t numCols,
-    bool enableCtrlPkt) {
+    OpPassManager &passManager, PacketFlowStrategy enablePacketFlow,
+    TilePassPipeline useTilePipeline, bool enableVectorizationPasses,
+    bool enableCoalescingLoops, bool enableCollapsingUnitDims,
+    OutliningStrategy enableFunctionOutlining, int callReplication,
+    bool insertLoopAroundCoreBlock, uint32_t numCols, bool enableCtrlPkt) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
 
@@ -742,9 +741,16 @@ void addAMDAIEObjectFifoLoweringPasses(
   passManager.addPass(createAMDAIENoneAccessToTemporaryBufferPass());
 
   {
+    AMDAIEGenerateControlOverlayOptions options;
+    options.routeShimToTileCtrl = enableCtrlPkt;
+    passManager.addPass(createAMDAIEGenerateControlOverlayPass(options));
+    passManager.addPass(createCSEPass());
+    passManager.addPass(createCanonicalizerPass());
+  }
+
+  {
     AMDAIEAssignConnectionTypesOptions options;
-    options.enableInputPacketFlow = enableInputPacketFlow;
-    options.enableOutputPacketFlow = enableOutputPacketFlow;
+    options.packetFlowStrategy = enablePacketFlow;
     passManager.addPass(createAMDAIEAssignConnectionTypesPass(options));
     passManager.addPass(createCSEPass());
     passManager.addPass(createCanonicalizerPass());
@@ -760,14 +766,6 @@ void addAMDAIEObjectFifoLoweringPasses(
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createAMDAIEDmaCSEPass());
-
-  {
-    AMDAIEGenerateControlOverlayOptions options;
-    options.routeShimToTileCtrl = enableCtrlPkt;
-    passManager.addPass(createAMDAIEGenerateControlOverlayPass(options));
-    passManager.addPass(createCSEPass());
-    passManager.addPass(createCanonicalizerPass());
-  }
 
   passManager.addPass(createAMDAIEAssignChannelsPass());
   passManager.addPass(createCSEPass());
