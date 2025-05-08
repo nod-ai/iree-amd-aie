@@ -80,11 +80,13 @@ std::optional<uint32_t> getNumberIterations(scf::ForOp loop) {
 ///   2. Required Bd Ids by the current batch.
 ///   3. Nested DmaBatch chain.
 ///   4. Pointer to the sibling DmaBatch.
+///   4. A pointer to the parent op if the parent of is a scf.for.
 typedef struct DmaBatchStruct {
   SmallVector<AMDAIE::NpuDmaCpyNdOp> currentDmaOps = {};
   int32_t requiredBdIds = 0;
   SmallVector<DmaBatchStruct *> immediateInnerBatches = {};
   DmaBatchStruct *nextDmaBatch = nullptr;
+  scf::ForOp forOpParent = nullptr;
 } DmaBatch;
 
 using TileDmaBatchGraph = llvm::MapVector<AMDAIE::TileOp, DmaBatch *>;
@@ -124,6 +126,7 @@ static TileDmaBatchGraph formTileDmaBatchGraph(
   DenseMap<AMDAIE::TileOp, DmaBatch *> currentTileBatch;
   for (auto [tile, dmaBatch] : tileDmaBatchGraph) {
     currentTileBatch[tile] = dmaBatch;
+    currentTileBatch[tile]->forOpParent = dyn_cast<scf::ForOp>(parentOp);
   }
   auto addDmaToBatch = [&](AMDAIE::TileOp tile, AMDAIE::NpuDmaCpyNdOp dmaOp) {
     assert(tileDmaBatchGraph.contains(tile) && "Tile op not found");
@@ -133,7 +136,16 @@ static TileDmaBatchGraph formTileDmaBatchGraph(
   auto updateCurrentTileBatch = [&](AMDAIE::TileOp tile) {
     currentTileBatch[tile]->nextDmaBatch = new DmaBatch();
     currentTileBatch[tile] = currentTileBatch[tile]->nextDmaBatch;
+    currentTileBatch[tile]->forOpParent = dyn_cast<scf::ForOp>(parentOp);
   };
+
+  auto updateInnerBatchesOfCurrentTileDmaBatchGraph =
+      [&](TileDmaBatchGraph &innerTileDmaBatchGraph) {
+        for (auto [tile, dmaBatch] : innerTileDmaBatchGraph) {
+          if (isEmptyDmaBatch(dmaBatch)) continue;
+          currentTileBatch[tile]->immediateInnerBatches.push_back(dmaBatch);
+        }
+      };
 
   AMDAIE::NpuDmaCpyNdOp currDmaOp = nullptr;
   // Traverse the parent operation's immediate child ops and form the
@@ -142,8 +154,7 @@ static TileDmaBatchGraph formTileDmaBatchGraph(
     if (isa<scf::ForOp, scf::ForallOp>(op)) {
       TileDmaBatchGraph innerTileDmaBatchGraph =
           formTileDmaBatchGraph(workgroupOp, &op, shimTileToGeneratorMap);
-      updateInnerBatchesOfCurrentTileDmaBatchGraph(currentTileBatch,
-                                                   innerTileDmaBatchGraph);
+      updateInnerBatchesOfCurrentTileDmaBatchGraph(innerTileDmaBatchGraph);
     } else if (auto dmaOp = dyn_cast<AMDAIE::NpuDmaCpyNdOp>(op)) {
       if (dmaOp.getSource()) {
         FailureOr<AMDAIE::TileOp> tile =
@@ -211,9 +222,10 @@ static int32_t getRequiredBdIdsForInnerBatches(DmaBatch *outerDmaBatch) {
       currDmaBatch->requiredBdIds =
           requiredBdIdsForInnerBatches + totalDmaOpsInCurrentBatch;
       requiredBdIds += totalDmaOpsInCurrentBatch;
-      Operation *parentOp = findParentOpOfBatch(currDmaBatch);
-      if (auto forOp = dyn_cast_if_present<scf::ForOp>(parentOp)) {
-        std::optional<uint32_t> numIterations = getNumberIterations(forOp);
+      // Operation *parentOp = findParentOpOfBatch(currDmaBatch);
+      if (currDmaBatch->forOpParent) {
+        std::optional<uint32_t> numIterations =
+            getNumberIterations(currDmaBatch->forOpParent);
         if (numIterations) {
           requiredBdIds += requiredBdIdsForInnerBatches * numIterations.value();
         } else {
@@ -308,8 +320,7 @@ static LogicalResult assignRequiredBdIdsInCurrentBatch(
   // In case the parent of the DMA ops is a scf.for we need to keep track of
   // the loop induction variable in order to create a semi affine expression
   // later for distributing BD IDs for each iteration.
-  if (loop = dmaBatch->currentDmaOps[0]->getParentOfType<scf::ForOp>();
-      loop && getNumberIterations(loop)) {
+  if (loop = dmaBatch->forOpParent; loop && getNumberIterations(loop)) {
     iv = loop.getInductionVar();
     bindDims(loop.getContext(), ivExpr);
   } else {
@@ -520,39 +531,23 @@ static LogicalResult createNewDmaOpsAndReplaceOldDmaOps(
     DenseMap<AMDAIE::NpuDmaCpyNdOp, SmallVector<AMDAIE::BdIdOp>>
         &dmaOpToBdIdMap) {
   WalkResult res = controlCodeOp->walk([&](AMDAIE::NpuDmaCpyNdOp npuDmaOp) {
-    if (npuDmaOp.getSource()) {
-      assert(dmaOpToBdIdMap.contains(npuDmaOp) && "No BD ID mapping found");
-      assert((dmaOpToBdIdMap[npuDmaOp][/*sourceBdIdIndex=*/0] != nullptr) &&
-             "No source BD ID mapping found");
-      AMDAIE::BdIdOp bdIdOp = dmaOpToBdIdMap[npuDmaOp][/*sourceBdIdIndex=*/0];
-      rewriter.setInsertionPoint(npuDmaOp);
-      AMDAIE::NpuDmaCpyNdOp oldNpuDmaOp = npuDmaOp;
-      npuDmaOp = rewriter.replaceOpWithNewOp<AMDAIE::NpuDmaCpyNdOp>(
-          npuDmaOp, npuDmaOp.getResultTypes(), npuDmaOp.getConnection(),
-          npuDmaOp.getTarget(), npuDmaOp.getTargetMixedOffsets(),
-          npuDmaOp.getTargetMixedSizes(), npuDmaOp.getTargetMixedStrides(),
-          npuDmaOp.getTargetBdId(), npuDmaOp.getSource(),
-          npuDmaOp.getSourceMixedOffsets(), npuDmaOp.getSourceMixedSizes(),
-          npuDmaOp.getSourceMixedStrides(), bdIdOp);
-      // Since we have created a new NPU DMA op by assigning BD ID to the
-      // source, we need to copy the BD ID assignment to this new NPU DMA op
-      // in order to preserve the information about target BD ID candidate.
-      dmaOpToBdIdMap[npuDmaOp] = dmaOpToBdIdMap[oldNpuDmaOp];
+    assert(dmaOpToBdIdMap.contains(npuDmaOp) && "No BD ID mapping found");
+    Value sourceBdId = nullptr;
+    Value targetBdId = nullptr;
+    if (dmaOpToBdIdMap[npuDmaOp][/*sourceBdIdIndex=*/0]) {
+      sourceBdId = dmaOpToBdIdMap[npuDmaOp][/*sourceBdIdIndex=*/0].getResult();
     }
-    if (npuDmaOp.getTarget()) {
-      assert(dmaOpToBdIdMap.contains(npuDmaOp) && "No BD ID mapping found");
-      assert((dmaOpToBdIdMap[npuDmaOp][/*targetBdIdIndex=*/1] != nullptr) &&
-             "No target BD ID mapping found");
-      AMDAIE::BdIdOp bdIdOp = dmaOpToBdIdMap[npuDmaOp][/*targetBdIdIndex=*/1];
-      rewriter.setInsertionPoint(npuDmaOp);
-      (void)rewriter.replaceOpWithNewOp<AMDAIE::NpuDmaCpyNdOp>(
-          npuDmaOp, npuDmaOp.getResultTypes(), npuDmaOp.getConnection(),
-          npuDmaOp.getTarget(), npuDmaOp.getTargetMixedOffsets(),
-          npuDmaOp.getTargetMixedSizes(), npuDmaOp.getTargetMixedStrides(),
-          bdIdOp, npuDmaOp.getSource(), npuDmaOp.getSourceMixedOffsets(),
-          npuDmaOp.getSourceMixedSizes(), npuDmaOp.getSourceMixedStrides(),
-          npuDmaOp.getSourceBdId());
+    if (dmaOpToBdIdMap[npuDmaOp][/*targetBdIdIndex=*/1]) {
+      targetBdId = dmaOpToBdIdMap[npuDmaOp][/*targetBdIdIndex=*/1].getResult();
     }
+    rewriter.setInsertionPoint(npuDmaOp);
+    (void)rewriter.replaceOpWithNewOp<AMDAIE::NpuDmaCpyNdOp>(
+        npuDmaOp, npuDmaOp.getResultTypes(), npuDmaOp.getConnection(),
+        npuDmaOp.getTarget(), npuDmaOp.getTargetMixedOffsets(),
+        npuDmaOp.getTargetMixedSizes(), npuDmaOp.getTargetMixedStrides(),
+        targetBdId, npuDmaOp.getSource(), npuDmaOp.getSourceMixedOffsets(),
+        npuDmaOp.getSourceMixedSizes(), npuDmaOp.getSourceMixedStrides(),
+        sourceBdId);
     return WalkResult::advance();
   });
   if (res.wasInterrupted()) return failure();
