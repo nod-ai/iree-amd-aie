@@ -75,9 +75,11 @@ std::optional<uint32_t> getNumberIterations(scf::ForOp loop) {
   }
 }
 
-/// Given a list of DMA Ops and the number of required BD IDs by the first DMA
-/// op in the list, split the available BD IDs equally amongst all and assign it
-/// to the DMA ops.
+/// A DmaBatch contains the following :-
+///   1. DmaOps within the current batch.
+///   2. Required Bd Ids by the current batch.
+///   3. Nested DmaBatch chain.
+///   4. Pointer to the sibling DmaBatch.
 typedef struct DmaBatchStruct {
   SmallVector<AMDAIE::NpuDmaCpyNdOp> currentDmaOps = {};
   int32_t requiredBdIds = 0;
@@ -85,39 +87,46 @@ typedef struct DmaBatchStruct {
   DmaBatchStruct *nextDmaBatch = nullptr;
 } DmaBatch;
 
-using ControlCodeGraph = llvm::MapVector<AMDAIE::TileOp, DmaBatch *>;
-static ControlCodeGraph initControlCodeGraph(AMDAIE::WorkgroupOp workgroupOp) {
-  ControlCodeGraph controlCodeGraph;
+using TileDmaBatchGraph = llvm::MapVector<AMDAIE::TileOp, DmaBatch *>;
+
+/// Create a new TileDmaBatchGraph by traversing over each tiles in a workgroup.
+static TileDmaBatchGraph initTileDmaBatchGraph(
+    AMDAIE::WorkgroupOp workgroupOp) {
+  TileDmaBatchGraph tileDmaBatchGraph;
   workgroupOp.walk([&](AMDAIE::TileOp tile) {
-    if (controlCodeGraph.contains(tile)) return WalkResult::skip();
-    controlCodeGraph[tile] = new DmaBatch();
+    if (tileDmaBatchGraph.contains(tile)) return WalkResult::skip();
+    tileDmaBatchGraph[tile] = new DmaBatch();
     return WalkResult::advance();
   });
-  return controlCodeGraph;
+  return tileDmaBatchGraph;
 }
 
-static void updateCurrentControlCodeGraph(
+/// A DmaBatch with no DmaOps and no nested DmaBatches is an empty DmaBatch.
+static bool isEmptyDmaBatch(DmaBatch *dmaBatch) {
+  return (dmaBatch->currentDmaOps.empty() &&
+          dmaBatch->immediateInnerBatches.empty());
+}
+
+static void updateInnerBatchesOfCurrentTileDmaBatchGraph(
     DenseMap<AMDAIE::TileOp, DmaBatch *> &currentTileBatch,
-    ControlCodeGraph &innerControlCodeGraph) {
-  for (auto [tile, dmaBatch] : innerControlCodeGraph) {
-    if (dmaBatch->currentDmaOps.empty() &&
-        dmaBatch->immediateInnerBatches.empty())
-      continue;
+    TileDmaBatchGraph &innerTileDmaBatchGraph) {
+  for (auto [tile, dmaBatch] : innerTileDmaBatchGraph) {
+    if (isEmptyDmaBatch(dmaBatch)) continue;
     currentTileBatch[tile]->immediateInnerBatches.push_back(dmaBatch);
   }
 }
 
-static ControlCodeGraph formControlCodeGraph(
+static TileDmaBatchGraph formTileDmaBatchGraph(
     AMDAIE::WorkgroupOp &workgroupOp, Operation *parentOp,
     DenseMap<Value, ChannelBdIdGenerator> &shimTileToGeneratorMap) {
-  ControlCodeGraph controlCodeGraph = initControlCodeGraph(workgroupOp);
+  TileDmaBatchGraph tileDmaBatchGraph = initTileDmaBatchGraph(workgroupOp);
 
   DenseMap<AMDAIE::TileOp, DmaBatch *> currentTileBatch;
-  for (auto [tile, dmaBatch] : controlCodeGraph) {
+  for (auto [tile, dmaBatch] : tileDmaBatchGraph) {
     currentTileBatch[tile] = dmaBatch;
   }
   auto addDmaToBatch = [&](AMDAIE::TileOp tile, AMDAIE::NpuDmaCpyNdOp dmaOp) {
-    assert(controlCodeGraph.contains(tile) && "Tile op not found");
+    assert(tileDmaBatchGraph.contains(tile) && "Tile op not found");
     currentTileBatch[tile]->currentDmaOps.push_back(dmaOp);
   };
 
@@ -131,9 +140,10 @@ static ControlCodeGraph formControlCodeGraph(
   // tileParentOpDmaBatchMap.
   for (Operation &op : parentOp->getRegion(0).getOps()) {
     if (isa<scf::ForOp, scf::ForallOp>(op)) {
-      ControlCodeGraph innerControlCodeGraph =
-          formControlCodeGraph(workgroupOp, &op, shimTileToGeneratorMap);
-      updateCurrentControlCodeGraph(currentTileBatch, innerControlCodeGraph);
+      TileDmaBatchGraph innerTileDmaBatchGraph =
+          formTileDmaBatchGraph(workgroupOp, &op, shimTileToGeneratorMap);
+      updateInnerBatchesOfCurrentTileDmaBatchGraph(currentTileBatch,
+                                                   innerTileDmaBatchGraph);
     } else if (auto dmaOp = dyn_cast<AMDAIE::NpuDmaCpyNdOp>(op)) {
       if (dmaOp.getSource()) {
         FailureOr<AMDAIE::TileOp> tile =
@@ -170,9 +180,10 @@ static ControlCodeGraph formControlCodeGraph(
       }
     }
   }
-  return controlCodeGraph;
+  return tileDmaBatchGraph;
 }
 
+/// Given a non-empty DmaBatch find the immediate surrounding parent op.
 static Operation *findParentOpOfBatch(DmaBatch *dmaBatch) {
   if (!dmaBatch->currentDmaOps.empty())
     return dmaBatch->currentDmaOps[0]->getParentOp();
@@ -183,18 +194,17 @@ static Operation *findParentOpOfBatch(DmaBatch *dmaBatch) {
   return parentOp->getParentOp();
 }
 
+/// Given a DmaBatch `outerDmaBatch`, traverse each nested DmaBatch in it and
+/// infer the required Bd Ids for them. If the nsted DmaBatch is surrounded with
+/// a scf.for, we account for that while sending the required Bd Ids to the
+/// caller of this API.
 static int32_t getRequiredBdIdsForInnerBatches(DmaBatch *outerDmaBatch) {
   if (outerDmaBatch->immediateInnerBatches.empty()) return 0;
   int32_t requiredBdIds = 0;
   for (DmaBatch *dmaBatch : outerDmaBatch->immediateInnerBatches) {
-    if (dmaBatch->currentDmaOps.empty() &&
-        dmaBatch->immediateInnerBatches.empty())
-      continue;
     DmaBatch *currDmaBatch = dmaBatch;
     do {
-      if (currDmaBatch->currentDmaOps.empty() &&
-          currDmaBatch->immediateInnerBatches.empty())
-        break;
+      if (isEmptyDmaBatch(currDmaBatch)) break;
       int32_t totalDmaOpsInCurrentBatch = currDmaBatch->currentDmaOps.size();
       int32_t requiredBdIdsForInnerBatches =
           getRequiredBdIdsForInnerBatches(currDmaBatch);
@@ -216,13 +226,13 @@ static int32_t getRequiredBdIdsForInnerBatches(DmaBatch *outerDmaBatch) {
   return requiredBdIds;
 }
 
-static void inferBdIdsRequiredInBatches(ControlCodeGraph &controlCodeGraph) {
-  for (auto [tile, dmaBatch] : controlCodeGraph) {
-    if (dmaBatch->currentDmaOps.empty() &&
-        dmaBatch->immediateInnerBatches.empty())
-      continue;
+/// Traverse each DmaBatch in a given (Tile -> DmaBatch) and infer Bd Ids
+/// required for it.
+static void inferBdIdsRequiredInBatches(TileDmaBatchGraph &tileDmaBatchGraph) {
+  for (auto [tile, dmaBatch] : tileDmaBatchGraph) {
     DmaBatch *currDmaBatch = dmaBatch;
     do {
+      if (isEmptyDmaBatch(currDmaBatch)) break;
       int32_t totalDmaOpsInCurrentBatch = currDmaBatch->currentDmaOps.size();
       int32_t requiredBdIdsForInnerBatches =
           getRequiredBdIdsForInnerBatches(currDmaBatch);
@@ -233,11 +243,15 @@ static void inferBdIdsRequiredInBatches(ControlCodeGraph &controlCodeGraph) {
   }
 }
 
+/// A struct that maintains the channel and source/target information for a
+/// given DmaOp and TileOp.
 typedef struct DmaTileDataStruct {
   uint32_t channel;
   uint32_t bdIdMapIndex;
 } DmaTileData;
 
+/// Given a DmaOp and a TileOp - extract whether the source (or target) operates
+/// on the tile and also extract the corresponding channel.
 static FailureOr<DmaTileData> getDmaTileData(
     AMDAIE::NpuDmaCpyNdOp npuDmaOp, AMDAIE::TileOp tileOp,
     DenseMap<Value, ChannelBdIdGenerator> &shimTileToGeneratorMap) {
@@ -268,6 +282,10 @@ static FailureOr<DmaTileData> getDmaTileData(
   return dmaTileData;
 }
 
+/// Assign required Bd Ids to the DmaOps of the current DmaBatch. This
+/// assignment is tracked by maintaining `dmaOpToBdIdMap`, which essentially
+/// maps a DmaOp to its source/target Bd Ids. Also, the API splits the available
+/// BD IDs equally amongst all DmaOps in the DmaBatch when assigning
 static LogicalResult assignRequiredBdIdsInCurrentBatch(
     IRRewriter &rewriter, AMDAIE::TileOp tileOp, DmaBatch *dmaBatch,
     DenseMap<Value, ChannelBdIdGenerator> &shimTileToGeneratorMap,
@@ -353,6 +371,7 @@ static LogicalResult assignRequiredBdIdsInCurrentBatch(
   return success();
 }
 
+/// Release a given BdId op.
 LogicalResult releaseBdId(
     AMDAIE::BdIdOp bdIdOp,
     DenseMap<Value, ChannelBdIdGenerator> &shimTileToGeneratorMap,
@@ -386,6 +405,10 @@ LogicalResult releaseBdId(
   return success();
 }
 
+/// DmaOps are assigned Bd Ids prior to invoking this function and a map
+/// `dmaOpToBdIdMap` is maintained that maps a DmaOp to its source/target Bd
+/// Ids. For each DmaOp in the list `dmaOps`, this API will check the
+/// `dmaOpToBdIdMap` and release Bd Ids if assigned.
 static LogicalResult releaseAssignedBdIdsInCurrentBatch(
     SmallVector<AMDAIE::NpuDmaCpyNdOp> dmaOps,
     DenseMap<Value, ChannelBdIdGenerator> &shimTileToGeneratorMap,
@@ -409,9 +432,52 @@ static LogicalResult releaseAssignedBdIdsInCurrentBatch(
   return success();
 }
 
-static bool isEmptyDmaBatch(DmaBatch *dmaBatch) {
-  return (dmaBatch->currentDmaOps.empty() &&
-          dmaBatch->immediateInnerBatches.empty());
+/// Declaration of an API which will work on assigning Bd Ids to the inner
+/// DmaBatch of the current DmaBatch `parentDmaBatch`. And maintain a mapping of
+/// DmaOp -> source/target Bd Id which would be used later during new DmaOp
+/// creation/replacement.
+static LogicalResult assignRequiredBdIdsInInnerBatch(
+    IRRewriter &rewriter, AMDAIE::TileOp tileOp, DmaBatch *parentDmaBatch,
+    DenseMap<Value, ChannelBdIdGenerator> &shimTileToGeneratorMap,
+    DenseMap<AMDAIE::BdIdOp, SmallVector<uint32_t>> &bdIdOpToBdIdsMap,
+    DenseMap<AMDAIE::NpuDmaCpyNdOp, SmallVector<AMDAIE::BdIdOp>>
+        &dmaOpToBdIdMap);
+
+/// Since a DmaBatch contains the following :-
+///   1. DmaOps within the current batch.
+///   2. Nested DmaBatch chain.
+///   3. Pointer to the sibling DmaBatch.
+/// This API processes a given DmaBatch by :-
+///   a. Assigning Bd Ids to 1.
+///   b. Assigning Bd Ids to 2.
+///   c. Releasing Bd Ids assigned to 1.
+///   d. Moving on to 3 and repeating steps a-to-d for it.
+static LogicalResult processDmaBatch(
+    IRRewriter &rewriter, AMDAIE::TileOp tileOp, DmaBatch *currDmaBatch,
+    DenseMap<Value, ChannelBdIdGenerator> &shimTileToGeneratorMap,
+    DenseMap<AMDAIE::BdIdOp, SmallVector<uint32_t>> &bdIdOpToBdIdsMap,
+    DenseMap<AMDAIE::NpuDmaCpyNdOp, SmallVector<AMDAIE::BdIdOp>>
+        &dmaOpToBdIdMap) {
+  do {
+    if (isEmptyDmaBatch(currDmaBatch)) break;
+    if (failed(assignRequiredBdIdsInCurrentBatch(
+            rewriter, tileOp, currDmaBatch, shimTileToGeneratorMap,
+            bdIdOpToBdIdsMap, dmaOpToBdIdMap)))
+      return failure();
+
+    if (failed(assignRequiredBdIdsInInnerBatch(
+            rewriter, tileOp, currDmaBatch, shimTileToGeneratorMap,
+            bdIdOpToBdIdsMap, dmaOpToBdIdMap)))
+      return failure();
+
+    if (failed(releaseAssignedBdIdsInCurrentBatch(
+            currDmaBatch->currentDmaOps, shimTileToGeneratorMap,
+            bdIdOpToBdIdsMap, dmaOpToBdIdMap)))
+      return failure();
+
+    currDmaBatch = currDmaBatch->nextDmaBatch;
+  } while (currDmaBatch != nullptr);
+  return success();
 }
 
 static LogicalResult assignRequiredBdIdsInInnerBatch(
@@ -421,63 +487,75 @@ static LogicalResult assignRequiredBdIdsInInnerBatch(
     DenseMap<AMDAIE::NpuDmaCpyNdOp, SmallVector<AMDAIE::BdIdOp>>
         &dmaOpToBdIdMap) {
   for (DmaBatch *dmaBatch : parentDmaBatch->immediateInnerBatches) {
-    DmaBatch *currDmaBatch = dmaBatch;
-    do {
-      if (isEmptyDmaBatch(currDmaBatch)) break;
-      if (failed(assignRequiredBdIdsInCurrentBatch(
-              rewriter, tileOp, currDmaBatch, shimTileToGeneratorMap,
-              bdIdOpToBdIdsMap, dmaOpToBdIdMap)))
-        return failure();
-
-      if (failed(assignRequiredBdIdsInInnerBatch(
-              rewriter, tileOp, currDmaBatch, shimTileToGeneratorMap,
-              bdIdOpToBdIdsMap, dmaOpToBdIdMap)))
-        return failure();
-
-      if (failed(releaseAssignedBdIdsInCurrentBatch(
-              currDmaBatch->currentDmaOps, shimTileToGeneratorMap,
-              bdIdOpToBdIdsMap, dmaOpToBdIdMap)))
-        return failure();
-
-      // Now release assigned BdIds.
-      currDmaBatch = currDmaBatch->nextDmaBatch;
-    } while (currDmaBatch != nullptr);
+    if (failed(processDmaBatch(rewriter, tileOp, dmaBatch,
+                               shimTileToGeneratorMap, bdIdOpToBdIdsMap,
+                               dmaOpToBdIdMap)))
+      return failure();
   }
   return success();
 }
 
+/// This API will work on assigning Bd Ids to each DmaBatch belonging to a
+/// particular Tile. And maintain a mapping of DmaOp -> source/target Bd Id
+/// which would be used later during new DmaOp creation/replacement.
 static LogicalResult assignRequiredBdIdsInBatch(
-    IRRewriter &rewriter, ControlCodeGraph &controlCodeGraph,
+    IRRewriter &rewriter, TileDmaBatchGraph &tileDmaBatchGraph,
     DenseMap<Value, ChannelBdIdGenerator> &shimTileToGeneratorMap,
     DenseMap<AMDAIE::BdIdOp, SmallVector<uint32_t>> &bdIdOpToBdIdsMap,
     DenseMap<AMDAIE::NpuDmaCpyNdOp, SmallVector<AMDAIE::BdIdOp>>
         &dmaOpToBdIdMap) {
-  for (auto [tileOp, dmaBatch] : controlCodeGraph) {
-    // Find required BD ID by the DMA Ops in current batch.
-    // Required Bd Id = Total Dma Ops in current Batch + Bd Ids required by
-    // nested batches.
-    DmaBatch *currDmaBatch = dmaBatch;
-    do {
-      if (isEmptyDmaBatch(currDmaBatch)) break;
-      if (failed(assignRequiredBdIdsInCurrentBatch(
-              rewriter, tileOp, currDmaBatch, shimTileToGeneratorMap,
-              bdIdOpToBdIdsMap, dmaOpToBdIdMap)))
-        return failure();
-
-      if (failed(assignRequiredBdIdsInInnerBatch(
-              rewriter, tileOp, currDmaBatch, shimTileToGeneratorMap,
-              bdIdOpToBdIdsMap, dmaOpToBdIdMap)))
-        return failure();
-
-      if (failed(releaseAssignedBdIdsInCurrentBatch(
-              currDmaBatch->currentDmaOps, shimTileToGeneratorMap,
-              bdIdOpToBdIdsMap, dmaOpToBdIdMap)))
-        return failure();
-
-      // Now release assigned BdIds.
-      currDmaBatch = currDmaBatch->nextDmaBatch;
-    } while (currDmaBatch != nullptr);
+  for (auto [tileOp, dmaBatch] : tileDmaBatchGraph) {
+    if (failed(processDmaBatch(rewriter, tileOp, dmaBatch,
+                               shimTileToGeneratorMap, bdIdOpToBdIdsMap,
+                               dmaOpToBdIdMap)))
+      return failure();
   }
+  return success();
+}
+
+/// Traverse each DmaOp inside ControlCode and replace it with new new DmaOp
+/// that has Bd Ids assigned using `dmaOpToBdIdMap`.
+static LogicalResult createNewDmaOpsAndReplaceOldDmaOps(
+    IRRewriter &rewriter, AMDAIE::ControlCodeOp controlCodeOp,
+    DenseMap<AMDAIE::NpuDmaCpyNdOp, SmallVector<AMDAIE::BdIdOp>>
+        &dmaOpToBdIdMap) {
+  WalkResult res = controlCodeOp->walk([&](AMDAIE::NpuDmaCpyNdOp npuDmaOp) {
+    if (npuDmaOp.getSource()) {
+      assert(dmaOpToBdIdMap.contains(npuDmaOp) && "No BD ID mapping found");
+      assert((dmaOpToBdIdMap[npuDmaOp][/*sourceBdIdIndex=*/0] != nullptr) &&
+             "No source BD ID mapping found");
+      AMDAIE::BdIdOp bdIdOp = dmaOpToBdIdMap[npuDmaOp][/*sourceBdIdIndex=*/0];
+      rewriter.setInsertionPoint(npuDmaOp);
+      AMDAIE::NpuDmaCpyNdOp oldNpuDmaOp = npuDmaOp;
+      npuDmaOp = rewriter.replaceOpWithNewOp<AMDAIE::NpuDmaCpyNdOp>(
+          npuDmaOp, npuDmaOp.getResultTypes(), npuDmaOp.getConnection(),
+          npuDmaOp.getTarget(), npuDmaOp.getTargetMixedOffsets(),
+          npuDmaOp.getTargetMixedSizes(), npuDmaOp.getTargetMixedStrides(),
+          npuDmaOp.getTargetBdId(), npuDmaOp.getSource(),
+          npuDmaOp.getSourceMixedOffsets(), npuDmaOp.getSourceMixedSizes(),
+          npuDmaOp.getSourceMixedStrides(), bdIdOp);
+      // Since we have created a new NPU DMA op by assigning BD ID to the
+      // source, we need to copy the BD ID assignment to this new NPU DMA op
+      // in order to preserve the information about target BD ID candidate.
+      dmaOpToBdIdMap[npuDmaOp] = dmaOpToBdIdMap[oldNpuDmaOp];
+    }
+    if (npuDmaOp.getTarget()) {
+      assert(dmaOpToBdIdMap.contains(npuDmaOp) && "No BD ID mapping found");
+      assert((dmaOpToBdIdMap[npuDmaOp][/*targetBdIdIndex=*/1] != nullptr) &&
+             "No target BD ID mapping found");
+      AMDAIE::BdIdOp bdIdOp = dmaOpToBdIdMap[npuDmaOp][/*targetBdIdIndex=*/1];
+      rewriter.setInsertionPoint(npuDmaOp);
+      (void)rewriter.replaceOpWithNewOp<AMDAIE::NpuDmaCpyNdOp>(
+          npuDmaOp, npuDmaOp.getResultTypes(), npuDmaOp.getConnection(),
+          npuDmaOp.getTarget(), npuDmaOp.getTargetMixedOffsets(),
+          npuDmaOp.getTargetMixedSizes(), npuDmaOp.getTargetMixedStrides(),
+          bdIdOp, npuDmaOp.getSource(), npuDmaOp.getSourceMixedOffsets(),
+          npuDmaOp.getSourceMixedSizes(), npuDmaOp.getSourceMixedStrides(),
+          npuDmaOp.getSourceBdId());
+    }
+    return WalkResult::advance();
+  });
+  if (res.wasInterrupted()) return failure();
   return success();
 }
 
@@ -512,55 +590,19 @@ LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
   // Since a DMA op can have source and target, therefore we can have two BD IDs
   // for any DMA op. Hence we maintain a map from DMA op to a vector of BD IDs.
   DenseMap<AMDAIE::NpuDmaCpyNdOp, SmallVector<AMDAIE::BdIdOp>> dmaOpToBdIdMap;
-  ControlCodeGraph controlCodeGraph =
-      formControlCodeGraph(workgroupOp, controlCodeOp, shimTileToGeneratorMap);
-  inferBdIdsRequiredInBatches(controlCodeGraph);
-  if (failed(assignRequiredBdIdsInBatch(rewriter, controlCodeGraph,
+  TileDmaBatchGraph tileDmaBatchGraph =
+      formTileDmaBatchGraph(workgroupOp, controlCodeOp, shimTileToGeneratorMap);
+  inferBdIdsRequiredInBatches(tileDmaBatchGraph);
+  if (failed(assignRequiredBdIdsInBatch(rewriter, tileDmaBatchGraph,
                                         shimTileToGeneratorMap,
                                         bdIdOpToBdIdsMap, dmaOpToBdIdMap)))
     return failure();
+  if (failed(createNewDmaOpsAndReplaceOldDmaOps(rewriter, controlCodeOp,
+                                                dmaOpToBdIdMap)))
+    return failure();
   // At this step we have all the information to traverse and perform the
   // replacements of the DMA Ops.
-  WalkResult res = controlCodeOp->walk([&](Operation *op) {
-    if (auto npuDmaOp = dyn_cast<AMDAIE::NpuDmaCpyNdOp>(op)) {
-      if (npuDmaOp.getSource()) {
-        assert(dmaOpToBdIdMap.contains(npuDmaOp) && "No BD ID mapping found");
-        assert((dmaOpToBdIdMap[npuDmaOp][/*sourceBdIdIndex=*/0] != nullptr) &&
-               "No source BD ID mapping found");
-        AMDAIE::BdIdOp bdIdOp = dmaOpToBdIdMap[npuDmaOp][/*sourceBdIdIndex=*/0];
-        rewriter.setInsertionPoint(npuDmaOp);
-        AMDAIE::NpuDmaCpyNdOp oldNpuDmaOp = npuDmaOp;
-        npuDmaOp = rewriter.replaceOpWithNewOp<AMDAIE::NpuDmaCpyNdOp>(
-            npuDmaOp, npuDmaOp.getResultTypes(), npuDmaOp.getConnection(),
-            npuDmaOp.getTarget(), npuDmaOp.getTargetMixedOffsets(),
-            npuDmaOp.getTargetMixedSizes(), npuDmaOp.getTargetMixedStrides(),
-            npuDmaOp.getTargetBdId(), npuDmaOp.getSource(),
-            npuDmaOp.getSourceMixedOffsets(), npuDmaOp.getSourceMixedSizes(),
-            npuDmaOp.getSourceMixedStrides(), bdIdOp);
-        // Since we have created a new NPU DMA op by assigning BD ID to the
-        // source, we need to copy the BD ID assignment to this new NPU DMA op
-        // in order to preserve the information about target BD ID candidate.
-        dmaOpToBdIdMap[npuDmaOp] = dmaOpToBdIdMap[oldNpuDmaOp];
-      }
-      if (npuDmaOp.getTarget()) {
-        assert(dmaOpToBdIdMap.contains(npuDmaOp) && "No BD ID mapping found");
-        assert((dmaOpToBdIdMap[npuDmaOp][/*targetBdIdIndex=*/1] != nullptr) &&
-               "No target BD ID mapping found");
-        AMDAIE::BdIdOp bdIdOp = dmaOpToBdIdMap[npuDmaOp][/*targetBdIdIndex=*/1];
-        rewriter.setInsertionPoint(npuDmaOp);
-        (void)rewriter.replaceOpWithNewOp<AMDAIE::NpuDmaCpyNdOp>(
-            npuDmaOp, npuDmaOp.getResultTypes(), npuDmaOp.getConnection(),
-            npuDmaOp.getTarget(), npuDmaOp.getTargetMixedOffsets(),
-            npuDmaOp.getTargetMixedSizes(), npuDmaOp.getTargetMixedStrides(),
-            bdIdOp, npuDmaOp.getSource(), npuDmaOp.getSourceMixedOffsets(),
-            npuDmaOp.getSourceMixedSizes(), npuDmaOp.getSourceMixedStrides(),
-            npuDmaOp.getSourceBdId());
-      }
-      return WalkResult::advance();
-    }
-    return WalkResult::advance();
-  });
-  if (res.wasInterrupted()) return failure();
+
   return success();
 }
 
