@@ -233,19 +233,19 @@ LogicalResult bankAwareAllocation(TileOp tile, SetVector<BufferOp> buffers,
   // Leave room at the bottom of the address range for stack.
   if (CoreOp core = tile.getCoreOp()) {
     int64_t stackSize = core.getStackSize();
-    if (stackSize > bankSize)
+    if (stackSize > bankSize) {
       return tile.emitOpError("stack size: ")
              << stackSize
              << " should not be larger than the bank size: " << bankSize;
+    }
     nextAddrInBanks[0] += stackSize;
   }
 
   // Each entry of `bankLimits` contains pairs of start and end addresses for
   // that bank.
   SmallVector<BankLimits> bankLimits;
-  for (int i = 0; i < numBanks; i++) {
+  for (int i = 0; i < numBanks; i++)
     bankLimits.emplace_back(i * bankSize, (i + 1) * bankSize);
-  }
 
   // The buffers with an already specified address will not be overwritten
   // (the available address range of the bank the buffers are in will start
@@ -259,10 +259,11 @@ LogicalResult bankAwareAllocation(TileOp tile, SetVector<BufferOp> buffers,
     FailureOr<bool> has_addr = checkAndAddBufferWithAddress(
         buffer, bankSize, nextAddrInBanks, bankLimits);
     if (failed(has_addr) || failed(has_bank)) return failure();
-    if (!has_addr.value() && !has_bank.value())
+    if (!has_addr.value() && !has_bank.value()) {
       buffersToAlloc.push_back(buffer);
-    else
+    } else {
       preAllocatedBuffers.push_back(buffer);
+    }
   }
 
   // Sort by largest allocation size before allocating.
@@ -274,11 +275,11 @@ LogicalResult bankAwareAllocation(TileOp tile, SetVector<BufferOp> buffers,
 
   // Set addresses for remaining buffers.
   SmallVector<BufferOp> allocatedBuffers;
-  int bankIndex = 0;
+  int startBankIndex = 0;
   for (BufferOp buffer : buffersToAlloc) {
     // If the buffer doesn't fit in any of the bank space, it emits an error
     // and then deallocates all the buffers.
-    if (!setBufferAddress(buffer, numBanks, bankSize, bankIndex,
+    if (!setBufferAddress(buffer, numBanks, bankSize, startBankIndex,
                           nextAddrInBanks, bankLimits)) {
       deAllocateBuffers(allocatedBuffers);
       return failure();
