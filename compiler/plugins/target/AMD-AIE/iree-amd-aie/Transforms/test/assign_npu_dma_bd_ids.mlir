@@ -637,6 +637,12 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
+// Here we have three scf.for ops where the last two scf.for ops are nested with no dma ops in between.
+// So we'd expect the dma op before the second last scf.for to have the following total no. of required Bd Ids :-
+//    1 (Bd Id reqired by itself) + 2 * 2 * 1
+// i.e. 5 Bd Ids, where 2 * 2 is the loop iteration count of the two nested scf.for ops which is multiplied
+//      by the no. of Bd Ids required by DmaOps inside the innermost scf.for (1).
+
 // CHECK: #map = affine_map<(d0) -> (d0 mod 4)>
 // CHECK: #map1 = affine_map<(d0) -> (d0 mod 12 + 4)>
 // CHECK-LABEL: @nested_loops_with_no_dma_ops_in_between
