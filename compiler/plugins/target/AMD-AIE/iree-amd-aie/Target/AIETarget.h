@@ -84,7 +84,7 @@ struct AMDAIEOptions {
   }
 
   std::string enableAMDAIEUkernels{"none"};
-  PacketFlowStrategy enablePacketFlow{PacketFlowStrategy::None};
+  PacketFlowStrategy packetFlowStrategy{PacketFlowStrategy::None};
   bool enableCtrlPkt{false};
 
   enum class DeviceHAL { XRT, XRT_LITE };
@@ -297,7 +297,7 @@ struct AMDAIEOptions {
             "ignore this flag, and use a hardcoded number of cols."));
 
     binder.opt<PacketFlowStrategy>(
-        "iree-amdaie-enable-packet-flow", enablePacketFlow,
+        "iree-amdaie-packet-flow-strategy", packetFlowStrategy,
         llvm::cl::cat(category),
         llvm::cl::desc("Enable packet routing data movements"),
         llvm::cl::values(clEnumValN(PacketFlowStrategy::None, "none",

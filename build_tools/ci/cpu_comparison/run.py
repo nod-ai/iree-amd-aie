@@ -155,11 +155,11 @@ class BaseTest(ABC):
             self.add_aie_compilation_flags(["--iree-amdaie-enable-control-packet=true"])
             # Ensure the packet flow flag is also set; add as `auto` if missing.
             if not any(
-                flag.startswith("--iree-amdaie-enable-packet-flow=")
+                flag.startswith("--iree-amdaie-packet-flow-strategy=")
                 for flag in self.aie_compilation_flags
             ):
                 self.add_aie_compilation_flags(
-                    ["--iree-amdaie-enable-packet-flow=auto"]
+                    ["--iree-amdaie-packet-flow-strategy=auto"]
                 )
             self.name += "_ctrlpkt"
 
@@ -2329,7 +2329,9 @@ class Tests:
             if use_packet_flow:
                 # Only enable packet flows for kernel inputs to prevent potential deadlock.
                 # TODO (zhewen): Support kernel outputs.
-                aie_compilation_flags.append("--iree-amdaie-enable-packet-flow=inputs")
+                aie_compilation_flags.append(
+                    "--iree-amdaie-packet-flow-strategy=inputs"
+                )
                 name_suffix += "_packet_flow"
 
             # This should only be the case for benchmark tests which we expect

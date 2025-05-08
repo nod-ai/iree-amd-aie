@@ -1,4 +1,4 @@
-// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-assign-connection-types)" --split-input-file --verify-diagnostics %s | FileCheck %s
+// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-assign-connection-types{packet-flow-strategy=none})" --split-input-file --verify-diagnostics %s | FileCheck %s
 // RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-assign-connection-types{packet-flow-strategy=auto})" --split-input-file --verify-diagnostics %s | FileCheck %s -check-prefix=AUTO-PACKET
 // RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-assign-connection-types{packet-flow-strategy=inputs})" --split-input-file --verify-diagnostics %s | FileCheck %s -check-prefix=INPUT-PACKET
 // RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-assign-connection-types{packet-flow-strategy=outputs})" --split-input-file --verify-diagnostics %s | FileCheck %s -check-prefix=OUTPUT-PACKET

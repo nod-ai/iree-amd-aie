@@ -31,7 +31,7 @@ class AMDAIEAssignConnectionTypesPass
   void runOnOperation() override;
 };
 
-/// Utility function to retrieve the endpoint infomation (tile location, port
+/// Utility function to retrieve the endpoint information (tile location, port
 /// type and direction) from a connection operation. It handles both the
 /// source(s) and target(s) of the connection.
 FailureOr<SmallVector<PhysBundle>> getAllPhysBundles(
@@ -58,7 +58,7 @@ FailureOr<SmallVector<PhysBundle>> getAllPhysBundles(
       for (Value value : logicalObjFifoOp.getTiles()) {
         auto tileOp = dyn_cast<AMDAIE::TileOp>(value.getDefiningOp());
         if (!tileOp)
-          return connectionOp.emitOpError() << "expected a `amdaie.tile` op";
+          return connectionOp.emitOpError() << "expected an `amdaie.tile` op";
         int32_t col = getConstantIndexOrAssert(tileOp.getCol());
         int32_t row = getConstantIndexOrAssert(tileOp.getRow());
         physBundles.push_back(
@@ -67,8 +67,10 @@ FailureOr<SmallVector<PhysBundle>> getAllPhysBundles(
     } else {
       for (Value channel : channels) {
         auto channelOp = dyn_cast<AMDAIE::ChannelOp>(channel.getDefiningOp());
-        if (!channelOp)
-          return connectionOp.emitOpError() << "expected a `amdaie.channel` op";
+        if (!channelOp) {
+          return connectionOp.emitOpError()
+                 << "expected an `amdaie.channel` op";
+        }
         AMDAIE::TileOp tileOp = channelOp.getTileOp();
         int32_t col = getConstantIndexOrAssert(tileOp.getCol());
         int32_t row = getConstantIndexOrAssert(tileOp.getRow());
@@ -144,30 +146,31 @@ LogicalResult congestionAwareAutoAssignment(Operation *parentOp,
                        preAssignedConnections.end());
   connectionOps.append(unassignedConnections.begin(),
                        unassignedConnections.end());
-  // Iterate through the connections and assign types based on the
-  // congestion status of the bundles.
+  // `circuitUsage` and `packetUsage` are used to track the number of
+  // connections assigned to each bundle. `maxCircuitUsage` is used to track
+  // the maximum number of circuit connections allowed for each bundle, i.e. the
+  // number of channels available.
   DenseMap<PhysBundle, uint32_t> circuitUsage, packetUsage, maxCircuitUsage;
   auto getOrInitMaxUsage = [&](const PhysBundle &b) -> uint32_t {
-    if (!maxCircuitUsage.count(b)) {
+    if (maxCircuitUsage.count(b)) return maxCircuitUsage[b];
+    // Cannot just use `getNumSource/DestSwitchBoxConnections` due to shimmux.
+    if (b.portType == AMDAIE::StrmSwPortType::DMA) {
       AMDAIETileType tileType =
           deviceModel.getTileType(b.tileLoc.col, b.tileLoc.row);
-      // Cannot just use `getNumSource/DestSwitchBoxConnections` due to shimmux.
-      if (b.portType == AMDAIE::StrmSwPortType::DMA) {
-        maxCircuitUsage[b] = deviceModel.getDmaProp<uint8_t>(
-            tileType, AMDAIEDmaProp::NumChannels);
-      } else {
-        maxCircuitUsage[b] =
-            (b.direction == AMDAIE::DMAChannelDir::MM2S)
-                ? deviceModel.getNumSourceSwitchBoxConnections(
-                      b.tileLoc.col, b.tileLoc.row, b.portType)
-                : deviceModel.getNumDestSwitchBoxConnections(
-                      b.tileLoc.col, b.tileLoc.row, b.portType);
-      }
+      maxCircuitUsage[b] =
+          deviceModel.getDmaProp<uint8_t>(tileType, AMDAIEDmaProp::NumChannels);
+    } else {
+      maxCircuitUsage[b] = (b.direction == AMDAIE::DMAChannelDir::MM2S)
+                               ? deviceModel.getNumSourceSwitchBoxConnections(
+                                     b.tileLoc.col, b.tileLoc.row, b.portType)
+                               : deviceModel.getNumDestSwitchBoxConnections(
+                                     b.tileLoc.col, b.tileLoc.row, b.portType);
     }
     return maxCircuitUsage[b];
   };
-  for (size_t i = 0; i < connectionOps.size(); ++i) {
-    AMDAIE::ConnectionOp connectionOp = connectionOps[i];
+  // Iterate through the connections and assign types based on the
+  // congestion status of the bundles.
+  for (auto [i, connectionOp] : llvm::enumerate(connectionOps)) {
     AMDAIE::ConnectionType connectionType = AMDAIE::ConnectionType::Circuit;
     FailureOr<SmallVector<PhysBundle>> physBundles =
         getAllPhysBundles(connectionOp);
@@ -186,7 +189,7 @@ LogicalResult congestionAwareAutoAssignment(Operation *parentOp,
           break;
         }
         // If the bundle is one usage away from its maximum, and there are
-        // upcoming unassigned connections that will use this bundle. Then set
+        // upcoming unassigned connections that will use this bundle, then set
         // the current connection type to packet.
         if (circuitUsage[physBundle] == maxUsage - 1) {
           FailureOr<bool> isContained = containsPhysBundle(

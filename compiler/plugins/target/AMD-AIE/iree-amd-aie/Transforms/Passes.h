@@ -15,7 +15,7 @@ namespace mlir::iree_compiler::AMDAIE {
 
 /// Add passes to lower to AIE objectFifos.
 void addAMDAIEObjectFifoLoweringPasses(
-    OpPassManager &passManager, PacketFlowStrategy enablePacketFlow,
+    OpPassManager &passManager, PacketFlowStrategy packetFlowStrategy,
     TilePassPipeline useTilePipeline, bool enableVectorizationPasses,
     bool enableCoalescingLoops, bool enableCollapsingUnitDims,
     OutliningStrategy enableFunctionOutlining, int outliningLoopInCallCount,
@@ -41,7 +41,7 @@ void buildAMDAIETransformPassPipeline(
     uint32_t numCols, TilePassPipeline useTilePipeline,
     LowerToAIEPassPipeline useLowerToAIEPipeline, bool matmulElementwiseFusion,
     bool enableVectorizationPasses, std::string enableAMDAIEUkernels,
-    const std::string &pathToUkernels, PacketFlowStrategy enablePacketFlow,
+    const std::string &pathToUkernels, PacketFlowStrategy packetFlowStrategy,
     bool enableCoalescingLoops, bool enableCollapsingUnitDims,
     OutliningStrategy enableFunctionOutlining, int outliningLoopInCallCount,
     bool insertLoopAroundCoreBlock, bool emitCtrlPkt);
