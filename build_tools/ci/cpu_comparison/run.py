@@ -2254,6 +2254,7 @@ class Tests:
             run_on_target = test.get("run_on_target", "npu1_4col")
             in_dtype = test.get("in_dtype", "bf16")
             out_dtype = test.get("out_dtype", "f32")
+            stack_size = test.get("stack_size", "1024")
             use_packet_flow = test.get("use_packet_flow", False)
 
             # Default of 1 means that outlined functions are called once at each
@@ -2279,6 +2280,7 @@ class Tests:
             aie_compilation_flags += [
                 outlining_string,
                 f"--iree-amd-aie-additional-peano-opt-flags={peano_opt_level_string}",
+                f"--iree-amdaie-stack-size={stack_size}",
             ]
 
             if call_replication != 1:
