@@ -36,11 +36,24 @@ def AMDAIEAssignConnectionTypes :
   let constructor =
     "mlir::iree_compiler::AMDAIE::createAMDAIEAssignConnectionTypesPass()";
   let options = [
-    Option<"enableInputPacketFlow", "enable-input-packet-flow", "bool", /*default=*/"false",
-      "Enable packet routing for connections belonging to send kernel inputs.">,
-    Option<"enableOutputPacketFlow", "enable-output-packet-flow", "bool", /*default=*/"false",
-      "Enable packet routing for connections belonging to send kernel outputs.">,
-  ];
+    Option<"packetFlowStrategy", "packet-flow-strategy",
+      "mlir::iree_compiler::AMDAIE::PacketFlowStrategy",
+      /*default=*/"mlir::iree_compiler::AMDAIE::PacketFlowStrategy::None",
+      "The strategy to be used for assigning packet flows.",
+      [{::llvm::cl::values(
+        clEnumValN(mlir::iree_compiler::AMDAIE::PacketFlowStrategy::None, "none",
+                   "No packet flow will be used."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::PacketFlowStrategy::Auto, "auto",
+                   "Congestion-aware packet flow assignment."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::PacketFlowStrategy::Inputs, "inputs",
+                   "Use packet mode on all input flows."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::PacketFlowStrategy::Outputs, "outputs",
+                    "Use packet mode on all output flows."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::PacketFlowStrategy::All, "all",
+                    "Use packet mode on all flows.")
+      )}]>
+    ];
+
 }
 
 def AMDAIEAssignLogicalObjectFifoDepth :
