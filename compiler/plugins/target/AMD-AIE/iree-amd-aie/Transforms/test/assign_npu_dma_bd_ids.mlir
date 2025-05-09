@@ -550,7 +550,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // Expect all DMA ops, between the first DMA op and its corresponding DMA wait op, operating
 // within same scf.for's block and on same tile to have equal BD ID distribution for the
 // corresponding source/target. This test demonstrates how even with different tile distribution
-// amongst the DMA ops a well distributed BD ID assignment split is ensured.
+// amongs the DMA ops a well distributed BD ID assignment split is ensured.
 //
 //       CHECK: #map1 = affine_map<(d0) -> (d0 mod 5)>
 //       CHECK: #map2 = affine_map<(d0) -> (d0 mod 5 + 5)>
