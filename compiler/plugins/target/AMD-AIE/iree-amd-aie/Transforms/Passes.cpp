@@ -604,7 +604,8 @@ void buildAMDAIETransformPassPipeline(
     const std::string &pathToUkernels, bool enableInputPacketFlow,
     bool enableOutputPacketFlow, bool enableCoalescingLoops,
     bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
-    int callReplication, bool insertLoopAroundCoreBlock, bool enableCtrlPkt) {
+    int callReplication, bool insertLoopAroundCoreBlock, bool enableCtrlPkt,
+    uint32_t coreStackSize) {
   OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
   {
     FunctionLikeNest funcPassManager(modulePassManager);
@@ -637,7 +638,7 @@ void buildAMDAIETransformPassPipeline(
         modulePassManager, enableInputPacketFlow, enableOutputPacketFlow,
         useTilePipeline, enableVectorizationPasses, enableCoalescingLoops,
         enableCollapsingUnitDims, enableFunctionOutlining, callReplication,
-        insertLoopAroundCoreBlock, numCols, enableCtrlPkt);
+        insertLoopAroundCoreBlock, numCols, enableCtrlPkt, coreStackSize);
   } else if (useLowerToAIEPipeline == LowerToAIEPassPipeline::AIR) {
     addMLIRAIRLoweringPasses(modulePassManager, device, useTilePipeline,
                              matmulElementwiseFusion,
@@ -663,7 +664,7 @@ void addAMDAIEObjectFifoLoweringPasses(
     bool enableVectorizationPasses, bool enableCoalescingLoops,
     bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
     int callReplication, bool insertLoopAroundCoreBlock, uint32_t numCols,
-    bool enableCtrlPkt) {
+    bool enableCtrlPkt, uint32_t coreStackSize) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
 
@@ -687,7 +688,7 @@ void addAMDAIEObjectFifoLoweringPasses(
   }
 
   passManager.addPass(createAMDAIENormalizeLoopBoundsPass());
-  passManager.addPass(createAMDAIEInsertCoresPass());
+  passManager.addPass(createAMDAIEInsertCoresPass({coreStackSize}));
 
   // Create function outlining options object, etc.
   {

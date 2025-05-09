@@ -834,7 +834,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:     %[[TILE_0_2:.+]] = aie.tile(0, 2)
 // CHECK:     aie.core(%[[TILE_0_2]]) {
 // CHECK:       aie.end
-// CHECK:     }
+// CHECK:     } {stack_size = 2048 : i32}
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @core() {
@@ -844,7 +844,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %tile_0_2 = amdaie.tile(%c0, %c2)
       %core_0_0 = amdaie.core(%tile_0_2, in : [], out : []) {
         amdaie.end
-      }
+      } {stack_size = 2048 : i32}
       amdaie.controlcode {
         amdaie.end
       }

@@ -35,9 +35,11 @@ AMDAIE::CoreOp CoreContext::mergeCoreOps(AMDAIE::CoreOp source,
                                             destOutputDmas.end());
   outputDmas.insert(sourceOutputDmas.begin(), sourceOutputDmas.end());
   rewriter.setInsertionPoint(source);
-  auto newCoreOp = rewriter.create<AMDAIE::CoreOp>(rewriter.getUnknownLoc(),
-                                                   tile, inputDmas.takeVector(),
-                                                   outputDmas.takeVector());
+  // Use the max stack size for the combined core.
+  uint32_t maxStackSize = std::max(source.getStackSize(), dest.getStackSize());
+  auto newCoreOp = rewriter.create<AMDAIE::CoreOp>(
+      rewriter.getUnknownLoc(), tile, inputDmas.takeVector(),
+      outputDmas.takeVector(), maxStackSize);
   Region &region = newCoreOp.getRegion();
   Block *newBlock = rewriter.createBlock(&region);
   rewriter.setInsertionPointToStart(newBlock);
