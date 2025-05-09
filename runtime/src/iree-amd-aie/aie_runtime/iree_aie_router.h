@@ -71,24 +71,24 @@ struct SwitchSetting {
 
 using SwitchSettings = std::map<TileLoc, SwitchSetting>;
 
-struct PhysBundle {
+struct PhysPortType {
   TileLoc tileLoc;
   StrmSwPortType portType;
   DMAChannelDir direction;
-  PhysBundle() = default;
-  PhysBundle(TileLoc t, StrmSwPortType p, DMAChannelDir d)
+  PhysPortType() = default;
+  PhysPortType(TileLoc t, StrmSwPortType p, DMAChannelDir d)
       : tileLoc(t), portType(p), direction(d) {}
   using TupleType = std::tuple<TileLoc, StrmSwPortType, DMAChannelDir>;
-  PhysBundle(TupleType t)
-      : PhysBundle(std::get<0>(t), std::get<1>(t), std::get<2>(t)) {}
+  PhysPortType(TupleType t)
+      : PhysPortType(std::get<0>(t), std::get<1>(t), std::get<2>(t)) {}
   operator TupleType() const { return {tileLoc, portType, direction}; }
-  friend llvm::hash_code hash_value(const PhysBundle &p) {
+  friend llvm::hash_code hash_value(const PhysPortType &p) {
     std::size_t h1 = std::hash<TileLoc>{}(p.tileLoc);
     std::size_t h2 = std::hash<StrmSwPortType>{}(p.portType);
     std::size_t h3 = std::hash<DMAChannelDir>{}(p.direction);
     return llvm::hash_combine(h1, h2, h3);
   }
-  TUPLE_LIKE_STRUCT_RELATIONAL_OPS(PhysBundle)
+  TUPLE_LIKE_STRUCT_RELATIONAL_OPS(PhysPortType)
 };
 
 struct PhysPort {
@@ -212,9 +212,9 @@ struct DenseMapInfo<mlir::iree_compiler::AMDAIE::Connect>
 };
 
 template <>
-struct DenseMapInfo<mlir::iree_compiler::AMDAIE::PhysBundle>
+struct DenseMapInfo<mlir::iree_compiler::AMDAIE::PhysPortType>
     : TupleStructDenseMapInfo<
-          mlir::iree_compiler::AMDAIE::PhysBundle::TupleType> {};
+          mlir::iree_compiler::AMDAIE::PhysPortType::TupleType> {};
 
 template <>
 struct DenseMapInfo<mlir::iree_compiler::AMDAIE::PhysPort>

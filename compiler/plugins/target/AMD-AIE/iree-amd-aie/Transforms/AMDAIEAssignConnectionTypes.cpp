@@ -34,9 +34,9 @@ class AMDAIEAssignConnectionTypesPass
 /// Utility function to retrieve the endpoint information (tile location, port
 /// type and direction) from a connection operation. It handles both the
 /// source(s) and target(s) of the connection.
-FailureOr<SmallVector<PhysBundle>> getAllPhysBundles(
+FailureOr<SmallVector<PhysPortType>> getAllPhysPortTypes(
     AMDAIE::ConnectionOp connectionOp) {
-  SmallVector<PhysBundle> physBundles;
+  SmallVector<PhysPortType> physPortTypes;
 
   auto process = [&](AMDAIE::DMAChannelDir direction) -> LogicalResult {
     SmallVector<Value> channels = (direction == AMDAIE::DMAChannelDir::MM2S)
@@ -61,7 +61,7 @@ FailureOr<SmallVector<PhysBundle>> getAllPhysBundles(
           return connectionOp.emitOpError() << "expected an `amdaie.tile` op";
         int32_t col = getConstantIndexOrAssert(tileOp.getCol());
         int32_t row = getConstantIndexOrAssert(tileOp.getRow());
-        physBundles.push_back(
+        physPortTypes.push_back(
             {{col, row}, AMDAIE::StrmSwPortType::DMA, direction});
       }
     } else {
@@ -74,7 +74,8 @@ FailureOr<SmallVector<PhysBundle>> getAllPhysBundles(
         AMDAIE::TileOp tileOp = channelOp.getTileOp();
         int32_t col = getConstantIndexOrAssert(tileOp.getCol());
         int32_t row = getConstantIndexOrAssert(tileOp.getRow());
-        physBundles.push_back({{col, row}, channelOp.getPortType(), direction});
+        physPortTypes.push_back(
+            {{col, row}, channelOp.getPortType(), direction});
       }
     }
     return success();
@@ -85,28 +86,13 @@ FailureOr<SmallVector<PhysBundle>> getAllPhysBundles(
       failed(process(AMDAIE::DMAChannelDir::S2MM))) {
     return failure();
   }
-  return physBundles;
-}
-
-/// Checks if the given `PhysBundle` is contained in the provided list of
-/// connection operations.
-FailureOr<bool> containsPhysBundle(
-    const PhysBundle &key, ArrayRef<AMDAIE::ConnectionOp> connectionOps) {
-  for (AMDAIE::ConnectionOp op : connectionOps) {
-    FailureOr<SmallVector<PhysBundle>> result = getAllPhysBundles(op);
-    if (failed(result)) return failure();
-    if (llvm::any_of(*result, [&](const PhysBundle &physBundle) {
-          return physBundle == key;
-        })) {
-      return true;
-    }
-  }
-  return false;
+  return physPortTypes;
 }
 
 void updateConnectionType(IRRewriter &rewriter,
                           AMDAIE::ConnectionOp connectionOp,
                           AMDAIE::ConnectionType connectionType) {
+  OpBuilder::InsertionGuard g(rewriter);
   rewriter.setInsertionPoint(connectionOp);
   ConnectionTypeAttr connectionTypeAttr =
       ConnectionTypeAttr::get(rewriter.getContext(), connectionType);
@@ -120,6 +106,7 @@ void updateConnectionType(IRRewriter &rewriter,
 /// discovered.
 LogicalResult congestionAwareAutoAssignment(Operation *parentOp,
                                             IRRewriter &rewriter) {
+  OpBuilder::InsertionGuard g(rewriter);
   // Get the device model.
   auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(parentOp);
   std::optional<AMDAIEDevice> maybeDevice = getConfigAMDAIEDevice(targetAttr);
@@ -147,11 +134,11 @@ LogicalResult congestionAwareAutoAssignment(Operation *parentOp,
   connectionOps.append(unassignedConnections.begin(),
                        unassignedConnections.end());
   // `circuitUsage` and `packetUsage` are used to track the number of
-  // connections assigned to each bundle. `maxCircuitUsage` is used to track
-  // the maximum number of circuit connections allowed for each bundle, i.e. the
-  // number of channels available.
-  DenseMap<PhysBundle, uint32_t> circuitUsage, packetUsage, maxCircuitUsage;
-  auto getOrInitMaxUsage = [&](const PhysBundle &b) -> uint32_t {
+  // connections assigned to each physical port type. `maxCircuitUsage` is used
+  // to track the maximum number of circuit connections allowed for each
+  // physical port type, i.e. the number of channels available.
+  DenseMap<PhysPortType, uint32_t> circuitUsage, packetUsage, maxCircuitUsage;
+  auto getOrInitMaxUsage = [&](const PhysPortType &b) -> uint32_t {
     if (maxCircuitUsage.count(b)) return maxCircuitUsage[b];
     // Cannot just use `getNumSource/DestSwitchBoxConnections` due to shimmux.
     if (b.portType == AMDAIE::StrmSwPortType::DMA) {
@@ -168,55 +155,61 @@ LogicalResult congestionAwareAutoAssignment(Operation *parentOp,
     }
     return maxCircuitUsage[b];
   };
+
+  // Record the final connection index associated with each physical port type.
+  DenseMap<PhysPortType, uint32_t> physPortTypeToFinalConnectionIndex;
+  for (auto [i, connectionOp] : llvm::enumerate(connectionOps)) {
+    FailureOr<SmallVector<PhysPortType>> physPortTypes =
+        getAllPhysPortTypes(connectionOp);
+    if (failed(physPortTypes)) return failure();
+    for (PhysPortType &physPortType : *physPortTypes)
+      physPortTypeToFinalConnectionIndex[physPortType] = i;
+  }
   // Iterate through the connections and assign types based on the
-  // congestion status of the bundles.
+  // congestion status of the physical port types.
   for (auto [i, connectionOp] : llvm::enumerate(connectionOps)) {
     AMDAIE::ConnectionType connectionType = AMDAIE::ConnectionType::Circuit;
-    FailureOr<SmallVector<PhysBundle>> physBundles =
-        getAllPhysBundles(connectionOp);
-    if (failed(physBundles)) return failure();
+    FailureOr<SmallVector<PhysPortType>> physPortTypes =
+        getAllPhysPortTypes(connectionOp);
+    if (failed(physPortTypes)) return failure();
     // If the connection type is pre-assigned, use it.
     if (connectionOp.getConnectionType().has_value()) {
       connectionType = *connectionOp.getConnectionType();
     } else {
-      // Evaluate each bundle associated with the connection.
-      for (PhysBundle &physBundle : *physBundles) {
+      // Evaluate each physical port type associated with the connection.
+      for (PhysPortType &physPortType : *physPortTypes) {
         // Check if the maximum allowed circuit usage reached, and if so, set
         // the connection type to packet.
-        uint32_t maxUsage = getOrInitMaxUsage(physBundle);
-        if (circuitUsage[physBundle] + packetUsage[physBundle] >= maxUsage) {
+        uint32_t maxUsage = getOrInitMaxUsage(physPortType);
+        if (circuitUsage[physPortType] + packetUsage[physPortType] >=
+            maxUsage) {
           connectionType = AMDAIE::ConnectionType::Packet;
           break;
         }
-        // If the bundle is one usage away from its maximum, and there are
-        // upcoming unassigned connections that will use this bundle, then set
-        // the current connection type to packet.
-        if (circuitUsage[physBundle] == maxUsage - 1) {
-          FailureOr<bool> isContained = containsPhysBundle(
-              physBundle,
-              ArrayRef<AMDAIE::ConnectionOp>(connectionOps.begin() + i + 1,
-                                             connectionOps.end()));
-          if (failed(isContained)) return failure();
-          if (*isContained) {
-            connectionType = AMDAIE::ConnectionType::Packet;
-            break;
-          }
+        // If the current physical port type is one usage away from its maximum,
+        // and there are upcoming unassigned connections that will use this
+        // port type, then set the current connection type to packet.
+        if (circuitUsage[physPortType] == maxUsage - 1 &&
+            physPortTypeToFinalConnectionIndex[physPortType] > i) {
+          connectionType = AMDAIE::ConnectionType::Packet;
+          break;
         }
       }
       // Update with the assigned connection type.
       updateConnectionType(rewriter, connectionOp, connectionType);
     }
     // Update the circuit and packet usage.
-    DenseMap<PhysBundle, uint32_t> &usage =
+    DenseMap<PhysPortType, uint32_t> &usage =
         (connectionType == AMDAIE::ConnectionType::Circuit) ? circuitUsage
                                                             : packetUsage;
-    for (PhysBundle &physBundle : *physBundles) usage[physBundle]++;
+    for (PhysPortType &physPortType : *physPortTypes) usage[physPortType]++;
   }
   return success();
 }
 
 LogicalResult simpleManualAssignment(Operation *parentOp, IRRewriter &rewriter,
                                      PacketFlowStrategy packetFlowStrategy) {
+  OpBuilder::InsertionGuard g(rewriter);
   bool enableInputPacketFlow, enableOutputPacketFlow;
   switch (packetFlowStrategy) {
     case PacketFlowStrategy::None:

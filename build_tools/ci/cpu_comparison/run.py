@@ -2327,8 +2327,9 @@ class Tests:
                 raise ValueError("Transposing both LHS and RHS is not supported.")
 
             if use_packet_flow:
-                # Only enable packet flows for kernel inputs to prevent potential deadlock.
-                # TODO (zhewen): Support kernel outputs.
+                # These tests are intended to validate packet flow functionality, so they should make use of as many packet flows as possible.
+                # Currently, packet flows are only enabled for kernel inputs to avoid potential deadlocks.
+                # TODO(zhewen): Add support for kernel outputs.
                 aie_compilation_flags.append(
                     "--iree-amdaie-packet-flow-strategy=inputs"
                 )
