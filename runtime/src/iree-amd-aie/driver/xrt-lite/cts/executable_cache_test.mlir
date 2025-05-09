@@ -13,8 +13,7 @@
 !t_res = tensor<512x512xf32>
 !fdt_res = !iree_tensor_ext.dispatch.tensor<writeonly:tensor<512x512xf32>>
 hal.executable.source public @amdaie_fb {
-  hal.executable.export public @mm_512_512_4096_bf16_f32 ordinal(0) layout(#pipeline_layout) {
-  ^bb0(%arg0: !hal.device):
+  hal.executable.export public @mm_512_512_4096_bf16_f32 ordinal(0) layout(#pipeline_layout) count(%arg0: !hal.device) -> (index, index, index) {
     %x, %y, %z = iree_tensor_ext.dispatch.workgroup_count_from_slice
     hal.return %x, %y, %z : index, index, index
   }

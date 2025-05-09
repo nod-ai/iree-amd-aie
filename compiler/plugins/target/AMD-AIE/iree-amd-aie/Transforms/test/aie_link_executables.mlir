@@ -6,11 +6,10 @@
 module attributes {hal.device.targets = [#device_target_amd_aie]} {
   hal.executable private @two_mm_dispatch_0 {
     hal.executable.variant public @amdaie_xclbin_fb target(#executable_target_amdaie_xclbin_fb) {
-      hal.executable.export public @two_mm_dispatch_0_matmul_512x512x512_f32 ordinal(0) layout(#pipeline_layout) attributes {workgroup_size = [1 : index, 1 : index, 1 : index]} {
-      ^bb0(%arg0: !hal.device):
+      hal.executable.export public @two_mm_dispatch_0_matmul_512x512x512_f32 ordinal(0) layout(#pipeline_layout) count(%arg0: !hal.device) -> (index, index, index) {
         %c1 = arith.constant 1 : index
         hal.return %c1, %c1, %c1 : index, index, index
-      }
+      } attributes {workgroup_size = [1 : index, 1 : index, 1 : index]}
       builtin.module {
         aie.device(npu1_4col) {
             func.func @two_mm_dispatch_0_matmul_512x512x512_f32() {
@@ -22,11 +21,10 @@ module attributes {hal.device.targets = [#device_target_amd_aie]} {
   }
    hal.executable private @two_mm_dispatch_1 {
     hal.executable.variant public @amdaie_xclbin_fb target(#executable_target_amdaie_xclbin_fb) {
-      hal.executable.export public @two_mm_dispatch_1_matmul_512x256x512_f32 ordinal(0) layout(#pipeline_layout) attributes {workgroup_size = [1 : index, 1 : index, 1 : index]} {
-      ^bb0(%arg0: !hal.device):
+      hal.executable.export public @two_mm_dispatch_1_matmul_512x256x512_f32 ordinal(0) layout(#pipeline_layout) count(%arg0: !hal.device) -> (index, index, index) {
         %c1 = arith.constant 1 : index
         hal.return %c1, %c1, %c1 : index, index, index
-      }
+      } attributes {workgroup_size = [1 : index, 1 : index, 1 : index]}
       builtin.module {
         aie.device(npu1_4col) {
             func.func @two_mm_dispatch_1_matmul_512x256x512_f32() {
@@ -76,10 +74,9 @@ util.func public @two_mm(%arg0: !hal.buffer, %arg1: !hal.buffer, %arg2: !hal.buf
 //      CHECK: hal.executable private @aie_link_executables_linked_amd_aie {
 // CHECK-NEXT:   hal.executable.variant public @amdaie_xclbin_fb target(#executable_target_amdaie_xclbin_fb) {
 //      CHECK:     hal.executable.export public @two_mm_dispatch_0_matmul_512x512x512_f32 ordinal(0)
-// CHECK-SAME:       {workgroup_size = [1 : index, 1 : index, 1 : index]}
 //      CHECK:       hal.return %c1, %c1, %c1
 //      CHECK:     hal.executable.export public @two_mm_dispatch_1_matmul_512x256x512_f32 ordinal(1)
-// CHECK-SAME:       {workgroup_size = [1 : index, 1 : index, 1 : index]}
+//      CHECK:       hal.return %c1, %c1, %c1
 //      CHECK:     builtin.module {
 //      CHECK:       aie.device
 //      CHECK:         func.func @two_mm_dispatch_0_matmul_512x512x512_f32()

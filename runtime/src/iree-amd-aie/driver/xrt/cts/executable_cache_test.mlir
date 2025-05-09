@@ -9,8 +9,7 @@
   flags = Indirect
 >
 hal.executable.source public @amdaie_fb {
-  hal.executable.export public @matmul_f32_dispatch_0_matmul_32x32x32_f32 ordinal(0) layout(#pipeline_layout) {
-  ^bb0(%arg0: !hal.device):
+  hal.executable.export public @matmul_f32_dispatch_0_matmul_32x32x32_f32 ordinal(0) layout(#pipeline_layout) count(%arg0: !hal.device) -> (index, index, index) {
     %x, %y, %z = iree_tensor_ext.dispatch.workgroup_count_from_slice
     hal.return %x, %y, %z : index, index, index
   }
