@@ -238,11 +238,10 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
         options.useTilePipeline, options.useLowerToAIEPipeline,
         options.matmulElementwiseFusion, options.enableVectorizationPasses,
         options.enableAMDAIEUkernels, options.pathToUkernels,
-        options.enableInputPacketFlow, options.enableOutputPacketFlow,
-        options.enableCoalescingLoops, options.enableCollapsingUnitDims,
-        options.enableFunctionOutlining, options.callReplication,
-        options.insertLoopAroundCoreBlock, options.enableCtrlPkt,
-        options.coreStackSize);
+        options.packetFlowStrategy, options.enableCoalescingLoops,
+        options.enableCollapsingUnitDims, options.enableFunctionOutlining,
+        options.callReplication, options.insertLoopAroundCoreBlock,
+        options.enableCtrlPkt, options.coreStackSize);
   }
 
   void buildLinkingPassPipeline(OpPassManager &passManager) override {

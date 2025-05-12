@@ -152,11 +152,15 @@ class BaseTest(ABC):
 
         if enable_ctrlpkt:
             self.labels.append("CtrlPkt")
-            self.add_aie_compilation_flags(
-                [
-                    "--iree-amdaie-enable-input-packet-flow=true",
-                ]
-            )
+            self.add_aie_compilation_flags(["--iree-amdaie-enable-control-packet=true"])
+            # Ensure the packet flow flag is also set; add as `auto` if missing.
+            if not any(
+                flag.startswith("--iree-amdaie-packet-flow-strategy=")
+                for flag in self.aie_compilation_flags
+            ):
+                self.add_aie_compilation_flags(
+                    ["--iree-amdaie-packet-flow-strategy=auto"]
+                )
             self.name += "_ctrlpkt"
 
         if run_benchmark:
@@ -2325,10 +2329,11 @@ class Tests:
                 raise ValueError("Transposing both LHS and RHS is not supported.")
 
             if use_packet_flow:
-                # Only enable packet flows for kernel inputs to prevent potential deadlock.
-                # TODO (zhewen): Support kernel outputs.
+                # These tests are intended to validate packet flow functionality, so they should make use of as many packet flows as possible.
+                # Currently, packet flows are only enabled for kernel inputs to avoid potential deadlocks.
+                # TODO(zhewen): Add support for kernel outputs.
                 aie_compilation_flags.append(
-                    "--iree-amdaie-enable-input-packet-flow=true"
+                    "--iree-amdaie-packet-flow-strategy=inputs"
                 )
                 name_suffix += "_packet_flow"
 
@@ -2548,9 +2553,6 @@ class Tests:
             self.register(
                 ConvolutionFromTemplate(
                     generator,
-                    test_params=TestParams(
-                        enable_ctrlpkt=False,
-                    ),
                 )
             )
 
@@ -2568,9 +2570,6 @@ class Tests:
         self.register(
             ConvolutionFromTemplate(
                 generator,
-                test_params=TestParams(
-                    enable_ctrlpkt=False,
-                ),
             )
         )
 
