@@ -136,6 +136,10 @@ def AIE_CoreOp: AIE_Op<"core", [
   let builders = [
     OpBuilder<(ins "mlir::Value":$tile), [{
       build($_builder, $_state, $_builder.getIndexType(), tile);
+    }]>,
+    OpBuilder<(ins "mlir::Value":$tile, "mlir::IntegerAttr":$stack_size), [{
+      build($_builder, $_state, $_builder.getIndexType(), tile, stack_size,
+            nullptr, nullptr);
     }]>
   ];
   // mlir-air legacy
