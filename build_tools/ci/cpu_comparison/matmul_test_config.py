@@ -203,7 +203,6 @@ npu4_matmul_tests = [
         "use_chess_for_ukernel": False,
         "tile_pipeline": "pack-peel-4-level-tiling",
         "name_suffix": "4rows_8cols_npu4",
-        "enable_ctrlpkt": False,
     },
     {
         "M": 512,
@@ -224,7 +223,6 @@ npu4_matmul_tests = [
         "acc_type": "i32",
         "tile_pipeline": "pack-peel-4-level-tiling",
         "name_suffix": "4rows_8cols_npu4_pack_peel_4_level_tiling",
-        "enable_ctrlpkt": False,
     },
     {
         "M": 1024,

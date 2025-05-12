@@ -60,12 +60,16 @@ def AMDAIE_CoreOp: AMDAIE_Op<"core", [SingleBlock, AttrSizedOperandSegments]>, R
 
     It has an optional attribute `link_with` which will carry the information to
     relay to AIE core op for linking with Ukernel.
+
+    It has a `stack_size` attribute with default value to specify the size of stack
+    buffer that has to be allocated on the core's local memory.
   }];
 
   let arguments = (
     ins Index:$tile,
         Variadic<Index>:$input_dmas,
         Variadic<Index>:$output_dmas,
+        DefaultValuedAttr<I32Attr, "1024">:$stack_size,
         OptionalAttr<StrAttr>:$link_with
   );
 
@@ -77,7 +81,22 @@ def AMDAIE_CoreOp: AMDAIE_Op<"core", [SingleBlock, AttrSizedOperandSegments]>, R
     OpBuilder<(ins "mlir::Value":$coreCol, "mlir::Value":$coreRow)>,
     OpBuilder<(ins "mlir::Value":$coreCol, "mlir::Value":$coreRow,
       "ValueRange":$input_dmas, "ValueRange":$output_dmas)>,
-    OpBuilder<(ins "TileOp":$tile, "ValueRange":$input_dmas, "ValueRange":$output_dmas)>
+    OpBuilder<(ins "mlir::Value":$coreCol, "mlir::Value":$coreRow, "ValueRange":$input_dmas,
+                   "ValueRange":$output_dmas, "mlir::IntegerAttr":$stack_size)>,
+    OpBuilder<(ins "mlir::Value":$coreCol, "mlir::Value":$coreRow, "ValueRange":$input_dmas,
+                   "ValueRange":$output_dmas, "uint32_t":$stack_size), [{
+      build($_builder, $_state, coreCol, coreRow, input_dmas, output_dmas,
+            $_builder.getIntegerAttr($_builder.getIntegerType(32), stack_size));
+    }]>,
+    OpBuilder<(ins "TileOp":$tile, "ValueRange":$input_dmas, "ValueRange":$output_dmas), [{
+      build($_builder, $_state, $_builder.getIndexType(), tile, input_dmas, output_dmas,
+            nullptr, nullptr);
+    }]>,
+    OpBuilder<(ins "TileOp":$tile, "ValueRange":$input_dmas, "ValueRange":$output_dmas,
+                    "uint32_t":$stack_size), [{
+      build($_builder, $_state, $_builder.getIndexType(), tile, input_dmas, output_dmas,
+            stack_size, nullptr);
+    }]>
   ];
 
   let extraClassDeclaration = [{
