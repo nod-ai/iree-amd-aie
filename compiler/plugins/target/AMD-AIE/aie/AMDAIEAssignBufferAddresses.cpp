@@ -118,9 +118,8 @@ FailureOr<bool> checkAndAddBufferWithMemBank(
   // If the buffer has preset address, the next available address for the bank
   // will start from there.
   if (std::optional<uint32_t> addr = buffer.getAddress()) {
-    if (addr.value() > bankStates[memBank].nextAddr) {
+    if (addr.value() > bankStates[memBank].nextAddr)
       bankStates[memBank].nextAddr = addr.value();
-    }
   }
 
   int64_t startAddr = bankStates[memBank].nextAddr;
@@ -138,9 +137,9 @@ FailureOr<bool> checkAndAddBufferWithMemBank(
 // the buffer's memory bank attribute and address, and updates the next
 // available address in the bank. If no suitable banks are found, it emits an
 // error and returns false.
-bool setBufferAddress(BufferOp buffer, uint32_t numBanks, uint32_t bankSize,
-                      int &startBankIndex,
+bool setBufferAddress(BufferOp buffer, uint32_t bankSize, int &startBankIndex,
                       SmallVector<BankStates> &bankStates) {
+  uint32_t numBanks = bankStates.size();
   assert(startBankIndex < numBanks &&
          "Unexpected input value for startBankIndex");
 
@@ -276,8 +275,7 @@ LogicalResult bankAwareAllocation(TileOp tile, SetVector<BufferOp> buffers,
   for (BufferOp buffer : buffersToAlloc) {
     // If the buffer doesn't fit in any of the bank space, it emits an error
     // and then deallocates all the buffers.
-    if (!setBufferAddress(buffer, numBanks, bankSize, startBankIndex,
-                          bankStates)) {
+    if (!setBufferAddress(buffer, bankSize, startBankIndex, bankStates)) {
       deAllocateBuffers(allocatedBuffers);
       return failure();
     } else {
