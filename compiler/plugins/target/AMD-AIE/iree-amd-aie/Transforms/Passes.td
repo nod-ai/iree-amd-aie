@@ -413,6 +413,10 @@ def AMDAIEInsertCores :
   let summary = "Insert `amdaie.core` operations inside the innermost "
                 "`scf.forall` operations selected for parallel execution.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEInsertCoresPass()";
+  let options = [
+    Option<"stackSize", "stack-size", "int64_t", /*default=*/"1024",
+      "Set the stack size to be used in the cores.">
+  ];
 }
 
 def AMDAIEInsertDmaBdChain :

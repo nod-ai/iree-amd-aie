@@ -90,6 +90,9 @@ struct AMDAIEOptions {
   enum class DeviceHAL { XRT, XRT_LITE };
   DeviceHAL deviceHal{DeviceHAL::XRT_LITE};
 
+  // The default stack size for all cores is 1024 bytes.
+  uint32_t coreStackSize{1024};
+
   void bindOptions(OptionsBinder &binder) {
     static llvm::cl::OptionCategory category("AMD AIE Options");
 
@@ -324,6 +327,10 @@ struct AMDAIEOptions {
         llvm::cl::desc(
             "Enable conversion of `aie.device` "
             "operations into control packets for fast reconfiguration."));
+
+    binder.opt<unsigned>(
+        "iree-amdaie-stack-size", coreStackSize, llvm::cl::cat(category),
+        llvm::cl::desc("The stack size to be used for the AIE cores."));
   }
 };
 

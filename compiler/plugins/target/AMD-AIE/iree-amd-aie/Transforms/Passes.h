@@ -19,7 +19,8 @@ void addAMDAIEObjectFifoLoweringPasses(
     TilePassPipeline useTilePipeline, bool enableVectorizationPasses,
     bool enableCoalescingLoops, bool enableCollapsingUnitDims,
     OutliningStrategy enableFunctionOutlining, int outliningLoopInCallCount,
-    bool insertLoopAroundCoreBlock, uint32_t numCols, bool emitCtrlPkt);
+    bool insertLoopAroundCoreBlock, uint32_t numCols, bool emitCtrlPkt,
+    uint32_t coreStackSize);
 
 /// Add passes to lower from MLIR-AIR through AIE. This is
 /// currently the default passes used for lowering after IREEs tiling.
@@ -41,10 +42,18 @@ void buildAMDAIETransformPassPipeline(
     uint32_t numCols, TilePassPipeline useTilePipeline,
     LowerToAIEPassPipeline useLowerToAIEPipeline, bool matmulElementwiseFusion,
     bool enableVectorizationPasses, std::string enableAMDAIEUkernels,
+<<<<<<< HEAD
     const std::string &pathToUkernels, PacketFlowStrategy packetFlowStrategy,
     bool enableCoalescingLoops, bool enableCollapsingUnitDims,
     OutliningStrategy enableFunctionOutlining, int outliningLoopInCallCount,
     bool insertLoopAroundCoreBlock, bool emitCtrlPkt);
+=======
+    const std::string &pathToUkernels, bool enableInputPacketFlow,
+    bool enableOutputPacketFlow, bool enableCoalescingLoops,
+    bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
+    int outliningLoopInCallCount, bool insertLoopAroundCoreBlock,
+    bool emitCtrlPkt, uint32_t coreStackSize);
+>>>>>>> main
 
 /// Populates passes needed to lower the IR via a Pack-Peel based approach.
 void addPackPeelBasedPassPipeline(OpPassManager &passManager,
@@ -232,7 +241,8 @@ std::unique_ptr<Pass> createAMDAIEFuseProducerIntoLoopPass(
 
 /// Create pass to insert `amdaie.core` operations inside the innermost
 /// `scf.forall` operations selected for parallel execution.
-std::unique_ptr<Pass> createAMDAIEInsertCoresPass();
+std::unique_ptr<Pass> createAMDAIEInsertCoresPass(
+    AMDAIEInsertCoresOptions = {});
 
 /// Links AMDAIE HAL executables within the top-level program module.
 std::unique_ptr<OperationPass<mlir::ModuleOp>>
