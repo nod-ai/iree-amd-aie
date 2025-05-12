@@ -62,7 +62,7 @@ def AMDAIE_CoreOp: AMDAIE_Op<"core", [SingleBlock, AttrSizedOperandSegments]>, R
     relay to AIE core op for linking with Ukernel.
 
     It has a `stack_size` attribute with default value to specify the size of stack
-    buffer that has to be allocated on the cores' local memory.
+    buffer that has to be allocated on the core's local memory.
   }];
 
   let arguments = (

@@ -91,7 +91,7 @@ struct AMDAIEOptions {
   enum class DeviceHAL { XRT, XRT_LITE };
   DeviceHAL deviceHal{DeviceHAL::XRT_LITE};
 
-  // The default stack size for all cores is 1024.
+  // The default stack size for all cores is 1024 bytes.
   uint32_t coreStackSize{1024};
 
   void bindOptions(OptionsBinder &binder) {
