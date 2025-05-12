@@ -42,18 +42,10 @@ void buildAMDAIETransformPassPipeline(
     uint32_t numCols, TilePassPipeline useTilePipeline,
     LowerToAIEPassPipeline useLowerToAIEPipeline, bool matmulElementwiseFusion,
     bool enableVectorizationPasses, std::string enableAMDAIEUkernels,
-<<<<<<< HEAD
     const std::string &pathToUkernels, PacketFlowStrategy packetFlowStrategy,
     bool enableCoalescingLoops, bool enableCollapsingUnitDims,
     OutliningStrategy enableFunctionOutlining, int outliningLoopInCallCount,
-    bool insertLoopAroundCoreBlock, bool emitCtrlPkt);
-=======
-    const std::string &pathToUkernels, bool enableInputPacketFlow,
-    bool enableOutputPacketFlow, bool enableCoalescingLoops,
-    bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
-    int outliningLoopInCallCount, bool insertLoopAroundCoreBlock,
-    bool emitCtrlPkt, uint32_t coreStackSize);
->>>>>>> main
+    bool insertLoopAroundCoreBlock, bool emitCtrlPkt, uint32_t coreStackSize);
 
 /// Populates passes needed to lower the IR via a Pack-Peel based approach.
 void addPackPeelBasedPassPipeline(OpPassManager &passManager,
