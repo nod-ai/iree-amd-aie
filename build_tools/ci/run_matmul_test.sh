@@ -183,7 +183,8 @@ function run_matmul_test() {
 
   local accumulate="false"
 
-  local enable_packet_flow="false";
+  # The default is to not use any packet flow.
+  local packet_flow_strategy="none";
 
   # The default is to not expect a compilation failure.
   local expect_compile_failure="0"
@@ -228,8 +229,8 @@ function run_matmul_test() {
         do_transpose_rhs="$2"
         shift 2
         ;;
-      --enable_packet_flow)
-        enable_packet_flow="$2"
+      --packet_flow_strategy)
+        packet_flow_strategy="$2"
         shift 2
         ;;
       --expect_compile_failure)
@@ -371,7 +372,7 @@ function run_matmul_test() {
                       --iree-amdaie-tile-pipeline=${tile_pipeline} \
                       --iree-amd-aie-peano-install-dir=${peano_install_path} \
                       --iree-amd-aie-install-dir=${amd_aie_install_path} \
-                      --iree-amdaie-enable-input-packet-flow=${enable_packet_flow} \
+                      --iree-amdaie-packet-flow-strategy=${packet_flow_strategy} \
                       --iree-hal-dump-executable-files-to=$PWD \
                       --iree-amdaie-device-hal=${DEVICE_HAL} \
                       --iree-hal-memoization=false \
@@ -591,6 +592,9 @@ run_matmul_test_on_shapes ${i32_shapes_small[@]} \
     --acc_type "i32" \
     --num_repeat_runs "10"
 
+# These tests are intended to validate packet flow functionality, so they should make use of as many packet flows as possible.
+# Currently, packet flows are only enabled for kernel inputs to avoid potential deadlocks.
+# TODO(zhewen): Add support for kernel outputs.
 run_matmul_test_on_shapes ${i32_shapes_small[@]} \
     --name_prefix "small" \
     --lower_to_aie_pipeline "objectFifo" \
@@ -598,7 +602,7 @@ run_matmul_test_on_shapes ${i32_shapes_small[@]} \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
     --num_corruption_repeat_runs "10" \
-    --enable_packet_flow "true"
+    --packet_flow_strategy "inputs"
 
 i32_shapes_medium=(
   '1024x1024x1024'

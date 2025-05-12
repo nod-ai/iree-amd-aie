@@ -84,8 +84,7 @@ struct AMDAIEOptions {
   }
 
   std::string enableAMDAIEUkernels{"none"};
-  bool enableInputPacketFlow{false};
-  bool enableOutputPacketFlow{false};
+  PacketFlowStrategy packetFlowStrategy{PacketFlowStrategy::None};
   bool enableCtrlPkt{false};
 
   enum class DeviceHAL { XRT, XRT_LITE };
@@ -300,17 +299,20 @@ struct AMDAIEOptions {
             "columns. However, some workloads (like convolution) currently "
             "ignore this flag, and use a hardcoded number of cols."));
 
-    binder.opt<bool>(
-        "iree-amdaie-enable-input-packet-flow", enableInputPacketFlow,
+    binder.opt<PacketFlowStrategy>(
+        "iree-amdaie-packet-flow-strategy", packetFlowStrategy,
         llvm::cl::cat(category),
-        llvm::cl::desc(
-            "Enable packet routing data movement for kernel inputs"));
-
-    binder.opt<bool>(
-        "iree-amdaie-enable-output-packet-flow", enableOutputPacketFlow,
-        llvm::cl::cat(category),
-        llvm::cl::desc(
-            "Enable packet routing data movement for kernel outputs"));
+        llvm::cl::desc("Enable packet routing data movements"),
+        llvm::cl::values(clEnumValN(PacketFlowStrategy::None, "none",
+                                    "No packet flow will be used."),
+                         clEnumValN(PacketFlowStrategy::Auto, "auto",
+                                    "Congestion-aware packet flow assignment."),
+                         clEnumValN(PacketFlowStrategy::Inputs, "inputs",
+                                    "Use packet mode on all input flows."),
+                         clEnumValN(PacketFlowStrategy::Outputs, "outputs",
+                                    "Use packet mode on all output flows."),
+                         clEnumValN(PacketFlowStrategy::All, "all",
+                                    "Use packet mode on all flows.")));
 
     binder.opt<DeviceHAL>(
         "iree-amdaie-device-hal", deviceHal, llvm::cl::cat(category),
