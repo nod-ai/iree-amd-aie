@@ -2582,7 +2582,8 @@ class Tests:
         MN_pool = [8, 16, 32, 64, 128, 256, 512, 1024, 2048]
         K_pool = [8, 16, 32, 64, 128, 256]
         input_type_pool = ["i8", "bf16"]
-        if n_runs >= 0.5 * len(MN_pool) * len(MN_pool) * len(K_pool):
+        grid_elements = len(MN_pool) * len(MN_pool) * len(K_pool) * len(input_type_pool)
+        if n_runs >= 0.5 * grid_elements:
             raise RuntimeError("Sampling without replacement nearly exhausted")
 
         MNK_visited = set()
@@ -2593,9 +2594,9 @@ class Tests:
                 N = rng.choice(MN_pool)
                 K = rng.choice(K_pool)
                 input_type = rng.choice(input_type_pool)
-                triple = (M, N, K, input_type)
+                sample = (M, N, K, input_type)
 
-                if triple not in MNK_visited:
+                if sample not in MNK_visited:
                     MNK_visited.add(triple)
                     break
 
@@ -2613,7 +2614,6 @@ class Tests:
                     additional_labels=["Soak"],
                 )
             )
-
 
 
 def all_tests(
