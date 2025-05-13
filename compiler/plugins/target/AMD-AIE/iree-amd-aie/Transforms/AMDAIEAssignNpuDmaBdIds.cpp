@@ -512,48 +512,51 @@ static TileDmaBatchGraph createTileDmaBatchGraph(
   // Traverse the parent operation's immediate child ops and form the
   // tileParentOpDmaBatchMap.
   for (Operation &op : parentOp->getRegion(0).getOps()) {
-    if (isa<scf::ForOp, scf::ForallOp>(op)) {
-      TileDmaBatchGraph innerTileDmaBatchGraph =
-          createTileDmaBatchGraph(workgroupOp, &op, shimTileToGeneratorMap);
-      tileDmaBatchGraph.updateInnerBatchesOfCurrentTileDmaBatchGraph(
-          innerTileDmaBatchGraph);
-    } else if (auto dmaOp = dyn_cast<AMDAIE::NpuDmaCpyNdOp>(op)) {
-      if (dmaOp.getSource()) {
-        FailureOr<AMDAIE::TileOp> tile =
-            getGeneratorTileOp<CopyOpOperateOn::Source>(dmaOp,
-                                                        shimTileToGeneratorMap);
-        if (succeeded(tile)) tileDmaBatchGraph.addDmaToBatch(*tile, dmaOp);
-      }
-      if (dmaOp.getTarget()) {
-        FailureOr<AMDAIE::TileOp> tile =
-            getGeneratorTileOp<CopyOpOperateOn::Target>(dmaOp,
-                                                        shimTileToGeneratorMap);
-        if (succeeded(tile)) tileDmaBatchGraph.addDmaToBatch(*tile, dmaOp);
-      }
-      if (!currDmaOp) currDmaOp = dmaOp;
-    } else if (auto npuWaitOp = dyn_cast<AMDAIE::NpuDmaWaitOp>(op)) {
-      for (AMDAIE::NpuDmaCpyNdOp npuDmaOp : npuWaitOp.getDmaOps()) {
-        // Reached the DMA wait operation, reset tracking of current DMA op for
-        // the tile.
-        if (npuDmaOp == currDmaOp) {
-          currDmaOp = nullptr;
-          if (npuDmaOp.getSource()) {
+    TypeSwitch<Operation *, void>(&op)
+        .Case<scf::ForOp, scf::ForallOp>([&](auto forOp) {
+          TileDmaBatchGraph innerTileDmaBatchGraph =
+              createTileDmaBatchGraph(workgroupOp, &op, shimTileToGeneratorMap);
+          tileDmaBatchGraph.updateInnerBatchesOfCurrentTileDmaBatchGraph(
+              innerTileDmaBatchGraph);
+        })
+        .Case<AMDAIE::NpuDmaCpyNdOp>([&](auto dmaOp) {
+          if (dmaOp.getSource()) {
             FailureOr<AMDAIE::TileOp> tile =
                 getGeneratorTileOp<CopyOpOperateOn::Source>(
-                    npuDmaOp, shimTileToGeneratorMap);
-            if (succeeded(tile))
-              tileDmaBatchGraph.updateCurrentTileBatch(*tile);
+                    dmaOp, shimTileToGeneratorMap);
+            if (succeeded(tile)) tileDmaBatchGraph.addDmaToBatch(*tile, dmaOp);
           }
-          if (npuDmaOp.getTarget()) {
+          if (dmaOp.getTarget()) {
             FailureOr<AMDAIE::TileOp> tile =
                 getGeneratorTileOp<CopyOpOperateOn::Target>(
-                    npuDmaOp, shimTileToGeneratorMap);
-            if (succeeded(tile))
-              tileDmaBatchGraph.updateCurrentTileBatch(*tile);
+                    dmaOp, shimTileToGeneratorMap);
+            if (succeeded(tile)) tileDmaBatchGraph.addDmaToBatch(*tile, dmaOp);
           }
-        }
-      }
-    }
+          if (!currDmaOp) currDmaOp = dmaOp;
+        })
+        .Case<AMDAIE::NpuDmaWaitOp>([&](auto npuWaitOp) {
+          for (AMDAIE::NpuDmaCpyNdOp npuDmaOp : npuWaitOp.getDmaOps()) {
+            // Reached the DMA wait operation, reset tracking of current DMA op
+            // for the tile.
+            if (npuDmaOp == currDmaOp) {
+              currDmaOp = nullptr;
+              if (npuDmaOp.getSource()) {
+                FailureOr<AMDAIE::TileOp> tile =
+                    getGeneratorTileOp<CopyOpOperateOn::Source>(
+                        npuDmaOp, shimTileToGeneratorMap);
+                if (succeeded(tile))
+                  tileDmaBatchGraph.updateCurrentTileBatch(*tile);
+              }
+              if (npuDmaOp.getTarget()) {
+                FailureOr<AMDAIE::TileOp> tile =
+                    getGeneratorTileOp<CopyOpOperateOn::Target>(
+                        npuDmaOp, shimTileToGeneratorMap);
+                if (succeeded(tile))
+                  tileDmaBatchGraph.updateCurrentTileBatch(*tile);
+              }
+            }
+          }
+        });
   }
   return tileDmaBatchGraph;
 }
