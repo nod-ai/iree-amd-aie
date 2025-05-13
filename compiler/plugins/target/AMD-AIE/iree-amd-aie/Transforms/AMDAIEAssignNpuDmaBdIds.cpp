@@ -78,8 +78,8 @@ std::optional<uint32_t> getNumberIterations(scf::ForOp loop) {
 /// A struct that maintains the channel and source/target information for a
 /// given DmaOp and TileOp.
 struct DmaTileData {
-  uint32_t channel;
-  uint32_t bdIdMapIndex;
+  uint32_t channel = -1;
+  uint32_t bdIdMapIndex = -1;
 };
 
 /// Given a DmaOp and a TileOp - extract whether the source (or target) operates
@@ -353,10 +353,14 @@ struct TileDmaBatchGraph {
       size = 1;
     }
 
-    unsigned dmaOpIndex = 0;
     rewriter.setInsertionPoint(dmaBatch->currentDmaOps[0]);
-    while (dmaOpIndex < dmaBatch->currentDmaOps.size()) {
-      AMDAIE::NpuDmaCpyNdOp dmaOp = dmaBatch->currentDmaOps[dmaOpIndex++];
+    for (AMDAIE::NpuDmaCpyNdOp dmaOp : dmaBatch->currentDmaOps) {
+      if (dmaTileData.bdIdMapIndex == -1) {
+        maybeDmaTileData =
+            getDmaTileData(dmaOp, tileOp, shimTileToGeneratorMap);
+        if (failed(maybeDmaTileData)) return failure();
+        dmaTileData = *maybeDmaTileData;
+      }
       // Only create expression if more than 1 BD ID is needed and if,
       // otherwise, fall back to constant BD ID.
       if (size > 1) {
@@ -401,12 +405,8 @@ struct TileDmaBatchGraph {
         }
         dmaOpToBdIdMap[dmaOp][dmaTileData.bdIdMapIndex] = bdIdOp;
       }
-      // Fetch DmaTileData for the next DmaOp in the list.
-      if (dmaOpIndex < dmaBatch->currentDmaOps.size()) {
-        maybeDmaTileData = getDmaTileData(dmaBatch->currentDmaOps[dmaOpIndex], tileOp, shimTileToGeneratorMap);
-        if (failed(maybeDmaTileData)) return failure();
-        dmaTileData = *maybeDmaTileData;
-      }
+      // Reset to fetch next DmaOps' DmaTileData.
+      dmaTileData.bdIdMapIndex = -1;
     }
     return success();
   }
