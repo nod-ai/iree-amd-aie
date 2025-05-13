@@ -127,16 +127,8 @@ struct DmaBatch {
   std::unique_ptr<DmaBatch> nextDmaBatch = nullptr;
   scf::ForOp forOpParent = nullptr;
 
-  /// Delete copy constructor and copy assignment
-  // DmaBatch() = delete;
-  // DmaBatch& operator=(const DmaBatch&) = delete;
-
-  // /// Default move constructor and move assignment
-  // DmaBatch() = default;
-  // DmaBatch& operator=(DmaBatch&&) = default;
-
   /// A DmaBatch with no DmaOps and no nested DmaBatches is an empty DmaBatch.
-  bool isEmpty() {
+  bool isEmpty() const {
     return (currentDmaOps.empty() && immediateInnerBatches.empty());
   }
 
@@ -144,7 +136,7 @@ struct DmaBatch {
   /// infer the required Bd Ids for them. If the nested DmaBatch is surrounded
   /// with a scf.for, we account for that while sending the required Bd Ids to
   /// the caller of this API.
-  int32_t getRequiredBdIdsForInnerBatches() {
+  int32_t getRequiredBdIdsForInnerBatches() const {
     if (immediateInnerBatches.empty()) return 0;
     int32_t requiredBdIds = 0;
     for (const std::unique_ptr<DmaBatch> &dmaBatch : immediateInnerBatches) {
@@ -174,6 +166,9 @@ struct DmaBatch {
   }
 };
 
+/// `TileDmaBatchGraph` is a struct that maintains a mapping from a tile to its
+/// corresponding `DmaBatch`. It contains utilities that help form/update the
+/// `DmaBatch` graph for a particular tile.
 struct TileDmaBatchGraph {
  private:
   /// The main tile->DmaBatch graph.
@@ -300,10 +295,9 @@ struct TileDmaBatchGraph {
     return success();
   }
 
-  /// Declaration of an API which will work on assigning Bd Ids to the inner
-  /// DmaBatch of the current DmaBatch `parentDmaBatch`. And maintain a mapping
-  /// of DmaOp -> source/target Bd Id which would be used later during new DmaOp
-  /// creation/replacement.
+  /// Assign Bd Ids to the inner DmaBatch of the current DmaBatch
+  /// `parentDmaBatch`. And maintain a mapping of DmaOp -> source/target Bd Id
+  /// which would be used later during new DmaOp creation/replacement.
   static LogicalResult assignRequiredBdIdsInInnerBatch(
       IRRewriter &rewriter, AMDAIE::TileOp tileOp, DmaBatch *parentDmaBatch,
       DenseMap<Value, ChannelBdIdGenerator> &shimTileToGeneratorMap,
@@ -549,7 +543,7 @@ static TileDmaBatchGraph createTileDmaBatchGraph(
 
 /// Traverse each DmaOp inside ControlCode and replace it with new new DmaOp
 /// that has Bd Ids assigned using `dmaOpToBdIdMap`.
-static LogicalResult createNewDmaOpsAndReplaceOldDmaOps(
+static LogicalResult replaceDmaOps(
     IRRewriter &rewriter, AMDAIE::ControlCodeOp controlCodeOp,
     DenseMap<AMDAIE::NpuDmaCpyNdOp, SmallVector<AMDAIE::BdIdOp>>
         &dmaOpToBdIdMap) {
@@ -614,8 +608,7 @@ LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
   if (failed(tileDmaBatchGraph.assignRequiredBdIdsInBatch(
           rewriter, shimTileToGeneratorMap, bdIdOpToBdIdsMap, dmaOpToBdIdMap)))
     return failure();
-  if (failed(createNewDmaOpsAndReplaceOldDmaOps(rewriter, controlCodeOp,
-                                                dmaOpToBdIdMap)))
+  if (failed(replaceDmaOps(rewriter, controlCodeOp, dmaOpToBdIdMap)))
     return failure();
   // At this step we have all the information to traverse and perform the
   // replacements of the DMA Ops.
