@@ -304,6 +304,7 @@ struct BdIdAssignmentUtil {
       std::shared_ptr<DmaBatch> parentDmaBatch) {
     for (std::shared_ptr<DmaBatch> &dmaBatch :
          parentDmaBatch->immediateInnerBatches) {
+      OpBuilder::InsertionGuard guard(rewriter);
       if (failed(processDmaBatch(rewriter, tileOp, dmaBatch))) return failure();
     }
     return success();
