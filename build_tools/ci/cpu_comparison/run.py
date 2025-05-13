@@ -2573,6 +2573,48 @@ class Tests:
             )
         )
 
+        # Soak testing.
+        # See https://github.com/nod-ai/iree-amd-aie/issues/1264
+        seed = 42
+        rng = np.random.default_rng(seed=seed)
+
+        n_runs = 2
+        MN_pool = [8, 16, 32, 64, 128, 256, 512, 1024, 2048]
+        K_pool = [8, 16, 32, 64, 128, 256]
+        input_type_pool = ["i8", "bf16"]
+        if n_runs >= 0.5 * len(MN_pool) * len(MN_pool) * len(K_pool):
+            raise RuntimeError("Sampling without replacement nearly exhausted")
+
+        MNK_visited = set()
+
+        for run_number in range(n_runs):
+            while True:
+                M = rng.choice(MN_pool)
+                N = rng.choice(MN_pool)
+                K = rng.choice(K_pool)
+                input_type = rng.choice(input_type_pool)
+                triple = (M, N, K, input_type)
+
+                if triple not in MNK_visited:
+                    MNK_visited.add(triple)
+                    break
+
+            output_type = "i32" if input_type == "i8" else "f32"
+            self.register(
+                Matmul(
+                    M,
+                    N,
+                    K,
+                    input_type,
+                    output_type,
+                    test_params=TestParams(
+                        name_suffix="soak_" + str(run_number),
+                    ),
+                    additional_labels=["Soak"],
+                )
+            )
+
+
 
 def all_tests(
     tests,
