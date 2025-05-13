@@ -2596,7 +2596,6 @@ class Tests:
         sampled = set()
 
         for run_number in range(n_runs):
-
             # Generate a new random type.
             while True:
                 M = rng.choice(MN_pool)
