@@ -353,11 +353,10 @@ struct TileDmaBatchGraph {
       size = 1;
     }
 
+    unsigned dmaOpIndex = 0;
     rewriter.setInsertionPoint(dmaBatch->currentDmaOps[0]);
-    for (AMDAIE::NpuDmaCpyNdOp dmaOp : dmaBatch->currentDmaOps) {
-      maybeDmaTileData = getDmaTileData(dmaOp, tileOp, shimTileToGeneratorMap);
-      if (failed(maybeDmaTileData)) return failure();
-      dmaTileData = *maybeDmaTileData;
+    while (dmaOpIndex < dmaBatch->currentDmaOps.size()) {
+      AMDAIE::NpuDmaCpyNdOp dmaOp = dmaBatch->currentDmaOps[dmaOpIndex++];
       // Only create expression if more than 1 BD ID is needed and if,
       // otherwise, fall back to constant BD ID.
       if (size > 1) {
@@ -401,6 +400,12 @@ struct TileDmaBatchGraph {
           dmaOpToBdIdMap[dmaOp] = bdIdOps;
         }
         dmaOpToBdIdMap[dmaOp][dmaTileData.bdIdMapIndex] = bdIdOp;
+      }
+      // Fetch DmaTileData for the next DmaOp in the list.
+      if (dmaOpIndex < dmaBatch->currentDmaOps.size()) {
+        maybeDmaTileData = getDmaTileData(dmaBatch->currentDmaOps[dmaOpIndex], tileOp, shimTileToGeneratorMap);
+        if (failed(maybeDmaTileData)) return failure();
+        dmaTileData = *maybeDmaTileData;
       }
     }
     return success();
