@@ -403,7 +403,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
-// Expect all three DMA copy operations have BD IDs as expressions. #map0: 0~1, #map1: 2~8, #map2: 9~15.
+// Expect all three DMA copy operations have BD IDs as expressions. #map0: 0~4, #map1: 5~9, #map2: 10~14.
 // BD IDs used by #map0 are released after the innermost loop, so that they cannot be reused by #map1 and #map2.
 
 // CHECK: #map = affine_map<(d0) -> (d0 mod 5)>
