@@ -43,17 +43,16 @@ submodules that are nested in IREE.
 
 #### Driver
 
-Build and install `xdna-driver`, use commit `929e8ab`:
-
+Build and install `xdna-driver`, use commit `10b8cc3`:
 ```
 git clone git@github.com:amd/xdna-driver.git
 cd <root-of-source-tree>
 # get code for submodules
-git checkout 929e8ab
+git checkout 10b8cc3
 git submodule update --init --recursive
 ```
 
-Follow the instructions to build and install the driver module: [xdna-driver](https://github.com/amd/xdna-driver/tree/929e8ab459cab5915631849b9f1ef9a4982d1c11).
+Follow the instructions to build and install the driver module: [xdna-driver](https://github.com/amd/xdna-driver/tree/10b8cc316cdfbce9483156a4a51b2448575cb5be).
 
 #### LLVM-AIE (Peano)
 
