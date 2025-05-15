@@ -176,17 +176,19 @@ class TileDmaBatchGraph {
   /// This API is invoked when we bump into a DMA wait op. That means we have
   /// reached the end of the current DmaBatch and can start a new DmaBatch in
   /// the chain for the corresponding tile.
-  void updateLatestTileDmaBatch(AMDAIE::TileOp tile) {
-    std::unique_ptr<DmaBatch> &oldLastDmaBatch = getLastDmaBatch(tile);
+  void appendNewBatch(AMDAIE::TileOp tile) {
+    // Get parent for op of the last DMA batch in order to set the same for the
+    // newly created DMA batch.
+    scf::ForOp forOpParent = getLastDmaBatch(tile)->forOpParent;
     tileDmaBatchGraph[tile].push_back(std::make_unique<DmaBatch>());
     std::unique_ptr<DmaBatch> &newLastDmaBatch = getLastDmaBatch(tile);
-    newLastDmaBatch->forOpParent = oldLastDmaBatch->forOpParent;
+    newLastDmaBatch->forOpParent = forOpParent;
   };
 
   /// Given another `TileDmaBatchGraph` instance, we consider that as the nested
   /// graph to be added to the current graph instance. We do this by updating
   /// the `immediateInnerBatches` of the corresponding tile's DmaBatch.
-  void updateInnerBatchesOfCurrentTileDmaBatchGraph(
+  void updateInnerBatchesOfLastBatch(
       TileDmaBatchGraph &innerTileDmaBatchGraph) {
     for (auto &[tile, dmaBatchVec] : innerTileDmaBatchGraph.getGraph()) {
       for (std::unique_ptr<DmaBatch> &dmaBatch : dmaBatchVec) {
@@ -199,7 +201,7 @@ class TileDmaBatchGraph {
 
   /// Traverse each DmaBatch in a given (Tile -> list_of_DmaBatches) and infer
   /// Bd Ids required for it.
-  void inferBdIdsRequiredInBatches() {
+  void inferRequiredBdIds() {
     for (auto &[tile, dmaBatchVec] : getGraph()) {
       for (std::unique_ptr<DmaBatch> &dmaBatch : dmaBatchVec) {
         if (dmaBatch->isEmpty()) continue;
@@ -247,7 +249,7 @@ class BdIdAssignmentUtil {
  public:
   BdIdAssignmentUtil(
       DenseMap<Value, ChannelBdIdGenerator> shimTileToGeneratorMap)
-      : shimTileToGeneratorMap(shimTileToGeneratorMap) {}
+      : shimTileToGeneratorMap(std::move(shimTileToGeneratorMap)) {}
 
   DenseMap<AMDAIE::NpuDmaCpyNdOp, SmallVector<AMDAIE::BdIdOp, 2>> &
   getDmaOpToBdIdMap() {
@@ -548,8 +550,7 @@ static TileDmaBatchGraph createTileDmaBatchGraph(
   auto processOpWithNestedRegion = [&](Operation *op) {
     TileDmaBatchGraph innerTileDmaBatchGraph =
         createTileDmaBatchGraph(workgroupOp, op, shimTileToGeneratorMap);
-    tileDmaBatchGraph.updateInnerBatchesOfCurrentTileDmaBatchGraph(
-        innerTileDmaBatchGraph);
+    tileDmaBatchGraph.updateInnerBatchesOfLastBatch(innerTileDmaBatchGraph);
   };
 
   auto processNpuDmaCpyNdOp = [&](AMDAIE::NpuDmaCpyNdOp dmaOp) {
@@ -578,15 +579,13 @@ static TileDmaBatchGraph createTileDmaBatchGraph(
           FailureOr<AMDAIE::TileOp> tile =
               getGeneratorTileOp<CopyOpOperateOn::Source>(
                   npuDmaOp, shimTileToGeneratorMap);
-          if (succeeded(tile))
-            tileDmaBatchGraph.updateLatestTileDmaBatch(*tile);
+          if (succeeded(tile)) tileDmaBatchGraph.appendNewBatch(*tile);
         }
         if (npuDmaOp.getTarget()) {
           FailureOr<AMDAIE::TileOp> tile =
               getGeneratorTileOp<CopyOpOperateOn::Target>(
                   npuDmaOp, shimTileToGeneratorMap);
-          if (succeeded(tile))
-            tileDmaBatchGraph.updateLatestTileDmaBatch(*tile);
+          if (succeeded(tile)) tileDmaBatchGraph.appendNewBatch(*tile);
         }
       }
     }
@@ -631,7 +630,7 @@ LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
   DenseMap<AMDAIE::NpuDmaCpyNdOp, SmallVector<AMDAIE::BdIdOp>> dmaOpToBdIdMap;
   TileDmaBatchGraph tileDmaBatchGraph = createTileDmaBatchGraph(
       workgroupOp, controlCodeOp, shimTileToGeneratorMap);
-  tileDmaBatchGraph.inferBdIdsRequiredInBatches();
+  tileDmaBatchGraph.inferRequiredBdIds();
   if (failed(bdIdAssignmentUtil.assignRequiredBdIdsInBatch(
           rewriter, tileDmaBatchGraph))) {
     return failure();
