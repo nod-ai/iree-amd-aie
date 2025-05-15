@@ -900,6 +900,32 @@ class Matmul4dScaleTrunci(BaseMatmul):
         return self.vs_cpu(config)
 
 
+class Softmax(BaseTest):
+    def __init__(
+        self,
+        test_params=None,
+    ):
+        super().__init__(
+            name="softmax_bf16",
+            test_params=test_params,
+        )
+        self.labels += ["Softmax"]
+
+    def _execute(self, config):
+        test_files_dir = config.file_dir / "test_files"
+        self.filename = test_files_dir / "softmax_bf16.mlir"
+
+        aie_vs_llvm_cpu(
+            config,
+            self.aie_compilation_flags,
+            self.filename,
+            use_ukernel=self.use_ukernel,
+            tile_pipeline="softmax-copy",
+            function_name="softmax",
+        )
+        return True
+
+
 def find_executable(install_dir: Path, executable_name):
     """
     Search for an executable in the given directory and its subdirectories
@@ -2568,6 +2594,21 @@ class Tests:
                 generator,
                 test_params=TestParams(
                     enable_ctrlpkt=False,
+                ),
+            )
+        )
+
+        # Softmax tests:
+        self.register(
+            Softmax(
+                test_params=TestParams(
+                    name_suffix="chess",
+                    aie_compilation_flags=[
+                        "--iree-amdaie-num-rows=1",
+                        "--iree-amdaie-num-cols=1",
+                    ],
+                    use_chess=True,
+                    use_ukernel=True,
                 ),
             )
         )

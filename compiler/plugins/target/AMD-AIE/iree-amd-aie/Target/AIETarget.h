@@ -188,7 +188,10 @@ struct AMDAIEOptions {
             clEnumValN(TilePassPipeline::ConvDecomposePipeline,
                        "conv-decompose",
                        "Use the conv-decompose based lowering strategy for "
-                       "convolution interface ops")));
+                       "convolution interface ops"),
+            clEnumValN(TilePassPipeline::SoftmaxCopyPipeline, "softmax-copy",
+                       "Use the copy based lowering strategy for softmax "
+                       "interface ops")));
 
     binder.opt<std::string>("iree-amdaie-path-to-ukernels", pathToUkernels,
                             llvm::cl::cat(category),

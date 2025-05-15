@@ -64,6 +64,11 @@ void addPackPeel4LevelTilingBasedPassPipeline(OpPassManager &passManager,
 void addConvDecomposePassPipeline(OpPassManager &passManager,
                                   TilePassPipeline useTilePipeline);
 
+/// Populates passes needed to lower the IR via a Softmax-Copy based approach.
+void addSoftmaxCopyPassPipeline(OpPassManager &passManager,
+                                const std::string &pathToUkernels,
+                                TilePassPipeline useTilePipeline);
+
 /// Populates passes needed to link HAL executables across AIE targets.
 void buildAMDAIELinkingPassPipeline(OpPassManager &passManager);
 
@@ -231,6 +236,9 @@ std::unique_ptr<Pass> createAMDAIEFoldDmaWaitsPass();
 /// Create a pass to fuse the producer operations into the scf loops.
 std::unique_ptr<Pass> createAMDAIEFuseProducerIntoLoopPass(
     AMDAIEFuseProducerIntoLoopOptions options = {});
+
+/// Create a pass to insert copy operations on linalg operations.
+std::unique_ptr<Pass> createAMDAIEInsertCopiesPass();
 
 /// Create pass to insert `amdaie.core` operations inside the innermost
 /// `scf.forall` operations selected for parallel execution.

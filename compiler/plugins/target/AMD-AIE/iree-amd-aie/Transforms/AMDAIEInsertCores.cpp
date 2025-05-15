@@ -37,7 +37,7 @@ namespace {
 /// subset of ops which we know should be in the core.
 /// TODO(newling) improve this design.
 static bool isCoreComputeOp(Operation *op) {
-  return isa<linalg::LinalgOp, vector::ContractionOp,
+  return isa<linalg::LinalgOp, linalg::SoftmaxOp, vector::ContractionOp,
              memref::ExtractStridedMetadataOp, func::CallOp,
              vector::TransferReadOp, vector::TransferWriteOp>(op);
 }
@@ -85,13 +85,18 @@ LogicalResult insertCoreOps(mlir::ModuleOp moduleOp) {
     mlir::gpu::GPUThreadMappingAttr threadYAttr =
         mlir::gpu::GPUThreadMappingAttr::get(forallOp->getContext(),
                                              mlir::gpu::MappingId::DimY);
-    if (!attrMapping.contains(threadXAttr) ||
-        !attrMapping.contains(threadYAttr)) {
-      forallOp.emitOpError() << "no forall with thread mapping found";
+    Value threadY = attrMapping.lookup(threadYAttr);
+    if (!threadY) {
+      forallOp.emitOpError()
+          << "missing threadY attribute mapping: " << threadYAttr;
       return WalkResult::interrupt();
     }
-    Value threadX = attrMapping[threadXAttr];
-    Value threadY = attrMapping[threadYAttr];
+    Value threadX = attrMapping.lookup(threadXAttr);
+    if (!threadX) {
+      rewriter.setInsertionPoint(forallOp.getBody()->getTerminator());
+      threadX =
+          rewriter.create<arith::ConstantIndexOp>(rewriter.getUnknownLoc(), 0);
+    }
 
     // Find input and output DMAs that need to be added to the core.
     SmallVector<Value> inputDmas;

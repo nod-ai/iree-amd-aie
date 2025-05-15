@@ -811,6 +811,18 @@ static LogicalResult setRootConfigForConvDecomposePipeline(
       IREE::Codegen::DispatchLoweringPassPipeline::Custom);
 }
 
+static LogicalResult setRootConfigForSoftmaxCopyPipeline(
+    mlir::FunctionOpInterface entryPointFn, linalg::SoftmaxOp softmaxOp,
+    AMDAIEDevice targetDevice, uint32_t numRows, uint32_t numCols,
+    std::string enableAMDAIEUkernels) {
+  if (failed(setOpConfigAndEntryPointFnTranslation(
+          entryPointFn, softmaxOp, TileSizesListType{{1, 0}, {1, 0}, {0, 0}},
+          IREE::Codegen::DispatchLoweringPassPipeline::Custom))) {
+    return failure();
+  }
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // Root Configurations
 //===----------------------------------------------------------------------===//
@@ -874,6 +886,24 @@ static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
 }
 
 /// Sets the lowering configuration for dispatch region with root op that
+/// is a softmax op.
+static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
+                                   linalg::SoftmaxOp softmaxOp,
+                                   TilePassPipeline passPipeline,
+                                   LowerToAIEPassPipeline useLowerToAIEPipeline,
+                                   AMDAIEDevice targetDevice, uint32_t numRows,
+                                   uint32_t numCols,
+                                   std::string enableAMDAIEUkernels) {
+  assert(!getLoweringConfig<IREE::Codegen::LoweringConfigAttr>(softmaxOp) &&
+         "expected lowering_config is not set");
+  if (passPipeline == TilePassPipeline::SoftmaxCopyPipeline)
+    return setRootConfigForSoftmaxCopyPipeline(entryPointFn, softmaxOp,
+                                               targetDevice, numRows, numCols,
+                                               enableAMDAIEUkernels);
+  return softmaxOp.emitError("Unhandled pass pipeline in setRootConfig.");
+}
+
+/// Sets the lowering configuration for dispatch region with root op that
 /// implements the convolution operation interface.
 static LogicalResult setConvRootConfig(mlir::FunctionOpInterface entryPointFn,
                                        linalg::ConvolutionOpInterface convOp,
@@ -913,6 +943,11 @@ static LogicalResult setRootConfigImpl(
                                numCols, enableAMDAIEUkernels);
         })
         .Case<linalg::ContractionOpInterface>([&](auto op) {
+          return setRootConfig(entryPointFn, op, passPipeline,
+                               useLowerToAIEPipeline, targetDevice, numRows,
+                               numCols, enableAMDAIEUkernels);
+        })
+        .Case<linalg::SoftmaxOp>([&](auto op) {
           return setRootConfig(entryPointFn, op, passPipeline,
                                useLowerToAIEPipeline, targetDevice, numRows,
                                numCols, enableAMDAIEUkernels);
