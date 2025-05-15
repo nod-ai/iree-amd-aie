@@ -168,8 +168,8 @@ def find_npu_device():
 def read_vbnv(npu_device_path):
     f = open(npu_device_path / "vbnv")
     vbnv = f.read()
-    assert vbnv.startswith("RyzenAI-")
-    return vbnv.split("-")[-1].strip()
+    assert vbnv.startswith("NPU ")
+    return vbnv.split(" ")[-1].strip()
 
 
 def get_core_n_cols(drv_fd, npu_device):
@@ -181,11 +181,9 @@ def get_core_n_cols(drv_fd, npu_device):
     )
 
     fcntl.ioctl(drv_fd, ioctls.DRM_IOCTL_AMDXDNA_GET_INFO, info_params)
-    if npu_device == "npu1":
-        # phoenix
+    if npu_device == "Phoenix":
         return metadata.cols - 1
-    elif npu_device == "npu4":
-        # strix
+    elif npu_device == "Strix":
         return metadata.cols
 
     return NotImplementedError(f"unrecognized {npu_device=}")
