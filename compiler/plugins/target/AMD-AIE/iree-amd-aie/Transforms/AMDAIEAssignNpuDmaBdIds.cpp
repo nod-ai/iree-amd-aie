@@ -79,13 +79,11 @@ std::optional<uint32_t> getNumberIterations(scf::ForOp loop) {
 ///   1. DmaOps within the current batch.
 ///   2. Required Bd Ids by the current batch.
 ///   3. Nested DmaBatch chain.
-///   4. Pointer to the sibling DmaBatch.
-///   5. A pointer to the parent op if the parent of is a scf.for.
+///   4. A pointer to the parent op if the parent of is a scf.for.
 struct DmaBatch {
   SmallVector<AMDAIE::NpuDmaCpyNdOp> currentDmaOps = {};
   int32_t requiredBdIds = 0;
   SmallVector<std::unique_ptr<DmaBatch>> immediateInnerBatches;
-  // std::unique_ptr<DmaBatch> nextDmaBatch = nullptr;
   scf::ForOp forOpParent = nullptr;
 
   /// A DmaBatch with no DmaOps and no nested DmaBatches is an empty DmaBatch.
@@ -119,8 +117,6 @@ struct DmaBatch {
     int32_t requiredBdIds = 0;
     for (const std::unique_ptr<DmaBatch> &currDmaBatch :
          immediateInnerBatches) {
-      // std::shared_ptr<DmaBatch> currDmaBatch = dmaBatch;
-      // do {
       if (currDmaBatch->isEmpty()) continue;
       int32_t totalDmaOpsInCurrentBatch = currDmaBatch->currentDmaOps.size();
       int32_t requiredBdIdsForInnerBatches =
@@ -137,16 +133,14 @@ struct DmaBatch {
           requiredBdIds += requiredBdIdsForInnerBatches;
         }
       }
-      //   currDmaBatch = currDmaBatch->nextDmaBatch;
-      // } while (currDmaBatch != nullptr);
     }
     return requiredBdIds;
   }
 };
 
 /// `TileDmaBatchGraph` is a struct that maintains a mapping from a tile to its
-/// corresponding `DmaBatch`. It contains utilities that help form/update the
-/// `DmaBatch` graph for a particular tile.
+/// corresponding list of `DmaBatch`. It contains utilities that help
+/// form/update the `DmaBatch` graph for a particular tile.
 class TileDmaBatchGraph {
   /// The main tile->DmaBatch graph.
   llvm::MapVector<AMDAIE::TileOp, SmallVector<std::unique_ptr<DmaBatch>>>
@@ -203,8 +197,8 @@ class TileDmaBatchGraph {
     }
   };
 
-  /// Traverse each DmaBatch in a given (Tile -> DmaBatch) and infer Bd Ids
-  /// required for it.
+  /// Traverse each DmaBatch in a given (Tile -> list_of_DmaBatches) and infer
+  /// Bd Ids required for it.
   void inferBdIdsRequiredInBatches() {
     for (auto &[tile, dmaBatchVec] : getGraph()) {
       for (std::unique_ptr<DmaBatch> &dmaBatch : dmaBatchVec) {
@@ -313,12 +307,10 @@ class BdIdAssignmentUtil {
   /// Since a DmaBatch contains the following :-
   ///   1. DmaOps within the current batch.
   ///   2. Nested DmaBatch chain.
-  ///   3. Pointer to the sibling DmaBatch.
   /// This API processes a given DmaBatch by :-
   ///   a. Assigning Bd Ids to 1.
   ///   b. Assigning Bd Ids to 2.
   ///   c. Releasing Bd Ids assigned to 1.
-  ///   d. Moving on to 3 and repeating steps a-to-d for it.
   LogicalResult processDmaBatch(IRRewriter &rewriter, AMDAIE::TileOp tileOp,
                                 std::unique_ptr<DmaBatch> &currDmaBatch) {
     OpBuilder::InsertionGuard guard(rewriter);
