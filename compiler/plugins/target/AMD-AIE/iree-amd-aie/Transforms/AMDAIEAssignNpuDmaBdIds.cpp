@@ -84,8 +84,8 @@ std::optional<uint32_t> getNumberIterations(scf::ForOp loop) {
 struct DmaBatch {
   SmallVector<AMDAIE::NpuDmaCpyNdOp> currentDmaOps = {};
   int32_t requiredBdIds = 0;
-  SmallVector<std::shared_ptr<DmaBatch>> immediateInnerBatches = {};
-  std::shared_ptr<DmaBatch> nextDmaBatch = nullptr;
+  SmallVector<std::unique_ptr<DmaBatch>> immediateInnerBatches;
+  // std::unique_ptr<DmaBatch> nextDmaBatch = nullptr;
   scf::ForOp forOpParent = nullptr;
 
   /// A DmaBatch with no DmaOps and no nested DmaBatches is an empty DmaBatch.
@@ -117,28 +117,28 @@ struct DmaBatch {
   int32_t getRequiredBdIdsForInnerBatches() const {
     if (immediateInnerBatches.empty()) return 0;
     int32_t requiredBdIds = 0;
-    for (const std::shared_ptr<DmaBatch> &dmaBatch : immediateInnerBatches) {
-      std::shared_ptr<DmaBatch> currDmaBatch = dmaBatch;
-      do {
-        if (currDmaBatch->isEmpty()) break;
-        int32_t totalDmaOpsInCurrentBatch = currDmaBatch->currentDmaOps.size();
-        int32_t requiredBdIdsForInnerBatches =
-            currDmaBatch->getRequiredBdIdsForInnerBatches();
-        currDmaBatch->requiredBdIds =
-            requiredBdIdsForInnerBatches + totalDmaOpsInCurrentBatch;
-        requiredBdIds += totalDmaOpsInCurrentBatch;
-        if (currDmaBatch->forOpParent) {
-          std::optional<uint32_t> numIterations =
-              getNumberIterations(currDmaBatch->forOpParent);
-          if (numIterations) {
-            requiredBdIds +=
-                requiredBdIdsForInnerBatches * numIterations.value();
-          } else {
-            requiredBdIds += requiredBdIdsForInnerBatches;
-          }
+    for (const std::unique_ptr<DmaBatch> &currDmaBatch :
+         immediateInnerBatches) {
+      // std::shared_ptr<DmaBatch> currDmaBatch = dmaBatch;
+      // do {
+      if (currDmaBatch->isEmpty()) continue;
+      int32_t totalDmaOpsInCurrentBatch = currDmaBatch->currentDmaOps.size();
+      int32_t requiredBdIdsForInnerBatches =
+          currDmaBatch->getRequiredBdIdsForInnerBatches();
+      currDmaBatch->requiredBdIds =
+          requiredBdIdsForInnerBatches + totalDmaOpsInCurrentBatch;
+      requiredBdIds += totalDmaOpsInCurrentBatch;
+      if (currDmaBatch->forOpParent) {
+        std::optional<uint32_t> numIterations =
+            getNumberIterations(currDmaBatch->forOpParent);
+        if (numIterations) {
+          requiredBdIds += requiredBdIdsForInnerBatches * numIterations.value();
+        } else {
+          requiredBdIds += requiredBdIdsForInnerBatches;
         }
-        currDmaBatch = currDmaBatch->nextDmaBatch;
-      } while (currDmaBatch != nullptr);
+      }
+      //   currDmaBatch = currDmaBatch->nextDmaBatch;
+      // } while (currDmaBatch != nullptr);
     }
     return requiredBdIds;
   }
@@ -149,11 +149,8 @@ struct DmaBatch {
 /// `DmaBatch` graph for a particular tile.
 class TileDmaBatchGraph {
   /// The main tile->DmaBatch graph.
-  llvm::MapVector<AMDAIE::TileOp, std::shared_ptr<DmaBatch>> tileDmaBatchGraph;
-  /// Helps keep track of the current DmaBatch of a tile that's being processed.
-  /// It holds the reference to the last DmaBatch for every tile on the main
-  /// graph.
-  DenseMap<AMDAIE::TileOp, std::shared_ptr<DmaBatch>> currentTileBatch;
+  llvm::MapVector<AMDAIE::TileOp, SmallVector<std::unique_ptr<DmaBatch>>>
+      tileDmaBatchGraph;
 
  public:
   /// Create a new TileDmaBatchGraph by traversing over each tiles in a
@@ -161,30 +158,35 @@ class TileDmaBatchGraph {
   TileDmaBatchGraph(AMDAIE::WorkgroupOp workgroupOp, Operation *parentOp) {
     workgroupOp.walk([&](AMDAIE::TileOp tile) {
       if (tileDmaBatchGraph.contains(tile)) return WalkResult::skip();
-      tileDmaBatchGraph[tile] = std::make_shared<DmaBatch>();
-      currentTileBatch[tile] = tileDmaBatchGraph[tile];
-      currentTileBatch[tile]->forOpParent = dyn_cast<scf::ForOp>(parentOp);
+      tileDmaBatchGraph[tile].push_back(std::make_unique<DmaBatch>());
+      tileDmaBatchGraph[tile][0]->forOpParent = dyn_cast<scf::ForOp>(parentOp);
       return WalkResult::advance();
     });
   }
 
-  llvm::MapVector<AMDAIE::TileOp, std::shared_ptr<DmaBatch>> &getGraph() {
+  llvm::MapVector<AMDAIE::TileOp, SmallVector<std::unique_ptr<DmaBatch>>> &
+  getGraph() {
     return tileDmaBatchGraph;
   }
 
-  void addDmaToBatch(AMDAIE::TileOp tile, AMDAIE::NpuDmaCpyNdOp dmaOp) {
+  std::unique_ptr<DmaBatch> &getLastDmaBatch(AMDAIE::TileOp tile) {
     assert(tileDmaBatchGraph.contains(tile) && "Tile op not found");
-    currentTileBatch[tile]->currentDmaOps.push_back(dmaOp);
+    return tileDmaBatchGraph[tile].back();
+  }
+
+  void addDmaToBatch(AMDAIE::TileOp tile, AMDAIE::NpuDmaCpyNdOp dmaOp) {
+    std::unique_ptr<DmaBatch> &lastDmaBatch = getLastDmaBatch(tile);
+    lastDmaBatch->currentDmaOps.push_back(dmaOp);
   };
 
   /// This API is invoked when we bump into a DMA wait op. That means we have
   /// reached the end of the current DmaBatch and can start a new DmaBatch in
   /// the chain for the corresponding tile.
-  void updateCurrentTileBatch(AMDAIE::TileOp tile) {
-    currentTileBatch[tile]->nextDmaBatch = std::make_shared<DmaBatch>();
-    currentTileBatch[tile]->nextDmaBatch->forOpParent =
-        currentTileBatch[tile]->forOpParent;
-    currentTileBatch[tile] = currentTileBatch[tile]->nextDmaBatch;
+  void updateLatestTileDmaBatch(AMDAIE::TileOp tile) {
+    std::unique_ptr<DmaBatch> &oldLastDmaBatch = getLastDmaBatch(tile);
+    tileDmaBatchGraph[tile].push_back(std::make_unique<DmaBatch>());
+    std::unique_ptr<DmaBatch> &newLastDmaBatch = getLastDmaBatch(tile);
+    newLastDmaBatch->forOpParent = oldLastDmaBatch->forOpParent;
   };
 
   /// Given another `TileDmaBatchGraph` instance, we consider that as the nested
@@ -192,27 +194,27 @@ class TileDmaBatchGraph {
   /// the `immediateInnerBatches` of the corresponding tile's DmaBatch.
   void updateInnerBatchesOfCurrentTileDmaBatchGraph(
       TileDmaBatchGraph &innerTileDmaBatchGraph) {
-    for (auto &[tile, dmaBatch] : innerTileDmaBatchGraph.getGraph()) {
-      if (dmaBatch->isEmpty()) continue;
-      currentTileBatch[tile]->immediateInnerBatches.push_back(
-          std::move(dmaBatch));
+    for (auto &[tile, dmaBatchVec] : innerTileDmaBatchGraph.getGraph()) {
+      for (std::unique_ptr<DmaBatch> &dmaBatch : dmaBatchVec) {
+        if (dmaBatch->isEmpty()) continue;
+        std::unique_ptr<DmaBatch> &lastDmaBatch = getLastDmaBatch(tile);
+        lastDmaBatch->immediateInnerBatches.push_back(std::move(dmaBatch));
+      }
     }
   };
 
   /// Traverse each DmaBatch in a given (Tile -> DmaBatch) and infer Bd Ids
   /// required for it.
   void inferBdIdsRequiredInBatches() {
-    for (auto &[tile, dmaBatch] : getGraph()) {
-      std::shared_ptr<DmaBatch> currDmaBatch = dmaBatch;
-      do {
-        if (currDmaBatch->isEmpty()) break;
-        int32_t totalDmaOpsInCurrentBatch = currDmaBatch->currentDmaOps.size();
+    for (auto &[tile, dmaBatchVec] : getGraph()) {
+      for (std::unique_ptr<DmaBatch> &dmaBatch : dmaBatchVec) {
+        if (dmaBatch->isEmpty()) continue;
+        int32_t totalDmaOpsInCurrentBatch = dmaBatch->currentDmaOps.size();
         int32_t requiredBdIdsForInnerBatches =
-            currDmaBatch->getRequiredBdIdsForInnerBatches();
-        currDmaBatch->requiredBdIds =
+            dmaBatch->getRequiredBdIdsForInnerBatches();
+        dmaBatch->requiredBdIds =
             requiredBdIdsForInnerBatches + totalDmaOpsInCurrentBatch;
-        currDmaBatch = currDmaBatch->nextDmaBatch;
-      } while (currDmaBatch != nullptr);
+      }
     }
   }
 };
@@ -263,8 +265,10 @@ class BdIdAssignmentUtil {
   /// would be used later during new DmaOp creation/replacement.
   LogicalResult assignRequiredBdIdsInBatch(
       IRRewriter &rewriter, TileDmaBatchGraph &tileDmaBatchGraph) {
-    for (auto &[tileOp, dmaBatch] : tileDmaBatchGraph.getGraph()) {
-      if (failed(processDmaBatch(rewriter, tileOp, dmaBatch))) return failure();
+    for (auto &[tile, dmaBatchVec] : tileDmaBatchGraph.getGraph()) {
+      for (std::unique_ptr<DmaBatch> &dmaBatch : dmaBatchVec) {
+        if (failed(processDmaBatch(rewriter, tile, dmaBatch))) return failure();
+      }
     }
     return success();
   }
@@ -316,26 +320,22 @@ class BdIdAssignmentUtil {
   ///   c. Releasing Bd Ids assigned to 1.
   ///   d. Moving on to 3 and repeating steps a-to-d for it.
   LogicalResult processDmaBatch(IRRewriter &rewriter, AMDAIE::TileOp tileOp,
-                                std::shared_ptr<DmaBatch> currDmaBatch) {
+                                std::unique_ptr<DmaBatch> &currDmaBatch) {
     OpBuilder::InsertionGuard guard(rewriter);
-    do {
-      if (currDmaBatch->isEmpty()) break;
-      if (failed(assignRequiredBdIdsInCurrentBatch(rewriter, tileOp,
-                                                   currDmaBatch))) {
-        return failure();
-      }
-
-      if (failed(assignRequiredBdIdsInInnerBatch(rewriter, tileOp,
+    if (currDmaBatch->isEmpty()) return success();
+    if (failed(assignRequiredBdIdsInCurrentBatch(rewriter, tileOp,
                                                  currDmaBatch))) {
-        return failure();
-      }
+      return failure();
+    }
 
-      if (failed(releaseAssignedBdIdsInDmaOps(currDmaBatch->currentDmaOps))) {
-        return failure();
-      }
+    if (failed(
+            assignRequiredBdIdsInInnerBatch(rewriter, tileOp, currDmaBatch))) {
+      return failure();
+    }
 
-      currDmaBatch = currDmaBatch->nextDmaBatch;
-    } while (currDmaBatch != nullptr);
+    if (failed(releaseAssignedBdIdsInDmaOps(currDmaBatch->currentDmaOps))) {
+      return failure();
+    }
     return success();
   }
 
@@ -344,8 +344,8 @@ class BdIdAssignmentUtil {
   /// which would be used later during new DmaOp creation/replacement.
   LogicalResult assignRequiredBdIdsInInnerBatch(
       IRRewriter &rewriter, AMDAIE::TileOp tileOp,
-      std::shared_ptr<DmaBatch> parentDmaBatch) {
-    for (std::shared_ptr<DmaBatch> &dmaBatch :
+      std::unique_ptr<DmaBatch> &parentDmaBatch) {
+    for (std::unique_ptr<DmaBatch> &dmaBatch :
          parentDmaBatch->immediateInnerBatches) {
       if (failed(processDmaBatch(rewriter, tileOp, dmaBatch))) return failure();
     }
@@ -358,7 +358,7 @@ class BdIdAssignmentUtil {
   /// available BD IDs equally amongst all DmaOps in the DmaBatch when assigning
   LogicalResult assignRequiredBdIdsInCurrentBatch(
       IRRewriter &rewriter, AMDAIE::TileOp tileOp,
-      std::shared_ptr<DmaBatch> dmaBatch) {
+      std::unique_ptr<DmaBatch> &dmaBatch) {
     // Get the channel.
     if (dmaBatch->currentDmaOps.empty()) return success();
     FailureOr<DmaTileData> maybeDmaTileData =
@@ -552,54 +552,64 @@ static TileDmaBatchGraph createTileDmaBatchGraph(
       TileDmaBatchGraph(workgroupOp, parentOp);
 
   AMDAIE::NpuDmaCpyNdOp currDmaOp = nullptr;
+
+  auto processOpWithNestedRegion = [&](Operation *op) {
+    TileDmaBatchGraph innerTileDmaBatchGraph =
+        createTileDmaBatchGraph(workgroupOp, op, shimTileToGeneratorMap);
+    tileDmaBatchGraph.updateInnerBatchesOfCurrentTileDmaBatchGraph(
+        innerTileDmaBatchGraph);
+  };
+
+  auto processNpuDmaCpyNdOp = [&](AMDAIE::NpuDmaCpyNdOp dmaOp) {
+    if (dmaOp.getSource()) {
+      FailureOr<AMDAIE::TileOp> tile =
+          getGeneratorTileOp<CopyOpOperateOn::Source>(dmaOp,
+                                                      shimTileToGeneratorMap);
+      if (succeeded(tile)) tileDmaBatchGraph.addDmaToBatch(*tile, dmaOp);
+    }
+    if (dmaOp.getTarget()) {
+      FailureOr<AMDAIE::TileOp> tile =
+          getGeneratorTileOp<CopyOpOperateOn::Target>(dmaOp,
+                                                      shimTileToGeneratorMap);
+      if (succeeded(tile)) tileDmaBatchGraph.addDmaToBatch(*tile, dmaOp);
+    }
+    if (!currDmaOp) currDmaOp = dmaOp;
+  };
+
+  auto processNpuDmaWaitOp = [&](AMDAIE::NpuDmaWaitOp npuWaitOp) {
+    for (AMDAIE::NpuDmaCpyNdOp npuDmaOp : npuWaitOp.getDmaOps()) {
+      // Reached the DMA wait operation, reset tracking of current DMA op
+      // for the tile.
+      if (npuDmaOp == currDmaOp) {
+        currDmaOp = nullptr;
+        if (npuDmaOp.getSource()) {
+          FailureOr<AMDAIE::TileOp> tile =
+              getGeneratorTileOp<CopyOpOperateOn::Source>(
+                  npuDmaOp, shimTileToGeneratorMap);
+          if (succeeded(tile))
+            tileDmaBatchGraph.updateLatestTileDmaBatch(*tile);
+        }
+        if (npuDmaOp.getTarget()) {
+          FailureOr<AMDAIE::TileOp> tile =
+              getGeneratorTileOp<CopyOpOperateOn::Target>(
+                  npuDmaOp, shimTileToGeneratorMap);
+          if (succeeded(tile))
+            tileDmaBatchGraph.updateLatestTileDmaBatch(*tile);
+        }
+      }
+    }
+  };
+
   // Traverse the parent operation's immediate child ops and form the
   // tileParentOpDmaBatchMap.
   for (Operation &op : parentOp->getRegion(0).getOps()) {
     TypeSwitch<Operation *, void>(&op)
-        .Case<scf::ForOp, scf::ForallOp>([&](auto forOp) {
-          TileDmaBatchGraph innerTileDmaBatchGraph =
-              createTileDmaBatchGraph(workgroupOp, &op, shimTileToGeneratorMap);
-          tileDmaBatchGraph.updateInnerBatchesOfCurrentTileDmaBatchGraph(
-              innerTileDmaBatchGraph);
-        })
-        .Case<AMDAIE::NpuDmaCpyNdOp>([&](auto dmaOp) {
-          if (dmaOp.getSource()) {
-            FailureOr<AMDAIE::TileOp> tile =
-                getGeneratorTileOp<CopyOpOperateOn::Source>(
-                    dmaOp, shimTileToGeneratorMap);
-            if (succeeded(tile)) tileDmaBatchGraph.addDmaToBatch(*tile, dmaOp);
-          }
-          if (dmaOp.getTarget()) {
-            FailureOr<AMDAIE::TileOp> tile =
-                getGeneratorTileOp<CopyOpOperateOn::Target>(
-                    dmaOp, shimTileToGeneratorMap);
-            if (succeeded(tile)) tileDmaBatchGraph.addDmaToBatch(*tile, dmaOp);
-          }
-          if (!currDmaOp) currDmaOp = dmaOp;
-        })
-        .Case<AMDAIE::NpuDmaWaitOp>([&](auto npuWaitOp) {
-          for (AMDAIE::NpuDmaCpyNdOp npuDmaOp : npuWaitOp.getDmaOps()) {
-            // Reached the DMA wait operation, reset tracking of current DMA op
-            // for the tile.
-            if (npuDmaOp == currDmaOp) {
-              currDmaOp = nullptr;
-              if (npuDmaOp.getSource()) {
-                FailureOr<AMDAIE::TileOp> tile =
-                    getGeneratorTileOp<CopyOpOperateOn::Source>(
-                        npuDmaOp, shimTileToGeneratorMap);
-                if (succeeded(tile))
-                  tileDmaBatchGraph.updateCurrentTileBatch(*tile);
-              }
-              if (npuDmaOp.getTarget()) {
-                FailureOr<AMDAIE::TileOp> tile =
-                    getGeneratorTileOp<CopyOpOperateOn::Target>(
-                        npuDmaOp, shimTileToGeneratorMap);
-                if (succeeded(tile))
-                  tileDmaBatchGraph.updateCurrentTileBatch(*tile);
-              }
-            }
-          }
-        });
+        .Case<scf::ForOp, scf::ForallOp>(
+            [&](auto forOp) { processOpWithNestedRegion(&op); })
+        .Case<AMDAIE::NpuDmaCpyNdOp>(
+            [&](auto dmaOp) { processNpuDmaCpyNdOp(dmaOp); })
+        .Case<AMDAIE::NpuDmaWaitOp>(
+            [&](auto npuWaitOp) { processNpuDmaWaitOp(npuWaitOp); });
   }
   return tileDmaBatchGraph;
 }
