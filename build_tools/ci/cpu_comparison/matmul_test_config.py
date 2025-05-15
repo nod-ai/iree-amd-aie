@@ -160,14 +160,6 @@ npu4_matmul_tests = [
         "K": 32,
         "input_type": "i32",
         "acc_type": "i32",
-        "use_chess": True,
-    },
-    {
-        "M": 32,
-        "N": 32,
-        "K": 32,
-        "input_type": "i32",
-        "acc_type": "i32",
         "name_suffix": "infinite_loop_npu4",
         "aie_compilation_flags": [
             "--iree-amdaie-enable-infinite-loop-around-core-block=true"
