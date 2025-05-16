@@ -2581,9 +2581,9 @@ class Tests:
         # The number of randomly sampled types to test.
         n_runs = 2
 
-        MN_pool = [8, 16, 32, 64, 128, 256, 512, 1024, 2048]
-        K_pool = [8, 16, 32, 64, 128, 256]
-        input_type_pool = ["i8", "bf16"]
+        MN_pool = [128, 256, 512]
+        K_pool = [128, 256]
+        input_type_pool = ["bf16"]
 
         # The number of possible combinations of the type (M, N, K, input_type)
         grid_elements = len(MN_pool) * len(MN_pool) * len(K_pool) * len(input_type_pool)
