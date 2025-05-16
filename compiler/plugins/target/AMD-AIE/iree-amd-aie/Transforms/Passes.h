@@ -231,6 +231,10 @@ std::unique_ptr<Pass> createAMDAIEFoldDmaWaitsPass();
 std::unique_ptr<Pass> createAMDAIEFuseProducerIntoLoopPass(
     AMDAIEFuseProducerIntoLoopOptions options = {});
 
+/// Create a pass to insert copy operations on inputs and results of the
+/// targeted operation.
+std::unique_ptr<Pass> createAMDAIEInsertCopiesPass();
+
 /// Create pass to insert `amdaie.core` operations inside the innermost
 /// `scf.forall` operations selected for parallel execution.
 std::unique_ptr<Pass> createAMDAIEInsertCoresPass(
