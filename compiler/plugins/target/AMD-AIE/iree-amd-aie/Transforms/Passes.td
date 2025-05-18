@@ -408,10 +408,10 @@ def AMDAIEHoistLogicalObjFifo : Pass<"iree-amdaie-hoist-logical-objectfifo"> {
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEHoistLogicalObjFifoPass()";
 }
 
-def AMDAIEInsertCopies :
-      InterfacePass<"iree-amdaie-insert-copies", "mlir::FunctionOpInterface"> {
+def AMDAIEInsertCopyOps :
+      InterfacePass<"iree-amdaie-insert-copy-ops", "mlir::FunctionOpInterface"> {
   let summary = "Insert copy ops on the inputs and results of the targeted operation.";
-  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEInsertCopiesPass()";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEInsertCopyOpsPass()";
 }
 
 def AMDAIEInsertCores :

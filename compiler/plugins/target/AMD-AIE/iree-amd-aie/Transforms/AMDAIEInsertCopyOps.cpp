@@ -11,7 +11,7 @@
 #include "mlir/IR/Iterators.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
-#define DEBUG_TYPE "iree-amdaie-insert-copies"
+#define DEBUG_TYPE "iree-amdaie-insert-copy-ops"
 
 namespace mlir::iree_compiler::AMDAIE {
 
@@ -62,19 +62,19 @@ LogicalResult promoteInputs(IRRewriter &rewriter, Operation *op) {
   return success();
 }
 
-class AMDAIEInsertCopiesPass
-    : public impl::AMDAIEInsertCopiesBase<AMDAIEInsertCopiesPass> {
+class AMDAIEInsertCopyOpsPass
+    : public impl::AMDAIEInsertCopyOpsBase<AMDAIEInsertCopyOpsPass> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<linalg::LinalgDialect, AMDAIEDialect>();
   }
 
-  AMDAIEInsertCopiesPass() = default;
-  AMDAIEInsertCopiesPass(const AMDAIEInsertCopiesPass &pass){};
+  AMDAIEInsertCopyOpsPass() = default;
+  AMDAIEInsertCopyOpsPass(const AMDAIEInsertCopyOpsPass &pass){};
   void runOnOperation() override;
 };
 
-void AMDAIEInsertCopiesPass::runOnOperation() {
+void AMDAIEInsertCopyOpsPass::runOnOperation() {
   MLIRContext *context = &getContext();
   IRRewriter rewriter(context);
   mlir::FunctionOpInterface funcOp = getOperation();
@@ -90,8 +90,8 @@ void AMDAIEInsertCopiesPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<Pass> createAMDAIEInsertCopiesPass() {
-  return std::make_unique<AMDAIEInsertCopiesPass>();
+std::unique_ptr<Pass> createAMDAIEInsertCopyOpsPass() {
+  return std::make_unique<AMDAIEInsertCopyOpsPass>();
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE
