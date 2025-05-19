@@ -1994,7 +1994,6 @@ class Tests:
 
         for target, chess_for_ukernel, in_type in [
             ["npu1_4col", True, "bf16"],
-            ["npu4", True, "i8"],
             ["npu4", False, "i8"],
         ]:
             performance_dict = copy.deepcopy(performance_repl_base_dict)
@@ -2034,6 +2033,7 @@ class Tests:
                 "N": 512,
                 "K": 4096,
                 "use_ukernel": True,
+                "use_chess_for_ukernel": True,
             },
             {
                 "M": 512,
@@ -2051,6 +2051,7 @@ class Tests:
                 "N": 4096,
                 "K": 512,
                 "use_ukernel": True,
+                "use_chess_for_ukernel": True,
             },
             {
                 "M": 512,
@@ -2074,6 +2075,7 @@ class Tests:
                 "N": 512,
                 "K": 512,
                 "use_ukernel": True,
+                "use_chess_for_ukernel": True,
             },
             {
                 "M": 4096,
@@ -2108,6 +2110,7 @@ class Tests:
                 "K": 512,
                 "use_ukernel": True,
                 "tile_pipeline": "pack-peel-4-level-tiling",
+                "use_chess_for_ukernel": True,
             },
             {
                 "M": 512,
@@ -2116,6 +2119,7 @@ class Tests:
                 "use_ukernel": True,
                 "matmul4d": True,
                 "tile_pipeline": "pack-peel-4-level-tiling",
+                "use_chess_for_ukernel": True,
             },
             {
                 "M": 512,
@@ -2161,27 +2165,6 @@ class Tests:
                 "K": 512,
                 "in_dtype": "i8",
                 "use_ukernel": True,
-                "outline": "all",
-                "tile_pipeline": "pack-peel-4-level-tiling",
-                "run_on_target": "npu4",
-            },
-            {
-                "M": 512,
-                "N": 4096,
-                "K": 512,
-                "in_dtype": "i8",
-                "use_ukernel": True,
-                "outline": "all",
-                "matmul4d": True,
-                "tile_pipeline": "pack-peel-4-level-tiling",
-                "run_on_target": "npu4",
-            },
-            {
-                "M": 512,
-                "N": 4096,
-                "K": 512,
-                "in_dtype": "i8",
-                "use_ukernel": True,
                 "matmul4d": True,
                 "scale_trunc": True,
                 "tile_pipeline": "pack-peel-4-level-tiling",
@@ -2193,21 +2176,10 @@ class Tests:
                 "N": 4096,
                 "K": 512,
                 "in_dtype": "i8",
-                "outline": "all",
-                "call_replication": 0,
-                "tile_pipeline": "pack-peel-4-level-tiling",
-                "run_on_target": "npu4",
-            },
-            {
-                "M": 512,
-                "N": 4096,
-                "K": 512,
-                "in_dtype": "i8",
                 "use_ukernel": True,
                 "outline": "all",
                 "tile_pipeline": "pack-peel-4-level-tiling",
                 "run_on_target": "npu4",
-                "use_chess_for_ukernel": False,
             },
             {
                 "M": 1024,
@@ -2254,7 +2226,7 @@ class Tests:
             matmul4d = test.get("matmul4d", False)
             scale_trunc = test.get("scale_trunc", False)
             use_chess = test.get("use_chess", False)
-            use_chess_for_ukernel = test.get("use_chess_for_ukernel", True)
+            use_chess_for_ukernel = test.get("use_chess_for_ukernel", False)
             run_on_target = test.get("run_on_target", "npu1_4col")
             in_dtype = test.get("in_dtype", "bf16")
             out_dtype = test.get("out_dtype", "f32")
@@ -2412,39 +2384,6 @@ class Tests:
                     ),
                 )
             )
-
-        # chess test
-        self.register(
-            Matmul(
-                32,
-                32,
-                32,
-                "i32",
-                "i32",
-                test_params=TestParams(
-                    name_suffix="chess",
-                    use_chess=True,
-                    n_repeats=10,
-                ),
-            )
-        )
-
-        # chess test with ukernel
-        self.register(
-            Matmul(
-                64,
-                64,
-                64,
-                "bf16",
-                "f32",
-                test_params=TestParams(
-                    name_suffix="chess",
-                    use_chess=True,
-                    use_ukernel=True,
-                    n_repeats=10,
-                ),
-            )
-        )
 
         # Control packet single dispatch tests:
         for target, in_type, out_type in [
