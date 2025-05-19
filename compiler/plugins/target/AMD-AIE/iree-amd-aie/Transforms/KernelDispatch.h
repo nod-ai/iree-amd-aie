@@ -54,6 +54,19 @@ enum class OutliningStrategy {
   Balanced,
 };
 
+enum class PacketFlowStrategy {
+  // No packet flow.
+  None,
+  // Congestion-aware packet flow assignment.
+  Auto,
+  // Use packet mode on all input flows.
+  Inputs,
+  // Use packet mode on all output flows.
+  Outputs,
+  // Use packet mode on all flows.
+  All,
+};
+
 LogicalResult initAIELaunchConfig(FunctionOpInterface funcOp,
                                   TilePassPipeline useTilePipeline,
                                   LowerToAIEPassPipeline useLowerToAIEPipeline,

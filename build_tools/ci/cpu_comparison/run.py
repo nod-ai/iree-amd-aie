@@ -152,11 +152,15 @@ class BaseTest(ABC):
 
         if enable_ctrlpkt:
             self.labels.append("CtrlPkt")
-            self.add_aie_compilation_flags(
-                [
-                    "--iree-amdaie-enable-input-packet-flow=true",
-                ]
-            )
+            self.add_aie_compilation_flags(["--iree-amdaie-enable-control-packet=true"])
+            # Ensure the packet flow flag is also set; add as `auto` if missing.
+            if not any(
+                flag.startswith("--iree-amdaie-packet-flow-strategy=")
+                for flag in self.aie_compilation_flags
+            ):
+                self.add_aie_compilation_flags(
+                    ["--iree-amdaie-packet-flow-strategy=auto"]
+                )
             self.name += "_ctrlpkt"
 
         if run_benchmark:
@@ -2017,7 +2021,6 @@ class Tests:
 
         for target, chess_for_ukernel, in_type in [
             ["npu1_4col", True, "bf16"],
-            ["npu4", True, "i8"],
             ["npu4", False, "i8"],
         ]:
             performance_dict = copy.deepcopy(performance_repl_base_dict)
@@ -2057,6 +2060,7 @@ class Tests:
                 "N": 512,
                 "K": 4096,
                 "use_ukernel": True,
+                "use_chess_for_ukernel": True,
             },
             {
                 "M": 512,
@@ -2074,6 +2078,7 @@ class Tests:
                 "N": 4096,
                 "K": 512,
                 "use_ukernel": True,
+                "use_chess_for_ukernel": True,
             },
             {
                 "M": 512,
@@ -2097,6 +2102,7 @@ class Tests:
                 "N": 512,
                 "K": 512,
                 "use_ukernel": True,
+                "use_chess_for_ukernel": True,
             },
             {
                 "M": 4096,
@@ -2131,6 +2137,7 @@ class Tests:
                 "K": 512,
                 "use_ukernel": True,
                 "tile_pipeline": "pack-peel-4-level-tiling",
+                "use_chess_for_ukernel": True,
             },
             {
                 "M": 512,
@@ -2139,6 +2146,7 @@ class Tests:
                 "use_ukernel": True,
                 "matmul4d": True,
                 "tile_pipeline": "pack-peel-4-level-tiling",
+                "use_chess_for_ukernel": True,
             },
             {
                 "M": 512,
@@ -2184,27 +2192,6 @@ class Tests:
                 "K": 512,
                 "in_dtype": "i8",
                 "use_ukernel": True,
-                "outline": "all",
-                "tile_pipeline": "pack-peel-4-level-tiling",
-                "run_on_target": "npu4",
-            },
-            {
-                "M": 512,
-                "N": 4096,
-                "K": 512,
-                "in_dtype": "i8",
-                "use_ukernel": True,
-                "outline": "all",
-                "matmul4d": True,
-                "tile_pipeline": "pack-peel-4-level-tiling",
-                "run_on_target": "npu4",
-            },
-            {
-                "M": 512,
-                "N": 4096,
-                "K": 512,
-                "in_dtype": "i8",
-                "use_ukernel": True,
                 "matmul4d": True,
                 "scale_trunc": True,
                 "tile_pipeline": "pack-peel-4-level-tiling",
@@ -2216,21 +2203,10 @@ class Tests:
                 "N": 4096,
                 "K": 512,
                 "in_dtype": "i8",
-                "outline": "all",
-                "call_replication": 0,
-                "tile_pipeline": "pack-peel-4-level-tiling",
-                "run_on_target": "npu4",
-            },
-            {
-                "M": 512,
-                "N": 4096,
-                "K": 512,
-                "in_dtype": "i8",
                 "use_ukernel": True,
                 "outline": "all",
                 "tile_pipeline": "pack-peel-4-level-tiling",
                 "run_on_target": "npu4",
-                "use_chess_for_ukernel": False,
             },
             {
                 "M": 1024,
@@ -2277,10 +2253,11 @@ class Tests:
             matmul4d = test.get("matmul4d", False)
             scale_trunc = test.get("scale_trunc", False)
             use_chess = test.get("use_chess", False)
-            use_chess_for_ukernel = test.get("use_chess_for_ukernel", True)
+            use_chess_for_ukernel = test.get("use_chess_for_ukernel", False)
             run_on_target = test.get("run_on_target", "npu1_4col")
             in_dtype = test.get("in_dtype", "bf16")
             out_dtype = test.get("out_dtype", "f32")
+            stack_size = test.get("stack_size", "1024")
             use_packet_flow = test.get("use_packet_flow", False)
 
             # Default of 1 means that outlined functions are called once at each
@@ -2306,6 +2283,7 @@ class Tests:
             aie_compilation_flags += [
                 outlining_string,
                 f"--iree-amd-aie-additional-peano-opt-flags={peano_opt_level_string}",
+                f"--iree-amdaie-stack-size={stack_size}",
             ]
 
             if call_replication != 1:
@@ -2350,10 +2328,11 @@ class Tests:
                 raise ValueError("Transposing both LHS and RHS is not supported.")
 
             if use_packet_flow:
-                # Only enable packet flows for kernel inputs to prevent potential deadlock.
-                # TODO (zhewen): Support kernel outputs.
+                # These tests are intended to validate packet flow functionality, so they should make use of as many packet flows as possible.
+                # Currently, packet flows are only enabled for kernel inputs to avoid potential deadlocks.
+                # TODO(zhewen): Add support for kernel outputs.
                 aie_compilation_flags.append(
-                    "--iree-amdaie-enable-input-packet-flow=true"
+                    "--iree-amdaie-packet-flow-strategy=inputs"
                 )
                 name_suffix += "_packet_flow"
 
@@ -2432,39 +2411,6 @@ class Tests:
                     ),
                 )
             )
-
-        # chess test
-        self.register(
-            Matmul(
-                32,
-                32,
-                32,
-                "i32",
-                "i32",
-                test_params=TestParams(
-                    name_suffix="chess",
-                    use_chess=True,
-                    n_repeats=10,
-                ),
-            )
-        )
-
-        # chess test with ukernel
-        self.register(
-            Matmul(
-                64,
-                64,
-                64,
-                "bf16",
-                "f32",
-                test_params=TestParams(
-                    name_suffix="chess",
-                    use_chess=True,
-                    use_ukernel=True,
-                    n_repeats=10,
-                ),
-            )
-        )
 
         # Control packet single dispatch tests:
         for target, in_type, out_type in [
@@ -2573,9 +2519,6 @@ class Tests:
             self.register(
                 ConvolutionFromTemplate(
                     generator,
-                    test_params=TestParams(
-                        enable_ctrlpkt=False,
-                    ),
                 )
             )
 
@@ -2593,9 +2536,6 @@ class Tests:
         self.register(
             ConvolutionFromTemplate(
                 generator,
-                test_params=TestParams(
-                    enable_ctrlpkt=False,
-                ),
             )
         )
 

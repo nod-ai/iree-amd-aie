@@ -160,14 +160,6 @@ npu4_matmul_tests = [
         "K": 32,
         "input_type": "i32",
         "acc_type": "i32",
-        "use_chess": True,
-    },
-    {
-        "M": 32,
-        "N": 32,
-        "K": 32,
-        "input_type": "i32",
-        "acc_type": "i32",
         "name_suffix": "infinite_loop_npu4",
         "aie_compilation_flags": [
             "--iree-amdaie-enable-infinite-loop-around-core-block=true"
@@ -203,7 +195,6 @@ npu4_matmul_tests = [
         "use_chess_for_ukernel": False,
         "tile_pipeline": "pack-peel-4-level-tiling",
         "name_suffix": "4rows_8cols_npu4",
-        "enable_ctrlpkt": False,
     },
     {
         "M": 512,
@@ -224,7 +215,6 @@ npu4_matmul_tests = [
         "acc_type": "i32",
         "tile_pipeline": "pack-peel-4-level-tiling",
         "name_suffix": "4rows_8cols_npu4_pack_peel_4_level_tiling",
-        "enable_ctrlpkt": False,
     },
     {
         "M": 1024,

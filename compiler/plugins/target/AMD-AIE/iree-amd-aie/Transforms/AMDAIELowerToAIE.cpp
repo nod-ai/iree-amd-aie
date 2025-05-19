@@ -494,8 +494,8 @@ LogicalResult AIEDeviceBuilder::coreToAIE(AMDAIE::CoreOp coreOp,
     return coreOp.emitError()
            << "couldn't look up input `aie.tile` operation in IR map";
   }
-  auto aieCoreOp =
-      rewriter.create<AIE::CoreOp>(rewriter.getUnknownLoc(), tileOp);
+  auto aieCoreOp = rewriter.create<AIE::CoreOp>(
+      rewriter.getUnknownLoc(), tileOp, coreOp.getStackSizeAttr());
   Region &aieCoreRegion = aieCoreOp.getBody();
   Block *aieCoreBlock = rewriter.createBlock(&aieCoreRegion);
   auto insertIt = aieCoreBlock->begin();

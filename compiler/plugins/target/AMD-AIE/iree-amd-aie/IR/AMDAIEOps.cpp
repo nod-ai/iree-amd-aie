@@ -105,21 +105,22 @@ LogicalResult ControlCodeOp::verify() {
 // AMDAIE_CoreOp
 //===----------------------------------------------------------------------===//
 
-void CoreOp::build(OpBuilder &b, OperationState &result, AMDAIE::TileOp tileOp,
-                   ValueRange inputDmas, ValueRange outputDmas) {
-  build(b, result, b.getIndexType(), tileOp, inputDmas, outputDmas, nullptr);
-}
-
 /// Hardcoded row_offset == 2 -> AIE core rows start from 2
 /// TODO(jornt): avoid hardcoding here. Add a device model/identifier to loop up
 /// core offset. This will be handled in a follow-up.
 void CoreOp::build(OpBuilder &b, OperationState &result, Value coreCol,
-                   Value coreRow, ValueRange inputDmas, ValueRange outputDmas) {
+                   Value coreRow, ValueRange inputDmas, ValueRange outputDmas,
+                   IntegerAttr stackSize) {
   auto rowOffset = b.create<arith::ConstantIndexOp>(b.getUnknownLoc(), 2);
   auto row =
       b.createOrFold<arith::AddIOp>(b.getUnknownLoc(), rowOffset, coreRow);
   auto tileOp = b.create<AMDAIE::TileOp>(b.getUnknownLoc(), coreCol, row);
-  build(b, result, tileOp, inputDmas, outputDmas, nullptr);
+  build(b, result, tileOp, inputDmas, outputDmas, stackSize, nullptr);
+}
+
+void CoreOp::build(OpBuilder &b, OperationState &result, Value coreCol,
+                   Value coreRow, ValueRange inputDmas, ValueRange outputDmas) {
+  build(b, result, coreCol, coreRow, inputDmas, outputDmas, nullptr);
 }
 
 void CoreOp::build(OpBuilder &b, OperationState &result, Value coreCol,

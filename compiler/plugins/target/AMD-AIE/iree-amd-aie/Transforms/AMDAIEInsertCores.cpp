@@ -58,7 +58,7 @@ void getAttributeMapping(SmallVector<scf::ForallOp> forallOps,
 /// Insert core ops inside innermost forall ops around computational ops and
 /// add synchronization ops along the way to synchronize with surrounding
 /// dma ops.
-LogicalResult insertCoreOps(mlir::ModuleOp moduleOp) {
+static LogicalResult insertCoreOps(mlir::ModuleOp moduleOp, int64_t stackSize) {
   IRRewriter rewriter(moduleOp.getContext());
   WalkResult res = moduleOp->walk([&](scf::ForallOp forallOp) {
     // Currently, innermost `scf.forall` operations are expected to have thread
@@ -125,8 +125,9 @@ LogicalResult insertCoreOps(mlir::ModuleOp moduleOp) {
 
     // Create CoreOp at the end of the innermost forall
     rewriter.setInsertionPoint(forallOp.getBody()->getTerminator());
-    auto coreOp = rewriter.create<AMDAIE::CoreOp>(
-        rewriter.getUnknownLoc(), threadX, threadY, inputDmas, outputDmas);
+    auto coreOp = rewriter.create<AMDAIE::CoreOp>(rewriter.getUnknownLoc(),
+                                                  threadX, threadY, inputDmas,
+                                                  outputDmas, stackSize);
     Region &region = coreOp.getRegion();
     Block *newBlock = rewriter.createBlock(&region);
     rewriter.setInsertionPointToStart(newBlock);
@@ -188,19 +189,23 @@ class AMDAIEInsertCoresPass
 
   AMDAIEInsertCoresPass() = default;
   AMDAIEInsertCoresPass(const AMDAIEInsertCoresPass &pass){};
+  AMDAIEInsertCoresPass(const AMDAIEInsertCoresOptions &options)
+      : AMDAIEInsertCoresBase(options) {}
+
   void runOnOperation() override;
 };
 
 void AMDAIEInsertCoresPass::runOnOperation() {
-  if (failed(insertCoreOps(getOperation()))) {
+  if (failed(insertCoreOps(getOperation(), stackSize))) {
     return signalPassFailure();
   }
 }
 
 }  // namespace
 
-std::unique_ptr<Pass> createAMDAIEInsertCoresPass() {
-  return std::make_unique<AMDAIEInsertCoresPass>();
+std::unique_ptr<Pass> createAMDAIEInsertCoresPass(
+    AMDAIEInsertCoresOptions options) {
+  return std::make_unique<AMDAIEInsertCoresPass>(options);
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE
