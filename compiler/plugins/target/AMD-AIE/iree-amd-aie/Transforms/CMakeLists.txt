@@ -81,6 +81,7 @@ iree_cc_library(
     "AMDAIEGenerateControlOverlay.cpp"
     "AMDAIEHoistForAffineApply.cpp"
     "AMDAIEHoistLogicalObjFifo.cpp"
+    "AMDAIEInsertCopyOps.cpp"
     "AMDAIEInsertCores.cpp"
     "AMDAIEInsertDmaBdChain.cpp"
     "AMDAIEInsertInfiniteLoopAroundCoreBlock.cpp"
