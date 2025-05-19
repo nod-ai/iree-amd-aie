@@ -616,7 +616,7 @@ void addSoftmaxCopyPassPipeline(OpPassManager &funcPassManager,
   }
 
   // Insert copy operations to the softmax input and result.
-  funcPassManager.addPass(createAMDAIEInsertCopiesPass());
+  funcPassManager.addPass(createAMDAIEInsertCopyOpsPass());
   addCleanups();
 
   // Promote the softmax input and result to shared memory.
@@ -642,7 +642,7 @@ void addSoftmaxCopyPassPipeline(OpPassManager &funcPassManager,
   funcPassManager.addPass(createAMDAIEFuseFillIntoForallPass());
 
   // Insert copy operations to the softmax input and result.
-  funcPassManager.addPass(createAMDAIEInsertCopiesPass());
+  funcPassManager.addPass(createAMDAIEInsertCopyOpsPass());
   addCleanups();
 
   // Promote the softmax input and result to local memory.
