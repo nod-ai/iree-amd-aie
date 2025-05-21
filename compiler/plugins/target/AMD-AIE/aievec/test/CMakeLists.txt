@@ -1,10 +1,10 @@
 set(_mlir_files
   align-transfer-reads.mlir
-  canonicalize_transfer_write_for_load.mlir
+  canonicalize-transfer-write-for-load.mlir
   fold-ops.mlir
   matmul.mlir
-  precanonicalization-aieml-llvmir.mlir
-  test-mac_elem.mlir
+  canonicalize-vector-for-aievec.mlir
+  test-mac-elem.mlir
   test-shuffle.mlir
   test-srs.mlir
   test-ups.mlir
