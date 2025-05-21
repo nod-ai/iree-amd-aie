@@ -1,13 +1,13 @@
 set(_mlir_files
-  align-transfer-reads.mlir
-  canonicalize-transfer-write-for-load.mlir
-  fold-ops.mlir
+  align_transfer_reads.mlir
+  canonicalize_transfer_write_for_load.mlir
+  fold_ops.mlir
   matmul.mlir
-  canonicalize-vector-for-aievec.mlir
-  test-mac-elem.mlir
-  test-shuffle.mlir
-  test-srs.mlir
-  test-ups.mlir
+  canonicalize_vector_for_aievec.mlir
+  test_mac_elem.mlir
+  test_shuffle.mlir
+  test_srs.mlir
+  test_ups.mlir
 )
 
 iree_lit_test_suite(
