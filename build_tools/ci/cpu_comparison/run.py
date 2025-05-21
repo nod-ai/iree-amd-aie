@@ -2512,6 +2512,56 @@ class Tests:
             )
         )
 
+        # Soak testing.
+        # See https://github.com/nod-ai/iree-amd-aie/issues/1264
+        seed = 42
+        rng = np.random.default_rng(seed=seed)
+
+        # The number of randomly sampled types to test.
+        n_runs = 2
+
+        MN_pool = [128, 256, 512]
+        K_pool = [128, 256]
+        input_type_pool = ["bf16"]
+
+        # The number of possible combinations of the type (M, N, K, input_type)
+        grid_elements = len(MN_pool) * len(MN_pool) * len(K_pool) * len(input_type_pool)
+        if n_runs >= 0.5 * grid_elements:
+            raise RuntimeError(
+                "Sampling without replacement nearly exhausted, might as well test full grid"
+            )
+
+        # We'll do sampling without replacement (i.e. we won't test the same type more than once).
+        sampled = set()
+
+        for run_number in range(n_runs):
+            # Generate a new random type.
+            while True:
+                M = rng.choice(MN_pool)
+                N = rng.choice(MN_pool)
+                K = rng.choice(K_pool)
+                input_type = rng.choice(input_type_pool)
+                sample = (M, N, K, input_type)
+                if sample not in sampled:
+                    sampled.add(sample)
+                    break
+
+            # Test the random type.
+            output_type = "i32" if input_type == "i8" else "f32"
+            self.register(
+                Matmul(
+                    M,
+                    N,
+                    K,
+                    input_type,
+                    output_type,
+                    test_params=TestParams(
+                        name_suffix="soak_" + str(run_number),
+                    ),
+                    additional_labels=["Soak"],
+                )
+            )
+
 
 def all_tests(
     tests,
