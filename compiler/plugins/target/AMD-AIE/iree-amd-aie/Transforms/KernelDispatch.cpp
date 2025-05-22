@@ -515,6 +515,28 @@ static LogicalResult setRootConfigForPackPeel4LevelTilingPipeline(
     m0Tile /= maybeInputDimsAndSizes.value().mSizes.back();
     n0Tile /= maybeInputDimsAndSizes.value().nSizes.back();
   }
+  // TODO(avarma): This is currently a workaround for 1x1 AIE array to make
+  // those 2D matmul shapes work for which all of the operands get pulled in to
+  // L2 buffer. Once reprogramming of DMA ops is supported, we can get rid of
+  // this workaround. We need to add this only for pack-peel-4-level-tiling NOT
+  // pack-peel. The workaround just ensures that the tile size of first level is
+  // NOT equal to M,N by halving the n0Tile.
+  if (is2DMatmulLike && numRows == 1 && numCols == 1) {
+    auto getTotalSize = [](ArrayRef<int64_t> sizes) {
+      return std::accumulate(sizes.begin(), sizes.end(), 1,
+                             std::multiplies<int64_t>());
+    };
+
+    // Get the shape (M, N) of the full Matmul operation.
+    auto maybeInputDimsAndSizes = getInputDimsAndSizes(linalgOp);
+    int64_t M = getTotalSize(maybeInputDimsAndSizes.value().mSizes);
+    int64_t N = getTotalSize(maybeInputDimsAndSizes.value().nSizes);
+    // Check if the tile size generated is exactly same as operand size. If yes,
+    // halve n0Tile.
+    if (m0Tile == M && n0Tile == N) {
+      n0Tile /= 2;
+    }
+  }
   tileSizeLevel0[mDims[0]] = m0Tile;
   tileSizeLevel0[nDims[0]] = n0Tile;
 
