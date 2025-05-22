@@ -1216,6 +1216,38 @@ static void configureCanonicalizeLegalizations(ConversionTarget &target) {
       });
 }
 
+// TODO(newling) this [sh|c]ould be on vector::ContractionOp folder (see
+// definition of this vector dialect operation wrt upcasting operands).
+struct AbsorbUpCastIntoContractionPattern
+    : public OpRewritePattern<vector::ContractionOp> {
+  using OpRewritePattern<vector::ContractionOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(vector::ContractionOp op,
+                                PatternRewriter &rewriter) const override {
+    auto getPreUpCast = [](Value v) -> Value {
+      if (auto extOp = v.getDefiningOp<arith::ExtFOp>()) {
+        return extOp.getIn();
+      } else if (auto extOp = v.getDefiningOp<arith::ExtSIOp>()) {
+        return extOp.getIn();
+      } else if (auto extOp = v.getDefiningOp<arith::ExtUIOp>()) {
+        return extOp.getIn();
+      }
+      return {};
+    };
+
+    bool changed = false;
+    if (Value newLhs = getPreUpCast(op.getLhs())) {
+      changed = true;
+      op.setOperand(0, newLhs);
+    }
+    if (Value newRhs = getPreUpCast(op.getRhs())) {
+      changed = true;
+      op.setOperand(1, newRhs);
+    }
+    return changed ? success() : failure();
+  }
+};
+
 struct ConvertLeadingUnitDimInsertToReshapePattern
     : public OpRewritePattern<vector::InsertOp> {
   using OpRewritePattern<vector::InsertOp>::OpRewritePattern;
@@ -1294,7 +1326,8 @@ struct CanonicalizeVectorForAIEVecPass
 
     {
       RewritePatternSet patterns(context);
-      patterns.add<CanonicalizeTrivialReadAccessSubviewOpPattern,
+      patterns.add<AbsorbUpCastIntoContractionPattern,
+                   CanonicalizeTrivialReadAccessSubviewOpPattern,
                    CanonicalizeTrivialWriteAccessSubviewOpPattern>(context);
       (void)applyPatternsGreedily(op, std::move(patterns));
     }
@@ -1384,14 +1417,15 @@ FailureOr<Value> getAlignedTransferRead(
   // Early exit case: If the current `tranfer_read` offset is already multiple
   // of alignment, can return without any modification.
   //
-  // Below, we check if the offset is defined by `affine.apply`, if then if the
-  // `affine.apply` is always a multiple of alignment.
+  // Below, we check if the offset is defined by `affine.apply`, if then if
+  // the `affine.apply` is always a multiple of alignment.
   //
-  // TODO(newling) generalize - what to case where the offset is not defined by
+  // TODO(newling) generalize - what to case where the offset is not defined
+  // by
   //               `affine.apply`.
   // TODO(newling) make this reusable for canonicalization: a
-  //               `transfer_read` followed by `aievec.ext` op can be simplified
-  //               with this approach.
+  //               `transfer_read` followed by `aievec.ext` op can be
+  //               simplified with this approach.
   if (auto offsetAffineApplyOp =
           oldIndex.getDefiningOp<affine::AffineApplyOp>()) {
     AffineMap affineMap = offsetAffineApplyOp.getAffineMap();
@@ -1505,10 +1539,11 @@ struct AlignTransferReadsPass
     std::optional<AMDAIE::AMDAIEDevice> maybeDevice =
         mlir::iree_compiler::AMDAIE::getConfigAMDAIEDevice(targetAttr);
     if (!maybeDevice) {
-      op->emitOpError()
-          << "has no AMDAIEDevice in the target attribute configuration. This "
-             "device-specific information is required to determine what vector "
-             "sizes and alignments are supported.";
+      op->emitOpError() << "has no AMDAIEDevice in the target attribute "
+                           "configuration. This "
+                           "device-specific information is required to "
+                           "determine what vector "
+                           "sizes and alignments are supported.";
       return signalPassFailure();
     }
     AMDAIE::AMDAIEDeviceModel deviceModel =

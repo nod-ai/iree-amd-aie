@@ -17,6 +17,8 @@ include "AIEVecDialect.td"
 include "mlir/IR/EnumAttr.td"
 
 // Shuffle modes for shuffle ops.
+// Please see the AIE2 / AIE2P ISA documentation (currently not publicly available)
+// where these numbers are defined.
 def SHUFFLE_MODE_T8_64X2_LO   : I32EnumAttrCase<"T8_64X2_LO",    0, "t8_64x2_lo">;
 def SHUFFLE_MODE_T8_64X2_HI   : I32EnumAttrCase<"T8_64X2_HI",    1, "t8_64x2_hi">;
 def SHUFFLE_MODE_T16_32X2_LO  : I32EnumAttrCase<"T16_32X2_LO",   2, "t16_32x2_lo">;

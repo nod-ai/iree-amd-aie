@@ -109,6 +109,10 @@ void mlir::iree_compiler::aievec::buildConvertVectorToAIEVec(
   buildLowerVectorToAIEVec(pm);
   // NOTE: At this stage, all vector operations are expressed in AIEVec dialect.
 
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
+  pm.addPass(createCanonicalizerPass());
+
   // Post-conversion passes.
   pm.addPass(createLoopInvariantCodeMotionPass());
   pm.addPass(createCanonicalizerPass());

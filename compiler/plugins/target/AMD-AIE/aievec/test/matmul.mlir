@@ -25,8 +25,14 @@ module attributes {hal.executable.target = #foo} {
 // CHECK:      return %[[R]] : vector<4x4xf32>
 func.func @matmulbf16bf16f32(%A : vector<4x8xbf16>, %B : vector<8x4xbf16>,
                   %C : vector<4x4xf32>) -> vector<4x4xf32> {
-  %0 = aievec.matmul %A, %B, %C : vector<4x8xbf16>, vector<8x4xbf16>
-                                  into vector<4x4xf32>
+  %0 = vector.contract {indexing_maps =
+                        [affine_map<(d0, d1, d2) -> (d0, d2)>,
+                         affine_map<(d0, d1, d2) -> (d2, d1)>,
+                         affine_map<(d0, d1, d2) -> (d0, d1)>],
+                        iterator_types =
+                         ["parallel", "parallel", "reduction"],
+                        kind = #vector.kind<add>}
+                        %A, %B, %C : vector<4x8xbf16>, vector<8x4xbf16> into vector<4x4xf32>
   return %0 : vector<4x4xf32>
 }
 
@@ -59,8 +65,13 @@ func.func @matmulbf16bf16f32(%A : vector<4x8xbf16>, %B : vector<8x4xbf16>,
 // CHECK:      return %[[R]] : vector<4x8xi32>
 func.func @matmuli8i8i32(%A : vector<4x8xi8>, %B : vector<8x8xi8>,
                   %C : vector<4x8xi32>) -> vector<4x8xi32> {
-  %0 = aievec.matmul %A, %B, %C : vector<4x8xi8>, vector<8x8xi8>
-                                  into vector<4x8xi32>
+  %0 = vector.contract {indexing_maps =
+                        [affine_map<(d0, d1, d2) -> (d0, d2)>,
+                         affine_map<(d0, d1, d2) -> (d2, d1)>,
+                         affine_map<(d0, d1, d2) -> (d0, d1)>],
+                        iterator_types =
+                         ["parallel", "parallel", "reduction"], kind = #vector.kind<add>}
+                        %A, %B, %C : vector<4x8xi8>, vector<8x8xi8> into vector<4x8xi32>
   return %0 : vector<4x8xi32>
 }
 }
@@ -72,8 +83,13 @@ func.func @matmuli8i8i32(%A : vector<4x8xi8>, %B : vector<8x8xi8>,
 module attributes {hal.executable.target = #foo} {
 func.func @matmuli8i8i32npu4(%A : vector<8x8xi8>, %B : vector<8x8xi8>,
                   %C : vector<8x8xi32>) -> vector<8x8xi32> {
-  %0 = aievec.matmul %A, %B, %C : vector<8x8xi8>, vector<8x8xi8>
-                                  into vector<8x8xi32>
+  %0 = vector.contract {indexing_maps =
+                        [affine_map<(d0, d1, d2) -> (d0, d2)>,
+                         affine_map<(d0, d1, d2) -> (d2, d1)>,
+                         affine_map<(d0, d1, d2) -> (d0, d1)>],
+                        iterator_types =
+                         ["parallel", "parallel", "reduction"], kind = #vector.kind<add>}
+                        %A, %B, %C : vector<8x8xi8>, vector<8x8xi8> into vector<8x8xi32>
   return %0 : vector<8x8xi32>
 }
 }
