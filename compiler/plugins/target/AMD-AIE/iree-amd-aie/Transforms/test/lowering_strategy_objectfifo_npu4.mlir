@@ -55,7 +55,7 @@ module {
 
 // Pack-peel-4-level tiling on 1x1 core : the tile size for N gets halved in this case.
 // PACK-PEEL-4-LEVEL-1-CORE{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[32, 256, 0], [1, 1, 0], [0, 0, 1], [1, 1, 0]]>
-// PACK-PEEL-4-LEVEL-1-CORE{LITERAL}: #packingConfig = #amdaie.packing_config<packing_config =  [{packedSizes = [32, 32, 64], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [1, 0], [0, 1]], outerPerm = [[0, 1], [1, 0], [1, 0]]}, {packedSizes = [0, 0, 0, 4, 4, 8], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [1, 0], [0, 1]], outerPerm = [[0, 1, 3, 2], [0, 1, 3, 2], [0, 1, 3, 2]]}]>
+// PACK-PEEL-4-LEVEL-1-CORE{LITERAL}: #packingConfig = #amdaie.packing_config<packing_config = [{packedSizes = [32, 32, 64], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [1, 0], [0, 1]], outerPerm = [[0, 1], [1, 0], [1, 0]]}, {packedSizes = [0, 0, 0, 4, 4, 8], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [1, 0], [0, 1]], outerPerm = [[0, 1, 3, 2], [0, 1, 3, 2], [0, 1, 3, 2]]}]>
 func.func @matmul_32x512x64_i32() {
   %c0_i32 = arith.constant 0 : i32
   %c0 = arith.constant 0 : index
@@ -68,5 +68,27 @@ func.func @matmul_32x512x64_i32() {
   %6 = linalg.fill ins(%c0_i32 : i32) outs(%5 : tensor<32x512xi32>) -> tensor<32x512xi32>
   %7 = linalg.matmul ins(%3, %4 : tensor<32x64xi32>, tensor<64x512xi32>) outs(%6 : tensor<32x512xi32>) -> tensor<32x512xi32>
   iree_tensor_ext.dispatch.tensor.store %7, %2, offsets = [0, 0], sizes = [32, 512], strides = [1, 1] : tensor<32x512xi32> -> !iree_tensor_ext.dispatch.tensor<writeonly:tensor<32x512xi32>>
+  return
+}
+
+// -----
+
+// Based on above workaround this test shows the packing size of N also being halved
+// in case the tile size for N dimension becomes lesser than the corresponding packing size.
+
+// PACK-PEEL-4-LEVEL-1-CORE{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[32, 16, 0], [1, 1, 0], [0, 0, 1], [1, 1, 0]]>
+// PACK-PEEL-4-LEVEL-1-CORE{LITERAL}: #packingConfig = #amdaie.packing_config<packing_config = [{packedSizes = [32, 16, 64], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [1, 0], [0, 1]], outerPerm = [[0, 1], [1, 0], [1, 0]]}, {packedSizes = [0, 0, 0, 4, 4, 8], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [1, 0], [0, 1]], outerPerm = [[0, 1, 3, 2], [0, 1, 3, 2], [0, 1, 3, 2]]}]>
+func.func @matmul_dispatch_0_matmul_32x32x128_i32() {
+  %c0_i32 = arith.constant 0 : i32
+  %c0 = arith.constant 0 : index
+  %0 = hal.interface.binding.subspan layout(<bindings = [#hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, Indirect>], flags = Indirect>) binding(0) alignment(64) offset(%c0) flags("ReadOnly|Indirect") : !iree_tensor_ext.dispatch.tensor<readonly:tensor<32x128xi32>>
+  %1 = hal.interface.binding.subspan layout(<bindings = [#hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, Indirect>], flags = Indirect>) binding(1) alignment(64) offset(%c0) flags("ReadOnly|Indirect") : !iree_tensor_ext.dispatch.tensor<readonly:tensor<128x32xi32>>
+  %2 = hal.interface.binding.subspan layout(<bindings = [#hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, Indirect>], flags = Indirect>) binding(2) alignment(64) offset(%c0) flags(Indirect) : !iree_tensor_ext.dispatch.tensor<writeonly:tensor<32x32xi32>>
+  %3 = iree_tensor_ext.dispatch.tensor.load %0, offsets = [0, 0], sizes = [32, 128], strides = [1, 1] : !iree_tensor_ext.dispatch.tensor<readonly:tensor<32x128xi32>> -> tensor<32x128xi32>
+  %4 = iree_tensor_ext.dispatch.tensor.load %1, offsets = [0, 0], sizes = [128, 32], strides = [1, 1] : !iree_tensor_ext.dispatch.tensor<readonly:tensor<128x32xi32>> -> tensor<128x32xi32>
+  %5 = tensor.empty() : tensor<32x32xi32>
+  %6 = linalg.fill ins(%c0_i32 : i32) outs(%5 : tensor<32x32xi32>) -> tensor<32x32xi32>
+  %7 = linalg.matmul ins(%3, %4 : tensor<32x128xi32>, tensor<128x32xi32>) outs(%6 : tensor<32x32xi32>) -> tensor<32x32xi32>
+  iree_tensor_ext.dispatch.tensor.store %7, %2, offsets = [0, 0], sizes = [32, 32], strides = [1, 1] : tensor<32x32xi32> -> !iree_tensor_ext.dispatch.tensor<writeonly:tensor<32x32xi32>>
   return
 }
