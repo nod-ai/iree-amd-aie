@@ -21,23 +21,110 @@
 #include "mlir/Conversion/LLVMCommon/ConversionTarget.h"
 #include "mlir/Conversion/LLVMCommon/Pattern.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Support/LLVM.h"
 
 using namespace mlir;
 
 namespace mlir::iree_compiler::aievec {
 
-inline static Value bitcastValueToType(OpBuilder &builder, Location loc,
-                                       Value val, Type dstTy) {
+/// The types of A, B, and C, for an integer matrix-multiplication where
+///
+/// A has shape `m` x `k` and `aBits` bits.
+/// B has shape `k` x `n` and `bBits` bits.
+/// C has shape `m` x `n` and `cBits` bits.
+static std::array<Type, 3> getIntegerMatmulVectorTypes(int64_t m, int64_t n,
+                                                       int64_t k, int64_t aBits,
+                                                       int64_t bBits,
+                                                       int64_t cBits,
+                                                       MLIRContext *context) {
+  Type a = VectorType::get({m, k}, IntegerType::get(context, aBits));
+  Type b = VectorType::get({k, n}, IntegerType::get(context, bBits));
+  Type c = VectorType::get({m, n}, IntegerType::get(context, cBits));
+  return {a, b, c};
+}
+
+/// The types for a matrix-multiplication where
+///
+/// A is `m` x `k` and of element type `bf16`
+/// B is `k` x `n` and of element type `bf16`
+/// C is `m` x `n` and of element type `f32`
+static std::array<Type, 3> getBFloatMatmul(int64_t m, int64_t n, int64_t k,
+                                           MLIRContext *context) {
+  Type a = VectorType::get({m, k}, BFloat16Type::get(context));
+  Type b = VectorType::get({k, n}, BFloat16Type::get(context));
+  Type c = VectorType::get({m, n}, Float32Type::get(context));
+  return {a, b, c};
+}
+
+/// The peano intrinsics API for AIE2 (phoenix) , and the ISA specification,
+/// define a set of supported matmul shapes for integer and floating point
+/// types. This function returns a subset of these supported shapes/types which
+/// the iree-amd-aie compiler currently uses (can be extended).
+static SmallVector<std::array<Type, 3>> getSupportedAie2Types(
+    MLIRContext *context) {
+  SmallVector<std::array<Type, 3>> types;
+  types.push_back(getIntegerMatmulVectorTypes(
+      /* M= */ 4, /* N= */ 8, /* K= */ 8, /* A precision (bits)= */ 8,
+      /* B precision (bits)= */ 8, /*C precision (bits)= */ 32, context));
+  types.push_back(getBFloatMatmul(/* M= */ 4, /* N= */ 4, /* K= */ 8, context));
+  return types;
+}
+
+/// Types currently supported for AIE2P (strix).
+static SmallVector<std::array<Type, 3>> getSuportedAie2PTypes(
+    MLIRContext *context) {
+  SmallVector<std::array<Type, 3>> types;
+  types.push_back(
+      getIntegerMatmulVectorTypes(/* M= */ 8, /* N= */ 8, /* K= */ 8,
+                                  /* A precision (bits)= */ 8,
+                                  /* B precision (bits)= */ 8,
+                                  /*C precision (bits)= */ 32, context));
+  return types;
+}
+
+/// Get the set of matmuls that we currently support lowering from the AIEVec
+/// dialect, for the device `device`.
+const SmallVector<std::array<Type, 3>> &getSupportedTypes(
+    AMDAIE::AMDAIEDevice device, MLIRContext *context) {
+  if (AMDAIE::isAie2(device)) {
+    const static SmallVector<std::array<Type, 3>> aie2Types =
+        getSupportedAie2Types(context);
+    return aie2Types;
+  } else if (AMDAIE::isAie2P(device)) {
+    const static SmallVector<std::array<Type, 3>> aie2PTypes =
+        getSuportedAie2PTypes(context);
+    return aie2PTypes;
+  }
+  llvm_unreachable("Currently unsupported device");
+}
+
+/// Append information listing all the currently supported types for `lhs`,
+/// `rhs`, and `acc` to `rso`. The list is specific to devices of type `device`.
+static void appendSupportedTypes(AMDAIE::AMDAIEDevice device,
+                                 MLIRContext *context,
+                                 llvm::raw_string_ostream &rso) {
+  rso << "The supported types are: \n";
+  for (const auto &types : getSupportedTypes(device, context)) {
+    rso << "lhs type: " << types[0] << ", rhs type: " << types[1]
+        << ", accumulator type: " << types[2] << "\n";
+  }
+  rso << "The above list is a subset of the full ISA spec, we might be able to "
+         "extend it.";
+}
+
+static Value bitcastValueToType(OpBuilder &builder, Location loc, Value val,
+                                Type dstTy) {
   return builder.create<LLVM::BitcastOp>(loc, dstTy, val).getResult();
 }
 
 // This function emits the instructions required to widen a 128b input vector
 // into a 512b encoded as a vector<16xi32>. It first bitcasts it to a
 // vector<4xi32> to respect the intrinsic signature.
-inline static Value widen128bVectorValueTo512b(OpBuilder &builder, Location loc,
-                                               Value val) {
+static Value widen128bVectorValueTo512b(OpBuilder &builder, Location loc,
+                                        Value val) {
   return builder
       .create<xllvm::AIEVec2VectorSetI512I128IntrOp>(
           loc, VectorType::get({16}, builder.getI32Type()),
@@ -50,8 +137,8 @@ inline static Value widen128bVectorValueTo512b(OpBuilder &builder, Location loc,
 // into a 512b encoded as a vector<16xi32>. It first bitcasts it to a
 // vector<8xi32> to respect the intrinsic signature. It will also materialize
 // a constant 0, used as an insertion index.
-inline static Value widen256bVectorValueTo512b(OpBuilder &builder, Location loc,
-                                               Value val) {
+static Value widen256bVectorValueTo512b(OpBuilder &builder, Location loc,
+                                        Value val) {
   auto cst0 =
       builder.create<LLVM::ConstantOp>(loc, builder.getI32Type(), (int32_t)0);
   return builder
@@ -125,7 +212,7 @@ static TargetOp forceCastOperandsAndCreateTarget(
 
 // Squashes the easy-to-read 16-bit square encoding into
 // the 8-bit encoding the configuration register uses
-uint32_t encodeSquare(uint32_t square) {
+static uint32_t encodeSquare(uint32_t square) {
   uint32_t out = 0;
   out |= ((square >> 0) & 0x3) << 0;
   out |= ((square >> 4) & 0x3) << 2;
@@ -317,10 +404,8 @@ class UPSOpConversion : public mlir::ConvertOpToLLVMPattern<aievec::UPSOp> {
     auto srcVecTy = cast<VectorType>(opSrcVal.getType());
     auto fltSrcVecTy = getFlattenedVectorType(srcVecTy);
     if (srcVecTy != fltSrcVecTy)
-      opSrcVal =
-          rewriter
-              .create<vector::ShapeCastOp>(op.getLoc(), fltSrcVecTy, opSrcVal)
-              .getResult();
+      opSrcVal = rewriter.createOrFold<vector::ShapeCastOp>(
+          op.getLoc(), fltSrcVecTy, opSrcVal);
 
     // create xllvm intrinsic
     // Integer types
@@ -452,8 +537,8 @@ class UPSOpConversion : public mlir::ConvertOpToLLVMPattern<aievec::UPSOp> {
       upsIntrOp = rewriter.create<LLVM::BitcastOp>(loc, flatResTy, upsIntrOp);
 
     if (flatResTy != resultType)
-      upsIntrOp =
-          rewriter.create<vector::ShapeCastOp>(loc, resultType, upsIntrOp);
+      upsIntrOp = rewriter.createOrFold<vector::ShapeCastOp>(loc, resultType,
+                                                             upsIntrOp);
 
     rewriter.replaceOp(op, upsIntrOp);
     return success();
@@ -641,11 +726,11 @@ class FMAElemOpConversion
 
     // Flatten operands, if needed
     if (lhsTy != flatLhsTy)
-      lhs = rewriter.create<vector::ShapeCastOp>(loc, flatLhsTy, lhs);
+      lhs = rewriter.createOrFold<vector::ShapeCastOp>(loc, flatLhsTy, lhs);
     if (rhsTy != flatRhsTy)
-      rhs = rewriter.create<vector::ShapeCastOp>(loc, flatRhsTy, rhs);
+      rhs = rewriter.createOrFold<vector::ShapeCastOp>(loc, flatRhsTy, rhs);
     if (accTy != flatAccTy)
-      acc = rewriter.create<vector::ShapeCastOp>(loc, flatAccTy, acc);
+      acc = rewriter.createOrFold<vector::ShapeCastOp>(loc, flatAccTy, acc);
 
     Type i32ty = rewriter.getI32Type();
     auto confCst = rewriter.create<LLVM::ConstantOp>(
@@ -664,34 +749,96 @@ class FMAElemOpConversion
     auto resVal =
         forceCastValueToType(rewriter, loc, macIntrOp.getResult(), flatAccTy);
     if (flatAccTy != accTy)
-      resVal = rewriter.create<vector::ShapeCastOp>(loc, accTy, resVal);
+      resVal = rewriter.createOrFold<vector::ShapeCastOp>(loc, accTy, resVal);
 
     rewriter.replaceOp(fmaOp, resVal);
     return success();
   }
 };
 
+/// Check if the given types are supported for matmul lowering. Compares `lhs`,
+/// `rhs`, and `acc` types to the list of supported types for the device,
+/// looking for an exact match.
+static bool verifyMatmulOperands(Type lhs, Type rhs, Type acc,
+                                 AMDAIE::AMDAIEDevice device) {
+  for (const auto &abc : getSupportedTypes(device, lhs.getContext())) {
+    if (lhs == abc[0] && rhs == abc[1] && acc == abc[2]) return true;
+  }
+  return false;
+}
+
+/// Create a vector.shape_cast op that 'squeezes' out all leading 1s from the
+/// input vector. For example, if `unsqueezed` is a vector<1x1x1x4x1xf32>,
+/// then it will be reshaped to vector<4x1xf32>.
+static Value withLeadingOnesDropped(OpBuilder &b, Value unsqueezed) {
+  auto initialType = dyn_cast<VectorType>(unsqueezed.getType());
+  assert(initialType && "expected a vector type");
+  ArrayRef<int64_t> initialShape = initialType.getShape();
+  ArrayRef<int64_t> newShape =
+      initialShape.drop_until([](int64_t d) { return d != 1; });
+  Type elementType = initialType.getElementType();
+  VectorType newType = VectorType::get(newShape, elementType);
+  return b.createOrFold<vector::ShapeCastOp>(unsqueezed.getLoc(), newType,
+                                             unsqueezed);
+}
+
+//  Lower to AMD AIE-specific intrinsic that performs a matrix multiplications
+//  between `lhs` and `rhs`, and accumulates the result in `acc`.
+//
+// Currently, this intrinsic supports the following type combinations
+// for aie2 (phoenix):
+//
+//    lhs                | rhs                | Accumulator
+//   :------------------:|:------------------:|:-----------------:
+//    `vector<4x8xi8>`   | `vector<8x8xi8>`   | `vector<4x8xi32>`
+//    `vector<4x8xbf16>` | `vector<8x4xbf16>` | `vector<4x4xf32>`
+//
+// for aie2P (strix):
+//
+//    lhs                | rhs                | Accumulator
+//   :------------------:|:------------------:|:-----------------:
+//    `vector<8x8xi8>`   | `vector<8x8xi8>`   | `vector<8x8xi32>`
+//
+
 class MatMulOpConversion
-    : public mlir::ConvertOpToLLVMPattern<aievec::MatMulOp> {
-  using ConvertOpToLLVMPattern<aievec::MatMulOp>::ConvertOpToLLVMPattern;
+    : public mlir::ConvertOpToLLVMPattern<vector::ContractionOp> {
+  using ConvertOpToLLVMPattern<vector::ContractionOp>::ConvertOpToLLVMPattern;
 
  public:
   MatMulOpConversion(LLVMTypeConverter &converter, AMDAIE::AMDAIEDevice device)
-      : mlir::ConvertOpToLLVMPattern<aievec::MatMulOp>(converter),
+      : mlir::ConvertOpToLLVMPattern<vector::ContractionOp>(converter),
         device(device) {}
 
  private:
   AMDAIE::AMDAIEDevice device;
 
   LogicalResult matchAndRewrite(
-      aievec::MatMulOp op, OpAdaptor adaptor,
+      vector::ContractionOp contractOp, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    Location loc = op.getLoc();
+    Type initialType = adaptor.getAcc().getType();
+    Value lhs = withLeadingOnesDropped(rewriter, adaptor.getLhs());
+    Value rhs = withLeadingOnesDropped(rewriter, adaptor.getRhs());
+    Value acc = withLeadingOnesDropped(rewriter, adaptor.getAcc());
+    Location loc = contractOp.getLoc();
+    bool operandsAreValid = verifyMatmulOperands(lhs.getType(), rhs.getType(),
+                                                 acc.getType(), device);
+
+    if (!operandsAreValid) {
+      std::string message;
+      llvm::raw_string_ostream rso = llvm::raw_string_ostream(message);
+      rso << "has matmul operand types: \n";
+      rso << "lhs: " << lhs.getType() << ",\n";
+      rso << "rhs: " << rhs.getType() << ",\n";
+      rso << "acc: " << acc.getType() << ",\n";
+      rso << "which is not supported currently for the target device " << device
+          << ". ";
+      appendSupportedTypes(device, lhs.getContext(), rso);
+      contractOp->emitOpError(message);
+      return rewriter.notifyMatchFailure(contractOp,
+                                         "unsupported matmul shapes");
+    }
 
     DataPathConfiguration configuration;
-    Value lhs = op.getLhs();
-    Value rhs = op.getRhs();
-    Value acc = op.getAcc();
 
     auto lhsVecTy = cast<VectorType>(lhs.getType());
     auto rhsVecTy = cast<VectorType>(rhs.getType());
@@ -717,9 +864,12 @@ class MatMulOpConversion
     VectorType lhsFlattenedVecTy = getFlattenedVectorType(lhsVecTy);
     VectorType rhsFlattenedVecTy = getFlattenedVectorType(rhsVecTy);
     VectorType accFlattenedVecTy = getFlattenedVectorType(accVecTy);
-    lhs = rewriter.create<vector::ShapeCastOp>(loc, lhsFlattenedVecTy, lhs);
-    rhs = rewriter.create<vector::ShapeCastOp>(loc, rhsFlattenedVecTy, rhs);
-    acc = rewriter.create<vector::ShapeCastOp>(loc, accFlattenedVecTy, acc);
+    lhs =
+        rewriter.createOrFold<vector::ShapeCastOp>(loc, lhsFlattenedVecTy, lhs);
+    rhs =
+        rewriter.createOrFold<vector::ShapeCastOp>(loc, rhsFlattenedVecTy, rhs);
+    acc =
+        rewriter.createOrFold<vector::ShapeCastOp>(loc, accFlattenedVecTy, acc);
 
     Type i32ty = rewriter.getI32Type();
     auto confCst = rewriter.create<LLVM::ConstantOp>(
@@ -753,11 +903,12 @@ class MatMulOpConversion
         llvm_unreachable("Int matmul not supported on this device, for now");
       }
     }
-    auto castFromAcc =
+    Value inner =
         bitcastValueToType(rewriter, loc, matMulResVal, accFlattenedVecTy);
-    rewriter.replaceOpWithNewOp<vector::ShapeCastOp>(op, op.getType(),
-                                                     castFromAcc);
 
+    Value result =
+        rewriter.createOrFold<vector::ShapeCastOp>(loc, initialType, inner);
+    rewriter.replaceOp(contractOp, result);
     return success();
   }
 };
@@ -787,49 +938,127 @@ class FoldAIECastOps : public mlir::ConvertOpToLLVMPattern<aievec::CastOp> {
   }
 };
 
+// Convert a `vector.transpose` op to an `aievec.shuffle` op for AIE2.
 class ShuffleOpConversion
-    : public mlir::ConvertOpToLLVMPattern<aievec::ShuffleOp> {
-  using ConvertOpToLLVMPattern<aievec::ShuffleOp>::ConvertOpToLLVMPattern;
+    : public mlir::ConvertOpToLLVMPattern<vector::TransposeOp> {
+  using ConvertOpToLLVMPattern<vector::TransposeOp>::ConvertOpToLLVMPattern;
 
  public:
   ShuffleOpConversion(LLVMTypeConverter &converter, AMDAIE::AMDAIEDevice device)
-      : mlir::ConvertOpToLLVMPattern<aievec::ShuffleOp>(converter),
+      : mlir::ConvertOpToLLVMPattern<vector::TransposeOp>(converter),
         device(device) {}
 
  private:
   AMDAIE::AMDAIEDevice device;
 
   LogicalResult matchAndRewrite(
-      aievec::ShuffleOp shuffleOp, OpAdaptor adaptor,
+      vector::TransposeOp transpOp, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     assert(AMDAIE::isAie2(device) && "ShuffleOp currently only supports AIE2.");
-    auto loc = shuffleOp.getLoc();
-    auto lhs = adaptor.getLhs();
-    auto rhs = adaptor.getRhs();
+
+    VectorType resTy = transpOp.getResultVectorType();
+    ArrayRef<int64_t> resShape = resTy.getShape();
+    unsigned elemTyBitWidth = resTy.getElementTypeBitWidth();
+    int64_t vBitWidth = resTy.getNumElements() * elemTyBitWidth;
+
+    if (vBitWidth != 512)
+      return rewriter.notifyMatchFailure(
+          transpOp,
+          "currently only 512-bit input supported (can extend to to 1024-bit "
+          "for AIE2, see ISA)");
+
+    // Verify leading dimensions are all 1.
+    if (resShape.size() < 2)
+      return rewriter.notifyMatchFailure(
+          transpOp, "identity transpose should've been folded");
+
+    for (int64_t i = 0; i < static_cast<int64_t>(resShape.size()) - 2; ++i)
+      if (resShape[i] != 1) {
+        return rewriter.notifyMatchFailure(
+            transpOp, "only considering simple transposes for now");
+      }
+
+    // Only permutation of the 2 innermost dimensions are supported.
+    ArrayRef<int64_t> perm = transpOp.getPermutation();
+    for (int64_t i = 0; i < static_cast<int64_t>(perm.size()) - 2; ++i)
+      if (perm[i] != i) return failure();
+    if (perm.back() != static_cast<int64_t>(perm.size()) - 2) return failure();
+
+    auto maybeShuffleMode =
+        [resShape, elemTyBitWidth]() -> FailureOr<aievec::ShuffleMode> {
+      if (elemTyBitWidth == 8) {
+        switch (resShape.back()) {
+          case 4:
+            return aievec::ShuffleMode::T8_4X16;
+          case 8:
+            return aievec::ShuffleMode::T8_8X8;
+          case 16:
+            return aievec::ShuffleMode::T8_16X4;
+          default:
+            return failure();
+        }
+      } else if (elemTyBitWidth == 16) {
+        switch (resShape.back()) {
+          return aievec::ShuffleMode::T16_2X16;
+          case 4:
+            return aievec::ShuffleMode::T16_4X8;
+          case 8:
+            return aievec::ShuffleMode::T16_8X4;
+          case 16:
+            return aievec::ShuffleMode::T16_16X2;
+          default:
+            return failure();
+        }
+      } else if (elemTyBitWidth == 32) {
+        if (resShape.back() == 4) {
+          return aievec::ShuffleMode::T32_4X4;
+        }
+        return failure();
+      }
+      // TODO: Add additional cases supported (see ISA)
+      return failure();
+    }();
+
+    if (failed(maybeShuffleMode))
+      return rewriter.notifyMatchFailure(transpOp,
+                                         "failed to get shuffle mode");
+
+    auto shuffleMode = maybeShuffleMode.value();
+
+    auto flatVecTy =
+        VectorType::get({resTy.getNumElements()}, resTy.getElementType());
+    auto loc = transpOp.getLoc();
+    auto flatInput = rewriter.createOrFold<vector::ShapeCastOp>(
+        loc, flatVecTy, adaptor.getVector());
+
+    // The intrinsic supports 2 operands of 512-bits (see ISA), we currently
+    // don't use the second operand and use null for it here.
     auto i32ty = rewriter.getI32Type();
     auto v16xi32ty = VectorType::get({16}, i32ty);
-    if (!rhs) {
-      rhs = rewriter.create<xllvm::AIEVec2UndefV16I32IntrOp>(loc, v16xi32ty);
-    }
+    auto rhs = rewriter.create<xllvm::AIEVec2UndefV16I32IntrOp>(loc, v16xi32ty);
 
-    auto modeAttrVal =
-        rewriter
-            .create<LLVM::ConstantOp>(loc, i32ty,
-                                      static_cast<int32_t>(shuffleOp.getMode()))
-            .getResult();
-    auto vShuffleVal = rewriter
-                           .create<xllvm::AIEVec2VectorShuffleIntrOp>(
-                               loc, v16xi32ty,
-                               forceCastOperandsToSignature(
-                                   rewriter, loc,
-                                   /*operands=*/{lhs, rhs, modeAttrVal},
-                                   /*signature=*/{v16xi32ty, v16xi32ty, i32ty}))
+    auto modeAttrVal = rewriter
+                           .create<LLVM::ConstantOp>(
+                               loc, i32ty, static_cast<int32_t>(shuffleMode))
                            .getResult();
 
-    vShuffleVal = forceCastValueToType(rewriter, loc, vShuffleVal,
-                                       shuffleOp.getResult().getType());
+    // Cast to i32.
+    auto bitCorrectedOperands = forceCastOperandsToSignature(
+        rewriter, loc,
+        /*operands=*/{flatInput, rhs, modeAttrVal},
+        /*signature=*/{v16xi32ty, v16xi32ty, i32ty});
 
-    rewriter.replaceOp(shuffleOp, vShuffleVal);
+    // Create shuffle intrinsic.
+    Value vShuffleVal = rewriter
+                            .create<xllvm::AIEVec2VectorShuffleIntrOp>(
+                                loc, v16xi32ty, bitCorrectedOperands)
+                            .getResult();
+
+    // Cast back to the original type.
+    vShuffleVal = forceCastValueToType(rewriter, loc, vShuffleVal, flatVecTy);
+
+    rewriter.replaceOpWithNewOp<vector::ShapeCastOp>(transpOp, resTy,
+                                                     vShuffleVal);
 
     return success();
   }
@@ -1025,7 +1254,6 @@ struct ConvertAIEVecToLLVMPass
   }
 
   void runOnOperation() override {
-    RewritePatternSet patterns(&getContext());
     LLVMTypeConverter converter(&getContext());
 
     Operation *op = getOperation();
@@ -1042,16 +1270,24 @@ struct ConvertAIEVecToLLVMPass
     converter.addConversion(
         [&](VectorType type) -> std::optional<Type> { return type; });
 
-    patterns.add<UPSOpConversion, SRSOpConversion, FoldAIECastOps,
-                 FMAElemOpConversion, ShuffleOpConversion, ExtOpConversion,
-                 ShiftOpConversion, MatMulOpConversion>(converter,
-                                                        maybeDevice.value());
-
+    // This pass must convert
+    // 1) all remaining aievec dialect ops AND
+    // 2) vector.transpose AND
+    // 3) vector.contraction (matmul).
     LLVMConversionTarget target(getContext());
-
     target.addIllegalDialect<AIEVecDialect>();
-    target.addLegalDialect<arith::ArithDialect, vector::VectorDialect,
-                           xllvm::XLLVMDialect>();
+    target.markUnknownOpDynamicallyLegal(
+        [=](Operation *op) -> std::optional<bool> {
+          return !isa<vector::TransposeOp, vector::ContractionOp>(op);
+        });
+
+    // Add with higher priority.
+    RewritePatternSet patterns(&getContext());
+    patterns.add<MatMulOpConversion, ShuffleOpConversion>(converter,
+                                                          maybeDevice.value());
+    patterns.add<UPSOpConversion, SRSOpConversion, FoldAIECastOps,
+                 FMAElemOpConversion, ExtOpConversion, ShiftOpConversion>(
+        converter, maybeDevice.value());
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns)))) {
       signalPassFailure();
