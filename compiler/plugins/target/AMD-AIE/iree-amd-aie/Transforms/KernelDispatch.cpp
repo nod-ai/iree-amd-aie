@@ -431,6 +431,15 @@ static LogicalResult setRootConfigForPackPeel4LevelTilingPipeline(
   SmallVector<SmallVector<int64_t>> outerPerm;
   SmallVector<PackingConfigPackingLevelAttr> packingConfigLevelsVal;
 
+  int64_t m0Tile = packPeelTiling.M0;
+  int64_t n0Tile = packPeelTiling.N0;
+  // For 4D matmul-like ops, only tile the outer dims.
+  // outer_tile_size = total_tile_size / inner_dim_size
+  if (is4DMatmulLikeOp(linalgOp)) {
+    m0Tile /= maybeInputDimsAndSizes.value().mSizes.back();
+    n0Tile /= maybeInputDimsAndSizes.value().nSizes.back();
+  }
+
   // Pack level => 1.
   // For 2D matmul-like ops, the first level is to pack operands from 2D to 4D.
   // If the input is a 4D matmul-like op, this level of packing is not needed.
@@ -441,6 +450,30 @@ static LogicalResult setRootConfigForPackPeel4LevelTilingPipeline(
     packedSizesL0[nDims.back()] = packPeelTiling.n0Pack;
     packedSizesL0[kDims.back()] = packPeelTiling.k0Pack;
 
+    // TODO(avarma): This is currently a workaround for 1x1 AIE array to make
+    // those 2D matmul shapes work for which all of the operands get pulled in
+    // to L2 buffer. Once reprogramming of DMA ops is supported, we can get rid
+    // of this workaround. We need to add this only for pack-peel-4-level-tiling
+    // NOT pack-peel. The workaround just ensures that the tile size of first
+    // level is NOT equal to M,N by halving the n0Tile.
+    if (numRows == 1 && numCols == 1) {
+      auto getTotalSize = [](ArrayRef<int64_t> sizes) {
+        return std::accumulate(sizes.begin(), sizes.end(), 1,
+                               std::multiplies<int64_t>());
+      };
+
+      // Get the shape (M, N) of the full Matmul operation.
+      auto maybeInputDimsAndSizes = getInputDimsAndSizes(linalgOp);
+      int64_t M = getTotalSize(maybeInputDimsAndSizes.value().mSizes);
+      int64_t N = getTotalSize(maybeInputDimsAndSizes.value().nSizes);
+      // Check if the tile size generated is exactly same as operand size. If
+      // yes, halve n0Tile.
+      if (m0Tile == M && n0Tile == N) {
+        n0Tile /= 2;
+        if (n0Tile < packedSizesL0[nDims.back()])
+          packedSizesL0[nDims.back()] /= 2;
+      }
+    }
     transposePackIndices = {0, 1, 2};
     // There is no corresponding unpack for the specified pack operation
     // 0 is used when unpack is empty
@@ -506,36 +539,6 @@ static LogicalResult setRootConfigForPackPeel4LevelTilingPipeline(
   if (isBatchMatmul) {
     assert(!batchDims.empty() && "expected batch dims not empty");
     tileSizeLevel0[batchDims[0]] = 1;
-  }
-  int64_t m0Tile = packPeelTiling.M0;
-  int64_t n0Tile = packPeelTiling.N0;
-  // For 4D matmul-like ops, only tile the outer dims.
-  // outer_tile_size = total_tile_size / inner_dim_size
-  if (is4DMatmulLikeOp(linalgOp)) {
-    m0Tile /= maybeInputDimsAndSizes.value().mSizes.back();
-    n0Tile /= maybeInputDimsAndSizes.value().nSizes.back();
-  }
-  // TODO(avarma): This is currently a workaround for 1x1 AIE array to make
-  // those 2D matmul shapes work for which all of the operands get pulled in to
-  // L2 buffer. Once reprogramming of DMA ops is supported, we can get rid of
-  // this workaround. We need to add this only for pack-peel-4-level-tiling NOT
-  // pack-peel. The workaround just ensures that the tile size of first level is
-  // NOT equal to M,N by halving the n0Tile.
-  if (is2DMatmulLike && numRows == 1 && numCols == 1) {
-    auto getTotalSize = [](ArrayRef<int64_t> sizes) {
-      return std::accumulate(sizes.begin(), sizes.end(), 1,
-                             std::multiplies<int64_t>());
-    };
-
-    // Get the shape (M, N) of the full Matmul operation.
-    auto maybeInputDimsAndSizes = getInputDimsAndSizes(linalgOp);
-    int64_t M = getTotalSize(maybeInputDimsAndSizes.value().mSizes);
-    int64_t N = getTotalSize(maybeInputDimsAndSizes.value().nSizes);
-    // Check if the tile size generated is exactly same as operand size. If yes,
-    // halve n0Tile.
-    if (m0Tile == M && n0Tile == N) {
-      n0Tile /= 2;
-    }
   }
   tileSizeLevel0[mDims[0]] = m0Tile;
   tileSizeLevel0[nDims[0]] = n0Tile;
