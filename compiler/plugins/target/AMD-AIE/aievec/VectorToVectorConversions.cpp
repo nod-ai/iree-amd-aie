@@ -11,7 +11,6 @@
 // it compatible with the available vector instructions in AIE architectures
 //===----------------------------------------------------------------------===//
 
-#include <limits>
 #include <memory>
 
 #include "Passes.h"
@@ -131,41 +130,35 @@ static SmallVector<Value> getCollapsedIndices(RewriterBase &rewriter,
 /// memref.collapse_shape on the source so that the resulting
 /// vector.transfer_read has a 1D source. Requires the source shape to be
 /// already reduced i.e. without unit dims.
-///
-/// If `targetVectorBitwidth` is provided, the flattening will only happen if
-/// the trailing dimension of the vector read is smaller than the provided
-/// bitwidth.
 class FlattenContiguousRowMajorTransferReadPattern
     : public OpRewritePattern<vector::TransferReadOp> {
  public:
   FlattenContiguousRowMajorTransferReadPattern(MLIRContext *context,
-                                               unsigned vectorBitwidth,
                                                PatternBenefit benefit)
-      : OpRewritePattern<vector::TransferReadOp>(context, benefit),
-        targetVectorBitwidth(vectorBitwidth) {}
+      : OpRewritePattern<vector::TransferReadOp>(context, benefit) {}
 
   LogicalResult matchAndRewrite(vector::TransferReadOp transferReadOp,
                                 PatternRewriter &rewriter) const override {
     Location loc = transferReadOp.getLoc();
     Value vector = transferReadOp.getVector();
-    VectorType vectorType = cast<VectorType>(vector.getType());
-    auto source = transferReadOp.getSource();
+    VectorType vectorType = transferReadOp.getVectorType();
+    TypedValue<ShapedType> source = transferReadOp.getSource();
     MemRefType sourceType = dyn_cast<MemRefType>(source.getType());
+    assert(sourceType && "expected a memref type");
 
     // 0. Check pre-conditions
     // Contiguity check is valid on tensors only.
     if (!sourceType) return failure();
     // If this is already 0D/1D, there's nothing to do.
     if (vectorType.getRank() <= 1) return failure();
-    if (!vectorType.getElementType().isSignlessIntOrFloat()) return failure();
-    unsigned trailingVectorDimBitwidth =
-        vectorType.getShape().back() * vectorType.getElementTypeBitWidth();
-    if (trailingVectorDimBitwidth >= targetVectorBitwidth) return failure();
+    if (!vectorType.getElementType().isSignlessIntOrIndexOrFloat())
+      return failure();
     if (!vector::isContiguousSlice(sourceType, vectorType)) return failure();
-    // TODO: generalize this pattern, relax the requirements here.
-    if (transferReadOp.hasOutOfBoundsDim()) return failure();
     if (!transferReadOp.getPermutationMap().isMinorIdentity()) return failure();
     if (transferReadOp.getMask()) return failure();
+
+    // TODO: generalize this pattern, relax the requirements here.
+    if (transferReadOp.hasOutOfBoundsDim()) return failure();
 
     // TODO(newling) This is the one line which changes from the original
     // MLIR function. Upstream this as an option to flatten the memref (and
@@ -207,11 +200,6 @@ class FlattenContiguousRowMajorTransferReadPattern
         transferReadOp, cast<VectorType>(vector.getType()), flatRead);
     return success();
   }
-
- private:
-  // Minimum bitwidth that the trailing vector dimension should have after
-  // flattening.
-  unsigned targetVectorBitwidth;
 };
 
 /// Rewrites contiguous row-major vector.transfer_write ops by inserting
@@ -226,10 +214,8 @@ class FlattenContiguousRowMajorTransferWritePattern
     : public OpRewritePattern<vector::TransferWriteOp> {
  public:
   FlattenContiguousRowMajorTransferWritePattern(MLIRContext *context,
-                                                unsigned vectorBitwidth,
                                                 PatternBenefit benefit)
-      : OpRewritePattern<vector::TransferWriteOp>(context, benefit),
-        targetVectorBitwidth(vectorBitwidth) {}
+      : OpRewritePattern<vector::TransferWriteOp>(context, benefit) {}
 
   LogicalResult matchAndRewrite(vector::TransferWriteOp transferWriteOp,
                                 PatternRewriter &rewriter) const override {
@@ -247,9 +233,6 @@ class FlattenContiguousRowMajorTransferWritePattern
       // Already 0D/1D, nothing to do.
       return failure();
     if (!vectorType.getElementType().isSignlessIntOrFloat()) return failure();
-    unsigned trailingVectorDimBitwidth =
-        vectorType.getShape().back() * vectorType.getElementTypeBitWidth();
-    if (trailingVectorDimBitwidth >= targetVectorBitwidth) return failure();
     if (!vector::isContiguousSlice(sourceType, vectorType)) return failure();
     // TODO: generalize this pattern, relax the requirements here.
     if (transferWriteOp.hasOutOfBoundsDim()) return failure();
@@ -299,11 +282,6 @@ class FlattenContiguousRowMajorTransferWritePattern
     rewriter.eraseOp(transferWriteOp);
     return success();
   }
-
- private:
-  // Minimum bitwidth that the trailing vector dimension should have after
-  // flattening.
-  unsigned targetVectorBitwidth;
 };
 
 }  // namespace copied_from_mlir
@@ -1342,7 +1320,7 @@ struct CanonicalizeVectorForAIEVecPass
       patterns
           .add<copied_from_mlir::FlattenContiguousRowMajorTransferReadPattern,
                copied_from_mlir::FlattenContiguousRowMajorTransferWritePattern>(
-              context, std::numeric_limits<unsigned>::max(), 1);
+              context, 1);
       mlir::vector::populateDropUnitDimWithShapeCastPatterns(patterns);
       mlir::vector::populateVectorBroadcastLoweringPatterns(patterns);
       (void)applyPatternsGreedily(op, std::move(patterns));
