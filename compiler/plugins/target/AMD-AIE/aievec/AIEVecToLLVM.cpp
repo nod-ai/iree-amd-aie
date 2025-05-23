@@ -611,66 +611,6 @@ class SRSOpConversion : public mlir::ConvertOpToLLVMPattern<aievec::SRSOp> {
   }
 };
 
-class FMAElemOpConversion
-    : public mlir::ConvertOpToLLVMPattern<aievec::FMAElemOp> {
- public:
-  using ConvertOpToLLVMPattern<aievec::FMAElemOp>::ConvertOpToLLVMPattern;
-
- public:
-  FMAElemOpConversion(LLVMTypeConverter &converter, AMDAIE::AMDAIEDevice device)
-      : mlir::ConvertOpToLLVMPattern<aievec::FMAElemOp>(converter),
-        device(device) {}
-
- private:
-  AMDAIE::AMDAIEDevice device;
-
-  LogicalResult matchAndRewrite(
-      aievec::FMAElemOp fmaOp, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
-    assert(AMDAIE::isAie2(device) && "FMAElemOp currently only supports AIE2.");
-    auto loc = fmaOp.getLoc();
-    auto lhs = adaptor.getLhs();
-    auto rhs = adaptor.getRhs();
-    auto acc = adaptor.getAcc();
-    auto lhsTy = cast<VectorType>(lhs.getType());
-    auto rhsTy = cast<VectorType>(rhs.getType());
-    auto accTy = cast<VectorType>(acc.getType());
-    auto flatLhsTy = getFlattenedVectorType(lhsTy);
-    auto flatRhsTy = getFlattenedVectorType(rhsTy);
-    auto flatAccTy = getFlattenedVectorType(accTy);
-
-    // Flatten operands, if needed
-    if (lhsTy != flatLhsTy)
-      lhs = rewriter.create<vector::ShapeCastOp>(loc, flatLhsTy, lhs);
-    if (rhsTy != flatRhsTy)
-      rhs = rewriter.create<vector::ShapeCastOp>(loc, flatRhsTy, rhs);
-    if (accTy != flatAccTy)
-      acc = rewriter.create<vector::ShapeCastOp>(loc, flatAccTy, acc);
-
-    Type i32ty = rewriter.getI32Type();
-    auto confCst = rewriter.create<LLVM::ConstantOp>(
-        loc, i32ty,
-        rewriter.getI32IntegerAttr(DataPathConfiguration(
-                                       /*xSigned=*/0, /*ySigned=*/0,
-                                       /*aMode=*/2, /*bMode=*/3,
-                                       /*cMode=*/1)
-                                       .get()));
-
-    auto macIntrOp =
-        forceCastOperandsAndCreateTarget<xllvm::AIEVec2MacConfBF16IntrOp>(
-            rewriter, loc, {lhs, rhs, acc, confCst});
-
-    // Recast/Reshape result
-    auto resVal =
-        forceCastValueToType(rewriter, loc, macIntrOp.getResult(), flatAccTy);
-    if (flatAccTy != accTy)
-      resVal = rewriter.create<vector::ShapeCastOp>(loc, accTy, resVal);
-
-    rewriter.replaceOp(fmaOp, resVal);
-    return success();
-  }
-};
-
 class MatMulOpConversion
     : public mlir::ConvertOpToLLVMPattern<aievec::MatMulOp> {
   using ConvertOpToLLVMPattern<aievec::MatMulOp>::ConvertOpToLLVMPattern;
@@ -1043,9 +983,8 @@ struct ConvertAIEVecToLLVMPass
         [&](VectorType type) -> std::optional<Type> { return type; });
 
     patterns.add<UPSOpConversion, SRSOpConversion, FoldAIECastOps,
-                 FMAElemOpConversion, ShuffleOpConversion, ExtOpConversion,
-                 ShiftOpConversion, MatMulOpConversion>(converter,
-                                                        maybeDevice.value());
+                 ShuffleOpConversion, ExtOpConversion, ShiftOpConversion,
+                 MatMulOpConversion>(converter, maybeDevice.value());
 
     LLVMConversionTarget target(getContext());
 
