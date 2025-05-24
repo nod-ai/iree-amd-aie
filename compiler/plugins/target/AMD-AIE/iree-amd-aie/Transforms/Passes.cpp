@@ -171,7 +171,6 @@ void addPeelAndFusePasses(OpPassManager &funcPassManager) {
 }
 
 void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
-                                  const std::string &pathToUkernels,
                                   TilePassPipeline useTilePipeline) {
   // First level tiling using scf.forall
   {
@@ -299,12 +298,7 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   addPeelAndFusePasses(funcPassManager);
 
   // Lower to UKernels.
-  {
-    AMDAIELowerToUKernelsOptions options;
-    // windows
-    options.pathToUkernels = escapeCommandLineComponent(pathToUkernels);
-    funcPassManager.addPass(createAMDAIELowerToUKernelsPass(options));
-  }
+  funcPassManager.addPass(createAMDAIELowerToUKernelsPass());
 
   // Comprehensive bufferization
   addAMDAIEBufferizePasses(funcPassManager, useTilePipeline);
@@ -312,7 +306,6 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
 }
 
 void addPackPeel4LevelTilingBasedPassPipeline(OpPassManager &funcPassManager,
-                                              const std::string &pathToUkernels,
                                               TilePassPipeline useTilePipeline,
                                               Operation *rootOp) {
   // Check if the root op is a 4D matmul-like operation.
@@ -502,12 +495,7 @@ void addPackPeel4LevelTilingBasedPassPipeline(OpPassManager &funcPassManager,
   addPeelAndFusePasses(funcPassManager);
 
   // Lower to UKernels.
-  {
-    AMDAIELowerToUKernelsOptions options;
-    // windows
-    options.pathToUkernels = escapeCommandLineComponent(pathToUkernels);
-    funcPassManager.addPass(createAMDAIELowerToUKernelsPass(options));
-  }
+  funcPassManager.addPass(createAMDAIELowerToUKernelsPass());
 
   // Comprehensive bufferization
   addAMDAIEBufferizePasses(funcPassManager, useTilePipeline);
@@ -601,10 +589,9 @@ void buildAMDAIETransformPassPipeline(
     uint32_t numCols, TilePassPipeline useTilePipeline,
     LowerToAIEPassPipeline useLowerToAIEPipeline, bool matmulElementwiseFusion,
     bool enableVectorizationPasses, std::string enableAMDAIEUkernels,
-    const std::string &pathToUkernels, PacketFlowStrategy packetFlowStrategy,
-    bool enableCoalescingLoops, bool enableCollapsingUnitDims,
-    OutliningStrategy enableFunctionOutlining, int callReplication,
-    bool insertLoopAroundCoreBlock, bool enableCtrlPkt,
+    PacketFlowStrategy packetFlowStrategy, bool enableCoalescingLoops,
+    bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
+    int callReplication, bool insertLoopAroundCoreBlock, bool enableCtrlPkt,
     uint32_t coreStackSize) {
   OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
   {
@@ -628,7 +615,6 @@ void buildAMDAIETransformPassPipeline(
     AMDAIELowerExecutableTargetOptions options;
     options.useTilePipeline = useTilePipeline;
     options.enableVectorizationPasses = enableVectorizationPasses;
-    options.pathToUkernels = pathToUkernels;
     funcPassManager.addPass(
         [&]() { return createAMDAIELowerExecutableTargetPass(options); });
   }

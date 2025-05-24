@@ -205,6 +205,7 @@ jobs:
             $PWD/iree-install \
             --peano_dir=$PWD/llvm-aie \
             --vitis_dir=/opt/Xilinx/Vitis/2024.2 \
+            --ukernel_dir=$PWD/compiler/plugins/target/AMD-AIE/iree-amd-aie/Target/uKernels \
             --target_device="npu1_4col" \
             --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
             --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
@@ -221,6 +222,7 @@ jobs:
             $PWD/iree-install \
             --peano_dir=$PWD/llvm-aie \
             --vitis_dir=/opt/Xilinx/Vitis/2024.2 \
+            --ukernel_dir=$PWD/compiler/plugins/target/AMD-AIE/iree-amd-aie/Target/uKernels \
             --target_device="npu1_4col" \
             --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
             --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
@@ -309,6 +311,7 @@ jobs:
             $PWD/iree-install \
             --peano_dir=$PWD/llvm-aie \
             --vitis_dir=/opt/xilinx/Vitis/2024.2 \
+            --ukernel_dir=$PWD/compiler/plugins/target/AMD-AIE/iree-amd-aie/Target/uKernels \
             --target_device="npu4" \
             --reset_npu_between_runs \
             --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
@@ -326,6 +329,7 @@ jobs:
             $PWD/iree-install \
             --peano_dir=$PWD/llvm-aie \
             --vitis_dir=/opt/xilinx/Vitis/2024.2 \
+            --ukernel_dir=$PWD/compiler/plugins/target/AMD-AIE/iree-amd-aie/Target/uKernels \
             --target_device="npu4" \
             --reset_npu_between_runs -v \
             --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \

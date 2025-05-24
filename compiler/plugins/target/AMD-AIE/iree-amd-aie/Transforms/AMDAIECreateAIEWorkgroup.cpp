@@ -40,6 +40,23 @@ AMDAIE::CoreOp CoreContext::mergeCoreOps(AMDAIE::CoreOp source,
   auto newCoreOp = rewriter.create<AMDAIE::CoreOp>(
       rewriter.getUnknownLoc(), tile, inputDmas.takeVector(),
       outputDmas.takeVector(), maxStackSize);
+
+  // Combine and uniquify the link_with attributes.
+  llvm::SmallSetVector<StringRef, 4> linkWithSet;
+  auto insertSplit = [&](std::optional<StringRef> linkWith) {
+    if (linkWith) {
+      SmallVector<StringRef, 4> objects;
+      llvm::SplitString(linkWith.value(), objects, ",");
+      for (StringRef obj : objects) linkWithSet.insert(obj);
+    }
+  };
+  insertSplit(source.getLinkWith());
+  insertSplit(dest.getLinkWith());
+  if (!linkWithSet.empty()) {
+    newCoreOp.setLinkWith(
+        rewriter.getStringAttr(llvm::join(linkWithSet.takeVector(), ",")));
+  }
+
   Region &region = newCoreOp.getRegion();
   Block *newBlock = rewriter.createBlock(&region);
   rewriter.setInsertionPointToStart(newBlock);

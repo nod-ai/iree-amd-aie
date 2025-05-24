@@ -532,7 +532,6 @@ def AMDAIELowerExecutableTarget :
         clEnumValN(mlir::iree_compiler::AMDAIE::TilePassPipeline::ConvDecomposePipeline, "conv-decompose",
                    "Use the conv-decompose based lowering strategy for convolution interface ops.")
       )}]>,
-    Option<"pathToUkernels", "path-to-ukernels", "std::string", /*default=*/"", "Path to microkernels' directory">,
     Option<"enableVectorizationPasses", "enable-vectorization-passes", "bool", /*default=*/"true",
             "Enable/disable vectorization.">
   ];
@@ -602,10 +601,6 @@ def AMDAIELowerToUKernels :
       "Separate out the inner-loop main compute operation that lower to a micro-kernel";
   let constructor =
       "mlir::iree_compiler::AMDAIE::createAMDAIELowerToUKernelsPass()";
-  let options = [
-    Option<"pathToUkernels", "path-to-ukernels", "std::string", /*default=*/"",
-      "Path to microkernels' directory">
-  ];
 }
 
 def AMDAIELowerWorkgroupCount :
