@@ -130,6 +130,7 @@ static LogicalResult insertCoreOps(mlir::ModuleOp moduleOp, int64_t stackSize) {
 
     // Walk all operations in the workgroup and fill in the CoreOp with
     // computational ops.
+    SmallVector<StringRef> ukernelObjectFiles;
     WalkResult forallRes = forallOp->walk([&](Operation *op) {
       // Skip operations already inside core ops
       if (op->getParentOfType<AMDAIE::CoreOp>()) return WalkResult::advance();
@@ -147,11 +148,8 @@ static LogicalResult insertCoreOps(mlir::ModuleOp moduleOp, int64_t stackSize) {
                "expected 'link_with' construct for the function declaration");
         // From the declaration of the function, we extract the value of
         // attribute "link_with" and attach it to amdaie.core op.
-        // TODO(avarma): What to do when more than one func.call has different
-        // ukernel object file linking?
-        //               As of now this hasn't turned up yet, so will table this
-        //               for now.
-        coreOp.setLinkWith(fnDecl->getAttrOfType<StringAttr>("link_with"));
+        ukernelObjectFiles.push_back(
+            fnDecl->getAttrOfType<StringAttr>("link_with").getValue());
       }
 
       if (isCoreComputeOp(op)) {
@@ -167,6 +165,13 @@ static LogicalResult insertCoreOps(mlir::ModuleOp moduleOp, int64_t stackSize) {
 
       return WalkResult::advance();
     });
+
+    if (!ukernelObjectFiles.empty()) {
+      // Concatenate all the object file names into a single string, separated
+      // by commas.
+      coreOp.setLinkWith(
+          rewriter.getStringAttr(llvm::join(ukernelObjectFiles, ",")));
+    };
 
     if (forallRes.wasInterrupted()) return WalkResult::interrupt();
     return WalkResult::advance();

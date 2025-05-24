@@ -919,12 +919,12 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:       aie.use_lock(%[[LOCK_0_2]], Release, 1)
 // CHECK:       aie.use_lock(%[[LOCK_0_2_2]], Release, 1)
 // CHECK:       aie.end
-// CHECK:     } {link_with = "/path/to/ukernel.o"}
+// CHECK:     } {link_with = "ukernelA.o,ukernelB.o"}
 // CHECK:     aiex.runtime_sequence @core_ukernel
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
-  func.func private @ukernel_A(memref<i32, 2 : i32>, index) attributes {link_with = "/path/to/ukernel.o", llvm.bareptr = true}
-  func.func private @ukernel_B(memref<i32, 2 : i32>, index, memref<f32, 2 : i32>, index) attributes {link_with = "/path/to/ukernel.o", llvm.bareptr = true}
+  func.func private @ukernel_A(memref<i32, 2 : i32>, index) attributes {link_with = "ukernelA.o", llvm.bareptr = true}
+  func.func private @ukernel_B(memref<i32, 2 : i32>, index, memref<f32, 2 : i32>, index) attributes {link_with = "ukernelB.o", llvm.bareptr = true}
   func.func @core_ukernel() {
     amdaie.workgroup {
       %c0 = arith.constant 0 : index
@@ -948,7 +948,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
         amdaie.use_lock(%lock, Release(1))
         amdaie.use_lock(%lock_2, Release(1))
         amdaie.end
-      } {link_with = "/path/to/ukernel.o"}
+      } {link_with = "ukernelA.o,ukernelB.o"}
       amdaie.controlcode {
         amdaie.end
       }

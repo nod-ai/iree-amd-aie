@@ -210,6 +210,9 @@ class BaseTest(ABC):
                 "Peano path not provided, and use_chess_for_ukernel=False"
             )
 
+        if self.use_ukernel and not config.ukernel_dir:
+            raise RuntimeError("UKernel directory not provided, and use_ukernel=True")
+
         # Call into test-specific code to run the test.
         return self._execute(config)
 
@@ -1057,6 +1060,7 @@ def generate_aie_vmfb(
         f"--iree-amd-aie-peano-install-dir={config.peano_dir}",
         f"--iree-amd-aie-install-dir={config.iree_dir}",
         f"--iree-amd-aie-vitis-install-dir={config.vitis_dir}",
+        f"--iree-amd-aie-ukernel-dir={config.ukernel_dir}",
         f"--iree-hal-dump-executable-files-to={test_dir}",
         f"--iree-amdaie-device-hal={config.device_hal}",
         "--iree-scheduling-optimize-bindings=false",
@@ -1290,6 +1294,7 @@ class TestConfig:
         peano_dir,
         xrt_dir,
         vitis_dir,
+        ukernel_dir,
         file_dir,
         iree_benchmark_exe,
         iree_compile_exe,
@@ -1307,6 +1312,7 @@ class TestConfig:
         self.peano_dir = peano_dir
         self.xrt_dir = xrt_dir
         self.vitis_dir = vitis_dir
+        self.ukernel_dir = ukernel_dir
         self.file_dir = file_dir
         self.iree_benchmark_exe = iree_benchmark_exe
         self.iree_compile_exe = iree_compile_exe
@@ -1430,6 +1436,7 @@ class TestConfig:
         reset_npu_script:     {self.reset_npu_script}
         verbose:              {self.verbose}
         vitis_dir:            {self.vitis_dir}
+        ukernel_dir:          {self.ukernel_dir}
         xrt_dir:              {self.xrt_dir}
         xrt_hash_date:        {self.xrt_hash_date}
         xrt_hash:             {self.xrt_hash}
@@ -2584,6 +2591,7 @@ def all_tests(
     peano_dir,
     xrt_dir,
     vitis_dir,
+    ukernel_dir,
     verbose,
     reset_npu_between_runs,
     do_not_run_aie,
@@ -2627,6 +2635,7 @@ def all_tests(
         peano_dir,
         xrt_dir,
         vitis_dir,
+        ukernel_dir,
         file_dir,
         iree_benchmark_exe,
         iree_compile_exe,
@@ -2726,6 +2735,12 @@ if __name__ == "__main__":
         "--xrt_lite_n_core_cols",
         type=int,
         help="Number of AIE core columns of the xrt-lite device to use",
+    )
+
+    parser.add_argument(
+        "--ukernel_dir",
+        type=abs_path,
+        help="The directory where the ukernel source files are located.",
     )
 
     # Taken from AMDAIEEnums.td
@@ -2865,6 +2880,7 @@ if __name__ == "__main__":
         args.peano_dir,
         args.xrt_dir,
         args.vitis_dir,
+        args.ukernel_dir,
         args.verbose,
         args.reset_npu_between_runs,
         args.do_not_run_aie,

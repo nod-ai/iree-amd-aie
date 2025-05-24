@@ -26,6 +26,9 @@ struct AMDAIEOptions {
   // Path to Vitis installation directory.
   std::string vitisInstallDir;
 
+  // Path to uKernel source files' directory.
+  std::string ukernelDir;
+
   // Dump system commands used during compilation
   bool showInvokedCommands{false};
 
@@ -55,7 +58,6 @@ struct AMDAIEOptions {
   LowerToAIEPassPipeline useLowerToAIEPipeline{
       LowerToAIEPassPipeline::ObjectFifo};
   TilePassPipeline useTilePipeline{TilePassPipeline::PackPeelPipeline};
-  std::string pathToUkernels{""};
   bool enableVectorizationPasses{true};
   bool enableCoalescingLoops{false};
   bool enableCollapsingUnitDims{false};
@@ -145,6 +147,10 @@ struct AMDAIEOptions {
         llvm::cl::cat(category),
         llvm::cl::desc("Path to aietools in Vitis installation"));
 
+    binder.opt<std::string>(
+        "iree-amd-aie-ukernel-dir", ukernelDir, llvm::cl::cat(category),
+        llvm::cl::desc("Path to uKernel source files' directory."));
+
     binder.opt<bool>("iree-amd-aie-enable-chess", useChess,
                      llvm::cl::cat(category),
                      llvm::cl::desc("Use the legacy chess compiler"));
@@ -191,10 +197,6 @@ struct AMDAIEOptions {
                        "conv-decompose",
                        "Use the conv-decompose based lowering strategy for "
                        "convolution interface ops")));
-
-    binder.opt<std::string>("iree-amdaie-path-to-ukernels", pathToUkernels,
-                            llvm::cl::cat(category),
-                            llvm::cl::desc("Path to microkernels' directory"));
 
     binder.opt<bool>(
         "iree-amdaie-enable-vectorization-passes", enableVectorizationPasses,
