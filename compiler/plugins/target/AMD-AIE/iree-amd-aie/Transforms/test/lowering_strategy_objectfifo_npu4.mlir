@@ -45,11 +45,11 @@ module {
 // -----
 
 // Tests a matmul shape for pack-peel-4-level-tiling in which the tile size generated
-// should ideally be equal to the M,N,K dimensions of the matmul - but it won't work
+// should ideally be equal to the M, N, K dimension size of the matmul - but it won't work
 // until support for DMA ops' reconfiguration is added. The workaround therefore halves
 // the tile size for N as N/2.
 
-// Pack-peel-4-level tiling on 4x8 cores : the tile size remains maximum in this case.
+// Pack-peel-4-level tiling on 4x4 cores : the tile size remains maximum in this case.
 // PACK-PEEL-4-LEVEL{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[32, 512, 0], [4, 4, 0], [0, 0, 1], [1, 1, 0]]>
 // PACK-PEEL-4-LEVEL{LITERAL}: #packingConfig = #amdaie.packing_config<packing_config = [{packedSizes = [8, 32, 64], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [1, 0], [0, 1]], outerPerm = [[0, 1], [1, 0], [1, 0]]}, {packedSizes = [0, 0, 0, 4, 4, 8], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [1, 0], [0, 1]], outerPerm = [[0, 1, 3, 2], [0, 1, 3, 2], [0, 1, 3, 2]]}]>
 
@@ -74,7 +74,7 @@ func.func @matmul_32x512x64_i32() {
 // -----
 
 // Based on above workaround this test shows the packing size of N also being halved
-// in case the tile size for N dimension becomes lesser than the corresponding packing size.
+// in case the tile size for N dimension becomes less than the corresponding packing size.
 
 // PACK-PEEL-4-LEVEL-1-CORE{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[32, 16, 0], [1, 1, 0], [0, 0, 1], [1, 1, 0]]>
 // PACK-PEEL-4-LEVEL-1-CORE{LITERAL}: #packingConfig = #amdaie.packing_config<packing_config = [{packedSizes = [32, 16, 64], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [1, 0], [0, 1]], outerPerm = [[0, 1], [1, 0], [1, 0]]}, {packedSizes = [0, 0, 0, 4, 4, 8], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [1, 0], [0, 1]], outerPerm = [[0, 1, 3, 2], [0, 1, 3, 2], [0, 1, 3, 2]]}]>
