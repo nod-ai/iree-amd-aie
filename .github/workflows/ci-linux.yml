@@ -310,7 +310,8 @@ jobs:
             --peano_dir=$PWD/llvm-aie \
             --vitis_dir=/opt/xilinx/Vitis/2024.2 \
             --target_device="npu4" \
-            --reset_npu_between_runs \
+            # Disabled reset npu due to instability issues in CI.
+            # --reset_npu_between_runs
             --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
             --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
             --skip_tests=Performance \
@@ -327,10 +328,11 @@ jobs:
             --peano_dir=$PWD/llvm-aie \
             --vitis_dir=/opt/xilinx/Vitis/2024.2 \
             --target_device="npu4" \
-            --reset_npu_between_runs -v \
+            # Disabled reset npu due to instability issues in CI.
+            # --reset_npu_between_runs
             --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
             --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
-            --tests=Performance > performance_npu4.log
+            --tests=Performance -v > performance_npu4.log
 
           # Print a summary of the findings.
           python build_tools/ci/cpu_comparison/performance_summarizer.py \
