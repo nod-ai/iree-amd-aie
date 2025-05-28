@@ -8,6 +8,7 @@ iree_add_all_subdirs()
 
 file(GLOB_RECURSE UKERNEL_SRCS
   "uKernels/*.cc"
+  "uKernels/*.cpp"
 )
 
 iree_c_embed_data(
