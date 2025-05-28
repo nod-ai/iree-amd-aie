@@ -827,10 +827,14 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
     if (useChess) {
       FailureOr<Path> maybeVitisDir = findVitis(vitisDir, npuVersion);
       if (failed(maybeVitisDir)) return failure();
-      if (!ukernelObjectNameToPath.contains("chess_intrinsic_wrapper.o")) {
+      static constexpr llvm::StringLiteral chessIntrinsicWrapperFileName =
+          "chess_intrinsic_wrapper.cpp";
+      static constexpr llvm::StringLiteral chessIntrinsicWrapperObjectName =
+          "chess_intrinsic_wrapper.o";
+      if (!ukernelObjectNameToPath.contains(chessIntrinsicWrapperObjectName)) {
         // Get the chess intrinsic wrapper file content as a string.
         Path chessIntrinsicsFilePath =
-            Path(npuVersion) / "chess" / "chess_intrinsic_wrapper.cpp";
+            Path(npuVersion) / "chess" / chessIntrinsicWrapperFileName.str();
         FailureOr<std::string> chessIntrinsicWrapperFileContent =
             getUkernelFileContent(chessIntrinsicsFilePath.string());
         if (failed(chessIntrinsicWrapperFileContent)) {
@@ -841,15 +845,15 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
         // Generate the chess intrinsic wrapper object file.
         FailureOr<Path> chessIntrinsicsObjFile = assembleStringUsingChess(
             /*inputFileStr=*/*chessIntrinsicWrapperFileContent,
-            /*inputFileName=*/"chess_intrinsic_wrapper.cpp",
-            /*outputFileName=*/"chess_intrinsic_wrapper.o",
+            /*inputFileName=*/chessIntrinsicWrapperFileName.str(),
+            /*outputFileName=*/chessIntrinsicWrapperObjectName.str(),
             /*outputDir=*/tempDir,
             /*extraArgs*/ std::vector<std::string>{},
             /*workDir=*/tempDir,
             /*vitisDir=*/*maybeVitisDir,
             /*npuVersion*/ npuVersion, verboseForThisIteration);
         if (failed(chessIntrinsicsObjFile)) return failure();
-        ukernelObjectNameToPath["chess_intrinsic_wrapper.o"] =
+        ukernelObjectNameToPath[chessIntrinsicWrapperObjectName] =
             *chessIntrinsicsObjFile;
       }
 
@@ -875,7 +879,7 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
           *vitisDir, tempDir, npuVersion, verboseForThisIteration);
       chessArgs.emplace_back(objFile);
       chessArgs.emplace_back(
-          ukernelObjectNameToPath["chess_intrinsic_wrapper.o"].string());
+          ukernelObjectNameToPath[chessIntrinsicWrapperObjectName].string());
       for (StringRef ukernelObjectName : ukernelObjectNames) {
         chessArgs.emplace_back(
             ukernelObjectNameToPath[ukernelObjectName].string());
