@@ -6,6 +6,26 @@
 
 iree_add_all_subdirs()
 
+file(GLOB_RECURSE UKERNEL_SRCS
+  "uKernels/*.cc"
+)
+
+iree_c_embed_data(
+  NAME
+    AMDAIEUkernels
+  SRCS
+    ${UKERNEL_SRCS}
+  C_FILE_OUTPUT
+    ukernels.c
+  H_FILE_OUTPUT
+    ukernels.h
+  IDENTIFIER
+    iree_amd_aie_ukernels
+  STRIP_PREFIX
+    ${CMAKE_CURRENT_SOURCE_DIR}/uKernels/
+  PUBLIC
+)
+
 iree_cc_library(
   NAME
     AMDAIERT
@@ -27,9 +47,12 @@ iree_cc_library(
     "XCLBinGen.cpp"
   DEPS
     ::AMDAIERT
+    ::AMDAIEUkernels
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
     iree::target::amd-aie::Transforms
     iree-aie-bootgen
+  INCLUDES
+    ${CMAKE_CURRENT_BINARY_DIR}
 )
 
 if(IREE_AMD_AIE_ENABLE_XRT_DRIVER)

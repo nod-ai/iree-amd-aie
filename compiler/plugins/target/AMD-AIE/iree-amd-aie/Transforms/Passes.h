@@ -42,20 +42,18 @@ void buildAMDAIETransformPassPipeline(
     uint32_t numCols, TilePassPipeline useTilePipeline,
     LowerToAIEPassPipeline useLowerToAIEPipeline, bool matmulElementwiseFusion,
     bool enableVectorizationPasses, std::string enableAMDAIEUkernels,
-    const std::string &pathToUkernels, PacketFlowStrategy packetFlowStrategy,
-    bool enableCoalescingLoops, bool enableCollapsingUnitDims,
-    OutliningStrategy enableFunctionOutlining, int outliningLoopInCallCount,
-    bool insertLoopAroundCoreBlock, bool emitCtrlPkt, uint32_t coreStackSize);
+    PacketFlowStrategy packetFlowStrategy, bool enableCoalescingLoops,
+    bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
+    int outliningLoopInCallCount, bool insertLoopAroundCoreBlock,
+    bool emitCtrlPkt, uint32_t coreStackSize);
 
 /// Populates passes needed to lower the IR via a Pack-Peel based approach.
 void addPackPeelBasedPassPipeline(OpPassManager &passManager,
-                                  const std::string &pathToUkernels,
                                   TilePassPipeline useTilePipeline);
 
 /// Populates passes needed to lower the IR via a Pack-Peel based approach with
 /// 4 levels of tiling.
 void addPackPeel4LevelTilingBasedPassPipeline(OpPassManager &passManager,
-                                              const std::string &pathToUkernels,
                                               TilePassPipeline useTilePipeline,
                                               Operation *rootOp);
 
@@ -265,8 +263,7 @@ std::unique_ptr<Pass> createAMDAIELowerToAIEPass();
 
 /// Create pass to lower a sequence of operation(s) to a iree_codegen.ukernel.*
 /// operation.
-std::unique_ptr<Pass> createAMDAIELowerToUKernelsPass(
-    AMDAIELowerToUKernelsOptions options = {});
+std::unique_ptr<Pass> createAMDAIELowerToUKernelsPass();
 
 /// Create a pass to lower workgroup count region of entry point operations.
 std::unique_ptr<Pass> createAMDAIELowerWorkgroupCountPass();

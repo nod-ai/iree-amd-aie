@@ -139,7 +139,6 @@ int main(int argc, char **argv) {
           /*xclBinInstanceName=*/"",
           /*amdAIEInstallDir=*/"",
           /*InputXCLBin=*/std::nullopt,
-          /*ukernel=*/std::nullopt,
           /*additionalPeanoOptFlags=*/"",
           /*enableCtrlPkt=*/emitCtrlPkt))) {
     llvm::errs() << "Error: failed to generate xclbin\n";
