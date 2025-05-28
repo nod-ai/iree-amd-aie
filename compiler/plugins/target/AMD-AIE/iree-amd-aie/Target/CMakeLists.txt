@@ -6,24 +6,28 @@
 
 iree_add_all_subdirs()
 
-file(GLOB_RECURSE UKERNEL_SRCS
-  "uKernels/*.cc"
-  "uKernels/*.cpp"
-)
-
 iree_c_embed_data(
   NAME
     AMDAIEUkernels
   SRCS
-    ${UKERNEL_SRCS}
+    "uKernels/npu1/chess/chess_intrinsic_wrapper.cpp"
+    "uKernels/npu1/chess/matmul.cc"
+    "uKernels/npu1/chess/zero_fill.cc"
+    "uKernels/npu4/chess/chess_intrinsic_wrapper.cpp"
+    "uKernels/npu4/chess/matmul.cc"
+    "uKernels/npu4/chess/trunci.cc"
+    "uKernels/npu4/chess/zero_fill.cc"
+    "uKernels/npu4/peano/matmul.cc"
+    "uKernels/npu4/peano/trunci.cc"
+    "uKernels/npu4/peano/zero_fill.cc"
   C_FILE_OUTPUT
-    ukernels.c
+    "ukernels.c"
   H_FILE_OUTPUT
-    ukernels.h
+    "ukernels.h"
   IDENTIFIER
-    iree_amd_aie_ukernels
+    "iree_amd_aie_ukernels"
   STRIP_PREFIX
-    ${CMAKE_CURRENT_SOURCE_DIR}/uKernels/
+    "${CMAKE_CURRENT_SOURCE_DIR}/uKernels/"
   PUBLIC
 )
 

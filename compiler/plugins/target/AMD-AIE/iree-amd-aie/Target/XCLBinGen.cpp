@@ -732,9 +732,11 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
     AIE::CoreOp coreOp = AIE::getCoreOp(tileOp);
     if (coreOp) coreOps.push_back(coreOp);
   }
-
   uint32_t nCoreOps = coreOps.size();
 
+  // Keep track of the ukernel object file that has been generated, so that we
+  // don't need to regenerate it for every core.
+  llvm::DenseMap<StringRef, Path> ukernelObjectNameToPath;
   for (auto iter : llvm::enumerate(coreOps)) {
     // Control logging verbosity: lower verbosing for all but the first core.
     bool verboseForThisIteration = verbose && (iter.index() == 0);
@@ -760,22 +762,17 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
     }
 
     Path elfFile = tempDir / elfFileName;
-
-    Path cwd = std::filesystem::current_path();
     // For each core, its linkWith attribute is a comma separated list of
     // ukernel object files. Example: linkWith = "matmul.o,zero_fill.o".
     std::optional<StringRef> linkWithStr = coreOp.getLinkWith();
     SmallVector<StringRef> ukernelObjectNames;
     if (linkWithStr.has_value())
       llvm::SplitString(linkWithStr.value(), ukernelObjectNames, ",");
-    // Generate all the ukernel object files.
+    // Generate all the ukernel object files for this core.
     SmallVector<Path> ukernelObjectFilePaths;
     for (StringRef ukernelObjectName : ukernelObjectNames) {
       // If already exists, skip.
-      if (std::filesystem::exists(cwd / ukernelObjectName.str())) {
-        ukernelObjectFilePaths.push_back(cwd / ukernelObjectName.str());
-        continue;
-      }
+      if (ukernelObjectNameToPath.contains(ukernelObjectName)) continue;
       // Get the ukernel source file name by substituting the '.o' with '.cc'.
       llvm::Regex re("\\.o$");
       std::string ukernelFileName = re.sub(".cc", ukernelObjectName);
@@ -804,7 +801,7 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
             /*inputFileStr=*/*ukernelFileContent,
             /*inputFileName=*/ukernelFileName,
             /*outputFileName=*/ukernelObjectName.str(),
-            /*outputDir=*/cwd,
+            /*outputDir=*/tempDir,
             /*extraArgs=*/std::vector<std::string>{},
             /*workDir=*/tempDir,
             /*vitisDir=*/*maybeVitisDir,
@@ -817,21 +814,20 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
             /*inputFileStr=*/*ukernelFileContent,
             /*inputFileName=*/ukernelFileName,
             /*outputFileName=*/ukernelObjectName.str(),
-            /*outputDir=*/cwd,
+            /*outputDir=*/tempDir,
             /*extraArgs=*/extraArgs,
             /*workDir=*/tempDir,
             /*vitisDir=*/peanoDir,
             /*npuVersion*/ npuVersion, verboseForThisIteration);
       }
       if (failed(ukernelObjectFilePath)) return failure();
-      ukernelObjectFilePaths.push_back(*ukernelObjectFilePath);
+      ukernelObjectNameToPath[ukernelObjectName] = *ukernelObjectFilePath;
     }
 
     if (useChess) {
       FailureOr<Path> maybeVitisDir = findVitis(vitisDir, npuVersion);
       if (failed(maybeVitisDir)) return failure();
-      FailureOr<Path> chessIntrinsicsObjFile;
-      if (!std::filesystem::exists(cwd / "chess_intrinsic_wrapper.o")) {
+      if (!ukernelObjectNameToPath.contains("chess_intrinsic_wrapper.o")) {
         // Get the chess intrinsic wrapper file content as a string.
         Path chessIntrinsicsFilePath =
             Path(npuVersion) / "chess" / "chess_intrinsic_wrapper.cpp";
@@ -843,7 +839,7 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
           return failure();
         }
         // Generate the chess intrinsic wrapper object file.
-        chessIntrinsicsObjFile = assembleStringUsingChess(
+        FailureOr<Path> chessIntrinsicsObjFile = assembleStringUsingChess(
             /*inputFileStr=*/*chessIntrinsicWrapperFileContent,
             /*inputFileName=*/"chess_intrinsic_wrapper.cpp",
             /*outputFileName=*/"chess_intrinsic_wrapper.o",
@@ -853,8 +849,8 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
             /*vitisDir=*/*maybeVitisDir,
             /*npuVersion*/ npuVersion, verboseForThisIteration);
         if (failed(chessIntrinsicsObjFile)) return failure();
-      } else {
-        chessIntrinsicsObjFile = cwd / "chess_intrinsic_wrapper.o";
+        ukernelObjectNameToPath["chess_intrinsic_wrapper.o"] =
+            *chessIntrinsicsObjFile;
       }
 
       // Use xbridge (to remove any peano dependency with use-chess option)
@@ -878,9 +874,12 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
       auto [xChessCCExe, chessArgs] = makeChessArgs(
           *vitisDir, tempDir, npuVersion, verboseForThisIteration);
       chessArgs.emplace_back(objFile);
-      chessArgs.emplace_back(chessIntrinsicsObjFile->string());
-      for (Path &ukernelObjectFilePath : ukernelObjectFilePaths)
-        chessArgs.emplace_back(ukernelObjectFilePath.string());
+      chessArgs.emplace_back(
+          ukernelObjectNameToPath["chess_intrinsic_wrapper.o"].string());
+      for (StringRef ukernelObjectName : ukernelObjectNames) {
+        chessArgs.emplace_back(
+            ukernelObjectNameToPath[ukernelObjectName].string());
+      }
       chessArgs.emplace_back("+l");
       chessArgs.emplace_back(bcfPath.string());
       chessArgs.emplace_back("-o");
@@ -911,8 +910,8 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
       std::string targetLower = StringRef(targetArch).lower();
       std::vector<std::string> flags;
       flags.emplace_back(objFile);
-      for (Path &ukernelObjectFilePath : ukernelObjectFilePaths)
-        flags.emplace_back(ukernelObjectFilePath.string());
+      for (StringRef ukernelObjectName : ukernelObjectNames)
+        flags.emplace_back(ukernelObjectNameToPath[ukernelObjectName].string());
       flags.emplace_back("--target=" + targetLower + "-none-unknown-elf");
       flags.emplace_back("-Wl,--gc-sections");
 

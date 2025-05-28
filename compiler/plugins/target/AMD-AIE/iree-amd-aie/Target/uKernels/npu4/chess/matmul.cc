@@ -4,21 +4,10 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#define NOCPP
-
 #include <stdint.h>
 
-#include <type_traits>
-
-#define REL_WRITE 0
-#define REL_READ 1
-
-#ifndef __chess__
-#include "aiebase_chess.h"
-#include "aiebase_typedefs.h"
-#endif
-
 #include <aie_api/aie.hpp>
+#include <type_traits>
 
 template <typename T_in, typename T_out>
 aie::accum<T_out, 64> load_v64(const T_in *__restrict p) {

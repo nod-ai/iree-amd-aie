@@ -4,21 +4,10 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#define NOCPP
-
 #include <stdint.h>
 
-#include <type_traits>
-
-#define REL_WRITE 0
-#define REL_READ 1
-
-#ifndef __chess__
-#include "aiebase_chess.h"
-#include "aiebase_typedefs.h"
-#endif
-
 #include <aie_api/aie.hpp>
+#include <type_traits>
 
 // Suppose A is a 64x64 tensor and B is a 64x64 tensor, and r=4, s=8, t=4.
 //

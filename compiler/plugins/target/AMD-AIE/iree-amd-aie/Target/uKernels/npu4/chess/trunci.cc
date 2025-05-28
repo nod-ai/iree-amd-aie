@@ -4,21 +4,10 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#define NOCPP
-
 #include <stdint.h>
 
-#include <type_traits>
-
-#define REL_WRITE 0
-#define REL_READ 1
-
-#ifndef __chess__
-#include "aiebase_chess.h"
-#include "aiebase_typedefs.h"
-#endif
-
 #include <aie_api/aie.hpp>
+#include <type_traits>
 
 template <int M, int N, int r>
 void trunci_vectorized(v32int32 *__restrict in, int64_t offsetIn, int64_t shift,
