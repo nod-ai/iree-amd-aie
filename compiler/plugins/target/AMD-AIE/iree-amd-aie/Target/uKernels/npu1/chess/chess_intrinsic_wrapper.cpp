@@ -18,11 +18,9 @@
 // when parsing .ll code containing standard intrinsic names, so these symbols
 // are defined that way.
 
-R"chess(
 extern "C" void llvm___aie2___acquire(unsigned id, unsigned val) {
   acquire_equal(id, val);
 }
 extern "C" void llvm___aie2___release(unsigned id, unsigned val) {
   release(id, val);
 }
-)chess"

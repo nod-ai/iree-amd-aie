@@ -6,6 +6,31 @@
 
 iree_add_all_subdirs()
 
+iree_c_embed_data(
+  NAME
+    AMDAIEUkernels
+  SRCS
+    "uKernels/npu1/chess/chess_intrinsic_wrapper.cpp"
+    "uKernels/npu1/chess/matmul.cc"
+    "uKernels/npu1/chess/zero_fill.cc"
+    "uKernels/npu4/chess/chess_intrinsic_wrapper.cpp"
+    "uKernels/npu4/chess/matmul.cc"
+    "uKernels/npu4/chess/trunci.cc"
+    "uKernels/npu4/chess/zero_fill.cc"
+    "uKernels/npu4/peano/matmul.cc"
+    "uKernels/npu4/peano/trunci.cc"
+    "uKernels/npu4/peano/zero_fill.cc"
+  C_FILE_OUTPUT
+    "ukernels.c"
+  H_FILE_OUTPUT
+    "ukernels.h"
+  IDENTIFIER
+    "iree_amd_aie_ukernels"
+  STRIP_PREFIX
+    "${CMAKE_CURRENT_SOURCE_DIR}/uKernels/"
+  PUBLIC
+)
+
 iree_cc_library(
   NAME
     AMDAIERT
@@ -27,9 +52,12 @@ iree_cc_library(
     "XCLBinGen.cpp"
   DEPS
     ::AMDAIERT
+    ::AMDAIEUkernels
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
     iree::target::amd-aie::Transforms
     iree-aie-bootgen
+  INCLUDES
+    ${CMAKE_CURRENT_BINARY_DIR}
 )
 
 if(IREE_AMD_AIE_ENABLE_XRT_DRIVER)
