@@ -630,11 +630,16 @@ static LogicalResult assembleFileUsingPeano(
   std::vector<std::string> args;
   args.reserve(args.size() + std::distance(extraArgs.begin(), extraArgs.end()));
   args.insert(args.end(), extraArgs.begin(), extraArgs.end());
-  // TODO(jornt): O0 fails with peano, so we use O1 for now.
-  args.emplace_back("-O1");
+  // Use O2 by default as this is recommended by peano folks.
+  args.emplace_back("-O2");
   // The following flag is needed to prevent peano from inlining memset, which
   // results in slow scalar code for the vectorized zeroization ukernel.
   args.emplace_back("-fno-builtin-memset");
+  // The `-ffunction-sections` and `-fdata-sections` flags are needed to put
+  // each function and data item into their own section so any unused sections
+  // can be discarded later during linking with `-Wl,--gc-sections`.
+  args.emplace_back("-ffunction-sections");
+  args.emplace_back("-fdata-sections");
   args.emplace_back("-c");
   args.emplace_back(inputFile);
   args.emplace_back("-o");

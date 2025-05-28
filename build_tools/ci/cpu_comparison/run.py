@@ -54,6 +54,7 @@ class TestParams(ABC):
         run_benchmark=False,
         n_repeats=1,
         enable_ctrlpkt=True,
+        stack_size=1024,
     ):
         self.run_on_target = run_on_target
         self.aie_compilation_flags = (
@@ -68,6 +69,7 @@ class TestParams(ABC):
         self.run_benchmark = run_benchmark
         self.n_repeats = n_repeats
         self.enable_ctrlpkt = enable_ctrlpkt
+        self.stack_size = stack_size
 
 
 class BaseTest(ABC):
@@ -126,16 +128,19 @@ class BaseTest(ABC):
         self.run_benchmark = run_benchmark
         self.n_repeats = n_repeats
         self.enable_ctrlpkt = enable_ctrlpkt
+        self.stack_size = test_params.stack_size
 
         if tile_pipeline == "pack-peel-4-level-tiling":
             self.name += "_4_level_tiling"
 
-        if use_chess:
-            self.name += f"_chess"
+        if use_chess or use_chess_for_ukernel:
             self.labels.append("Chess")
-            self.add_aie_compilation_flags([f"--iree-amd-aie-enable-chess=1"])
         else:
             self.labels.append("Peano")
+
+        if use_chess:
+            self.name += f"_chess"
+            self.add_aie_compilation_flags([f"--iree-amd-aie-enable-chess=1"])
 
         if use_ukernel:
             self.labels.append("UKernel")
@@ -165,6 +170,8 @@ class BaseTest(ABC):
 
         if run_benchmark:
             self.name += "_benchmark"
+
+        self.add_aie_compilation_flags([f"--iree-amdaie-stack-size={self.stack_size}"])
 
     def add_aie_compilation_flags(self, flags):
         if flags:
@@ -1766,6 +1773,7 @@ class Tests:
             test_params = TestParams(
                 tile_pipeline="pack-peel-4-level-tiling",
                 run_on_target=test["run_on_target"],
+                stack_size=3072,
             )
             if "use_ukernel" in test:
                 test_params.use_ukernel = test["use_ukernel"]
@@ -1921,7 +1929,7 @@ class Tests:
 
         for device in matmul_tests_for_each_device:
             for test in matmul_tests_for_each_device[device]:
-                test_params = TestParams(run_on_target=[device])
+                test_params = TestParams(run_on_target=[device], stack_size=3072)
                 if "use_ukernel" in test:
                     test_params.use_ukernel = test["use_ukernel"]
                 if "use_chess" in test:
@@ -2139,6 +2147,7 @@ class Tests:
                 "use_ukernel": True,
                 "outline": "all",
                 "run_on_target": "npu4",
+                "stack_size": 3072,
             },
             {
                 "M": 512,
@@ -2149,6 +2158,7 @@ class Tests:
                 "outline": "all",
                 "run_on_target": "npu4",
                 "use_packet_flow": True,
+                "stack_size": 3072,
             },
             {
                 "M": 512,
@@ -2170,6 +2180,7 @@ class Tests:
                 "tile_pipeline": "pack-peel-4-level-tiling",
                 "run_on_target": "npu4",
                 "use_chess_for_ukernel": False,
+                "stack_size": 3072,
             },
             {
                 "M": 512,
@@ -2180,6 +2191,7 @@ class Tests:
                 "outline": "all",
                 "tile_pipeline": "pack-peel-4-level-tiling",
                 "run_on_target": "npu4",
+                "stack_size": 3072,
             },
             {
                 "M": 1024,
@@ -2208,6 +2220,7 @@ class Tests:
                 "use_chess": False,
                 "use_chess_for_ukernel": False,
                 "peano_opt_level": 1,
+                "stack_size": 3072,
             },
         ]
 
@@ -2256,7 +2269,6 @@ class Tests:
             aie_compilation_flags += [
                 outlining_string,
                 f"--iree-amd-aie-additional-peano-opt-flags={peano_opt_level_string}",
-                f"--iree-amdaie-stack-size={stack_size}",
             ]
 
             if call_replication != 1:
@@ -2330,6 +2342,7 @@ class Tests:
                             n_repeats=2,
                             use_chess=use_chess,
                             use_chess_for_ukernel=use_chess_for_ukernel,
+                            stack_size=stack_size,
                         ),
                         additional_labels=["PerformanceCorrectness"]
                         + additional_labels,
@@ -2352,6 +2365,7 @@ class Tests:
                     n_repeats=n_performance_repeats,
                     use_chess=use_chess,
                     use_chess_for_ukernel=use_chess_for_ukernel,
+                    stack_size=stack_size,
                 ),
                 additional_labels=["Performance"] + additional_labels,
                 n_kernel_runs=n_performance_kernel_runs,
@@ -2511,6 +2525,56 @@ class Tests:
                 generator,
             )
         )
+
+        # Soak testing.
+        # See https://github.com/nod-ai/iree-amd-aie/issues/1264
+        seed = 42
+        rng = np.random.default_rng(seed=seed)
+
+        # The number of randomly sampled types to test.
+        n_runs = 2
+
+        MN_pool = [128, 256, 512]
+        K_pool = [128, 256]
+        input_type_pool = ["bf16"]
+
+        # The number of possible combinations of the type (M, N, K, input_type)
+        grid_elements = len(MN_pool) * len(MN_pool) * len(K_pool) * len(input_type_pool)
+        if n_runs >= 0.5 * grid_elements:
+            raise RuntimeError(
+                "Sampling without replacement nearly exhausted, might as well test full grid"
+            )
+
+        # We'll do sampling without replacement (i.e. we won't test the same type more than once).
+        sampled = set()
+
+        for run_number in range(n_runs):
+            # Generate a new random type.
+            while True:
+                M = rng.choice(MN_pool)
+                N = rng.choice(MN_pool)
+                K = rng.choice(K_pool)
+                input_type = rng.choice(input_type_pool)
+                sample = (M, N, K, input_type)
+                if sample not in sampled:
+                    sampled.add(sample)
+                    break
+
+            # Test the random type.
+            output_type = "i32" if input_type == "i8" else "f32"
+            self.register(
+                Matmul(
+                    M,
+                    N,
+                    K,
+                    input_type,
+                    output_type,
+                    test_params=TestParams(
+                        name_suffix="soak_" + str(run_number),
+                    ),
+                    additional_labels=["Soak"],
+                )
+            )
 
 
 def all_tests(
