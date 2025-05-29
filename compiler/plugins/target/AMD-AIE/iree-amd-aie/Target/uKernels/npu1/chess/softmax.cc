@@ -245,49 +245,55 @@ __attribute__((always_inline)) v16accfloat getExpBf16(v16bfloat16 x) {
 }
 }  // extern "C"
 
-void softmax_simple_bf16(bfloat16 *restrict input_vector,
-                         bfloat16 *restrict output_vector,
-                         const int32_t vector_size) {
+void softmax_simple_bf16(bfloat16 *restrict input_matrix,
+                         bfloat16 *restrict output_matrix,
+                         const int32_t num_rows, const int32_t num_cols) {
   event0();
 
-  int num_elems = vector_size;
-  float accum_exp_val;
-  auto it_exp_in = aie::cbegin_vector<16>((bfloat16 *)input_vector);
-  auto it_exp_out = aie::begin_vector<16>((bfloat16 *)output_vector);
-  auto it_scale = aie::cbegin_restrict_vector<16>((bfloat16 *)output_vector);
-  auto it_soft_out = aie::begin_restrict_vector<16>((bfloat16 *)output_vector);
+  for (int row = 0; row < num_rows; row++) {
+    int num_elems = num_cols;
+    float accum_exp_val;
 
-  bfloat16 col_sum_inv;
-  aie::vector<bfloat16, 16> in_elems, va;
-  aie::accum<accfloat, 16> out_vals;
-  int col_iters = num_elems >> 4;
-  accum_exp_val = 0;
+    bfloat16 *restrict input_vector = input_matrix + row * num_cols;
+    bfloat16 *restrict output_vector = output_matrix + row * num_cols;
+    auto it_exp_in = aie::cbegin_vector<16>((bfloat16 *)input_vector);
+    auto it_exp_out = aie::begin_vector<16>((bfloat16 *)output_vector);
+    auto it_scale = aie::cbegin_restrict_vector<16>((bfloat16 *)output_vector);
+    auto it_soft_out =
+        aie::begin_restrict_vector<16>((bfloat16 *)output_vector);
 
-  /////////////////////
-  //// Compute exp ////
-  /////////////////////
-  aie::vector<bfloat16, 16> exp_val;
-  aie::vector<float, 16> input_fp32;
+    bfloat16 col_sum_inv;
+    aie::vector<bfloat16, 16> in_elems, va;
+    aie::accum<accfloat, 16> out_vals;
+    int col_iters = num_elems >> 4;
+    accum_exp_val = 0;
 
-  const int elem_iters = num_elems / 16;
-  aie::vector<bfloat16, 16> input_bf16;
-  aie::accum<accfloat, 16> exp_val_accum;
-  exp_val_accum = aie::zeros<accfloat, 16>();
-  for (int i = 0; i < elem_iters; i++) {
-    input_bf16 = *it_exp_in++;
-    exp_val = to_v16bfloat16(getExpBf16(input_bf16));
-    exp_val_accum = add(exp_val_accum, exp_val);
-    *it_exp_out++ = exp_val;
-  }
-  aie::vector<float, 16> reduce = exp_val_accum.to_vector<float>();
-  accum_exp_val = aie::reduce_add(reduce);
-  /////////////////////
+    /////////////////////
+    //// Compute exp ////
+    /////////////////////
+    aie::vector<bfloat16, 16> exp_val;
+    aie::vector<float, 16> input_fp32;
 
-  col_sum_inv = (bfloat16)aie::inv(accum_exp_val);
-  for (int c = 0; c < col_iters; c++) {
-    in_elems = *it_scale++;
-    out_vals = aie::mul(in_elems, col_sum_inv);
-    *it_soft_out++ = out_vals.to_vector<bfloat16>();
+    const int elem_iters = num_elems / 16;
+    aie::vector<bfloat16, 16> input_bf16;
+    aie::accum<accfloat, 16> exp_val_accum;
+    exp_val_accum = aie::zeros<accfloat, 16>();
+    for (int i = 0; i < elem_iters; i++) {
+      input_bf16 = *it_exp_in++;
+      exp_val = to_v16bfloat16(getExpBf16(input_bf16));
+      exp_val_accum = add(exp_val_accum, exp_val);
+      *it_exp_out++ = exp_val;
+    }
+    aie::vector<float, 16> reduce = exp_val_accum.to_vector<float>();
+    accum_exp_val = aie::reduce_add(reduce);
+    /////////////////////
+
+    col_sum_inv = (bfloat16)aie::inv(accum_exp_val);
+    for (int c = 0; c < col_iters; c++) {
+      in_elems = *it_scale++;
+      out_vals = aie::mul(in_elems, col_sum_inv);
+      *it_soft_out++ = out_vals.to_vector<bfloat16>();
+    }
   }
 
   event1();
@@ -299,10 +305,10 @@ extern "C" {
 
 #define softmax_c_func(ctype, mlir_type, M, N)                        \
   void softmax_##mlir_type##_##M##x##N(ctype *input, ctype *output) { \
-    softmax_simple_bf16(input, output, N);                            \
+    softmax_simple_bf16(input, output, M, N);                         \
   }
 
-softmax_c_func(bfloat16, bf16, 1, 32)
+softmax_c_func(bfloat16, bf16, 32, 32)
 
 }  // extern "C"
 // clang-format on

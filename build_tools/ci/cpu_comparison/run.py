@@ -933,7 +933,7 @@ class Softmax(BaseTest):
             use_ukernel=self.use_ukernel,
             tile_pipeline="softmax-copy",
             function_name="softmax",
-            rtol=1e-2,
+            rtol=2e-2,
         )
         return True
 

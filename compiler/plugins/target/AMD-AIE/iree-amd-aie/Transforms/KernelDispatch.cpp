@@ -816,7 +816,7 @@ static LogicalResult setRootConfigForSoftmaxCopyPipeline(
     AMDAIEDevice targetDevice, uint32_t numRows, uint32_t numCols,
     std::string enableAMDAIEUkernels) {
   if (failed(setOpConfigAndEntryPointFnTranslation(
-          entryPointFn, softmaxOp, TileSizesListType{{1, 0}, {1, 0}, {0, 0}},
+          entryPointFn, softmaxOp, TileSizesListType{{64, 0}, {32, 0}, {0, 0}},
           IREE::Codegen::DispatchLoweringPassPipeline::Custom))) {
     return failure();
   }
