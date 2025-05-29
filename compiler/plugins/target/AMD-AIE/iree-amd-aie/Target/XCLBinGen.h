@@ -29,7 +29,6 @@ mlir::LogicalResult aie2xclbin(
     const std::string &xclBinKernelID, const std::string &xclBinKernelName,
     const std::string &xclBinInstanceName, const std::string &amdAIEInstallDir,
     const std::optional<std::string> &InputXCLBin,
-    const std::optional<std::string> &ukernel,
     const std::string &additionalPeanoOptFlags, bool enableCtrlPkt);
 
 mlir::LogicalResult emitDenseArrayAttrToFile(Operation *op, StringRef attrName,

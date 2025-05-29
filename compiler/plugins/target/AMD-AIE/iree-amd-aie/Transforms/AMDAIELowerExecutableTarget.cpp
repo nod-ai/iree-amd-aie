@@ -83,18 +83,18 @@ void AMDAIELowerExecutableTargetPass::runOnOperation() {
       return;
     case IREE::Codegen::DispatchLoweringPassPipeline::Custom: {
       if (useTilePipeline == TilePassPipeline::PackPeelPipeline) {
-        addPackPeelBasedPassPipeline(executableLoweringPipeline, pathToUkernels,
+        addPackPeelBasedPassPipeline(executableLoweringPipeline,
                                      TilePassPipeline::PackPeelPipeline);
       } else if (useTilePipeline ==
                  TilePassPipeline::PackPeel4LevelTilingPipeline) {
         addPackPeel4LevelTilingBasedPassPipeline(
-            executableLoweringPipeline, pathToUkernels,
+            executableLoweringPipeline,
             TilePassPipeline::PackPeel4LevelTilingPipeline, getRootOp(funcOp));
       } else if (useTilePipeline == TilePassPipeline::ConvDecomposePipeline) {
         addConvDecomposePassPipeline(executableLoweringPipeline,
                                      TilePassPipeline::ConvDecomposePipeline);
       } else if (useTilePipeline == TilePassPipeline::SoftmaxCopyPipeline) {
-        addSoftmaxCopyPassPipeline(executableLoweringPipeline, pathToUkernels,
+        addSoftmaxCopyPassPipeline(executableLoweringPipeline,
                                    TilePassPipeline::SoftmaxCopyPipeline);
       }
       break;

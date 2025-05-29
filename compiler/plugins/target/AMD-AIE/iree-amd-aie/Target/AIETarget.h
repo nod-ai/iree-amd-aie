@@ -55,7 +55,6 @@ struct AMDAIEOptions {
   LowerToAIEPassPipeline useLowerToAIEPipeline{
       LowerToAIEPassPipeline::ObjectFifo};
   TilePassPipeline useTilePipeline{TilePassPipeline::PackPeelPipeline};
-  std::string pathToUkernels{""};
   bool enableVectorizationPasses{true};
   bool enableCoalescingLoops{false};
   bool enableCollapsingUnitDims{false};
@@ -194,10 +193,6 @@ struct AMDAIEOptions {
             clEnumValN(TilePassPipeline::SoftmaxCopyPipeline, "softmax-copy",
                        "Use the copy based lowering strategy for softmax "
                        "interface ops")));
-
-    binder.opt<std::string>("iree-amdaie-path-to-ukernels", pathToUkernels,
-                            llvm::cl::cat(category),
-                            llvm::cl::desc("Path to microkernels' directory"));
 
     binder.opt<bool>(
         "iree-amdaie-enable-vectorization-passes", enableVectorizationPasses,

@@ -237,11 +237,11 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
         options.getNumRows(deviceModel), options.getNumCols(deviceModel),
         options.useTilePipeline, options.useLowerToAIEPipeline,
         options.matmulElementwiseFusion, options.enableVectorizationPasses,
-        options.enableAMDAIEUkernels, options.pathToUkernels,
-        options.packetFlowStrategy, options.enableCoalescingLoops,
-        options.enableCollapsingUnitDims, options.enableFunctionOutlining,
-        options.callReplication, options.insertLoopAroundCoreBlock,
-        options.enableCtrlPkt, options.coreStackSize);
+        options.enableAMDAIEUkernels, options.packetFlowStrategy,
+        options.enableCoalescingLoops, options.enableCollapsingUnitDims,
+        options.enableFunctionOutlining, options.callReplication,
+        options.insertLoopAroundCoreBlock, options.enableCtrlPkt,
+        options.coreStackSize);
   }
 
   void buildLinkingPassPipeline(OpPassManager &passManager) override {
@@ -643,7 +643,6 @@ LogicalResult AIETargetBackend::serializeExecutable(
             /*xclBinInstanceName=*/"IREE",
             /*amdAIEInstallDir=*/options.amdAieInstallDir,
             /*InputXCLBin=*/std::nullopt,
-            /*ukernel=*/options.enableAMDAIEUkernels,
             /*additionalPeanoOptFlags=*/options.additionalPeanoOptFlags,
             /*enableCtrlPkt=*/options.enableCtrlPkt))) {
       return failure();

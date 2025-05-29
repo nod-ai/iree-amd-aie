@@ -345,7 +345,7 @@ func.func @forall_dmas(%arg0: memref<1x1x8x16xi32>, %arg1: memref<8x16xi32, 1>) 
 // CHECK:           amdaie.logicalobjectfifo.access(%[[FROMMEMREF0]], Read)
 // CHECK:           scf.for %{{.*}} = %[[C0]] to %[[C8]] step %[[C1]]
 // CHECK:             amdaie.logicalobjectfifo.access(%[[FROMMEMREF0]], Read)
-// CHECK:         } {stack_size = 2048 : i32}
+// CHECK:         } {link_with = "ukernelA.o,ukernelC.o,ukernelB.o", stack_size = 2048 : i32}
 // CHECK:         %{{.+}} = amdaie.core(%[[TILE_1]], in : [%[[CONNECTION]], %[[CONNECTION2]]], out : [])
 // CHECK:           amdaie.logicalobjectfifo.access(%[[FROMMEMREF0]], Read)
 // CHECK:           scf.for %{{.*}} = %[[C0]] to %[[C8]] step %[[C1]]
@@ -375,7 +375,7 @@ func.func @merge_cores(%arg0: memref<1x1x8x16xi32>, %arg1: memref<8x16xi32, 2>) 
   %core_0_0_0 = amdaie.core(%tile_0_0, in : [%2], out : []) {
     amdaie.logicalobjectfifo.access(%1, Read) : !amdaie.logicalobjectfifo<memref<8x16xi32, 2>> -> memref<8x16xi32, 2>
     amdaie.end
-  } {stack_size = 2048 : i32}
+  } {link_with = "ukernelA.o,ukernelB.o", stack_size = 2048 : i32}
   %core_0_1_0 = amdaie.core(%tile_0_1, in : [%2], out : []) {
     amdaie.logicalobjectfifo.access(%1, Read) : !amdaie.logicalobjectfifo<memref<8x16xi32, 2>> -> memref<8x16xi32, 2>
     amdaie.end
@@ -385,7 +385,7 @@ func.func @merge_cores(%arg0: memref<1x1x8x16xi32>, %arg1: memref<8x16xi32, 2>) 
     %core_0_0_1 = amdaie.core(%tile_0_0, in : [%3], out : []) {
       amdaie.logicalobjectfifo.access(%1, Read) : !amdaie.logicalobjectfifo<memref<8x16xi32, 2>> -> memref<8x16xi32, 2>
       amdaie.end
-    } {stack_size = 512 : i32}
+    } {link_with = "ukernelA.o,ukernelC.o", stack_size = 512 : i32}
     %core_0_1_1 = amdaie.core(%tile_0_1, in : [%3], out : []) {
       amdaie.logicalobjectfifo.access(%1, Read) : !amdaie.logicalobjectfifo<memref<8x16xi32, 2>> -> memref<8x16xi32, 2>
       amdaie.end

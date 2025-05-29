@@ -24,8 +24,6 @@ class AMDAIELowerToUKernelsPass
  public:
   AMDAIELowerToUKernelsPass() = default;
   AMDAIELowerToUKernelsPass(const AMDAIELowerToUKernelsPass &pass) {}
-  AMDAIELowerToUKernelsPass(const AMDAIELowerToUKernelsOptions &options)
-      : AMDAIELowerToUKernelsBase(options) {}
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<IREE::Codegen::IREECodegenDialect>();
@@ -45,71 +43,23 @@ struct FnNameAndDefAttrs {
   SmallVector<NamedAttribute> defAttrs;
 };
 
-static std::string getPathToUKernelObjectFile(std::string pathToUkernels,
-                                              std::string ukernelObjectFile) {
-  // TODO(avarma): The idea is that we build the microkernel object files while
-  // building IREE with iree-amd-aie plugin. This way we know where the object
-  // files is going to reside w.r.t IREE build and by extension the onus of
-  // spilling out the path to the same is going to be on IREE(iree-amd-aie).
-  // For now, I'm using `path-to-ukernels` pass flag to specify the directory
-  // where microkernel resides.
-  SmallVector<char> parentDirectoryPath{pathToUkernels.begin(),
-                                        pathToUkernels.end()};
-  llvm::sys::path::append(parentDirectoryPath, ukernelObjectFile);
-  return Twine(parentDirectoryPath).str();
-}
-
 /// Returns the function name and attributes to use for a ukernel with given
 /// `ukernelName` on the target described by `targetAttr`.
 static FnNameAndDefAttrs getFnNameAndDefAttrs(RewriterBase &rewriter,
                                               std::string ukernelName,
                                               std::string inputOutputElemType,
-                                              std::string pathToUkernels,
                                               std::string ukernelObjectFile) {
   FnNameAndDefAttrs result;
   std::string ukernelSuffix = "";
   result.name = ukernelName + ukernelSuffix + "_" + inputOutputElemType;
-  result.defAttrs.emplace_back(
-      rewriter.getStringAttr("link_with"),
-      rewriter.getStringAttr(
-          getPathToUKernelObjectFile(pathToUkernels, ukernelObjectFile)));
+  result.defAttrs.emplace_back(rewriter.getStringAttr("link_with"),
+                               rewriter.getStringAttr(ukernelObjectFile));
   return result;
 }
 
 /// ============================= END ====================================
 /// ================== SAME UTILITIES AS IREE LLVMCPU ====================
 /// ======================================================================
-
-static FailureOr<std::string> fetchUkernelObjectName(
-    IREE::HAL::ExecutableTargetAttr targetAttr, StringRef ukernelName) {
-  std::optional<AMDAIEDevice> maybeDevice = getConfigAMDAIEDevice(targetAttr);
-  if (!maybeDevice) return failure();
-
-  AMDAIEDevice device = *maybeDevice;
-
-  auto emitObjectName = [&](StringRef baseName) -> FailureOr<std::string> {
-    switch (device) {
-      case AMDAIEDevice::npu1:
-      case AMDAIEDevice::npu1_4col:
-        return (baseName + "_npu1.o").str();
-      case AMDAIEDevice::npu4:
-        return (baseName + "_npu4.o").str();
-      default:
-        llvm::errs() << "Unsupported AMDAIE device.\n";
-        return failure();
-    }
-  };
-
-  if (ukernelName == "matmul" || ukernelName == "zero" ||
-      ukernelName == "trunci") {
-    return emitObjectName("mm");
-  }
-
-  if (ukernelName == "softmax") return emitObjectName("softmax");
-
-  llvm::errs() << "Unsupported microkernel name: " << ukernelName << "\n";
-  return failure();
-}
 
 /// Utility to fetch the element type as string.
 static std::string typeToString(Type type) {
@@ -141,7 +91,7 @@ static std::tuple<int, int, int, int> getTilingInfo(ShapedType shapedType) {
 /// that is later lowered into a call to the microkernel.
 static FailureOr<IREE::Codegen::UKernelOpInterface> matchMatmulDAGForUKernel(
     RewriterBase &rewriter, Operation *op, const std::string &ukernelName,
-    const std::string &ukernelObjectName, const std::string &pathToUkernels) {
+    const std::string &ukernelObjectName) {
   auto linalgOp = dyn_cast<linalg::LinalgOp>(op);
   if (!linalgOp) {
     return rewriter.notifyMatchFailure(op, "is not a linalg operation");
@@ -171,9 +121,8 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchMatmulDAGForUKernel(
       std::to_string(N) + "x" + std::to_string(K) + "_" + std::to_string(r) +
       "x" + std::to_string(s) + "x" + std::to_string(t);
 
-  FnNameAndDefAttrs fn =
-      getFnNameAndDefAttrs(rewriter, ukernelName, inputOutputElemTypeAndSize,
-                           pathToUkernels, ukernelObjectName);
+  FnNameAndDefAttrs fn = getFnNameAndDefAttrs(
+      rewriter, ukernelName, inputOutputElemTypeAndSize, ukernelObjectName);
 
   // Create UKernel for AMD-AIE.
   Location loc = linalgOp.getLoc();
@@ -188,7 +137,7 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchMatmulDAGForUKernel(
 
 static FailureOr<IREE::Codegen::UKernelOpInterface> matchFillDAGForUKernel(
     RewriterBase &rewriter, Operation *op, const std::string &ukernelName,
-    const std::string &ukernelObjectName, const std::string &pathToUkernels) {
+    const std::string &ukernelObjectName) {
   auto fillOp = dyn_cast<linalg::FillOp>(op);
   if (!fillOp) {
     return rewriter.notifyMatchFailure(op, "is not a fill operation");
@@ -217,9 +166,8 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchFillDAGForUKernel(
   std::string elemTypeAndSize = typeToString(outElemType) + "_" +
                                 std::to_string(M) + "x" + std::to_string(N);
 
-  FnNameAndDefAttrs fn =
-      getFnNameAndDefAttrs(rewriter, ukernelName, elemTypeAndSize,
-                           pathToUkernels, ukernelObjectName);
+  FnNameAndDefAttrs fn = getFnNameAndDefAttrs(
+      rewriter, ukernelName, elemTypeAndSize, ukernelObjectName);
 
   // Create UKernel for AMD-AIE.
   Location loc = fillOp.getLoc();
@@ -264,7 +212,7 @@ std::optional<Value> checkIsShiftTruncIAndReturnShift(
 
 static FailureOr<IREE::Codegen::UKernelOpInterface> matchTruncIDAGForUKernel(
     RewriterBase &rewriter, Operation *op, const std::string &ukernelName,
-    const std::string &ukernelObjectName, const std::string &pathToUkernels) {
+    const std::string &ukernelObjectName) {
   OpBuilder::InsertionGuard guard(rewriter);
   auto linalgOp = dyn_cast<linalg::LinalgOp>(op);
   if (!linalgOp) {
@@ -293,9 +241,8 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchTruncIDAGForUKernel(
                                 typeToString(outElemType) + "_" +
                                 std::to_string(M) + "x" + std::to_string(N);
 
-  FnNameAndDefAttrs fn =
-      getFnNameAndDefAttrs(rewriter, ukernelName, elemTypeAndSize,
-                           pathToUkernels, ukernelObjectName);
+  FnNameAndDefAttrs fn = getFnNameAndDefAttrs(
+      rewriter, ukernelName, elemTypeAndSize, ukernelObjectName);
 
   // Create UKernel for AMD-AIE.
   Location loc = linalgOp.getLoc();
@@ -310,7 +257,7 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchTruncIDAGForUKernel(
 
 static FailureOr<IREE::Codegen::UKernelOpInterface> matchSoftmaxDAGForUKernel(
     RewriterBase &rewriter, Operation *op, const std::string &ukernelName,
-    const std::string &ukernelObjectName, const std::string &pathToUkernels) {
+    const std::string &ukernelObjectName) {
   auto softmaxOp = dyn_cast<linalg::SoftmaxOp>(op);
   if (!softmaxOp)
     return rewriter.notifyMatchFailure(op, "is not a softmax operation");
@@ -324,9 +271,8 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchSoftmaxDAGForUKernel(
                                 std::to_string(outType.getDimSize(0)) + "x" +
                                 std::to_string(outType.getDimSize(1));
 
-  FnNameAndDefAttrs fn =
-      getFnNameAndDefAttrs(rewriter, ukernelName, elemTypeAndSize,
-                           pathToUkernels, ukernelObjectName);
+  FnNameAndDefAttrs fn = getFnNameAndDefAttrs(
+      rewriter, ukernelName, elemTypeAndSize, ukernelObjectName);
 
   // Create UKernel for AMD-AIE.
   Location loc = softmaxOp.getLoc();
@@ -342,20 +288,17 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchSoftmaxDAGForUKernel(
 using TargetPredicate = std::function<bool(IREE::HAL::ExecutableTargetAttr)>;
 using MatchAndReplaceFunction =
     std::function<FailureOr<IREE::Codegen::UKernelOpInterface>(
-        RewriterBase &, Operation *, const std::string &, const std::string &,
-        const std::string &)>;
+        RewriterBase &, Operation *, const std::string &, const std::string &)>;
 
 template <typename OpType>
 struct LowerToUKernelPattern : OpRewritePattern<OpType> {
   LowerToUKernelPattern(MLIRContext *context, TargetPredicate targetPredicate,
                         MatchAndReplaceFunction matchAndReplace,
-                        const std::string &ukernelName,
-                        const std::string &pathToUkernels)
+                        const std::string &ukernelName)
       : OpRewritePattern<OpType>(context),
         targetPredicate(targetPredicate),
         matchAndReplace(matchAndReplace),
-        ukernelName(ukernelName),
-        pathToUkernels(pathToUkernels) {}
+        ukernelName(ukernelName) {}
 
   LogicalResult matchAndRewrite(OpType op,
                                 PatternRewriter &rewriter) const override {
@@ -369,16 +312,11 @@ struct LowerToUKernelPattern : OpRewritePattern<OpType> {
       return rewriter.notifyMatchFailure(
           op, "no ukernel found with name: " + ukernelName);
     }
-    FailureOr<std::string> maybeUkernelObjectName =
-        fetchUkernelObjectName(targetAttr, ukernelName);
-    if (failed(maybeUkernelObjectName)) {
-      return rewriter.notifyMatchFailure(
-          op, "no ukernel object name found for the target");
-    }
+
+    std::string ukernelObjectName = ukernelName + ".o";
 
     FailureOr<IREE::Codegen::UKernelOpInterface> ukernelOp =
-        matchAndReplace(rewriter, op, ukernelName,
-                        maybeUkernelObjectName.value(), pathToUkernels);
+        matchAndReplace(rewriter, op, ukernelName, ukernelObjectName);
     if (failed(ukernelOp)) {
       return rewriter.notifyMatchFailure(
           op, "failed to find microkernel op to replace with");
@@ -390,13 +328,12 @@ struct LowerToUKernelPattern : OpRewritePattern<OpType> {
   TargetPredicate targetPredicate;
   MatchAndReplaceFunction matchAndReplace;
   std::string ukernelName;
-  std::string pathToUkernels;
 };
 
 }  // namespace
 
 static constexpr char kMatmulUKernelName[] = "matmul";
-static constexpr char kFillUKernelName[] = "zero";
+static constexpr char kFillUKernelName[] = "zero_fill";
 static constexpr char kTruncIUKernelName[] = "trunci";
 static constexpr char kSoftmaxUKernelName[] = "softmax";
 
@@ -417,20 +354,15 @@ void AMDAIELowerToUKernelsPass::runOnOperation() {
   // these ops.
   auto allTargets = [](auto target) { return true; };
   patterns.insert<LowerToUKernelPattern<linalg::GenericOp>>(
-      context, allTargets, matchMatmulDAGForUKernel, kMatmulUKernelName,
-      pathToUkernels);
+      context, allTargets, matchMatmulDAGForUKernel, kMatmulUKernelName);
   patterns.insert<LowerToUKernelPattern<linalg::MatmulOp>>(
-      context, allTargets, matchMatmulDAGForUKernel, kMatmulUKernelName,
-      pathToUkernels);
+      context, allTargets, matchMatmulDAGForUKernel, kMatmulUKernelName);
   patterns.insert<LowerToUKernelPattern<linalg::FillOp>>(
-      context, allTargets, matchFillDAGForUKernel, kFillUKernelName,
-      pathToUkernels);
+      context, allTargets, matchFillDAGForUKernel, kFillUKernelName);
   patterns.insert<LowerToUKernelPattern<linalg::GenericOp>>(
-      context, allTargets, matchTruncIDAGForUKernel, kTruncIUKernelName,
-      pathToUkernels);
+      context, allTargets, matchTruncIDAGForUKernel, kTruncIUKernelName);
   patterns.insert<LowerToUKernelPattern<linalg::SoftmaxOp>>(
-      context, allTargets, matchSoftmaxDAGForUKernel, kSoftmaxUKernelName,
-      pathToUkernels);
+      context, allTargets, matchSoftmaxDAGForUKernel, kSoftmaxUKernelName);
   if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
     return signalPassFailure();
   }
@@ -438,9 +370,8 @@ void AMDAIELowerToUKernelsPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<Pass> createAMDAIELowerToUKernelsPass(
-    AMDAIELowerToUKernelsOptions options) {
-  return std::make_unique<AMDAIELowerToUKernelsPass>(options);
+std::unique_ptr<Pass> createAMDAIELowerToUKernelsPass() {
+  return std::make_unique<AMDAIELowerToUKernelsPass>();
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE

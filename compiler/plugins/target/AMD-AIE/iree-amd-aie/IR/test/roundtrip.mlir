@@ -37,13 +37,13 @@ func.func @buffer() {
 // CHECK: %[[TILE_0:.*]] = amdaie.tile(%[[C0]], %[[C0]])
 // CHECK: %[[CORE_0:.*]] = amdaie.core(%[[TILE_0]], in : [], out : [])
 // CHECK: amdaie.end
-// CHECK: link_with = "/path/to/ukernel/mm.o", stack_size = 2048 : i32
+// CHECK: link_with = "matmul.o", stack_size = 2048 : i32
 func.func @core() {
   %c0 = arith.constant 0 : index
   %tile = amdaie.tile(%c0, %c0)
   %core = amdaie.core(%tile, in : [], out : []) {
     amdaie.end
-  } {link_with = "/path/to/ukernel/mm.o", stack_size = 2048 : i32}
+  } {link_with = "matmul.o", stack_size = 2048 : i32}
   return
 }
 

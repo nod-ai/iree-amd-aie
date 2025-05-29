@@ -14,7 +14,7 @@ module {
 
 
 // -----
-// Check that that the 256xi32 (1024 byte) transfer_write is converted into
+// Check that the 256xi32 (1024 byte) transfer_write is converted into
 // a loop of 32xi32 (128 byte) transfer_write operations. Loop count is 8 (256 / 32).
 #executable_target_ = #hal.executable.target<"", "", {target_device = "npu1_4col"}>
 module attributes {hal.executable.target = #executable_target_} {
