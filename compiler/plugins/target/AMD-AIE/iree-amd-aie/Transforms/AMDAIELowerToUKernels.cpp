@@ -153,7 +153,6 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchFillDAGForUKernel(
   Type outElemType = outType.getElementType();
 
   int M, N, r, t;
-  llvm::errs() << "outType rank: " << outType.getRank() << "\n";
   if (outType.getRank() == 2) {
     M = outType.getDimSize(0);
     N = outType.getDimSize(1);
