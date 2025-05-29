@@ -24,11 +24,15 @@ LogicalResult initializeChannelsGenerators(
     const DenseSet<TileOp> &shimTileOps,
     DenseMap<Value, ChannelGenerator> &shimTileToGeneratorMap) {
   // Check the number of DMA channels available for the shim tile.
-  uint8_t numShimDmaChannels = deviceModel.getDmaProp<uint8_t>(
+  FailureOr<uint8_t> maybeNumDmaChannels = deviceModel.getDmaProp<uint8_t>(
       AMDAIETileType::SHIMNOC, AMDAIEDmaProp::NumChannels);
+  if (failed(maybeNumDmaChannels) || *maybeNumDmaChannels == 0) {
+    return workgroupOp.emitOpError()
+           << "expected shim tile type to have DMA channels.";
+  }
   std::for_each(shimTileOps.begin(), shimTileOps.end(), [&](TileOp shimTileOp) {
     shimTileToGeneratorMap[shimTileOp.getResult()] =
-        ChannelGenerator(numShimDmaChannels, numShimDmaChannels);
+        ChannelGenerator(*maybeNumDmaChannels, *maybeNumDmaChannels);
   });
   // Ensure that shim DMA MM2S channels are not already assigned.
   WalkResult res = workgroupOp->walk([&](AMDAIE::ChannelOp channelOp) {
@@ -136,12 +140,18 @@ LogicalResult generateControlOverlay(AMDAIE::WorkgroupOp workgroupOp,
   rewriter.setInsertionPoint(controlCodeOp);
   // If the column is occupied, but the shim tile op is not present, then create
   // one.
+  uint32_t row = 0;
   for (uint32_t col : occupiedCols) {
     if (!columnToShimTile.count(col)) {
       auto colIndex = rewriter.create<arith::ConstantIndexOp>(
           rewriter.getUnknownLoc(), col);
-      auto rowIndex =
-          rewriter.create<arith::ConstantIndexOp>(rewriter.getUnknownLoc(), 0);
+      auto rowIndex = rewriter.create<arith::ConstantIndexOp>(
+          rewriter.getUnknownLoc(), row);
+      AMDAIETileType tileType = deviceModel.getTileType(col, row);
+      if (tileType != AMDAIETileType::SHIMNOC) {
+        return controlCodeOp.emitOpError()
+               << "could not find a shim tile at column " << col;
+      }
       columnToShimTile[col] = rewriter.create<AMDAIE::TileOp>(
           rewriter.getUnknownLoc(), colIndex, rowIndex);
     }

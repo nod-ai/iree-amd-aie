@@ -455,16 +455,20 @@ LogicalResult DMABDOp::verify() {
 
   mlir::iree_compiler::AMDAIE::AMDAIEDeviceModel deviceModel =
       getDeviceModel(this->getOperation());
-
-  uint32_t maxBds =
-      deviceModel.getNumBDs(parentTileOp.getCol(), parentTileOp.getRow());
-  if (std::optional<int32_t> bdId = getBdId();
-      bdId.has_value() && static_cast<uint32_t>(*bdId) >= maxBds) {
-    return emitOpError("bdId attribute exceeds max: ") << maxBds - 1;
+  mlir::iree_compiler::AMDAIE::AMDAIETileType tileType =
+      deviceModel.getTileType(parentTileOp.getCol(), parentTileOp.getRow());
+  FailureOr<uint32_t> maybeMaxBds = deviceModel.getDmaProp<uint32_t>(
+      tileType, mlir::iree_compiler::AMDAIE::AMDAIEDmaProp::NumBds);
+  if (failed(maybeMaxBds)) return emitOpError("failed to get max BDs");
+  if (std::optional<int32_t> maybeBdId = getBdId();
+      maybeBdId.has_value() &&
+      static_cast<uint32_t>(*maybeBdId) >= *maybeMaxBds) {
+    return emitOpError("bdId attribute exceeds max: ") << *maybeMaxBds - 1;
   }
-  if (std::optional<int32_t> nextBdId = getNextBdId();
-      nextBdId.has_value() && static_cast<uint32_t>(*nextBdId) >= maxBds) {
-    return emitOpError("nextBdId attribute exceeds max: ") << maxBds - 1;
+  if (std::optional<int32_t> maybeNextBdId = getNextBdId();
+      maybeNextBdId.has_value() &&
+      static_cast<uint32_t>(*maybeNextBdId) >= *maybeMaxBds) {
+    return emitOpError("nextBdId attribute exceeds max: ") << *maybeMaxBds - 1;
   }
 
   if (auto dims = getDimensions(); dims.has_value()) {

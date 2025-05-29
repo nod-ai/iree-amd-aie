@@ -16,6 +16,28 @@ module {
 
 // -----
 
+// Target device `npu1` whose tile (0, 0) has no DMA channels available for sending control packets. Use `npu1_4col` instead.
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @no_shim_found() {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c2 = arith.constant 2 : index
+    amdaie.workgroup {
+      %tile_0_0 = amdaie.tile(%c0, %c0)
+      %tile_0_1 = amdaie.tile(%c0, %c1)
+      %tile_0_2 = amdaie.tile(%c0, %c2)
+      // expected-error @+1 {{could not find a shim tile at column 0}}
+      amdaie.controlcode {
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
 /// No shim DMA channel can be assigned before control overlay generation.
 /// This ensures that control packets have priority in resource allocation
 /// and makes control packet routing static.

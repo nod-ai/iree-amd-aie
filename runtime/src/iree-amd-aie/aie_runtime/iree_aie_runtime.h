@@ -206,6 +206,91 @@ inline ::XAie_TxnOpcode txnToTxn(XAie_TxnOpcode t) {
 // mlir-air legacy
 enum class AIEArch : uint8_t { AIE1 = 1, AIE2 = 2, AIE2p = 3 };
 
+/// ============================= BEGIN ==================================
+/// ================== stringification utils =============================
+/// ======================================================================
+
+#define TO_STRINGS(_)     \
+  _(int)                  \
+  _(uint32_t)             \
+  _(uint64_t)             \
+  _(AMDAIEDmaProp)        \
+  _(AMDAIETileType)       \
+  _(AieRC)                \
+  _(DMAChannelDir)        \
+  _(StrmSwPortType)       \
+  _(SwitchDMAConnection)  \
+  _(::StrmSwPortType)     \
+  _(TileLoc)              \
+  _(XAie_LocType)         \
+  _(XAie_Lock)            \
+  _(XAie_OpHdr)           \
+  _(XAie_Write32Hdr)      \
+  _(XAie_BlockWrite32Hdr) \
+  _(XAie_MaskWrite32Hdr)  \
+  _(XAie_MaskPoll32Hdr)   \
+  _(XAie_CustomOpHdr)     \
+  _(XAie_TxnOpcode)       \
+  _(XAie_TxnCmd)          \
+  _(XAie_Packet)
+
+TO_STRINGS(TO_STRING_DECL)
+#undef TO_STRINGS
+
+#define BOTH_OSTREAM_OPS_FORALL_TYPES(OSTREAM_OP_, _)              \
+  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::AMDAIETileType)      \
+  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::TileLoc)             \
+  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::SwitchDMAConnection) \
+  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::DMAChannelDir)       \
+  _(OSTREAM_OP_, AieRC)                                            \
+  _(OSTREAM_OP_, StrmSwPortType)                                   \
+  _(OSTREAM_OP_, ::StrmSwPortType)                                 \
+  _(OSTREAM_OP_, XAie_LocType)                                     \
+  _(OSTREAM_OP_, XAie_Lock)                                        \
+  _(OSTREAM_OP_, XAie_OpHdr)                                       \
+  _(OSTREAM_OP_, XAie_Write32Hdr)                                  \
+  _(OSTREAM_OP_, XAie_BlockWrite32Hdr)                             \
+  _(OSTREAM_OP_, XAie_MaskWrite32Hdr)                              \
+  _(OSTREAM_OP_, XAie_MaskPoll32Hdr)                               \
+  _(OSTREAM_OP_, XAie_CustomOpHdr)                                 \
+  _(OSTREAM_OP_, XAie_TxnOpcode)                                   \
+  _(OSTREAM_OP_, XAie_TxnCmd)                                      \
+  _(OSTREAM_OP_, XAie_Packet)
+
+BOTH_OSTREAM_OPS_FORALL_TYPES(OSTREAM_OP_DECL, BOTH_OSTREAM_OP)
+
+// https://stackoverflow.com/a/32230306
+template <typename H1>
+llvm::raw_ostream &showArgs(llvm::raw_ostream &out, const char *label,
+                            H1 &&value) {
+  if constexpr (std::is_pointer_v<H1> ||
+                std::is_pointer_v<std::remove_reference_t<H1>>) {
+    return out << label << "=ptr";
+  } else {
+    return out << label << "=" << to_string(std::forward<H1>(value));
+  }
+}
+
+template <typename H1, typename... T>
+llvm::raw_ostream &showArgs(llvm::raw_ostream &out, const char *label,
+                            H1 &&value, T &&...rest) {
+  const char *pcomma = strchr(label, ',');
+  if constexpr (std::is_pointer_v<H1> ||
+                std::is_pointer_v<std::remove_reference_t<H1>>) {
+    return showArgs(out.write(label, pcomma - label) << "=ptr,", pcomma + 1,
+                    std::forward<T>(rest)...);
+  } else {
+    return showArgs(out.write(label, pcomma - label)
+                        << "=" << to_string(std::forward<H1>(value)) << ',',
+                    pcomma + 1, std::forward<T>(rest)...);
+  }
+}
+
+#define SHOW_ARGS(os, ...) showArgs(os, #__VA_ARGS__, __VA_ARGS__)
+/// ============================== END ===================================
+/// ================== stringification utils =============================
+/// ======================================================================
+
 /*
  * This struct is meant to be a thin wrapper around aie-rt, which provides
  * the canonical representation/metadata for AIE devices; attributes like number
@@ -394,7 +479,13 @@ struct AMDAIEDeviceModel {
 
   /// Retrieve a DMA property for the specified tile type.
   template <typename T>
-  T getDmaProp(AMDAIETileType tileType, AMDAIEDmaProp dmaProp) const {
+  FailureOr<T> getDmaProp(AMDAIETileType tileType,
+                          AMDAIEDmaProp dmaProp) const {
+    if (tileType == AMDAIETileType::SHIMPL || tileType == AMDAIETileType::MAX) {
+      llvm::errs() << "tileType: " << to_string(tileType)
+                   << " does not have DMA properties\n";
+      return failure();
+    }
     const uint8_t *dmaMod = reinterpret_cast<const uint8_t *>(
         devInst.DevProp.DevMod[static_cast<uint8_t>(tileType)].DmaMod);
     return *((const T *)(dmaMod + static_cast<uint8_t>(dmaProp)));
@@ -402,8 +493,13 @@ struct AMDAIEDeviceModel {
 
   /// Retrieve a DMA BD property for the specified tile type and BD id.
   template <typename T>
-  T getDmaBdProp(AMDAIETileType tileType, uint8_t bd_id,
-                 AMDAIEDmaBdProp dmaBdProp) const {
+  FailureOr<T> getDmaBdProp(AMDAIETileType tileType, uint8_t bd_id,
+                            AMDAIEDmaBdProp dmaBdProp) const {
+    if (tileType == AMDAIETileType::SHIMPL || tileType == AMDAIETileType::MAX) {
+      llvm::errs() << "tileType: " << to_string(tileType)
+                   << " does not have DMA properties\n";
+      return failure();
+    }
     const XAie_DmaMod *dmaMod =
         devInst.DevProp.DevMod[static_cast<uint8_t>(tileType)].DmaMod;
     assert(bd_id < dmaMod->NumBds && "BD id should be smaller than max");
@@ -464,8 +560,6 @@ struct AMDAIEDeviceModel {
   uint32_t getTileMemorySizeInBytes(uint8_t col, uint8_t row) const;
 
   SmallVector<uint32_t> getMemSpaceRows(uint8_t memSpace) const;
-
-  uint32_t getNumBDs(uint8_t col, uint8_t row) const;
 
   uint32_t getNumSourceSwitchBoxConnections(uint8_t col, uint8_t row,
                                             StrmSwPortType bundle) const;
@@ -588,88 +682,6 @@ bool isNPUDevice(mlir::iree_compiler::AMDAIE::AMDAIEDevice d);
 
 /// Given a 32-bit word, set its most significant bit for odd parity.
 void setOddParityBit(uint32_t &word);
-
-/// ============================= BEGIN ==================================
-/// ================== stringification utils =============================
-/// ======================================================================
-
-#define TO_STRINGS(_)     \
-  _(int)                  \
-  _(uint32_t)             \
-  _(uint64_t)             \
-  _(AMDAIEDmaProp)        \
-  _(AMDAIETileType)       \
-  _(AieRC)                \
-  _(DMAChannelDir)        \
-  _(StrmSwPortType)       \
-  _(SwitchDMAConnection)  \
-  _(::StrmSwPortType)     \
-  _(TileLoc)              \
-  _(XAie_LocType)         \
-  _(XAie_Lock)            \
-  _(XAie_OpHdr)           \
-  _(XAie_Write32Hdr)      \
-  _(XAie_BlockWrite32Hdr) \
-  _(XAie_MaskWrite32Hdr)  \
-  _(XAie_MaskPoll32Hdr)   \
-  _(XAie_CustomOpHdr)     \
-  _(XAie_TxnOpcode)       \
-  _(XAie_TxnCmd)          \
-  _(XAie_Packet)
-
-TO_STRINGS(TO_STRING_DECL)
-#undef TO_STRINGS
-
-#define BOTH_OSTREAM_OPS_FORALL_TYPES(OSTREAM_OP_, _)              \
-  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::AMDAIETileType)      \
-  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::TileLoc)             \
-  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::SwitchDMAConnection) \
-  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::DMAChannelDir)       \
-  _(OSTREAM_OP_, AieRC)                                            \
-  _(OSTREAM_OP_, StrmSwPortType)                                   \
-  _(OSTREAM_OP_, ::StrmSwPortType)                                 \
-  _(OSTREAM_OP_, XAie_LocType)                                     \
-  _(OSTREAM_OP_, XAie_Lock)                                        \
-  _(OSTREAM_OP_, XAie_OpHdr)                                       \
-  _(OSTREAM_OP_, XAie_Write32Hdr)                                  \
-  _(OSTREAM_OP_, XAie_BlockWrite32Hdr)                             \
-  _(OSTREAM_OP_, XAie_MaskWrite32Hdr)                              \
-  _(OSTREAM_OP_, XAie_MaskPoll32Hdr)                               \
-  _(OSTREAM_OP_, XAie_CustomOpHdr)                                 \
-  _(OSTREAM_OP_, XAie_TxnOpcode)                                   \
-  _(OSTREAM_OP_, XAie_TxnCmd)                                      \
-  _(OSTREAM_OP_, XAie_Packet)
-
-BOTH_OSTREAM_OPS_FORALL_TYPES(OSTREAM_OP_DECL, BOTH_OSTREAM_OP)
-
-// https://stackoverflow.com/a/32230306
-template <typename H1>
-llvm::raw_ostream &showArgs(llvm::raw_ostream &out, const char *label,
-                            H1 &&value) {
-  if constexpr (std::is_pointer_v<H1> ||
-                std::is_pointer_v<std::remove_reference_t<H1>>) {
-    return out << label << "=ptr";
-  } else {
-    return out << label << "=" << to_string(std::forward<H1>(value));
-  }
-}
-
-template <typename H1, typename... T>
-llvm::raw_ostream &showArgs(llvm::raw_ostream &out, const char *label,
-                            H1 &&value, T &&...rest) {
-  const char *pcomma = strchr(label, ',');
-  if constexpr (std::is_pointer_v<H1> ||
-                std::is_pointer_v<std::remove_reference_t<H1>>) {
-    return showArgs(out.write(label, pcomma - label) << "=ptr,", pcomma + 1,
-                    std::forward<T>(rest)...);
-  } else {
-    return showArgs(out.write(label, pcomma - label)
-                        << "=" << to_string(std::forward<H1>(value)) << ',',
-                    pcomma + 1, std::forward<T>(rest)...);
-  }
-}
-
-#define SHOW_ARGS(os, ...) showArgs(os, #__VA_ARGS__, __VA_ARGS__)
 
 // So that we can use the pattern if(auto r = TRY_XAIE_API...) { // r is nonzero
 // }
