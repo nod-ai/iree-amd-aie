@@ -333,7 +333,8 @@ struct DmaDimConfig {
     }
     FailureOr<uint8_t> maybeNbIntraDims = deviceModel.getDmaProp<uint8_t>(
         tileType, AMDAIE::AMDAIEDmaProp::NumAddrDim);
-    assert(succeeded(maybeNbIntraDims));
+    assert(succeeded(maybeNbIntraDims) &&
+           "Expected tile type assigned above to have DMA properties.");
     nbIntraDims = *maybeNbIntraDims;
     maxNbDims = nbIntraDims + nbInterDims;
   }
