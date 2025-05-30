@@ -25,7 +25,7 @@ LogicalResult convertDmaToCircularDma(Operation *op) {
     if (sourceMemSpace && targetMemSpace) {
       // L2 -> L1 or L1 -> L2 goes to uController instructions in MLIR-AIE.
       rewriter.setInsertionPointAfter(dmaOp);
-      rewriter.replaceOpWithNewOp<AMDAIE::CircularDmaCpyNdOp>(
+      rewriter.replaceOpWithNewOp<AMDAIE::DmaCpyNdOp>(
           dmaOp, dmaOp.getTarget(), dmaOp.getTargetMixedOffsets(),
           dmaOp.getTargetMixedSizes(), dmaOp.getTargetMixedStrides(),
           dmaOp.getSource(), dmaOp.getSourceMixedOffsets(),

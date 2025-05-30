@@ -52,9 +52,12 @@ FailureOr<AMDAIE::TileOp> getGeneratorTileOp(
            << tiles.size();
   }
   Value tile = tiles[0];
-  if (!shimTileToGeneratorMap.contains(tile))
-    return npuDmaOp.emitOpError()
-           << "no channel BD ID generator found for tile: " << tile;
+  // if (!shimTileToGeneratorMap.contains(tile))
+  //   return npuDmaOp.emitOpError()
+  //          << "no channel BD ID generator found for tile: " << tile;
+  if (!shimTileToGeneratorMap.contains(tile)) {
+    return failure();
+  }
 
   auto tileOp = dyn_cast_if_present<AMDAIE::TileOp>(tile.getDefiningOp());
   if (!tileOp) return npuDmaOp.emitOpError() << "no tile op found";
@@ -496,25 +499,26 @@ static LogicalResult replaceDmaOps(
     DenseMap<AMDAIE::NpuDmaCpyNdOp, SmallVector<AMDAIE::BdIdOp, 2>>
         &dmaOpToBdIdMap) {
   WalkResult res = controlCodeOp->walk([&](AMDAIE::NpuDmaCpyNdOp npuDmaOp) {
-    assert(dmaOpToBdIdMap.contains(npuDmaOp) && "No BD ID mapping found");
-    Value sourceBdId = nullptr;
-    Value targetBdId = nullptr;
-    if (AMDAIE::BdIdOp bdIdOp = dmaOpToBdIdMap[npuDmaOp][/*sourceBdIdIndex=*/0];
-        bdIdOp) {
-      sourceBdId = bdIdOp.getResult();
+    if (dmaOpToBdIdMap.contains(npuDmaOp)) {
+      Value sourceBdId = nullptr;
+      Value targetBdId = nullptr;
+      if (AMDAIE::BdIdOp bdIdOp = dmaOpToBdIdMap[npuDmaOp][/*sourceBdIdIndex=*/0];
+          bdIdOp) {
+        sourceBdId = bdIdOp.getResult();
+      }
+      if (AMDAIE::BdIdOp bdIdOp = dmaOpToBdIdMap[npuDmaOp][/*targetBdIdIndex=*/1];
+          bdIdOp) {
+        targetBdId = bdIdOp.getResult();
+      }
+      rewriter.setInsertionPoint(npuDmaOp);
+      rewriter.replaceOpWithNewOp<AMDAIE::NpuDmaCpyNdOp>(
+          npuDmaOp, npuDmaOp.getResultTypes(), npuDmaOp.getConnection(),
+          npuDmaOp.getTarget(), npuDmaOp.getTargetMixedOffsets(),
+          npuDmaOp.getTargetMixedSizes(), npuDmaOp.getTargetMixedStrides(),
+          targetBdId, npuDmaOp.getSource(), npuDmaOp.getSourceMixedOffsets(),
+          npuDmaOp.getSourceMixedSizes(), npuDmaOp.getSourceMixedStrides(),
+          sourceBdId);
     }
-    if (AMDAIE::BdIdOp bdIdOp = dmaOpToBdIdMap[npuDmaOp][/*targetBdIdIndex=*/1];
-        bdIdOp) {
-      targetBdId = bdIdOp.getResult();
-    }
-    rewriter.setInsertionPoint(npuDmaOp);
-    rewriter.replaceOpWithNewOp<AMDAIE::NpuDmaCpyNdOp>(
-        npuDmaOp, npuDmaOp.getResultTypes(), npuDmaOp.getConnection(),
-        npuDmaOp.getTarget(), npuDmaOp.getTargetMixedOffsets(),
-        npuDmaOp.getTargetMixedSizes(), npuDmaOp.getTargetMixedStrides(),
-        targetBdId, npuDmaOp.getSource(), npuDmaOp.getSourceMixedOffsets(),
-        npuDmaOp.getSourceMixedSizes(), npuDmaOp.getSourceMixedStrides(),
-        sourceBdId);
     return WalkResult::advance();
   });
   if (res.wasInterrupted()) return failure();
@@ -554,19 +558,26 @@ static TileDmaBatchGraph createTileDmaBatchGraph(
   };
 
   auto processNpuDmaCpyNdOp = [&](AMDAIE::NpuDmaCpyNdOp dmaOp) {
+    bool isShimDmaOp = false;
     if (dmaOp.getSource()) {
       FailureOr<AMDAIE::TileOp> tile =
           getGeneratorTileOp<CopyOpOperateOn::Source>(dmaOp,
                                                       shimTileToGeneratorMap);
-      if (succeeded(tile)) tileDmaBatchGraph.addDmaToBatch(*tile, dmaOp);
+      if (succeeded(tile)) {
+        tileDmaBatchGraph.addDmaToBatch(*tile, dmaOp);
+        isShimDmaOp = true;
+      }
     }
     if (dmaOp.getTarget()) {
       FailureOr<AMDAIE::TileOp> tile =
           getGeneratorTileOp<CopyOpOperateOn::Target>(dmaOp,
                                                       shimTileToGeneratorMap);
-      if (succeeded(tile)) tileDmaBatchGraph.addDmaToBatch(*tile, dmaOp);
+      if (succeeded(tile)) {
+        tileDmaBatchGraph.addDmaToBatch(*tile, dmaOp);
+        isShimDmaOp = true;
+      }
     }
-    if (!currDmaOp) currDmaOp = dmaOp;
+    if (!currDmaOp && isShimDmaOp) currDmaOp = dmaOp;
   };
 
   auto processNpuDmaWaitOp = [&](AMDAIE::NpuDmaWaitOp npuWaitOp) {
