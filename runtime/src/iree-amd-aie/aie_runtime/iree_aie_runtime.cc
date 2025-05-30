@@ -242,15 +242,6 @@ uint32_t AMDAIEDeviceModel::getNumLocks(uint8_t col, uint8_t row) const {
       .LockMod->NumLocks;
 }
 
-uint32_t AMDAIEDeviceModel::getNumBDs(uint8_t col, uint8_t row) const {
-  AMDAIETileType tileType = getTileType(col, row);
-  if (tileType == AMDAIETileType::SHIMPL || tileType == AMDAIETileType::MAX)
-    return 0;
-  const XAie_DmaMod *dmaMod =
-      devInst.DevProp.DevMod[static_cast<uint8_t>(tileType)].DmaMod;
-  return dmaMod->NumBds;
-}
-
 std::optional<TileLoc> AMDAIEDeviceModel::getMemWest(TileLoc src) const {
   if (src.col - 1 < 0) return std::nullopt;
   XAie_LocType ret = XAie_TileLoc(src.col - 1, src.row);

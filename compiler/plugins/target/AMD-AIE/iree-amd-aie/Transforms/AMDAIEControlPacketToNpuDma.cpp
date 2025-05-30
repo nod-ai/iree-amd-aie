@@ -138,15 +138,18 @@ struct ControlPacketDmaBuilder {
                 << "expected the source tile to be a shim tile";
             return WalkResult::interrupt();
           }
-          uint32_t maxIntraSize = deviceModel.getDmaBdProp<uint16_t>(
-              AMDAIE::AMDAIETileType::SHIMNOC, 0,
-              AMDAIE::AMDAIEDmaBdProp::WrapMax);
+          FailureOr<uint32_t> maybeMaxIntraSize =
+              deviceModel.getDmaBdProp<uint16_t>(
+                  AMDAIE::AMDAIETileType::SHIMNOC, 0,
+                  AMDAIE::AMDAIEDmaBdProp::WrapMax);
+          if (failed(maybeMaxIntraSize)) return WalkResult::interrupt();
           // Check if the new sizes are still valid.
           SmallVector<int64_t> newBdTransferSizes = lastBdTransfer.sizes;
           // Plus one for the extra packet header.
           newBdTransferSizes.back() += (headerAndDataLength + 1);
           // TODO(zhewen): use all dimensions available.
-          packIntoLastBdTransfer = newBdTransferSizes.back() <= maxIntraSize;
+          packIntoLastBdTransfer =
+              newBdTransferSizes.back() <= *maybeMaxIntraSize;
         }
       }
       if (packIntoLastBdTransfer) {

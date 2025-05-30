@@ -684,16 +684,17 @@ bool DmaDimConfig::isValidAccessPattern(ArrayRef<int64_t> sizes,
 SmallVector<int64_t> DmaDimConfig::getMaxSizes(
     std::optional<size_t> maybeNbDims) const {
   size_t nbDims = maybeNbDims.has_value() ? maybeNbDims.value() : maxNbDims;
-  uint32_t maxIntraSize = deviceModel.getDmaBdProp<uint16_t>(
+  FailureOr<uint32_t> maybeMaxIntraSize = deviceModel.getDmaBdProp<uint16_t>(
       tileType, 0, AMDAIE::AMDAIEDmaBdProp::WrapMax);
-  uint32_t maxInterSize = deviceModel.getDmaBdProp<uint8_t>(
+  FailureOr<uint32_t> maybeMaxIntraStride = deviceModel.getDmaBdProp<uint8_t>(
       tileType, 0, AMDAIE::AMDAIEDmaBdProp::IterWrapMax);
+  assert(succeeded(maybeMaxIntraSize) && succeeded(maybeMaxIntraStride));
   SmallVector<int64_t> maxSizes(nbDims, 0);
   int64_t nbIntraDimsToBeFilled =
       std::min((int64_t)nbIntraDims, (int64_t)maxSizes.size());
   int64_t intraStart = maxSizes.size() - nbIntraDimsToBeFilled;
   std::fill_n(maxSizes.begin() + intraStart, nbIntraDimsToBeFilled,
-              maxIntraSize);
+              *maybeMaxIntraSize);
   assert(intraStart >= 0 &&
          "The start index for intra dimensions should be greater than or equal "
          "to zero");
@@ -705,17 +706,18 @@ SmallVector<int64_t> DmaDimConfig::getMaxSizes(
          "The start index for inter dimensions should be greater than or equal "
          "to zero");
   std::fill_n(maxSizes.begin() + interStart, nbInterDimsToBeFilled,
-              maxInterSize);
+              *maybeMaxIntraStride);
   return maxSizes;
 }
 
 SmallVector<int64_t> DmaDimConfig::getMaxStrides(
     std::optional<size_t> maybeNbDims) const {
   size_t nbDims = maybeNbDims.has_value() ? maybeNbDims.value() : maxNbDims;
-  uint32_t maxIntraStride = deviceModel.getDmaBdProp<uint32_t>(
+  FailureOr<uint32_t> maybeMaxIntraStride = deviceModel.getDmaBdProp<uint32_t>(
       tileType, 0, AMDAIE::AMDAIEDmaBdProp::StepSizeMax);
-  uint32_t maxInterStride = deviceModel.getDmaBdProp<uint32_t>(
+  FailureOr<uint32_t> maybeMaxInterStride = deviceModel.getDmaBdProp<uint32_t>(
       tileType, 0, AMDAIE::AMDAIEDmaBdProp::IterStepSizeMax);
+  assert(succeeded(maybeMaxIntraStride) && succeeded(maybeMaxInterStride));
   SmallVector<int64_t> stepSizes(nbDims, 0);
   int64_t nbIntraDimsToBeFilled =
       std::min((int64_t)nbIntraDims, (int64_t)stepSizes.size());
@@ -726,7 +728,7 @@ SmallVector<int64_t> DmaDimConfig::getMaxStrides(
   // +1 because values are encoded in HW BDs as (value - 1), so the range is
   // [1:2^x].
   std::fill_n(stepSizes.begin() + intraStart, nbIntraDimsToBeFilled,
-              maxIntraStride + 1);
+              *maybeMaxIntraStride + 1);
   int64_t nbInterDimsToBeFilled = std::min((int64_t)nbInterDims, intraStart);
   int64_t interStart = intraStart - nbInterDimsToBeFilled;
   assert(interStart >= 0 &&
@@ -735,24 +737,26 @@ SmallVector<int64_t> DmaDimConfig::getMaxStrides(
   // +1 because values are encoded in HW BDs as (value - 1), so the range is
   // [1:2^x].
   std::fill_n(stepSizes.begin() + interStart, nbInterDimsToBeFilled,
-              maxInterStride + 1);
+              *maybeMaxInterStride + 1);
   return stepSizes;
 }
 
 SmallVector<int64_t> CircularDmaDimConfig::getMaxSizes(
     std::optional<size_t> maybeNbDims) const {
   size_t nbDims = maybeNbDims.has_value() ? maybeNbDims.value() : maxNbDims;
-  uint32_t maxIntraSize = deviceModel.getDmaBdProp<uint16_t>(
+  FailureOr<uint32_t> maybeMaxIntraSize = deviceModel.getDmaBdProp<uint16_t>(
       tileType, 0, AMDAIE::AMDAIEDmaBdProp::WrapMax);
-  SmallVector<int64_t> maxSizes(nbDims, maxIntraSize);
+  assert(succeeded(maybeMaxIntraSize));
+  SmallVector<int64_t> maxSizes(nbDims, *maybeMaxIntraSize);
   return maxSizes;
 }
 
 SmallVector<int64_t> CircularDmaDimConfig::getMaxStrides(
     std::optional<size_t> maybeNbDims) const {
   size_t nbDims = maybeNbDims.has_value() ? maybeNbDims.value() : maxNbDims;
-  uint32_t maxIntraStride = deviceModel.getDmaBdProp<uint32_t>(
+  FailureOr<uint32_t> maybeMaxIntraStride = deviceModel.getDmaBdProp<uint32_t>(
       tileType, 0, AMDAIE::AMDAIEDmaBdProp::StepSizeMax);
+  assert(succeeded(maybeMaxIntraStride));
   SmallVector<int64_t> stepSizes(nbDims, 0);
   int64_t nbIntraDimsToBeFilled =
       std::min((int64_t)nbIntraDims, (int64_t)stepSizes.size());
@@ -763,7 +767,7 @@ SmallVector<int64_t> CircularDmaDimConfig::getMaxStrides(
   // +1 because values are encoded in HW BDs as (value - 1), so the range is
   // [1:2^x].
   std::fill_n(stepSizes.begin() + intraStart, nbIntraDimsToBeFilled,
-              maxIntraStride + 1);
+              *maybeMaxIntraStride + 1);
   // All other dimension can have any stride for circular DMAs.
   std::fill_n(stepSizes.begin(), intraStart,
               std::numeric_limits<int64_t>::max());

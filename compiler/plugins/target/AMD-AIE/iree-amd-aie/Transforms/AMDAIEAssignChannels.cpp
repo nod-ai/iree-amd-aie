@@ -23,17 +23,23 @@ LogicalResult initializeChannelsGenerators(
     AMDAIE::WorkgroupOp workgroupOp, const AMDAIEDeviceModel &deviceModel,
     DenseMap<Value, ChannelGenerator> &tileToGeneratorMap) {
   // Get the number of producer and consumer channels for each tile.
-  workgroupOp.walk([&](AMDAIE::TileOp tileOp) {
+  WalkResult res = workgroupOp.walk([&](AMDAIE::TileOp tileOp) {
     uint32_t col = getConstantIndexOrAssert(tileOp.getCol());
     uint32_t row = getConstantIndexOrAssert(tileOp.getRow());
     AMDAIETileType tileType = deviceModel.getTileType(col, row);
-    uint8_t numDmaChannels =
+    FailureOr<uint8_t> maybeNumDmaChannels =
         deviceModel.getDmaProp<uint8_t>(tileType, AMDAIEDmaProp::NumChannels);
+    if (failed(maybeNumDmaChannels) || *maybeNumDmaChannels == 0) {
+      tileOp.emitOpError() << "does not have any DMA channels";
+      return WalkResult::interrupt();
+    }
     tileToGeneratorMap[tileOp.getResult()] =
-        ChannelGenerator(numDmaChannels, numDmaChannels);
+        ChannelGenerator(*maybeNumDmaChannels, *maybeNumDmaChannels);
+    return WalkResult::advance();
   });
+  if (res.wasInterrupted()) return failure();
 
-  WalkResult res = workgroupOp.walk([&](AMDAIE::ConnectionOp connectionOp) {
+  res = workgroupOp.walk([&](AMDAIE::ConnectionOp connectionOp) {
     ChannelAssignmentMode mode =
         (connectionOp.getConnectionType() == AMDAIE::ConnectionType::Packet)
             ? ChannelAssignmentMode::RoundRobinPacketFlow
