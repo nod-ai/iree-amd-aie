@@ -599,7 +599,6 @@ void addSoftmaxCopyPassPipeline(OpPassManager &funcPassManager,
     tileFuseOptions.tilingLevel = 0;
     tileFuseOptions.useSCFFor = false;
     funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
-    addCleanups();
   }
 
   // Insert copy operations to the softmax input and result.
@@ -622,7 +621,6 @@ void addSoftmaxCopyPassPipeline(OpPassManager &funcPassManager,
     tileFuseOptions.tilingLevel = 1;
     tileFuseOptions.useSCFFor = false;
     funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
-    addCleanups();
   }
 
   // Insert copy operations to the softmax input and result.
@@ -636,7 +634,6 @@ void addSoftmaxCopyPassPipeline(OpPassManager &funcPassManager,
     bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgInputOutput;
     funcPassManager.addPass(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
-    addCleanups();
   }
 
   // Tile the reduction dimension using scf.for.
