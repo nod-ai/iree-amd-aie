@@ -138,14 +138,16 @@ LogicalResult congestionAwareAutoAssignment(Operation *parentOp,
   // to track the maximum number of circuit connections allowed for each
   // physical port type, i.e. the number of channels available.
   DenseMap<PhysPortType, uint32_t> circuitUsage, packetUsage, maxCircuitUsage;
-  auto getOrInitMaxUsage = [&](const PhysPortType &b) -> uint32_t {
+  auto getOrInitMaxUsage = [&](const PhysPortType &b) -> FailureOr<uint32_t> {
     if (maxCircuitUsage.count(b)) return maxCircuitUsage[b];
     // Cannot just use `getNumSource/DestSwitchBoxConnections` due to shimmux.
     if (b.portType == AMDAIE::StrmSwPortType::DMA) {
       AMDAIETileType tileType =
           deviceModel.getTileType(b.tileLoc.col, b.tileLoc.row);
-      maxCircuitUsage[b] =
+      FailureOr<uint8_t> maybeNumChannels =
           deviceModel.getDmaProp<uint8_t>(tileType, AMDAIEDmaProp::NumChannels);
+      if (failed(maybeNumChannels)) return failure();
+      maxCircuitUsage[b] = *maybeNumChannels;
     } else {
       maxCircuitUsage[b] = (b.direction == AMDAIE::DMAChannelDir::MM2S)
                                ? deviceModel.getNumSourceSwitchBoxConnections(
@@ -180,16 +182,20 @@ LogicalResult congestionAwareAutoAssignment(Operation *parentOp,
       for (PhysPortType &physPortType : *physPortTypes) {
         // Check if the maximum allowed circuit usage reached, and if so, set
         // the connection type to packet.
-        uint32_t maxUsage = getOrInitMaxUsage(physPortType);
+        FailureOr<uint32_t> maybeMaxUsage = getOrInitMaxUsage(physPortType);
+        if (failed(maybeMaxUsage) || *maybeMaxUsage == 0) {
+          return connectionOp.emitOpError()
+                 << "expected a non-zero number of channels available";
+        }
         if (circuitUsage[physPortType] + packetUsage[physPortType] >=
-            maxUsage) {
+            *maybeMaxUsage) {
           connectionType = AMDAIE::ConnectionType::Packet;
           break;
         }
         // If the current physical port type is one usage away from its maximum,
         // and there are upcoming unassigned connections that will use this
         // port type, then set the current connection type to packet.
-        if (circuitUsage[physPortType] == maxUsage - 1 &&
+        if (circuitUsage[physPortType] == *maybeMaxUsage - 1 &&
             physPortTypeToFinalConnectionIndex[physPortType] > i) {
           connectionType = AMDAIE::ConnectionType::Packet;
           break;

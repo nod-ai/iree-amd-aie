@@ -40,8 +40,10 @@ struct HalfDmaCpyNdToNpuConverter final
       int32_t enablePacket, int32_t packetId, int32_t packetType,
       SmallVector<OpFoldResult> sizes, SmallVector<OpFoldResult> strides,
       bool loweringCtrlpktDma) const {
-    uint8_t numIntraAddrDim = deviceModel.getDmaProp<uint8_t>(
+    FailureOr<uint8_t> maybeNumIntraAddrDim = deviceModel.getDmaProp<uint8_t>(
         tileType, AMDAIE::AMDAIEDmaProp::NumAddrDim);
+    if (failed(maybeNumIntraAddrDim)) return failure();
+    uint8_t numIntraAddrDim = *maybeNumIntraAddrDim;
     uint8_t numAddrDim =
         numIntraAddrDim + deviceModel.deviceConfig.dmaNbInterDims;
 

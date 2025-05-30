@@ -322,24 +322,21 @@ struct DmaDimConfig {
   DmaDimConfig(const AMDAIE::AMDAIEDeviceModel &deviceModel, uint8_t memSpace)
       : deviceModel(deviceModel) {
     if (memSpace == 0) {
-      nbIntraDims = deviceModel.getDmaProp<uint8_t>(
-          AMDAIE::AMDAIETileType::SHIMNOC, AMDAIE::AMDAIEDmaProp::NumAddrDim);
       tileType = AMDAIE::AMDAIETileType::SHIMNOC;
       nbInterDims = deviceModel.deviceConfig.dmaNbInterDims;
-      maxNbDims = nbIntraDims + nbInterDims;
     } else if (memSpace == 1) {
-      nbIntraDims = deviceModel.getDmaProp<uint8_t>(
-          AMDAIE::AMDAIETileType::MEMTILE, AMDAIE::AMDAIEDmaProp::NumAddrDim);
       tileType = AMDAIE::AMDAIETileType::MEMTILE;
-      maxNbDims = nbIntraDims;
     } else if (memSpace == 2) {
-      nbIntraDims = deviceModel.getDmaProp<uint8_t>(
-          AMDAIE::AMDAIETileType::AIETILE, AMDAIE::AMDAIEDmaProp::NumAddrDim);
       tileType = AMDAIE::AMDAIETileType::AIETILE;
-      maxNbDims = nbIntraDims;
     } else {
       assert(false && "unsupported memspace: ");
     }
+    FailureOr<uint8_t> maybeNbIntraDims = deviceModel.getDmaProp<uint8_t>(
+        tileType, AMDAIE::AMDAIEDmaProp::NumAddrDim);
+    assert(succeeded(maybeNbIntraDims) &&
+           "Expected tile type assigned above to have DMA properties.");
+    nbIntraDims = *maybeNbIntraDims;
+    maxNbDims = nbIntraDims + nbInterDims;
   }
   virtual ~DmaDimConfig(){};
 
