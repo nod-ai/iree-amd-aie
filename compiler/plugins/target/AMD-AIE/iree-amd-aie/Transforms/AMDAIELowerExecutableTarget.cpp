@@ -93,6 +93,9 @@ void AMDAIELowerExecutableTargetPass::runOnOperation() {
       } else if (useTilePipeline == TilePassPipeline::ConvDecomposePipeline) {
         addConvDecomposePassPipeline(executableLoweringPipeline,
                                      TilePassPipeline::ConvDecomposePipeline);
+      } else if (useTilePipeline == TilePassPipeline::SoftmaxCopyPipeline) {
+        addSoftmaxCopyPassPipeline(executableLoweringPipeline,
+                                   TilePassPipeline::SoftmaxCopyPipeline);
       }
       break;
     }

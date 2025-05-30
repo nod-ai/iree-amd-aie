@@ -43,11 +43,14 @@ static LogicalResult applyBufferizeToAllocation(RewriterBase &rewriter,
 /// elementwise op). For matmul-elementwise special case, since one of the
 /// elementwise op's input is the output of the matmul op and has already been
 /// promoted, there is no need to promote such operand again.
-static SmallVector<Value> getInputOutputOperands(linalg::LinalgOp &linalgOp) {
+static SmallVector<Value> getInputOutputOperands(
+    DestinationStyleOpInterface &dstStyleOp) {
   SmallVector<Value> operands;
-  for (Value operand : linalgOp->getOperands()) {
+  for (Value operand : dstStyleOp->getOperands()) {
     if (!isa<RankedTensorType>(operand.getType())) continue;
-    if (isElementwise(linalgOp) && isMatmulInDefChain(operand)) continue;
+    if (auto linalgOp = dyn_cast<linalg::LinalgOp>(dstStyleOp.getOperation())) {
+      if (isElementwise(linalgOp) && isMatmulInDefChain(operand)) continue;
+    }
     operands.push_back(operand);
   }
   return operands;
@@ -57,11 +60,14 @@ static SmallVector<Value> getInputOutputOperands(linalg::LinalgOp &linalgOp) {
 /// op). For matmul-elementwise special case, since one of the elementwise op's
 /// input is the output of the matmul op and has already been promoted, there is
 /// no need to promote such operand again.
-static SmallVector<Value> getInputOperands(linalg::LinalgOp &linalgOp) {
+static SmallVector<Value> getInputOperands(
+    DestinationStyleOpInterface &dstStyleOp) {
   SmallVector<Value> operands;
-  for (Value operand : linalgOp.getDpsInputs()) {
+  for (Value operand : dstStyleOp.getDpsInputs()) {
     if (!isa<RankedTensorType>(operand.getType())) continue;
-    if (isElementwise(linalgOp) && isMatmulInDefChain(operand)) continue;
+    if (auto linalgOp = dyn_cast<linalg::LinalgOp>(dstStyleOp.getOperation())) {
+      if (isElementwise(linalgOp) && isMatmulInDefChain(operand)) continue;
+    }
     operands.push_back(operand);
   }
   return operands;
@@ -70,9 +76,9 @@ static SmallVector<Value> getInputOperands(linalg::LinalgOp &linalgOp) {
 /// Utility to fetch pack operands at a specified depth from the LinalgOp's
 /// input operands.
 static FailureOr<SmallVector<Value>> getPackOrCopyOperands(
-    linalg::LinalgOp linalgOp, uint32_t depthLevel) {
+    DestinationStyleOpInterface &dstStyleOp, uint32_t depthLevel) {
   SmallVector<Value> operands;
-  for (auto input : llvm::enumerate(linalgOp.getDpsInputs())) {
+  for (auto input : llvm::enumerate(dstStyleOp.getDpsInputs())) {
     uint32_t currentLevel{0};
     Operation *currentOp = input.value().getDefiningOp();
     while (currentLevel < depthLevel && currentOp != nullptr) {
@@ -87,7 +93,7 @@ static FailureOr<SmallVector<Value>> getPackOrCopyOperands(
     }
     // The defining op has to be a pack or a copy op, fail otherwise.
     if (!currentOp) {
-      return linalgOp.emitOpError()
+      return dstStyleOp.emitOpError()
              << "operand #" << input.index()
              << " only has pack/copy ops to depth " << currentLevel
              << ", but request is for a depth " << depthLevel
@@ -103,21 +109,25 @@ static FailureOr<SmallVector<Value>> getPackOrCopyOperands(
 // ops, based on which operands the caller wants to bufferize via
 // `bufferizeOperand` parameter.
 static FailureOr<SmallVector<Value>> getOperandsToBufferize(
-    BufferizeOperand bufferizeOperand, linalg::LinalgOp &linalgOp,
-    uint32_t inputDepth) {
+    BufferizeOperand bufferizeOperand, Operation *op, uint32_t inputDepth) {
+  auto dstStyleOp = dyn_cast<DestinationStyleOpInterface>(op);
+  if (!dstStyleOp) {
+    llvm::errs() << "expected a destination style op\n";
+    return failure();
+  }
   switch (bufferizeOperand) {
     /// Create new allocations for Lhs, Rhs and Out.
     case BufferizeOperand::LinalgInputOutput:
-      return getInputOutputOperands(linalgOp);
+      return getInputOutputOperands(dstStyleOp);
     /// Create new allocation only for Lhs, Rhs.
     case BufferizeOperand::LinalgInput:
-      return getInputOperands(linalgOp);
+      return getInputOperands(dstStyleOp);
     /// Create new allocations only for Out.
     case BufferizeOperand::LinalgOutput:
-      return SmallVector<Value>(linalgOp.getDpsInits());
+      return SmallVector<Value>(dstStyleOp.getDpsInits());
     /// Create new allocations for operands from the pack ops.
     case BufferizeOperand::PackOrCopyInput:
-      return getPackOrCopyOperands(linalgOp, inputDepth);
+      return getPackOrCopyOperands(dstStyleOp, inputDepth);
     default:
       return failure();
   }
@@ -166,51 +176,62 @@ class AMDAIEBufferizeToAllocationPass
 void AMDAIEBufferizeToAllocationPass::runOnOperation() {
   MLIRContext *context = &getContext();
   mlir::FunctionOpInterface funcOp = getOperation();
-  linalg::LinalgOp linalgOp;
-  funcOp->walk<WalkOrder::PostOrder, ReverseIterator>([&](linalg::LinalgOp op) {
-    if (!isElementwise(op) && !linalg::isaContractionOpInterface(op) &&
-        !linalg::isaConvolutionOpInterface(op)) {
-      return WalkResult::advance();
+  SmallVector<Operation *> targetOps;
+  funcOp->walk<WalkOrder::PostOrder, ReverseIterator>([&](Operation *op) {
+    if (auto linalgOp = dyn_cast<linalg::LinalgOp>(op)) {
+      // Skip if the op is neither elementwise, a contraction, nor a
+      // convolution.
+      if (!isElementwise(linalgOp) &&
+          !linalg::isaContractionOpInterface(linalgOp) &&
+          !linalg::isaConvolutionOpInterface(linalgOp)) {
+        return WalkResult::advance();
+      }
+      // Skip FillOp and CopyOp.
+      if (isa<linalg::FillOp, linalg::CopyOp>(linalgOp))
+        return WalkResult::advance();
+      // Skip if the op's elementwise status doesn't match the bufferization
+      // mode.
+      if (isElementwise(linalgOp) != bufferizeElementwise)
+        return WalkResult::advance();
+      // Accept as a target op.
+      targetOps.push_back(op);
+    } else if (isa<linalg::SoftmaxOp>(op)) {
+      // Always accept SoftmaxOp as a target op.
+      targetOps.push_back(op);
     }
-    if (isa<linalg::FillOp, linalg::CopyOp>(op)) {
-      return WalkResult::advance();
-    }
-    // Use flag `bufferizeElementwise` to indicate whether the target for
-    // bufferization is an elementwise op.
-    if (bufferizeElementwise && !isElementwise(op)) {
-      return WalkResult::advance();
-    }
-    if (!bufferizeElementwise && isElementwise(op)) {
-      return WalkResult::advance();
-    }
-    linalgOp = op;
-    return WalkResult::interrupt();
+    return WalkResult::advance();
   });
 
-  if (!linalgOp) {
+  if (targetOps.empty()) {
     LLVM_DEBUG(llvm::dbgs() << "----- skip, no linalg op -----\n");
     return;
   }
 
-  IRRewriter rewriter(context);
-
-  // Find the producer ops for linalg (matmul) op, and bufferizes them in new
-  // allocations.
-  FailureOr<SmallVector<Value>> operandsToBufferize =
-      getOperandsToBufferize(bufferizeOperand, linalgOp, inputDepth);
-  if (failed(operandsToBufferize)) {
-    linalgOp->emitOpError("could not fetch operands to bufferize");
+  if (targetOps.size() > 1) {
+    llvm::errs() << "expected only one target op, found " << targetOps.size()
+                 << " target ops\n";
     return signalPassFailure();
   }
 
-  for (auto operand : *operandsToBufferize) {
-    AMDAIEMemSpaceAttr memorySpaceAttr =
-        getMemorySpaceAttr(rewriter, memorySpace);
-    rewriter.setInsertionPointAfter(operand.getDefiningOp());
-    if (failed(applyBufferizeToAllocation(rewriter, operand.getDefiningOp(),
-                                          memorySpaceAttr))) {
-      funcOp->emitOpError("failed bufferizing to allocations");
+  IRRewriter rewriter(context);
+  for (Operation *targetOp : targetOps) {
+    // Find the producer ops for the target op, and bufferizes them in new
+    // allocations.
+    FailureOr<SmallVector<Value>> operandsToBufferize =
+        getOperandsToBufferize(bufferizeOperand, targetOp, inputDepth);
+    if (failed(operandsToBufferize)) {
+      targetOp->emitOpError("could not fetch operands to bufferize");
       return signalPassFailure();
+    }
+    for (auto operand : *operandsToBufferize) {
+      AMDAIEMemSpaceAttr memorySpaceAttr =
+          getMemorySpaceAttr(rewriter, memorySpace);
+      rewriter.setInsertionPointAfter(operand.getDefiningOp());
+      if (failed(applyBufferizeToAllocation(rewriter, operand.getDefiningOp(),
+                                            memorySpaceAttr))) {
+        targetOp->emitOpError("failed bufferizing to allocations");
+        return signalPassFailure();
+      }
     }
   }
 }

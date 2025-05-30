@@ -12,6 +12,7 @@ iree_c_embed_data(
   SRCS
     "uKernels/npu1/chess/chess_intrinsic_wrapper.cpp"
     "uKernels/npu1/chess/matmul.cc"
+    "uKernels/npu1/chess/softmax.cc"
     "uKernels/npu1/chess/zero_fill.cc"
     "uKernels/npu4/chess/chess_intrinsic_wrapper.cpp"
     "uKernels/npu4/chess/matmul.cc"

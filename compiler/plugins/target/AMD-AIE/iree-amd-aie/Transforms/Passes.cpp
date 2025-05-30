@@ -584,6 +584,75 @@ void addConvDecomposePassPipeline(OpPassManager &funcPassManager,
   funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
 }
 
+void addSoftmaxCopyPassPipeline(OpPassManager &funcPassManager,
+                                TilePassPipeline useTilePipeline) {
+  auto addCleanups = [&]() {
+    funcPassManager.addPass(createAMDAIECleanupPass());
+    funcPassManager.addPass(createCanonicalizerPass());
+    funcPassManager.addPass(createCSEPass());
+  };
+
+  // First level tiling using scf.forall.
+  {
+    AMDAIETileAndFuseOptions tileFuseOptions;
+    tileFuseOptions.hardwareMapping = HardwareMapping::Block;
+    tileFuseOptions.tilingLevel = 0;
+    tileFuseOptions.useSCFFor = false;
+    funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
+  }
+
+  // Insert copy operations to the softmax input and result.
+  funcPassManager.addPass(createAMDAIEInsertCopyOpsPass());
+  addCleanups();
+
+  // Promote the softmax input and result to shared memory.
+  {
+    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
+    bufferizeOptions.memorySpace = 1;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgInputOutput;
+    funcPassManager.addPass(
+        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
+  }
+
+  // Second level tiling using scf.forall.
+  {
+    AMDAIETileAndFuseOptions tileFuseOptions;
+    tileFuseOptions.hardwareMapping = HardwareMapping::Core;
+    tileFuseOptions.tilingLevel = 1;
+    tileFuseOptions.useSCFFor = false;
+    funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
+  }
+
+  // Insert copy operations to the softmax input and result.
+  funcPassManager.addPass(createAMDAIEInsertCopyOpsPass());
+  addCleanups();
+
+  // Promote the softmax input and result to local memory.
+  {
+    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
+    bufferizeOptions.memorySpace = 2;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgInputOutput;
+    funcPassManager.addPass(
+        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
+  }
+
+  // Tile the reduction dimension using scf.for.
+  {
+    AMDAIETileAndFuseOptions tileFuseOptions;
+    tileFuseOptions.tilingLevel = 2;
+    tileFuseOptions.useSCFFor = true;
+    funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
+    addCleanups();
+  }
+
+  // Lower to UKernels.
+  funcPassManager.addPass(createAMDAIELowerToUKernelsPass());
+
+  // Comprehensive bufferization
+  addAMDAIEBufferizePasses(funcPassManager, useTilePipeline);
+  funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
+}
+
 void buildAMDAIETransformPassPipeline(
     OpPassManager &variantPassManager, AMDAIEDevice device, uint32_t numRows,
     uint32_t numCols, TilePassPipeline useTilePipeline,
@@ -596,7 +665,9 @@ void buildAMDAIETransformPassPipeline(
   OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
   {
     FunctionLikeNest funcPassManager(modulePassManager);
-    addCommonTargetExecutablePreprocessingPasses(funcPassManager);
+    funcPassManager.addPass(createTypePropagationPass)
+        .addPass(createBubbleUpOrdinalOpsPass)
+        .addPass(createBufferizeCopyOnlyDispatchesPass);
   }
   modulePassManager.addPass(createMaterializeUserConfigsPass());
   {

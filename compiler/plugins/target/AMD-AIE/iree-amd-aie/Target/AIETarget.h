@@ -189,7 +189,10 @@ struct AMDAIEOptions {
             clEnumValN(TilePassPipeline::ConvDecomposePipeline,
                        "conv-decompose",
                        "Use the conv-decompose based lowering strategy for "
-                       "convolution interface ops")));
+                       "convolution interface ops"),
+            clEnumValN(
+                TilePassPipeline::SoftmaxCopyPipeline, "softmax-copy",
+                "Use the copy based lowering strategy for softmax ops")));
 
     binder.opt<bool>(
         "iree-amdaie-enable-vectorization-passes", enableVectorizationPasses,

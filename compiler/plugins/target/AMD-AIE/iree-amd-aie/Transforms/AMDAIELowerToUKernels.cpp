@@ -152,10 +152,16 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchFillDAGForUKernel(
   auto outType = llvm::cast<ShapedType>(output.getType());
   Type outElemType = outType.getElementType();
 
-  // Tiling for M x N as well as the corresponding inner tiling intrinsics r x
-  // t.
   int M, N, r, t;
-  std::tie(M, N, r, t) = getTilingInfo(outType);
+  if (outType.getRank() == 2) {
+    M = outType.getDimSize(0);
+    N = outType.getDimSize(1);
+  } else {
+    // Tiling for M x N as well as the corresponding inner tiling intrinsics r x
+    // t.
+    std::tie(M, N, r, t) = getTilingInfo(outType);
+  }
+
   std::string elemTypeAndSize = typeToString(outElemType) + "_" +
                                 std::to_string(M) + "x" + std::to_string(N);
 
@@ -248,6 +254,36 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchTruncIDAGForUKernel(
       genericMicroKernelOp.getOperation());
 }
 
+static FailureOr<IREE::Codegen::UKernelOpInterface> matchSoftmaxDAGForUKernel(
+    RewriterBase &rewriter, Operation *op, const std::string &ukernelName,
+    const std::string &ukernelObjectName) {
+  auto softmaxOp = dyn_cast<linalg::SoftmaxOp>(op);
+  if (!softmaxOp)
+    return rewriter.notifyMatchFailure(op, "is not a softmax operation");
+
+  Value input = softmaxOp.getDpsInputOperand(0)->get();
+  Value output = softmaxOp.getDpsInitOperand(0)->get();
+  auto outType = llvm::cast<ShapedType>(output.getType());
+  Type outElemType = outType.getElementType();
+
+  std::string elemTypeAndSize = typeToString(outElemType) + "_" +
+                                std::to_string(outType.getDimSize(0)) + "x" +
+                                std::to_string(outType.getDimSize(1));
+
+  FnNameAndDefAttrs fn = getFnNameAndDefAttrs(
+      rewriter, ukernelName, elemTypeAndSize, ukernelObjectName);
+
+  // Create UKernel for AMD-AIE.
+  Location loc = softmaxOp.getLoc();
+  auto genericMicroKernelOp = rewriter.create<IREE::Codegen::UKernelGenericOp>(
+      loc, outType, fn.name, ValueRange{input}, output, ValueRange{},
+      /*fn_def_attrs=*/rewriter.getDictionaryAttr(fn.defAttrs),
+      /*strided_outer_dims=*/rewriter.getIndexAttr(0));
+
+  return cast<IREE::Codegen::UKernelOpInterface>(
+      genericMicroKernelOp.getOperation());
+}
+
 using TargetPredicate = std::function<bool(IREE::HAL::ExecutableTargetAttr)>;
 using MatchAndReplaceFunction =
     std::function<FailureOr<IREE::Codegen::UKernelOpInterface>(
@@ -298,6 +334,7 @@ struct LowerToUKernelPattern : OpRewritePattern<OpType> {
 static constexpr char kMatmulUKernelName[] = "matmul";
 static constexpr char kFillUKernelName[] = "zero_fill";
 static constexpr char kTruncIUKernelName[] = "trunci";
+static constexpr char kSoftmaxUKernelName[] = "softmax";
 
 void AMDAIELowerToUKernelsPass::runOnOperation() {
   MLIRContext *context = &getContext();
@@ -323,6 +360,8 @@ void AMDAIELowerToUKernelsPass::runOnOperation() {
       context, allTargets, matchFillDAGForUKernel, kFillUKernelName);
   patterns.insert<LowerToUKernelPattern<linalg::GenericOp>>(
       context, allTargets, matchTruncIDAGForUKernel, kTruncIUKernelName);
+  patterns.insert<LowerToUKernelPattern<linalg::SoftmaxOp>>(
+      context, allTargets, matchSoftmaxDAGForUKernel, kSoftmaxUKernelName);
   if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
     return signalPassFailure();
   }

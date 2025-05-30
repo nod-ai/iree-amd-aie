@@ -61,6 +61,10 @@ void addPackPeel4LevelTilingBasedPassPipeline(OpPassManager &passManager,
 void addConvDecomposePassPipeline(OpPassManager &passManager,
                                   TilePassPipeline useTilePipeline);
 
+/// Populates passes needed to lower the IR via a Softmax-Copy based approach.
+void addSoftmaxCopyPassPipeline(OpPassManager &passManager,
+                                TilePassPipeline useTilePipeline);
+
 /// Populates passes needed to link HAL executables across AIE targets.
 void buildAMDAIELinkingPassPipeline(OpPassManager &passManager);
 
