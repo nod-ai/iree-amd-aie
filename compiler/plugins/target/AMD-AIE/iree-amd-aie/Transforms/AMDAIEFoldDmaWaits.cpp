@@ -185,6 +185,8 @@ LogicalResult foldDmaWaitsByQueue(const AMDAIE::AMDAIEDeviceModel &deviceModel,
               // Update the `dmaBdIdsMap`.
               updateWithCurrBdId(*canFold, *currBdIdPair, dmaBdIdsMap);
               toQueue &= *canFold;
+            } else if (isa_and_present<AMDAIE::NpuDmaCpyNdOp>(token.getDefiningOp())) {
+              return WalkResult::skip();
             }
           }
           // Store all the queues, and modify later to avoid invalidating the
@@ -338,6 +340,8 @@ LogicalResult foldDmaWaitsByBatch(AMDAIE::ControlCodeOp controlCodeOp) {
               updateWithCurrBdId(*canFold, *currBdIdPair, connectionOps,
                                  dmaBdIdsMap);
               toBatch &= *canFold;
+            } else if (isa_and_present<AMDAIE::NpuDmaCpyNdOp>(token.getDefiningOp())) {
+              return WalkResult::skip();
             }
           }
           // Process the previous batch of wait ops, and start a new batch.

@@ -159,6 +159,8 @@ struct SubsumeLoopIntoDMA
       const SmallVector<int64_t> &steps,
       const SmallVector<DenseSet<Value>> &inductionValues,
       const DenseSet<Value> &allInductionValues) const {
+                                  llvm::outs()<<"DB - 3 - START\n";
+                                  llvm::outs().flush();
     auto loopOp = dyn_cast<LoopLikeOpInterface>(op->getParentOp());
     if (!loopOp) return failure();
 
@@ -186,6 +188,7 @@ struct SubsumeLoopIntoDMA
 
     uint32_t maxRepeatCount =
         deviceModel.getMaxRepeatCount(AMDAIE::AMDAIETileType::SHIMNOC);
+    llvm::outs()<<"maxRepeatCount = "<<maxRepeatCount<<"\n";
     // Verify number of dimensions needed to subsume this loop into the strided
     // access pattern and fail early if there aren't enough dimensions.
     size_t nbNonUnitIterations{0};
@@ -196,6 +199,8 @@ struct SubsumeLoopIntoDMA
       // We should not do any rewrite if the total loop iteration is greater
       // than the maximum repeat count allowed and the op in concern is a
       // non-circular DmaCpyNd op.
+      llvm::outs()<<"nbIterations = "<<nbIterations<<"\n";
+      llvm::outs().flush();
       if (nbIterations > maxRepeatCount && isa<AMDAIE::NpuDmaCpyNdOp>(op))
         return failure();
       if (nbIterations > 1) nbNonUnitIterations++;
@@ -290,6 +295,8 @@ struct SubsumeLoopIntoDMA
                 rewriter, lb, ub, step, iterationIvValues, newSourceOffsets,
                 newSourceStrides, insertSourceOffsets, insertSourceSizes,
                 insertSourceStrides, updateSourceOffsets))) {
+                  llvm::outs()<<"SOURCE Failed to add iteration to new access pattern\n";
+                  llvm::outs().flush();
           return failure();
         }
 
@@ -301,6 +308,8 @@ struct SubsumeLoopIntoDMA
             insertInFront(newSourceStrides, insertSourceStrides);
         if (!sourceDmaDimConfig.isValidAccessPattern(newSourceSizesInt,
                                                      newSourceStridesInt)) {
+                  llvm::outs()<<"Is not valid access pattern\n";
+                  llvm::outs().flush();
           return failure();
         }
       }
@@ -310,6 +319,8 @@ struct SubsumeLoopIntoDMA
                 rewriter, lb, ub, step, iterationIvValues, newTargetOffsets,
                 newTargetStrides, insertTargetOffsets, insertTargetSizes,
                 insertTargetStrides, updateTargetOffsets))) {
+                  llvm::outs()<<"TARGET Failed to add iteration to new access pattern\n";
+                  llvm::outs().flush();
           return failure();
         }
 
@@ -321,6 +332,8 @@ struct SubsumeLoopIntoDMA
             insertInFront(newTargetStrides, insertTargetStrides);
         if (!targetDmaDimConfig.isValidAccessPattern(newTargetSizesInt,
                                                      newTargetStridesInt)) {
+                  llvm::outs()<<"Is not valid access pattern\n";
+                  llvm::outs().flush();
           return failure();
         }
       }
@@ -383,6 +396,8 @@ struct SubsumeLoopIntoDMA
         rewriter, newTargetOffsets, newTargetSizes, newTargetStrides,
         newSourceOffsets, newSourceSizes, newSourceStrides);
     rewriter.replaceOp(op, newDoublyStridedOp.getOperation());
+                                  llvm::outs()<<"DB - 3 - END\n";
+                                  llvm::outs().flush();
     return success();
   }
 
@@ -393,6 +408,8 @@ struct SubsumeLoopIntoDMA
       AMDAIE::DoublyStridedOpInterface op, PatternRewriter &rewriter,
       const DmaDimConfig &sourceDmaDimConfig,
       const DmaDimConfig &targetDmaDimConfig) const {
+                                  llvm::outs()<<"DB - 2 - START\n";
+                                  llvm::outs().flush();
     auto forOp = dyn_cast<scf::ForOp>(op->getParentOp());
     if (!forOp) return failure();
 
@@ -469,6 +486,8 @@ struct SubsumeLoopIntoDMA
 
   LogicalResult matchAndRewrite(AMDAIE::DoublyStridedOpInterface op,
                                 PatternRewriter &rewriter) const override {
+                                  llvm::outs()<<"DB - 1 - START\n";
+                                  llvm::outs().flush();
     Operation *parentOp = op->getParentOp();
     if (!parentOp) return rewriter.notifyMatchFailure(op, "Has no parent");
     if (!isa<LoopLikeOpInterface>(parentOp))

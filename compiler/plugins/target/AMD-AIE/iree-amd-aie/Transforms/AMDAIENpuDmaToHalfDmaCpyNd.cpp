@@ -31,6 +31,10 @@ struct NpuDmaToHalfDmaCpyNdConverter final
       return dmaOp.emitOpError()
              << "should operate on an `amdaie.connection` op";
     }
+    // We only need to convert those NpuDmaCpyNd ops which have BD IDs assigned.
+    if (!dmaOp.getSourceBdIdOp() && !dmaOp.getTargetBdIdOp()) {
+      return success();
+    }
     // Convert source half.
     Value source =
         dmaOp.getSource() ? dmaOp.getSource() : connectionOp.getSource();

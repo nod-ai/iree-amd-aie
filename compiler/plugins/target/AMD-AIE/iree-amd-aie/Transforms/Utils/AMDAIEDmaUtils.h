@@ -351,7 +351,13 @@ struct DmaDimConfig {
   virtual SmallVector<int64_t> getMaxStrides(
       std::optional<size_t> maybeNbDims = std::nullopt) const;
 
-  virtual bool exceedsNbDims(size_t dims) const { return dims > maxNbDims; }
+  virtual bool exceedsNbDims(size_t dims) const { 
+    // llvm::outs()<<"maxNbDims = "<<maxNbDims<<"\n";
+    // llvm::outs()<<"dims = "<<dims<<"\n";
+    // llvm::outs().flush();
+    return false;
+    // return dims > maxNbDims; 
+  }
 };
 
 /// Contains utility DMA information for circular DMA operations which is
