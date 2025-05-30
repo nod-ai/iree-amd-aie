@@ -9,6 +9,11 @@
 #include <aie_api/aie.hpp>
 #include <type_traits>
 
+// Lookup tables for fast approximation of the exponential function using bf16
+// inputs. The tables are split into `ilut` and `flut` for the integer and
+// fractional parts of the inputs, respectively. Each table is duplicated, as
+// `ab` and `cd` are two exactly identical copies of the same table, to enable
+// 4-way parallel access.
 alignas(aie::vector_decl_align) int16 exp_ilut_ab[512] = {
     16256, 16430, 16620, 16801, 16986, 17172, 17354, 17545, 16256, 16430, 16620,
     16801, 16986, 17172, 17354, 17545, 17722, 17917, 18092, 18282, 18463, 18648,

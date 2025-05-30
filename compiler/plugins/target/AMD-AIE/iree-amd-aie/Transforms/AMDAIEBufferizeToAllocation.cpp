@@ -207,6 +207,12 @@ void AMDAIEBufferizeToAllocationPass::runOnOperation() {
     return;
   }
 
+  if (targetOps.size() > 1) {
+    llvm::errs() << "expected only one target op, found " << targetOps.size()
+                 << " target ops\n";
+    return signalPassFailure();
+  }
+
   IRRewriter rewriter(context);
   for (Operation *targetOp : targetOps) {
     // Find the producer ops for the target op, and bufferizes them in new

@@ -25,6 +25,7 @@ from input_generator import (
     get_output_type,
     np_from_binfile,
 )
+from softmax_template.softmax_generator import generate_softmax_test
 
 
 def run_conv_test(config, aie_compilation_flags, filename, n_repeats):
@@ -914,18 +915,31 @@ class Matmul4dScaleTrunci(BaseMatmul):
 class Softmax(BaseTest):
     def __init__(
         self,
+        M,
+        N,
+        data_type,
         test_params=None,
     ):
         super().__init__(
-            name="softmax_bf16",
+            name="softmax_{}_{}_{}".format(M, N, data_type),
             test_params=test_params,
         )
         self.labels += ["Softmax"]
 
-    def _execute(self, config):
-        test_files_dir = config.file_dir / "test_files"
-        self.filename = test_files_dir / "softmax_bf16.mlir"
+        self.M = M
+        self.N = N
+        self.data_type = data_type
 
+    def _execute(self, config):
+        self.filename = self.get_filename(config)
+        template_name = config.file_dir / "softmax_template" / "softmax_MxN.mlir"
+        generate_softmax_test(
+            self.filename,
+            template_name,
+            m=self.M,
+            n=self.N,
+            data_type=self.data_type,
+        )
         aie_vs_llvm_cpu(
             config,
             self.aie_compilation_flags,
@@ -2556,6 +2570,9 @@ class Tests:
         # Softmax tests:
         self.register(
             Softmax(
+                128,
+                32,
+                "bf16",
                 test_params=TestParams(
                     name_suffix="chess",
                     aie_compilation_flags=[

@@ -625,9 +625,6 @@ void addSoftmaxCopyPassPipeline(OpPassManager &funcPassManager,
     addCleanups();
   }
 
-  // Fuse fill op into the inner forall loop
-  funcPassManager.addPass(createAMDAIEFuseFillIntoForallPass());
-
   // Insert copy operations to the softmax input and result.
   funcPassManager.addPass(createAMDAIEInsertCopyOpsPass());
   addCleanups();
