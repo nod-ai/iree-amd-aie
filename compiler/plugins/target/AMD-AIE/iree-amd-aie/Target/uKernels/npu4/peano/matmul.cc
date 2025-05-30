@@ -35,10 +35,14 @@ void matmul_vectorized_i8_i32(const int8 *__restrict pA, unsigned offsetA,
   v64acc32 acc_C10;
   v64acc32 acc_C11;
 
+#pragma clang loop min_iteration_count(rowA / 2)
+#pragma clang loop max_iteration_count(rowA / 2)
   for (unsigned z = 0; z < rowA; z += 2) {
     v64acc32 *__restrict pC0 = (v64acc32 *)(pC + offsetC + (z)*size_C);
     v64acc32 *__restrict pC1 = (v64acc32 *)(pC + offsetC + ((z + 1)) * size_C);
 
+#pragma clang loop min_iteration_count(colB / 2)
+#pragma clang loop max_iteration_count(colB / 2)
     for (unsigned j = 0; j < colB; j += 2) {
       const v64int8 *__restrict pA0 = (v64int8 *)(pA + offsetA + (z)*size_A);
       const v64int8 *__restrict pA1 =
@@ -75,6 +79,8 @@ void matmul_vectorized_i8_i32(const int8 *__restrict pA, unsigned offsetA,
       acc_C10 = mac_8x8_8x8(A1, B0, acc_C10);
       acc_C11 = mac_8x8_8x8(A1, B1, acc_C11);
 
+#pragma clang loop min_iteration_count((colA - 2) / 2)
+#pragma clang loop max_iteration_count((colA - 2) / 2)
       for (unsigned i = 1; i < colA - 1; i += 2) {
         A0 = *pA0;
         pA0 += rowA;
