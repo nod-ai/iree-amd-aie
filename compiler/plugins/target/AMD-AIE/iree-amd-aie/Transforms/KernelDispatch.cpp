@@ -303,6 +303,21 @@ FailureOr<ParameterSetting> ParameterSetting::create(
     TileSize maxL0Size = selectL2TileSizes(tileParams, m0Pack, n0Pack);
     M0 = maxL0Size.M;
     N0 = maxL0Size.N;
+
+    // TODO(avarma): This is currently a workaround for 1x1 AIE array to make
+    // those 2D matmul shapes work for which all of the operands get pulled in
+    // to L2 buffer. Once reprogramming of DMA ops is supported, we can get rid
+    // of this workaround. We need to add this only for pack-peel-4-level-tiling
+    // NOT pack-peel. The workaround just ensures that the tile size of first
+    // level is NOT equal to M, N by halving the N0 tile.
+    if (numRows == 1 && numCols == 1) {
+      // Check if the tile size generated is exactly same as operand size. If
+      // yes, halve N0 tile.
+      if (M0 == M && N0 == N) {
+        N0 /= 2;
+        if (N0 < n0Pack) n0Pack /= 2;
+      }
+    }
   }
 
   // Currently there is only one level of tiling for K dimension, and the packed

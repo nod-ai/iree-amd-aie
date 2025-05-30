@@ -86,6 +86,21 @@ npu4_matmul_tests = [
             "--iree-amdaie-num-cols=1",
         ],
     },
+    # TODO: Remove after testing all 1x1 shapes.
+    {
+        "M": 32,
+        "N": 512,
+        "K": 64,
+        "input_type": "i32",
+        "acc_type": "i32",
+        "tile_pipeline": "pack-peel-4-level-tiling",
+        "name_suffix": "OneCore_npu4",
+        "additional_labels": ["OneCore"],
+        "aie_compilation_flags": [
+            "--iree-amdaie-num-rows=1",
+            "--iree-amdaie-num-cols=1",
+        ],
+    },
     {
         "M": 64,
         "N": 128,
