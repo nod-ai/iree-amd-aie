@@ -31,7 +31,7 @@ LogicalResult appendSync(NpuSyncOp op, TransactionBuilder &transactionBuilder) {
   return success();
 }
 
-LogicalResult appendAddressPatch(NpuAddressPatchOp op,
+LogicalResult appendAddressPatch(xilinx::AIEX::NpuAddressPatchOp op,
                                  TransactionBuilder &transactionBuilder) {
   if (failed(transactionBuilder.appendAddressPatch(op.getAddr(), op.getArgIdx(),
                                                    op.getArgPlus()))) {
@@ -50,7 +50,7 @@ LogicalResult appendPushToQueue(NpuPushQueueOp op,
   return success();
 }
 
-LogicalResult appendWriteBd(NpuWriteBdOp op,
+LogicalResult appendWriteBd(xilinx::AIEX::NpuWriteBdOp op,
                             TransactionBuilder &transactionBuilder) {
   SmallVector<int32_t> sizes{static_cast<int32_t>(op.getD2Size()),
                              static_cast<int32_t>(op.getD1Size()),
@@ -291,7 +291,7 @@ struct DmaToNpuPattern : OpConversionPattern<NpuDmaMemcpyNdOp> {
     // d2_zero_after
     d2_zero_after = IntegerAttr::get(i32ty, op.getD2ZeroAfter());
 
-    rewriter.create<NpuWriteBdOp>(
+    rewriter.create<xilinx::AIEX::NpuWriteBdOp>(
         op->getLoc(), column, bd_id, buffer_length, buffer_offset,
         enable_packet, out_of_order_id, packet_id, packet_type, d0_size,
         d0_stride, d1_size, d1_stride, d2_size, d2_stride, iteration_current,
@@ -305,7 +305,7 @@ struct DmaToNpuPattern : OpConversionPattern<NpuDmaMemcpyNdOp> {
 
     uint32_t addr =
         (col << tm.getColumnShift()) | (0x1D004 + op.getId() * 0x20);
-    rewriter.create<NpuAddressPatchOp>(op->getLoc(), addr, arg_idx, offset);
+    rewriter.create<xilinx::AIEX::NpuAddressPatchOp>(op->getLoc(), addr, arg_idx, offset);
 
     rewriter.create<NpuPushQueueOp>(
         op->getLoc(), column, row, infoOp->getChannelDirAttr(),
@@ -319,7 +319,7 @@ struct DmaToNpuPattern : OpConversionPattern<NpuDmaMemcpyNdOp> {
 /// Convert NpuDmaWaitOp into NpuSyncOp by retrieving the necessary
 /// information from the ShimDMAAllocationOp referenced through the
 /// symbol argument of this op.
-struct DmaWaitToNpuPattern : OpConversionPattern<NpuDmaWaitOp> {
+struct DmaWaitToNpuPattern : OpConversionPattern<xilinx::AIEX::NpuDmaWaitOp> {
  private:
   ShimDMAllocationGetter &allocGetter;
 
@@ -331,7 +331,7 @@ struct DmaWaitToNpuPattern : OpConversionPattern<NpuDmaWaitOp> {
       : OpConversionPattern(context, benefit), allocGetter(getter) {}
 
   LogicalResult matchAndRewrite(
-      NpuDmaWaitOp op, OpAdaptor adaptor,
+      xilinx::AIEX::NpuDmaWaitOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     AIE::DeviceOp dev = op->getParentOfType<AIE::DeviceOp>();
     if (!dev) return op->emitError("couldn't find parent of type DeviceOp");
@@ -386,7 +386,7 @@ struct AMDAIEDmaToNpuPass : mlir::OperationPass<DeviceOp> {
     target.addLegalOp<AIE::BufferOp>();
     target.addLegalOp<AIE::ShimDMAAllocationOp>();
     target.addIllegalOp<NpuDmaMemcpyNdOp>();
-    target.addIllegalOp<NpuDmaWaitOp>();
+    target.addIllegalOp<xilinx::AIEX::NpuDmaWaitOp>();
 
     RewritePatternSet patterns(&getContext());
     patterns.insert<DmaToNpuPattern>(&getContext(), cachingGetter);
@@ -400,8 +400,8 @@ struct AMDAIEDmaToNpuPass : mlir::OperationPass<DeviceOp> {
     patterns.clear();
     target.addIllegalOp<NpuSyncOp>();
     target.addIllegalOp<NpuPushQueueOp>();
-    target.addIllegalOp<NpuAddressPatchOp>();
-    target.addIllegalOp<NpuWriteBdOp>();
+    target.addIllegalOp<xilinx::AIEX::NpuAddressPatchOp>();
+    target.addIllegalOp<xilinx::AIEX::NpuWriteBdOp>();
 
     TransactionBuilder transactionBuilder(
         getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice())));
@@ -411,9 +411,9 @@ struct AMDAIEDmaToNpuPass : mlir::OperationPass<DeviceOp> {
                                              transactionBuilder);
     patterns.insert<ConvertNpuOp<NpuPushQueueOp>>(
         &getContext(), appendPushToQueue, transactionBuilder);
-    patterns.insert<ConvertNpuOp<NpuAddressPatchOp>>(
+    patterns.insert<ConvertNpuOp<xilinx::AIEX::NpuAddressPatchOp>>(
         &getContext(), appendAddressPatch, transactionBuilder);
-    patterns.insert<ConvertNpuOp<NpuWriteBdOp>>(&getContext(), appendWriteBd,
+    patterns.insert<ConvertNpuOp<xilinx::AIEX::NpuWriteBdOp>>(&getContext(), appendWriteBd,
                                                 transactionBuilder);
 
     if (failed(applyPartialConversion(device, target, std::move(patterns))))

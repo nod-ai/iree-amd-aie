@@ -31,59 +31,84 @@ struct NpuDmaToHalfDmaCpyNdConverter final
       return dmaOp.emitOpError()
              << "should operate on an `amdaie.connection` op";
     }
-    // Convert source half.
-    Value source =
-        dmaOp.getSource() ? dmaOp.getSource() : connectionOp.getSource();
-    if (connectionOp.getSourceChannels().size() != 1)
-      return connectionOp.emitOpError() << "expected a single source channel";
-    auto sourceChannelOp = dyn_cast<AMDAIE::ChannelOp>(
-        connectionOp.getSourceChannels()[0].getDefiningOp());
-    bool hasAsyncSourceToken =
-        llvm::any_of(dmaOp.getAsyncTokens(), [](Value token) {
-          return isa<AMDAIE::AsyncSourceTokenType>(token.getType());
-        });
     SmallVector<Type> resultTypes = {
         rewriter.getType<AMDAIE::AsyncTokenType>()};
-    TypeRange sourceResultTypes =
-        hasAsyncSourceToken ? TypeRange{resultTypes} : TypeRange{};
-    rewriter.setInsertionPoint(dmaOp);
-    auto sourceDma = rewriter.create<AMDAIE::NpuHalfDmaCpyNdOp>(
-        dmaOp.getLoc(), sourceResultTypes, connectionOp, source,
-        dmaOp.getSourceMixedOffsets(), dmaOp.getSourceMixedSizes(),
-        dmaOp.getSourceMixedStrides(), dmaOp.getSourceBdId(), sourceChannelOp);
+    AMDAIE::NpuHalfDmaCpyNdOp sourceDma, targetDma;
+    // Convert source half.
+    if (dmaOp.hasSourceAddressing()) {
+      Value source =
+          dmaOp.getSource() ? dmaOp.getSource() : connectionOp.getSource();
+      if (connectionOp.getSourceChannels().size() != 1)
+        return connectionOp.emitOpError() << "expected a single source channel";
+      auto sourceChannelOp = dyn_cast<AMDAIE::ChannelOp>(
+          connectionOp.getSourceChannels()[0].getDefiningOp());
+      bool hasAsyncSourceToken =
+          llvm::any_of(dmaOp.getAsyncTokens(), [](Value token) {
+            return isa<AMDAIE::AsyncSourceTokenType>(token.getType());
+          });
+      TypeRange sourceResultTypes =
+          hasAsyncSourceToken ? TypeRange{resultTypes} : TypeRange{};
+      rewriter.setInsertionPoint(dmaOp);
+      sourceDma = rewriter.create<AMDAIE::NpuHalfDmaCpyNdOp>(
+          dmaOp.getLoc(), sourceResultTypes, connectionOp, source,
+          dmaOp.getSourceMixedOffsets(), dmaOp.getSourceMixedSizes(),
+          dmaOp.getSourceMixedStrides(), dmaOp.getSourceBdId(), sourceChannelOp);
+    }
 
     // Convert target half.
-    Value target =
-        dmaOp.getTarget() ? dmaOp.getTarget() : connectionOp.getTarget();
-    // Broadcasting is allowed only when the NPU DMA operation does not specify
-    // a target LogicalObjectFifo, meaning the data flow is directed into the
-    // AIE array. Otherwise, if a target is specified, ensure there is exactly
-    // one target channel.
-    if (dmaOp.getTarget() && connectionOp.getTargetChannels().size() != 1)
-      return connectionOp.emitOpError() << "expected a single target channel";
-    auto targetChannelOp = dyn_cast<AMDAIE::ChannelOp>(
-        connectionOp.getTargetChannels()[0].getDefiningOp());
-    bool hasAsyncTargetToken =
-        llvm::any_of(dmaOp.getAsyncTokens(), [](Value token) {
-          return isa<AMDAIE::AsyncTargetTokenType>(token.getType());
-        });
-    TypeRange targetResultTypes =
-        hasAsyncTargetToken ? TypeRange{resultTypes} : TypeRange{};
-    auto targetDma = rewriter.create<AMDAIE::NpuHalfDmaCpyNdOp>(
-        dmaOp.getLoc(), targetResultTypes, connectionOp, target,
-        dmaOp.getTargetMixedOffsets(), dmaOp.getTargetMixedSizes(),
-        dmaOp.getTargetMixedStrides(), dmaOp.getTargetBdId(), targetChannelOp);
+    if (dmaOp.hasTargetAddressing()) {
+      Value target =
+          dmaOp.getTarget() ? dmaOp.getTarget() : connectionOp.getTarget();
+      // Broadcasting is allowed only when the NPU DMA operation does not specify
+      // a target LogicalObjectFifo, meaning the data flow is directed into the
+      // AIE array. Otherwise, if a target is specified, ensure there is exactly
+      // one target channel.
+      if (dmaOp.getTarget() && connectionOp.getTargetChannels().size() != 1)
+        return connectionOp.emitOpError() << "expected a single target channel";
+      auto targetChannelOp = dyn_cast<AMDAIE::ChannelOp>(
+          connectionOp.getTargetChannels()[0].getDefiningOp());
+      bool hasAsyncTargetToken =
+          llvm::any_of(dmaOp.getAsyncTokens(), [](Value token) {
+            return isa<AMDAIE::AsyncTargetTokenType>(token.getType());
+          });
+      TypeRange targetResultTypes =
+          hasAsyncTargetToken ? TypeRange{resultTypes} : TypeRange{};
+      targetDma = rewriter.create<AMDAIE::NpuHalfDmaCpyNdOp>(
+          dmaOp.getLoc(), targetResultTypes, connectionOp, target,
+          dmaOp.getTargetMixedOffsets(), dmaOp.getTargetMixedSizes(),
+          dmaOp.getTargetMixedStrides(), dmaOp.getTargetBdId(), targetChannelOp);
+    }
+
     if (dmaOp.getNumResults() == 1) {
-      if (sourceDma.getNumResults() == 1) {
+      if (sourceDma && sourceDma.getNumResults() == 1) {
         rewriter.replaceUsesWithIf(
             dmaOp.getResult(0), sourceDma.getResult(0), [&](OpOperand &use) {
               return isa<AMDAIE::AsyncSourceTokenType>(use.get().getType()) &&
                      isa<AMDAIE::NpuDmaWaitOp>(use.getOwner());
             });
       }
-      if (targetDma.getNumResults() == 1) {
+      if (targetDma && targetDma.getNumResults() == 1) {
         rewriter.replaceUsesWithIf(
             dmaOp.getResult(0), targetDma.getResult(0), [&](OpOperand &use) {
+              return isa<AMDAIE::AsyncTargetTokenType>(use.get().getType()) &&
+                     isa<AMDAIE::NpuDmaWaitOp>(use.getOwner());
+            });
+      }
+      if (!dmaOp.getResult(0).use_empty())
+        return dmaOp.emitOpError() << "should not have any uses anymore";
+    }
+    if (dmaOp.getNumResults() == 2) {
+      // rewriter.replaceUsesWithIf
+      if (sourceDma && sourceDma.getNumResults() == 1) {
+        rewriter.replaceUsesWithIf(
+            dmaOp.getResult(0), sourceDma.getResult(0), [&](OpOperand &use) {
+              return isa<AMDAIE::AsyncSourceTokenType>(use.get().getType()) &&
+                     isa<AMDAIE::NpuDmaWaitOp>(use.getOwner());
+            });
+      }
+      if (targetDma && targetDma.getNumResults() == 1) {
+        rewriter.replaceUsesWithIf(
+            dmaOp.getResult(1), targetDma.getResult(0), [&](OpOperand &use) {
               return isa<AMDAIE::AsyncTargetTokenType>(use.get().getType()) &&
                      isa<AMDAIE::NpuDmaWaitOp>(use.getOwner());
             });

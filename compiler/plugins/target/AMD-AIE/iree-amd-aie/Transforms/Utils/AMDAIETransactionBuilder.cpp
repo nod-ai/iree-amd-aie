@@ -67,6 +67,218 @@ LogicalResult TransactionBuilder::appendAddressPatch(uint32_t addr,
   return configureCustomTxnOp(deviceModel, opCode, data, size);
 }
 
+
+static int32_t getBufferElementTypeWidthInBytes(AMDAIE::DMABDOp &op) {
+  return op.getBuffer().getType().getElementTypeBitWidth() / 8;
+}
+
+// static int32_t getBufferElementTypeWidthInBytes(AMDAIE::DMABDOp &op) {
+//   return op.getBuffer().getType().getElementTypeBitWidth() / 8;
+// }
+
+static int32_t getLenInBytes(AMDAIE::DMABDOp &op) {
+  if (std::optional<int32_t> len = op.getLen(); len.has_value())
+    return len.value() * getBufferElementTypeWidthInBytes(op);
+  else
+    return op.getBuffer().getType().getNumElements() *
+           getBufferElementTypeWidthInBytes(op);
+}
+
+static int32_t getOffsetInBytes(AMDAIE::DMABDOp &op) {
+  return op.getOffset() * getBufferElementTypeWidthInBytes(op);
+}
+
+LogicalResult TransactionBuilder::appendLockOp(AMDAIE::LockOp lockOp) {
+  auto tile = lockOp.getTile().getDefiningOp<AMDAIE::TileOp>();
+  std::optional<int64_t> col = getConstantIntValue(tile.getCol());
+  std::optional<int64_t> row = getConstantIntValue(tile.getRow());
+  if (!col || !row) {
+      return tile->emitOpError()
+                  << "expected column and row integer value/constant";
+  }
+  // TODO(avarma): In adf_runtime_api.cpp I see relativeToAbsoluteRow(tileType, row).
+  XAie_LocType tileLoc = XAie_TileLoc(*col, *row);
+  FailureOr<XAie_DmaDesc> dmaDesc = initDMADesc(deviceModel, tileLoc);
+  if (failed(dmaDesc)) return failure();
+  int8_t lockId = lockOp.getValue();
+  int8_t lockInitVal = *(lockOp.getInitValue());
+  if (failed(initializeLocks(deviceModel, *dmaDesc, tileLoc, lockId, lockInitVal)))
+    return failure();
+  return success();
+}
+
+LogicalResult TransactionBuilder::appendDmaStartOp(
+    AMDAIE::DMAStartOp dmaStartOp) {
+  // Configure DMA Locks.
+  
+  auto tile = dmaStartOp.getTile().getDefiningOp<AMDAIE::TileOp>();
+  std::optional<int64_t> col = getConstantIntValue(tile.getCol());
+  std::optional<int64_t> row = getConstantIntValue(tile.getRow());
+  if (!col || !row) {
+      return tile->emitOpError()
+                  << "expected column and row integer value/constant";
+  }
+  XAie_LocType tileLoc = XAie_TileLoc(*col, *row);
+  // Reset and unreset all DMA channels before configuring BDs.
+  // if (failed(resetUnResetDmaChannels(deviceModel, tileLoc))) return failure();
+  FailureOr<XAie_DmaDesc> dmaDesc = initDMADesc(deviceModel, tileLoc);
+  if (failed(dmaDesc)) return failure();
+  // uint32_t minStrideBitWidth = deviceModel.getMinStrideBitWidth();
+  // uint32_t bufferElementTypeWidthInBytes = minStrideBitWidth / v8;
+  dmaStartOp->walk([&](AMDAIE::DMABDOp dmaBdOp) -> WalkResult {
+    Block* parentBlock = dmaBdOp->getBlock();
+    auto useLockIter = parentBlock->getOps<AMDAIE::UseLockOp>();
+    std::optional<int> acqValue, relValue, acqLockId, relLockId;
+    for (AMDAIE::UseLockOp useLockOp : useLockIter) {
+      auto lockOp = useLockOp.getLock().getDefiningOp<AMDAIE::LockOp>();
+      if (useLockOp.getAction() == AMDAIE::LockAction::AcquireGreaterOrEqual ||
+          useLockOp.getAction() == AMDAIE::LockAction::Acquire) {
+        acqValue = useLockOp.getValue();
+        if (useLockOp.getAction() == AMDAIE::LockAction::AcquireGreaterOrEqual)
+            acqValue.value() = -acqValue.value();
+        acqLockId = lockOp.getValue();
+      } else if (useLockOp.getAction() == AMDAIE::LockAction::Release) {
+        relValue = useLockOp.getValue();
+        relLockId = lockOp.getValue();
+      }
+    }
+    // Disable acquire and release locks if not set.
+    if (!acqLockId) {
+      acqLockId = 0;
+      acqValue = 0;
+      // acqEn = false;
+    }
+    if (!relLockId) {
+      relLockId = 0;
+      relValue = 0;
+    }
+    assert(acqValue && relValue && acqLockId && relLockId &&
+          "expected both use_lock(acquire) and use_lock(release) with bd");
+    if (failed(configureDMALocks(deviceModel, dmaDesc.value(), tileLoc,
+                                *acqValue, *relValue, *acqLockId, *relLockId,
+                                /*acqEn=*/true))) {
+      return failure();
+    }
+    
+    // std::optional<uint32_t> bdId = dmaBdOp.getBdId();
+    // if (!bdId)
+    //   return WalkResult::interrupt();
+
+    // auto bufferOp = dmaBdOp.getBuffer().getDefiningOp<AMDAIE::BufferOp>();
+    // if (!bufferOp)
+    //   return WalkResult::interrupt();
+    // std::optional<uint32_t> baseAddr = bufferOp.getAddress();
+    // if (!baseAddr)
+    //   return WalkResult::interrupt();
+    // std::optional<llvm::ArrayRef<BDDimLayoutAttr>> dimensions = dmaBdOp.getDimensions();
+    // if (!dimensions)
+    //   return WalkResult::interrupt();
+    // std::vector<BDDimLayout> dims;
+    // int64_t bufferLength = 1;
+    // for (auto dim : *dimensions){
+    //   bufferLength *= dim.getSize();
+    //   dims.push_back({dim.getSize(), dim.getStride()});
+    // }
+    // uint32_t lenInBytes = bufferLength * bufferElementTypeWidthInBytes;
+    // uint32_t offsetInBytes = dmaBdOp.getOffset(); // offset in bytes ?
+    // if (failed(configureDMABDWithLocks(
+    //   deviceModel, *dmaDesc, tileLoc, /*validBd=*/true, *bdId,
+    //   /*enableNextBd=*/false, /*nextBdId=*/std::nullopt, /*enablePacket=*/ false,
+    //   /*packetType=*/std::nullopt, /*packetId=*/std::nullopt, /*baseAddr=*/(*baseAddr),
+    //   /*lenInBytes=*/lenInBytes, /*offsetInBytes=*/offsetInBytes,
+    //   /*bufferElementTypeWidthInBytes=*/bufferElementTypeWidthInBytes,
+    //   /*maybeDims=*/dims, /*maybePadDims=*/std::nullopt, /*maybeIter=*/std::nullopt,
+    //   /*acqValue=*/acqValue, /*relValue=*/relValue, /*acqLockId=*/acqLockId,
+    //   /*relLockId=*/relLockId)))
+    //   return WalkResult::interrupt();
+    // return WalkResult::advance();
+
+    // Pull metadata related to packet routing, bdId, buffer length, size, stride
+    // to pass to aie-rt.
+    std::optional<uint32_t> bdId = dmaBdOp.getBdId();
+    if (!bdId)
+      return WalkResult::interrupt();
+    bool validBd = true;
+    std::optional<uint8_t> packetType;
+    std::optional<uint8_t> packetID;
+    bool enablePacket = false;
+    // auto maybePacketOps = block.getOps<DMABDPACKETOp>();
+    // if (!maybePacketOps.empty()) {
+    //   assert(llvm::range_size(maybePacketOps) == 1 &&
+    //         "expected only one dma_bd_packet");
+    //   DMABDPACKETOp packetOp = *maybePacketOps.begin();
+    //   packetType = packetOp.getPacketType();
+    //   packetID = packetOp.getPacketId();
+    //   enablePacket = true;
+    // }
+
+    auto bufferOp = dmaBdOp.getBuffer().getDefiningOp<AMDAIE::BufferOp>();
+    if (!bufferOp)
+      return WalkResult::interrupt();
+    std::optional<uint32_t> baseAddr = bufferOp.getAddress();
+    if (!baseAddr)
+      return WalkResult::interrupt();
+    // Convert `xilinx::AIE::BDDimLayoutAttr` to
+    // `mlir::iree_compiler::AMDAIE::BDDimLayout`.
+
+    std::optional<llvm::ArrayRef<BDDimLayoutAttr>> dims = dmaBdOp.getDimensions();
+    if (!dims)
+      return WalkResult::interrupt();
+    std::optional<std::vector<BDDimLayout>> maybeDims;
+    maybeDims = std::vector<BDDimLayout>{};
+    // int64_t bufferLength = 1;
+    for (auto dim : *dims){
+      // bufferLength *= dim.getSize();
+      maybeDims->push_back(BDDimLayout{dim.getSize(), dim.getStride()});
+    }
+    std::optional<std::vector<BDPadLayout>> maybePadDims;
+
+    bool enableNextBd = dmaBdOp.getNextBdId().has_value();
+    std::optional<uint8_t> nextBdId =
+        enableNextBd
+            ? std::optional<uint8_t>{static_cast<uint8_t>(*dmaBdOp.getNextBdId())}
+            : std::nullopt;
+    std::optional<BDIterLayout> maybeIter = std::nullopt;
+
+    // uint32_t lenInBytes = bufferLength * bufferElementTypeWidthInBytes;
+    // uint32_t offsetInBytes = dmaBdOp.getOffset(); // offset in bytes ?
+
+    // Convert `xilinx::AIE::BDPadLayoutAttr` to
+    // `mlir::iree_compiler::AMDAIE::BDPadLayout`.
+    // std::optional<std::vector<BDPadLayout>> maybePadDims;
+    // if (std::optional<std::vector<BDPadLayoutAttr>> dims =
+    //         bdOp.getPadDimensions()) {
+    //   maybePadDims = std::vector<BDPadLayout>{};
+    //   for (const BDPadLayoutAttr &dim : (*dims)) {
+    //     maybePadDims->emplace_back(
+    //         BDPadLayout{dim.getConstPadBefore(), dim.getConstPadAfter()});
+    //   }
+    // }
+
+    if (failed(configureDMABD(deviceModel, dmaDesc.value(), tileLoc, validBd,
+                              static_cast<uint8_t>(*bdId), enableNextBd,
+                              nextBdId, enablePacket, packetType, packetID,
+                              *baseAddr, getLenInBytes(dmaBdOp),
+                              getOffsetInBytes(dmaBdOp),
+                              getBufferElementTypeWidthInBytes(dmaBdOp), maybeDims,
+                              maybePadDims, maybeIter))) {
+      return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
+  });
+
+  AMDAIE::DMABDOp bd = *dmaStartOp.getBody().getOps<AMDAIE::DMABDOp>().begin();
+  int chNum = dmaStartOp.getChannelIndex();
+  auto channelDir = static_cast<DMAChannelDir>(dmaStartOp.getChannelDir());
+  bool issueToken = tileLoc.Row == 0 && channelDir == DMAChannelDir::MM2S;
+  bool setChannelEnable = true;
+  if (failed(configurePushToBdQueue(
+          deviceModel, tileLoc, chNum, channelDir, bd.getBdId().value(),
+          dmaStartOp.getRepeatCount(), issueToken, setChannelEnable)))
+    return failure();
+  return success();
+}
+
 LogicalResult TransactionBuilder::appendTCTSync(uint32_t col, uint32_t row,
                                                 uint32_t direction,
                                                 uint32_t rowNum,

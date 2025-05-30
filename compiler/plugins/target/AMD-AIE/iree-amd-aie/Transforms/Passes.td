@@ -24,6 +24,22 @@ def AMDAIEAcquireReleaseToUseLock :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAcquireReleaseToUseLockPass()";
 }
 
+def AMDAIEAssignBufferAddress :
+    Pass<"iree-amdaie-assign-buffer-address", ""> {
+  let summary = "Pass to assign buffers to memory addresses.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAssignBufferAddressPass()";
+  let options = [
+    Option<"allocScheme", "alloc-scheme", "AllocScheme", /*default=*/"mlir::iree_compiler::AMDAIE::AllocScheme::None",
+      "Choose which scheme to apply for buffer allocation",
+      [{::llvm::cl::values(
+        clEnumValN(mlir::iree_compiler::AMDAIE::AllocScheme::Sequential, "sequential",
+                   "Basic sequential allocation."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::AllocScheme::BankAware, "bank-aware",
+                   "Bank aware scheme to round-robin each alloc over available banks.")
+      )}]>
+  ];
+}
+
 def AMDAIEAssignChannels :
     Pass<"iree-amdaie-assign-channels", ""> {
   let summary = "Assign channels to `amdaie.connection` ops.";
@@ -64,9 +80,9 @@ def AMDAIEAssignLogicalObjectFifoDepth :
   let options = [
     Option<"l3BufferDepth", "l3-buffer-depth", "int64_t", /*default=*/"1",
       "Set the L3 buffer depth to be used.">,
-    Option<"l2BufferDepth", "l2-buffer-depth", "int64_t", /*default=*/"2",
+    Option<"l2BufferDepth", "l2-buffer-depth", "int64_t", /*default=*/"1",
       "Set the L2 buffer depth to be used.">,
-    Option<"l1BufferDepth", "l1-buffer-depth", "int64_t", /*default=*/"2",
+    Option<"l1BufferDepth", "l1-buffer-depth", "int64_t", /*default=*/"1",
       "Set the L1 buffer depth to be used.">,
   ];
 }
@@ -75,6 +91,12 @@ def AMDAIEAssignNpuDmaBdIds :
     Pass<"iree-amdaie-assign-npu-dma-bd-ids", ""> {
   let summary = "Assign BD ids to `amdaie.npu.dma_cpy_nd` operations.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAssignNpuDmaBdIdsPass()";
+}
+
+def AMDAIEAssignBDIDs :
+    Pass<"iree-amdaie-assign-bd-ids", ""> {
+  let summary = "Assign BD ids to `amdaie.npu.dma_cpy_nd` operations for L2/L1";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAssignBDIDsPass()";
 }
 
 def AMDAIEAssignPacketIds :
@@ -191,6 +213,8 @@ def AMDAIEControlCodeLowering :
   let options = [
     Option<"argIdxOffset", "arg-idx-offset", "int32_t", /*default=*/"0",
       "The offset to be added to the argument index.">,
+    Option<"reprogramDmas", "reprogram-dmas", "bool", /*default=*/"false",
+           "Flag to reprogram DMAs. When enabled, no circular DMAs will be produced">,
   ];
 }
 
@@ -234,6 +258,10 @@ def AMDAIECreateAIEWorkgroup :
   Pass<"iree-amdaie-create-aie-workgroup", "func::FuncOp"> {
   let summary = "Creates a single AIE workgroup.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIECreateAIEWorkgroupPass()";
+  let options = [
+    Option<"reprogramDmas", "reprogram-dmas", "bool", /*default=*/"false",
+           "Flag to reprogram DMAs. When enabled, no circular DMAs will be produced">,
+  ];
 }
 
 def AMDAIECreateReferenceToAllocation :

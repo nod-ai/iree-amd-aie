@@ -487,6 +487,24 @@ void ConnectionOp::build(mlir::OpBuilder &b, mlir::OperationState &result,
         nullptr);
 }
 
+FailureOr<AMDAIE::NpuDmaCpyNdOp>
+ConnectionOp::getNpuDmaCpyNdUser() {
+  SmallVector<AMDAIE::NpuDmaCpyNdOp, 1> npuDmaUsers;
+  for (Operation *userOp : getOperation()->getUsers()) {
+    if (auto userNpuDmaOp = dyn_cast<AMDAIE::NpuDmaCpyNdOp>(userOp))
+      npuDmaUsers.push_back(userNpuDmaOp);
+  }
+  if (npuDmaUsers.size() > 1) {
+    return emitOpError() << "only a single `amdaie.npu.dma_cpy_nd` "
+                            "user supported currently, but got: "
+                         << npuDmaUsers.size();
+  } else if (npuDmaUsers.size() == 0) {
+    AMDAIE::NpuDmaCpyNdOp dmaOp = nullptr;
+    return dmaOp;
+  }
+  return npuDmaUsers[0];
+}
+
 FailureOr<AMDAIE::NpuCircularDmaCpyNdOp>
 ConnectionOp::getNpuCircularDmaCpyNdUser() {
   SmallVector<AMDAIE::NpuCircularDmaCpyNdOp, 1> npuDmaUsers;
@@ -1548,6 +1566,13 @@ bool TileOp::tileValueColumnAndRowComparator(Value a, Value b) {
   if (colA == colB) return rowA < rowB;
   return colA < colB;
 };
+
+CoreOp TileOp::getCoreOp() {
+  auto users = getResult().getUsers();
+  for (auto user : users)
+    if (auto coreOp = llvm::dyn_cast<CoreOp>(*user)) return coreOp;
+  return nullptr;
+}
 
 //===----------------------------------------------------------------------===//
 // AMDAIE_WorkgroupOp

@@ -76,6 +76,10 @@ static FailureOr<size_t> getRepetitionCount(LogicalObjFifoOpInterface op) {
       if (failed(maybeNpuDmaUserOp)) continue;
 
       AMDAIE::NpuCircularDmaCpyNdOp npuDma = maybeNpuDmaUserOp.value();
+      // FailureOr<AMDAIE::NpuCircularDmaCpyNdOp> maybeNpuDmaUserOp;
+      // // TODO(avarma): Fix this!
+
+      // AMDAIE::NpuCircularDmaCpyNdOp npuDma = maybeNpuDmaUserOp.value();
 
       if (connectionOp.getTarget() &&
           dyn_cast_if_present<LogicalObjFifoOpInterface>(
@@ -616,7 +620,9 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
   FailureOr<AMDAIE::NpuCircularDmaCpyNdOp> maybeNpuDmaUserOp =
       connectionOp.getNpuCircularDmaCpyNdUser();
   if (failed(maybeNpuDmaUserOp))
-    return connectionOp.emitOpError() << "has no circular NPU DMA op user";
+    return success();
+    // return connectionOp.emitOpError() << "has no circular NPU DMA op user";
+  // TODO(avarma): Fix this!
 
   SmallVector<Operation *> sourceMemOps;
   Value source = connectionOp.getSource();
@@ -635,7 +641,8 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
           connectionIndex);
       sourceMemOps.push_back(shimDmaAllocOp.getOperation());
     }
-  } else {
+  }
+  else if (maybeNpuDmaUserOp->hasSourceAddressing()) {
     auto sourceObjFifo =
         dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromBuffersOp>(
             source.getDefiningOp());
@@ -650,6 +657,9 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
       return sourceObjFifo->emitOpError()
              << "could not retrieve the repetition count";
     }
+    size_t newRepetitionCount = repetitionCount.value();
+    // if (sourceObjFifoLikeOp.getMemorySpaceAsUInt() == 1)
+    //   newRepetitionCount = 1;
     std::optional<size_t> maybeOffset =
         maybeNpuDmaUserOp->getSourceStaticBaseOffset();
     if (!maybeOffset) {
@@ -707,7 +717,7 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
       if (failed(foldDimsAndReturnAsStatic(
               maybeNpuDmaUserOp->getSourceMixedSizes(),
               maybeNpuDmaUserOp->getSourceMixedStrides(), canonicalizedSizes,
-              canonicalizedStrides, repetitionCount.value(),
+              canonicalizedStrides, newRepetitionCount,
               maybeSourceMemSpace.value(),
               [&]() { return maybeNpuDmaUserOp->emitOpError(); }))) {
         return failure();
@@ -740,7 +750,8 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
           connectionIndex);
       targetMemOps.push_back(shimDmaAllocOp.getOperation());
     }
-  } else {
+  }
+  else if (maybeNpuDmaUserOp->hasTargetAddressing()) {
     auto targetObjFifo =
         dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromBuffersOp>(
             target.getDefiningOp());
@@ -755,6 +766,9 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
       return targetObjFifo->emitOpError()
              << "could not retrieve the repetition count";
     }
+    size_t newRepetitionCount = repetitionCount.value();
+    // if (targetObjFifoLikeOp.getMemorySpaceAsUInt() == 1)
+    //   newRepetitionCount = 1;
     std::optional<size_t> maybeOffset =
         maybeNpuDmaUserOp->getTargetStaticBaseOffset();
     if (!maybeOffset) {
@@ -812,7 +826,7 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
       if (failed(foldDimsAndReturnAsStatic(
               maybeNpuDmaUserOp->getTargetMixedSizes(),
               maybeNpuDmaUserOp->getTargetMixedStrides(), canonicalizedSizes,
-              canonicalizedStrides, repetitionCount.value(),
+              canonicalizedStrides, newRepetitionCount,
               maybeTargetMemSpace.value(),
               [&]() { return maybeNpuDmaUserOp->emitOpError(); }))) {
         return failure();
@@ -993,7 +1007,7 @@ LogicalResult AIEDeviceBuilder::workgroupToAIE(AMDAIE::WorkgroupOp workgroupOp,
           if (failed(connectionToAIE(dmaOp, deviceBlock, connectionIndex))) {
             return WalkResult::interrupt();
           }
-          return WalkResult::advance();
+          return WalkResult::skip();
         })
         .Case<AMDAIE::ControlCodeOp>([&](auto controlCodeOp) {
           // Skip control code as it should already be translated into firmware

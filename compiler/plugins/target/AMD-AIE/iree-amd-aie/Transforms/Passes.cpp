@@ -660,7 +660,7 @@ void buildAMDAIETransformPassPipeline(
     PacketFlowStrategy packetFlowStrategy, bool enableCoalescingLoops,
     bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
     int callReplication, bool insertLoopAroundCoreBlock, bool enableCtrlPkt,
-    uint32_t coreStackSize) {
+    uint32_t coreStackSize, bool reprogramDmas) {
   OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
   {
     FunctionLikeNest funcPassManager(modulePassManager);
@@ -694,7 +694,7 @@ void buildAMDAIETransformPassPipeline(
         modulePassManager, packetFlowStrategy, useTilePipeline,
         enableVectorizationPasses, enableCoalescingLoops,
         enableCollapsingUnitDims, enableFunctionOutlining, callReplication,
-        insertLoopAroundCoreBlock, numCols, enableCtrlPkt, coreStackSize);
+        insertLoopAroundCoreBlock, numCols, enableCtrlPkt, coreStackSize, reprogramDmas);
   } else if (useLowerToAIEPipeline == LowerToAIEPassPipeline::AIR) {
     addMLIRAIRLoweringPasses(modulePassManager, device, useTilePipeline,
                              matmulElementwiseFusion,
@@ -720,7 +720,7 @@ void addAMDAIEObjectFifoLoweringPasses(
     bool enableCoalescingLoops, bool enableCollapsingUnitDims,
     OutliningStrategy enableFunctionOutlining, int callReplication,
     bool insertLoopAroundCoreBlock, uint32_t numCols, bool enableCtrlPkt,
-    uint32_t coreStackSize) {
+    uint32_t coreStackSize, bool reprogramDmas) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
 
@@ -787,8 +787,13 @@ void addAMDAIEObjectFifoLoweringPasses(
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
 
-  passManager.addPass(createAMDAIEDmaToCircularDmaPass());
-  passManager.addNestedPass<func::FuncOp>(createAMDAIECreateAIEWorkgroupPass());
+  if (!reprogramDmas)
+    passManager.addPass(createAMDAIEDmaToCircularDmaPass());
+  {
+    AMDAIECreateAIEWorkgroupOptions options;
+    options.reprogramDmas = reprogramDmas;
+    passManager.addNestedPass<func::FuncOp>(createAMDAIECreateAIEWorkgroupPass(options));
+  }
   passManager.addPass(createCSEPass());
   passManager.addPass(createAMDAIEDmaCSEPass());
 
@@ -852,8 +857,23 @@ void addAMDAIEObjectFifoLoweringPasses(
 
   passManager.addPass(createAMDAIENpuDmaToHalfDmaCpyNdPass());
   passManager.addPass(createAMDAIEInsertDmaBdChainPass());
-  passManager.addPass(createAMDAIEFoldDmaWaitsPass());
-  passManager.addPass(createAMDAIEControlCodeLoweringPass());
+  // passManager.addPass(createAMDAIEFoldDmaWaitsPass());
+  {
+    AMDAIEControlCodeLoweringOptions options;
+    options.reprogramDmas = reprogramDmas;
+    passManager.addPass(createAMDAIEControlCodeLoweringPass(options));
+  }
+  if (reprogramDmas) {
+    passManager.addPass(createAMDAIEAssignBDIDsPass());
+    {
+      // For Conv ops use basic sequential scheme to avoid numerical error.
+      // TODO: Find a better working scheme for Conv ops
+      AMDAIEAssignBufferAddressOptions options;
+      if (useTilePipeline == TilePassPipeline::ConvDecomposePipeline)
+        options.allocScheme = AllocScheme::Sequential;
+      passManager.addPass(createAMDAIEAssignBufferAddressPass(options));
+    }
+  }
   passManager.addPass(createAMDAIEControlCodeToTransactionPass());
 
   addAMDAIEToAIEPasses(passManager, insertLoopAroundCoreBlock);

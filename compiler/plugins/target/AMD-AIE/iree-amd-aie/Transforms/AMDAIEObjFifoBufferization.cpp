@@ -78,7 +78,7 @@ LogicalResult bufferize(AMDAIE::WorkgroupOp workgroupOp) {
           rewriter.setInsertionPointAfter(tileOp);
           for (unsigned i = 0; i < depth; i++) {
             auto bufferOp = rewriter.create<AMDAIE::BufferOp>(
-                rewriter.getUnknownLoc(), memrefType, tileOp, nullptr);
+                rewriter.getUnknownLoc(), memrefType, tileOp, nullptr, nullptr, nullptr);
             buffers.push_back(bufferOp.getResult());
           }
 

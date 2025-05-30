@@ -20,7 +20,7 @@ void addAMDAIEObjectFifoLoweringPasses(
     bool enableCoalescingLoops, bool enableCollapsingUnitDims,
     OutliningStrategy enableFunctionOutlining, int outliningLoopInCallCount,
     bool insertLoopAroundCoreBlock, uint32_t numCols, bool emitCtrlPkt,
-    uint32_t coreStackSize);
+    uint32_t coreStackSize, bool reprogramDmas);
 
 /// Add passes to lower from MLIR-AIR through AIE. This is
 /// currently the default passes used for lowering after IREEs tiling.
@@ -45,7 +45,7 @@ void buildAMDAIETransformPassPipeline(
     PacketFlowStrategy packetFlowStrategy, bool enableCoalescingLoops,
     bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
     int outliningLoopInCallCount, bool insertLoopAroundCoreBlock,
-    bool emitCtrlPkt, uint32_t coreStackSize);
+    bool emitCtrlPkt, uint32_t coreStackSize, bool reprogramDmas);
 
 /// Populates passes needed to lower the IR via a Pack-Peel based approach.
 void addPackPeelBasedPassPipeline(OpPassManager &passManager,
@@ -90,6 +90,12 @@ std::unique_ptr<Pass> createAMDAIEAssignLogicalObjectFifoDepthPass(
 
 /// Create a pass to assign BD ids to `amdaie.npu.dma_cpy_nd` operations.
 std::unique_ptr<Pass> createAMDAIEAssignNpuDmaBdIdsPass();
+
+/// Create a pass to assign BD ids to `amdaie.npu.dma_cpy_nd` operations for L2/L1.
+std::unique_ptr<Pass> createAMDAIEAssignBDIDsPass();
+
+/// Create a pass to assign buffer addresses.
+std::unique_ptr<Pass> createAMDAIEAssignBufferAddressPass(AMDAIEAssignBufferAddressOptions options = {});
 
 /// Create a pass to assign packet ids to `amdaie.flow` operations.
 std::unique_ptr<Pass> createAMDAIEAssignPacketIdsPass();
@@ -148,7 +154,7 @@ std::unique_ptr<Pass> createAMDAIEConvertDeviceToControlPacketsPass(
 std::unique_ptr<Pass> createAMDAIEInsertInfiniteLoopAroundCoreBlockPass();
 
 /// Pass to create a single AIE workgroup.
-std::unique_ptr<Pass> createAMDAIECreateAIEWorkgroupPass();
+std::unique_ptr<Pass> createAMDAIECreateAIEWorkgroupPass(AMDAIECreateAIEWorkgroupOptions options = {});
 
 /// Pass to create references to allocations in L1 memory space.
 std::unique_ptr<Pass> createAMDAIECreateReferenceToAllocationPass();
