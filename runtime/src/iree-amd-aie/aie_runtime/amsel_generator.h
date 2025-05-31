@@ -18,42 +18,6 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 
-namespace llvm {
-/// To use a vector of ports as a DenseMap key.
-/// Implementation is from:
-/// https://github.com/iree-org/iree/blob/e19950c4c01b20c329d22e729212d182da9fee76/compiler/src/iree/compiler/Utils/SmallVectorDenseMapInfo.h#L20
-template <typename T, unsigned N>
-struct DenseMapInfo<SmallVector<T, N>> {
-  static SmallVector<T, N> getEmptyKey() {
-    return SmallVector<T, N>(1, llvm::DenseMapInfo<T>::getEmptyKey());
-  }
-
-  static SmallVector<T, N> getTombstoneKey() {
-    return SmallVector<T, N>(1, llvm::DenseMapInfo<T>::getTombstoneKey());
-  }
-
-  static unsigned getHashValue(const SmallVector<T, N> &v) {
-    hash_code hash = llvm::DenseMapInfo<T>::getHashValue(
-        llvm::DenseMapInfo<T>::getEmptyKey());
-    return std::accumulate(v.begin(), v.end(), hash,
-                           [](hash_code hash, const T &element) {
-                             return hash_combine(hash, element);
-                           });
-  }
-
-  static bool isEqual(const SmallVector<T, N> &lhs,
-                      const SmallVector<T, N> &rhs) {
-    if (lhs.size() != rhs.size()) {
-      return false;
-    }
-
-    return llvm::all_of_zip(lhs, rhs, [](const T &lhs, const T &rhs) {
-      return DenseMapInfo<T>::isEqual(lhs, rhs);
-    });
-  }
-};
-}  // namespace llvm
-
 namespace mlir::iree_compiler::AMDAIE {
 
 /// Utility to assign msels to physical 'port and ID's based on the connection
