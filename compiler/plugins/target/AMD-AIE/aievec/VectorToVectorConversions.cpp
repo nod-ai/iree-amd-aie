@@ -84,7 +84,7 @@ static SmallVector<Value> getCollapsedIndices(RewriterBase &rewriter,
       indices.begin(), indices.begin() + firstDimToCollapse);
   SmallVector<Value> indicesToCollapse(indices.begin() + firstDimToCollapse,
                                        indices.end());
-  if (llvm::all_of(indicesToCollapse, isZeroIndex)) {
+  if (llvm::all_of(indicesToCollapse, isZeroInteger)) {
     indicesAfterCollapsing.push_back(indicesToCollapse[0]);
     return indicesAfterCollapsing;
   }
@@ -142,7 +142,7 @@ class FlattenContiguousRowMajorTransferReadPattern
     Location loc = transferReadOp.getLoc();
     Value vector = transferReadOp.getVector();
     VectorType vectorType = transferReadOp.getVectorType();
-    TypedValue<ShapedType> source = transferReadOp.getSource();
+    TypedValue<ShapedType> source = transferReadOp.getBase();
     MemRefType sourceType = dyn_cast<MemRefType>(source.getType());
     assert(sourceType && "expected a memref type");
 
@@ -222,7 +222,7 @@ class FlattenContiguousRowMajorTransferWritePattern
     Location loc = transferWriteOp.getLoc();
     Value vector = transferWriteOp.getVector();
     VectorType vectorType = cast<VectorType>(vector.getType());
-    Value source = transferWriteOp.getSource();
+    Value source = transferWriteOp.getBase();
     MemRefType sourceType = dyn_cast<MemRefType>(source.getType());
 
     // 0. Check pre-conditions
@@ -334,7 +334,7 @@ struct CanonicalizeTrivialReadAccessSubviewOpPattern
   LogicalResult matchAndRewrite(vector::TransferReadOp readOp,
                                 PatternRewriter &rewriter) const override {
     auto subViewOp = dyn_cast_if_present<memref::SubViewOp>(
-        readOp.getSource().getDefiningOp());
+        readOp.getBase().getDefiningOp());
     if (!subViewOp) return failure();
     if (failed(isAllZeroOffsetAccess(readOp.getIndices()))) return failure();
     SmallVector<Value> newIndices =
@@ -390,7 +390,7 @@ struct SerializeSplatTransferReadWithTargetLoadSize
   AMDAIE::AMDAIEDeviceModel deviceModel;
   LogicalResult matchAndRewrite(vector::TransferWriteOp writeOp,
                                 PatternRewriter &rewriter) const override {
-    Value writeDestination = writeOp.getSource();
+    Value writeDestination = writeOp.getBase();
     MemRefType writeDestinationType =
         dyn_cast<MemRefType>(writeDestination.getType());
 
@@ -548,7 +548,7 @@ struct CanonicalizeTrivialWriteAccessSubviewOpPattern
   LogicalResult matchAndRewrite(vector::TransferWriteOp writeOp,
                                 PatternRewriter &rewriter) const override {
     auto subViewOp = dyn_cast_if_present<memref::SubViewOp>(
-        writeOp.getSource().getDefiningOp());
+        writeOp.getBase().getDefiningOp());
     if (!subViewOp) return failure();
     if (failed(isAllZeroOffsetAccess(writeOp.getIndices()))) return failure();
     SmallVector<Value> newIndices =
@@ -660,7 +660,7 @@ struct ConvertSplatTransferReadToBroadcastPattern
     AffineMap map = readOp.getPermutationMap();
     if (!map.isConstant()) return failure();
 
-    Value srcMemRef = readOp.getSource();
+    Value srcMemRef = readOp.getBase();
     SmallVector<Value, 8> indices;
     Value newIdx;
     int64_t offset = 0;
@@ -871,7 +871,7 @@ struct ToMinorIdentityTransferWritePattern
           writeOp, "cannot be expressed with a minor-identity permutation map");
     }
 
-    TypedValue<ShapedType> source = writeOp.getSource();
+    TypedValue<ShapedType> source = writeOp.getBase();
 
     auto [newShape, newInBounds] = getUnsqueezedShapeAndInBounds(
         source.getType().getRank(), maybeDims.value(), rewriter, writeOp);
@@ -882,7 +882,7 @@ struct ToMinorIdentityTransferWritePattern
     Value newVector = rewriter.create<vector::ShapeCastOp>(
         writeOp.getLoc(), newVectorType, writeOp.getVector());
 
-    MemRefType sourceType = cast<MemRefType>(writeOp.getSource().getType());
+    MemRefType sourceType = cast<MemRefType>(writeOp.getBase().getType());
 
     if (!mlir::vector::isContiguousSlice(sourceType, newVectorType))
       return failure();
@@ -937,7 +937,7 @@ struct ToMinorIdentityTransferReadPattern
         getDimsOfIdentitySubsampleMap(perm);
     if (failed(maybeDims)) return failure();
 
-    MemRefType sourceType = cast<MemRefType>(readOp.getSource().getType());
+    MemRefType sourceType = cast<MemRefType>(readOp.getBase().getType());
 
     auto [newShape, newInBounds] = getUnsqueezedShapeAndInBounds(
         sourceType.getRank(), maybeDims.value(), rewriter, readOp);
@@ -947,7 +947,7 @@ struct ToMinorIdentityTransferReadPattern
     if (!vector::isContiguousSlice(sourceType, newVectorTy)) return failure();
 
     auto newReadOp = rewriter.create<vector::TransferReadOp>(
-        readOp.getLoc(), newVectorTy, readOp.getSource(), readOp.getIndices());
+        readOp.getLoc(), newVectorTy, readOp.getBase(), readOp.getIndices());
 
     newReadOp.getProperties().setInBounds(
         rewriter.getBoolArrayAttr(newInBounds));
@@ -1361,7 +1361,7 @@ FailureOr<Value> getAlignedTransferRead(
   VectorType shortType = readOp.getVectorType();
   Location loc = readOp.getLoc();
   Value padding = readOp.getPadding();
-  ShapedType sourceType = readOp.getSource().getType();
+  ShapedType sourceType = readOp.getBase().getType();
   Type elementType = shortType.getElementType();
 
   if (sourceType.getRank() != 1 || shortType.getRank() != 1) {
@@ -1443,7 +1443,7 @@ FailureOr<Value> getAlignedTransferRead(
   // Create the aligned transfer read for a vector 2x as long that covers the
   // elements of the unaligned vector.
   Value longVec = rewriter.create<vector::TransferReadOp>(
-      loc, longType, readOp.getSource(), SmallVector<Value>{newIndex}, padding,
+      loc, longType, readOp.getBase(), SmallVector<Value>{newIndex}, padding,
       SmallVector<bool>{allInBounds});
 
   Value elementBytes =
