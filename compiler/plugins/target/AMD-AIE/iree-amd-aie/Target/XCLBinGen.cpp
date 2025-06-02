@@ -1274,6 +1274,8 @@ void addLowerToLLVMPasses(OpPassManager &pm) {
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
   pm.addPass(createConvertControlFlowToLLVMPass());
+  pm.addPass(
+      mlir::iree_compiler::AMDAIE::createAMDAIERemoveWrapFlagFromGepPass());
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
 }

@@ -104,6 +104,7 @@ iree_cc_library(
     "AMDAIEPeelForLoop.cpp"
     "AMDAIEPropagateDataLayout.cpp"
     "AMDAIERemoveMemorySpace.cpp"
+    "AMDAIERemoveWrapFlagFromGep.cpp"
     "AMDAIESinkIntoCore.cpp"
     "AMDAIESplitControlPacketData.cpp"
     "AMDAIESplitLogicalObjFifos.cpp"
