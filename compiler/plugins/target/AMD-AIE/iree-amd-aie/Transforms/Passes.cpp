@@ -916,7 +916,6 @@ void addMLIRAIELoweringPasses(OpPassManager &pm,
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
   pm.addPass(createAMDAIELoadStoreAlignmentResetPass());
-  pm.addPass(createAMDAIERemoveWrapFlagFromGepPass());
   pm.addPass(createCanonicalizerPass());
 }
 
