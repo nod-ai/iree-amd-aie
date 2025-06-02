@@ -815,8 +815,11 @@ static LogicalResult setRootConfigForSoftmaxCopyPipeline(
     mlir::FunctionOpInterface entryPointFn, linalg::SoftmaxOp softmaxOp,
     AMDAIEDevice targetDevice, uint32_t numRows, uint32_t numCols,
     std::string enableAMDAIEUkernels) {
+  // For now, we are targeting a single column of cores, and the tile sizes are
+  // hardcoded. We don't tile the reduction dim as the softmax op is not a pure
+  // reduction op.
   if (failed(setOpConfigAndEntryPointFnTranslation(
-          entryPointFn, softmaxOp, TileSizesListType{{64, 0}, {32, 0}, {0, 0}},
+          entryPointFn, softmaxOp, TileSizesListType{{128, 0}, {32, 0}, {0, 0}},
           IREE::Codegen::DispatchLoweringPassPipeline::Custom))) {
     return failure();
   }
