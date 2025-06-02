@@ -344,6 +344,10 @@ std::unique_ptr<Pass> createAMDAIEPropagateDataLayoutPass();
 /// Create pass to reset the alignment of LLVM load operations.
 std::unique_ptr<Pass> createAMDAIELoadStoreAlignmentResetPass();
 
+/// Create pass to remove the wrap-flag attribute from all llvm getelementptr
+/// (GEP) operations.
+std::unique_ptr<Pass> createAMDAIERemoveWrapFlagFromGepPass();
+
 void registerAMDAIEPasses();
 
 }  // namespace mlir::iree_compiler::AMDAIE
