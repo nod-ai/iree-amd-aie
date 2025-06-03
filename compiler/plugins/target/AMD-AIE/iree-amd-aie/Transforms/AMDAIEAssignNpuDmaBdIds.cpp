@@ -173,6 +173,8 @@ class TileDmaBatchGraph {
 
   void addDmaToBatch(AMDAIE::TileOp tile, AMDAIE::NpuDmaCpyNdOp dmaOp) {
     std::unique_ptr<DmaBatch> &lastDmaBatch = getLastDmaBatch(tile);
+    llvm::outs()<<"Adding : "<<dmaOp<<" to TILE : "<<tile<<"\n";
+    llvm::outs().flush();
     lastDmaBatch->currentDmaOps.push_back(dmaOp);
   };
 

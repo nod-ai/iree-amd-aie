@@ -162,4 +162,22 @@ def AMDAIE_PackingConfigAttr :
   }];
 }
 
+
+def BDDimLayoutAttr : AttrDef<AMDAIE_Dialect, "BDDimLayout", []> {
+  let mnemonic = "bd_dim_layout";
+  let parameters = (ins
+    "uint16_t" : $size,
+    "uint32_t" : $stride
+  );
+
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
+def BDDimLayoutArrayAttr : ArrayOfAttr<
+    /*dialect*/AMDAIE_Dialect,
+    /*attrName*/"BDDimLayoutArray",
+    /*attrMnemonic*/"bd_dim_layout_array",
+    /*eltName*/BDDimLayoutAttr.cppClassName
+>;
+
 #endif // IREE_COMPILER_AMDAIE_DIALECT_IREEAMDAIEATTRS
