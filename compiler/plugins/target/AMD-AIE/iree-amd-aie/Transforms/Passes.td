@@ -508,6 +508,18 @@ def AMDAIELoadStoreAlignmentReset :
     }];
 }
 
+def AMDAIERemoveWrapFlagFromGep:
+    Pass<"iree-amdaie-remove-wrap-flag-from-gep", ""> {
+    let summary = "Remove the wrap flag attribute from getelementptr.";
+    let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIERemoveWrapFlagFromGepPass()";
+    let description = [{
+       The llvm getelementptr (GEP) operation has as attribute that carries knowledge about
+       whether pointer calculation arithmetic wraps/overflows, which can be used for later
+       optimization. This attribute was introduced after peano forked, and so peano does not
+       recognise it. This pass removes the attribute.
+    }];
+}
+
 def AMDAIELocalizeLogicalObjectfifo :
     Pass<"iree-amdaie-localize-logicalobjectfifo", "ModuleOp"> {
   let summary = "Localize logical objectfifos to local parallel loop scopes.";
