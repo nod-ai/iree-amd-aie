@@ -73,27 +73,6 @@ def AIEVec_ExtOp:
   }];
 }
 
-def AIEVec_UPSOp:
-  AIEVec_Op<"ups", [
-    Pure
-  ]>,
-  Arguments<(ins AnyVectorOfNonZeroRank:$source,
-          DefaultValuedAttr<ConfinedAttr<I8Attr, [IntNonNegative]>, "0">:$shift)>,
-  Results<(outs AnyVectorOfNonZeroRank:$result)> {
-  let summary = "AIE ups";
-  let description = [{
-    AMD-specific upshift intrinsic. Moves data from AIE vector data type
-    to accumulator data type. The adjustment in precision is controlled by
-    the shift parameter.
-    `$result = ups($source, $shift)`
-  }];
-  let builders = [
-    OpBuilder<(ins "mlir::Value":$source, "int8_t":$shift),
-    [{build($_builder, $_state, source.getType(), source, shift);}]>
-  ];
-  let hasFolder = 1;
-}
-
 def AIEVec_CastOp:
   AIEVec_Op<"cast", [
     Pure
@@ -112,21 +91,6 @@ def AIEVec_CastOp:
   let hasFolder = 1;
 }
 
-def AIEVec_SRSOp:
-  AIEVec_Op<"srs", [
-    Pure
-  ]>,
-  Arguments<(ins AnyVectorOfNonZeroRank:$source, AnyInteger:$shift)>,
-  Results<(outs AnyVectorOfNonZeroRank:$result)> {
-  let summary = "AIE srs";
-  let description = [{
-    AMD-specific shift-round-saturate intrinsic. Moves values from
-    accumulator data type to AIE vector data types. The adjustment in
-    precision is controlled by the shift parameter.
-    `$result = srs($source, $shift)`
-  }];
-  let hasFolder = 1;
-}
 
 def AIEVec_MatMulOp:
   AIEVec_Op<"matmul", [Pure, AllTypesMatch<["acc", "result"]>]>,
@@ -316,62 +280,6 @@ def AIEVec_ShuffleOp : AIEVec_Op<"shuffle",
   }];
   let assemblyFormat = [{$lhs (`,` $rhs^)? $mode attr-dict `:` type($result)}];
   let hasVerifier = 1;
-}
-
-def AIEVec_MulElemOp:
-  AIEVec_Op<"mul_elem", [
-    Pure,
-    SameTypeOperands,
-    SameOperandsShape,
-    SameOperandsAndResultShape,
-    isOperandResultTypePairValidForAIE2MulElem<"lhs", "rhs", "result">
-  ]>,
-  Arguments<(ins
-    VectorOfLengthAndType<[16, 32], [I8, I16, I32, BF16, F32]>:$lhs,
-    VectorOfLengthAndType<[16, 32], [I8, I16, I32, BF16, F32]>:$rhs)>,
-  Results<(outs
-    VectorOfLengthAndType<[16, 32], [I32, I64, F32]>:$result)> {
-  let summary = "AIE2 vector element-wise multiply";
-  let description = [{
-    AMD-specific multiply operation that multiplies two 1-D vectors in the same channel.
-    The vector sizes are at least 512 bits.
-    `$result = `$lhs * $rhs`.
-    Currently, the following are the supported type combinations:
-        lhs                | rhs                | Accumulator
-      :------------------:|:------------------:|:-----------------:
-        `vector<32xi8>`    | `vector<32xi8>`    | `vector<32xi32>`
-        `vector<32xi16>`   | `vector<32xi16>`   | `vector<32xi32>`
-        `vector<16xi32>`   | `vector<16xi32>`   | `vector<16xi64>`
-        `vector<16xbf16>`  | `vector<16xbf16>`  | `vector<16xf32>`
-        `vector<16xf32>`   | `vector<16xf32>`   | `vector<16xf32>`'
-  }];
-}
-
-def AIEVec_FMAElemOp :
-  AIEVec_Op<"mac_elem", [
-    Pure
-  ]>,
-  Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs, AnyVectorOfNonZeroRank:$acc,
-               DefaultValuedAttr<BoolAttr, "false">:$fmsub)>,
-  Results<(outs AnyVectorOfNonZeroRank:$result)> {
-  let summary = "AIE2 element-wise vector fused multiply-add";
-  let description = [{
-    AMD-specific multiply-add operation. It multiplies two 1-D vectors in the same channel,
-    and adds the result to an accumulator.
-    `$result = `$lhs * $rhs + $acc`.
-    Note: the same operator can be used as fmsub operator by setting the
-    'fmsub' bool to true.
-  }];
-  let builders = [
-    OpBuilder<(ins "mlir::Value":$lhs, "mlir::Value":$rhs, "mlir::Value":$acc,
-            "bool":$fmsub),
-    [{build($_builder, $_state, acc.getType(), lhs, rhs, acc,
-            fmsub);}]>
-  ];
-  let extraClassDeclaration = [{
-    // Get the attribute names
-    llvm::StringRef getSubAttrName() { return "fmsub"; }
-  }];
 }
 
 #endif // AIEVEC_OPS

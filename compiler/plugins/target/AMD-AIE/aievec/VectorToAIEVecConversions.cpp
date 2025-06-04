@@ -51,92 +51,8 @@ static std::optional<Value> getSourceOfWideningOp(Value src) {
   if (auto extUIOp = src.getDefiningOp<arith::ExtUIOp>())
     return extUIOp.getIn();
   if (auto extFOp = src.getDefiningOp<arith::ExtFOp>()) return extFOp.getIn();
-  if (auto srsOp = src.getDefiningOp<aievec::SRSOp>()) {
-    // Conversion through AIE intrinsics takes two steps:
-    //     1) Load to accumulator: aievec.ups
-    //     2) Move from accumulator: aievec.srs
-    auto srsSource = srsOp.getSource();
-    if (srsSource)
-      if (auto upsOp = srsSource.getDefiningOp<aievec::UPSOp>())
-        return upsOp.getSource();
-  }
-  if (auto castOp = src.getDefiningOp<aievec::CastOp>()) {
-    // Conversion through AIE intrinsics can also take the following two steps:
-    //     1) Load to accumulator: aievec.ups
-    //     2) Move from accumulator: aievec.cast
-    auto castSource = castOp.getSource();
-    if (castSource)
-      if (auto upsOp = castSource.getDefiningOp<aievec::UPSOp>())
-        return upsOp.getSource();
-  }
   return std::optional<Value>();
 }
-
-// Convert `vector.fma` to `aievec.mac_elem`. Only `vector<16xf32>` and
-// `vector<16xbf16>` operand types are supported. In the case of vectors with
-// `f32` elemental type, this pattern will try to match `bf16` to `f32`
-// widening ops in the `lhs` and `rhs` operands, or fail otherwise.
-// TODO: When sign extensions are not found, a conversion from `f32` to `bf16`
-// TODO: can be inserted to emulate `f32` fma with `bf16` logic.
-struct ConvertVectorFMAOpToAIEVecFMAElemOpPattern
-    : OpConversionPattern<vector::FMAOp> {
-  using OpConversionPattern::OpConversionPattern;
-
-  ConvertVectorFMAOpToAIEVecFMAElemOpPattern(MLIRContext *context,
-                                             unsigned shiftParam = 0)
-      : OpConversionPattern(context), shiftParam(shiftParam) {}
-
-  LogicalResult matchAndRewrite(
-      vector::FMAOp fmaOp, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
-    // Verify the vector type is supported by AIE2
-    auto resVecTy = cast<VectorType>(fmaOp.getType());
-    auto resElemTy = resVecTy.getElementType();
-    unsigned numElems = getVectorLaneSize(resVecTy);
-
-    if (numElems != 16 || (!resElemTy.isF32() && !resElemTy.isBF16()))
-      return rewriter.notifyMatchFailure(
-          fmaOp, "Unsupported operand types in vector.fma lowering.");
-
-    Value lhs = adaptor.getLhs();
-    Value rhs = adaptor.getRhs();
-    Value acc = adaptor.getAcc();
-    if (resElemTy.isBF16())
-      acc = rewriter.create<aievec::UPSOp>(
-          fmaOp.getLoc(), VectorType::get({16}, rewriter.getF32Type()), acc,
-          shiftParam);
-    else {
-      lhs = getSourceOfWideningOp(lhs).value_or(nullptr);
-      rhs = getSourceOfWideningOp(rhs).value_or(nullptr);
-      if (!lhs || !rhs)
-        return rewriter.notifyMatchFailure(
-            fmaOp,
-            "vector.fma operands are f32, and they don't come from "
-            "arith.extf on bf16; can't lower to aievec.");
-      if (!cast<VectorType>(lhs.getType()).getElementType().isBF16() ||
-          !cast<VectorType>(rhs.getType()).getElementType().isBF16())
-        return rewriter.notifyMatchFailure(
-            fmaOp,
-            "vector.fma operands come from arith.extf, but the source "
-            "of the widening op is not bf16; can't lower to aievec.");
-    }
-    Value newOp = rewriter.create<aievec::FMAElemOp>(
-        fmaOp.getLoc(), acc.getType(), lhs, rhs, acc, /*fmsub=*/false);
-
-    if (resElemTy.isBF16()) {
-      auto shiftParamOp = rewriter.create<arith::ConstantOp>(
-          fmaOp.getLoc(), rewriter.getI32IntegerAttr(shiftParam));
-      newOp = rewriter.create<aievec::SRSOp>(fmaOp.getLoc(), resVecTy, newOp,
-                                             shiftParamOp);
-    }
-
-    rewriter.replaceOp(fmaOp, newOp);
-
-    return success();
-  }
-
-  unsigned shiftParam;
-};
 
 /// The types of A, B, and C, for an integer matrix-multiplication where
 ///
@@ -528,175 +444,9 @@ static bool hasSigmoidComputationChain(DivFOpTy divfOp, arith::NegFOp &negOp) {
   return negOp != nullptr;
 }
 
-template <typename SrcOpTy>
-struct LowerExtOpPattern : OpConversionPattern<SrcOpTy> {
-  using OpConversionPattern<SrcOpTy>::OpConversionPattern;
-  using OpAdaptor = typename SrcOpTy::Adaptor;
-
-  LogicalResult matchAndRewrite(
-      SrcOpTy extOp, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
-    VectorType srcType = dyn_cast<VectorType>(extOp.getIn().getType());
-    VectorType dstType = dyn_cast<VectorType>(extOp.getOut().getType());
-
-    auto accType = getVectorOpDestType(srcType, /*AIE2 =*/true);
-    auto upsOp =
-        rewriter.create<aievec::UPSOp>(extOp.getLoc(), accType, extOp.getIn());
-
-    if (dstType.getElementType().getIntOrFloatBitWidth() == 16) {
-      auto shiftParamOp = rewriter.create<arith::ConstantOp>(
-          extOp.getLoc(), rewriter.getI32IntegerAttr(0));
-      rewriter.replaceOpWithNewOp<aievec::SRSOp>(
-          extOp, dstType, upsOp.getResult(), shiftParamOp.getResult());
-    } else
-      rewriter.replaceOpWithNewOp<aievec::CastOp>(
-          extOp, dstType, upsOp.getResult(), /*isResAcc*/ false);
-
-    return success();
-  }
-};
-
-using LowerExtFOpPattern = LowerExtOpPattern<arith::ExtFOp>;
-using LowerExtSIOpPattern = LowerExtOpPattern<arith::ExtSIOp>;
-
-template <typename SrcOpTy>
-struct LowerTruncOpPattern : OpConversionPattern<SrcOpTy> {
-  using OpConversionPattern<SrcOpTy>::OpConversionPattern;
-  using OpAdaptor = typename SrcOpTy::Adaptor;
-
-  LogicalResult matchAndRewrite(
-      SrcOpTy truncOp, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
-    VectorType srcType = dyn_cast<VectorType>(truncOp.getIn().getType());
-    VectorType dstType = dyn_cast<VectorType>(truncOp.getOut().getType());
-    Type scalarType = srcType.getElementType();
-    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
-
-    unsigned laneSize = getVectorLaneSize(srcType);
-    auto accType = isa<IntegerType>(scalarType) && (elWidth == 32)
-                       ? createVectorType(laneSize, scalarType)
-                       : getVectorOpDestType(srcType, /*AIE2 =*/true);
-
-    auto shiftParamOp = rewriter.create<arith::ConstantOp>(
-        truncOp.getLoc(), rewriter.getI32IntegerAttr(0));
-    if (elWidth == 16) {
-      auto upsOp = rewriter.create<aievec::UPSOp>(truncOp.getLoc(), accType,
-                                                  truncOp.getIn());
-      rewriter.replaceOpWithNewOp<aievec::SRSOp>(
-          truncOp, dstType, upsOp.getResult(), shiftParamOp.getResult());
-    } else {
-      auto castOp = rewriter.create<aievec::CastOp>(truncOp.getLoc(), accType,
-                                                    truncOp.getIn(), true);
-      rewriter.replaceOpWithNewOp<aievec::SRSOp>(
-          truncOp, dstType, castOp.getResult(), shiftParamOp.getResult());
-    }
-
-    return success();
-  }
-};
-
-using LowerTruncFOpPattern = LowerTruncOpPattern<arith::TruncFOp>;
-using LowerTruncIOpPattern = LowerTruncOpPattern<arith::TruncIOp>;
-
-static void populateAIEVecCommonConversionPatterns(
-    RewritePatternSet &patterns) {
-  // clang-format off
-  patterns.add<LowerExtFOpPattern,
-               LowerExtSIOpPattern,
-               LowerTruncFOpPattern,
-               LowerTruncIOpPattern>(patterns.getContext());
-  // clang-format on
-}
-
 static void configureAIEVecCommonLegalizations(ConversionTarget &target) {
-  target.addLegalDialect<aievec::AIEVecDialect, arith::ArithDialect,
-                         emitc::EmitCDialect>();
+  target.addLegalDialect<aievec::AIEVecDialect, arith::ArithDialect>();
   target.addIllegalOp<vector::ExtractStridedSliceOp>();
-
-  target.addDynamicallyLegalOp<arith::ExtFOp>([](arith::ExtFOp extfOp) {
-    auto srcType = dyn_cast<VectorType>(extfOp.getIn().getType());
-    auto dstType = dyn_cast<VectorType>(extfOp.getOut().getType());
-    if (!srcType || !dstType) return true;
-
-    Type srcScalarType = srcType.getElementType();
-    Type dstScalarType = dstType.getElementType();
-    if (!isa<FloatType>(srcScalarType) || !isa<FloatType>(dstScalarType))
-      return true;
-
-    unsigned srcLaneSize = aievec::getVectorLaneSize(srcType);
-    unsigned dstLaneSize = aievec::getVectorLaneSize(dstType);
-    unsigned srcElWidth = srcScalarType.getIntOrFloatBitWidth();
-    unsigned dstElWidth = dstScalarType.getIntOrFloatBitWidth();
-    if (srcElWidth != 16 || srcLaneSize != 16 || dstElWidth != 32 ||
-        dstLaneSize != 16)
-      return true;
-
-    return false;
-  });
-
-  target.addDynamicallyLegalOp<arith::ExtSIOp>([](arith::ExtSIOp extsiOp) {
-    auto srcType = dyn_cast<VectorType>(extsiOp.getIn().getType());
-    auto dstType = dyn_cast<VectorType>(extsiOp.getOut().getType());
-    if (!srcType || !dstType) return true;
-
-    Type srcScalarType = srcType.getElementType();
-    Type dstScalarType = dstType.getElementType();
-    if (!isa<IntegerType>(srcScalarType) || !isa<IntegerType>(dstScalarType))
-      return true;
-
-    unsigned srcLaneSize = aievec::getVectorLaneSize(srcType);
-    unsigned dstLaneSize = aievec::getVectorLaneSize(dstType);
-    unsigned srcElWidth = srcScalarType.getIntOrFloatBitWidth();
-    unsigned dstElWidth = dstScalarType.getIntOrFloatBitWidth();
-    if (!(srcLaneSize == 32 && (dstElWidth > srcElWidth) &&
-          (dstLaneSize == srcLaneSize)))
-      return true;
-
-    return false;
-  });
-
-  target.addDynamicallyLegalOp<arith::TruncFOp>([](arith::TruncFOp truncfOp) {
-    auto srcType = dyn_cast<VectorType>(truncfOp.getIn().getType());
-    auto dstType = dyn_cast<VectorType>(truncfOp.getOut().getType());
-    if (!srcType || !dstType) return true;
-
-    Type srcScalarType = srcType.getElementType();
-    Type dstScalarType = dstType.getElementType();
-    if (!isa<FloatType>(srcScalarType) || !isa<FloatType>(dstScalarType))
-      return true;
-
-    unsigned srcLaneSize = aievec::getVectorLaneSize(srcType);
-    unsigned dstLaneSize = aievec::getVectorLaneSize(dstType);
-    unsigned srcElWidth = srcScalarType.getIntOrFloatBitWidth();
-    unsigned dstElWidth = dstScalarType.getIntOrFloatBitWidth();
-    if (srcElWidth != 32 || srcLaneSize != 16 || dstElWidth != 16 ||
-        dstLaneSize != 16)
-      return true;
-
-    return false;
-  });
-
-  target.addDynamicallyLegalOp<arith::TruncIOp>([](arith::TruncIOp trunciOp) {
-    auto srcType = dyn_cast<VectorType>(trunciOp.getIn().getType());
-    auto dstType = dyn_cast<VectorType>(trunciOp.getOut().getType());
-    if (!srcType || !dstType) return true;
-
-    Type srcScalarType = srcType.getElementType();
-    Type dstScalarType = dstType.getElementType();
-    if (!isa<IntegerType>(srcScalarType) || !isa<IntegerType>(dstScalarType))
-      return true;
-
-    unsigned srcLaneSize = aievec::getVectorLaneSize(srcType);
-    unsigned dstLaneSize = aievec::getVectorLaneSize(dstType);
-    unsigned srcElWidth = srcScalarType.getIntOrFloatBitWidth();
-    unsigned dstElWidth = dstScalarType.getIntOrFloatBitWidth();
-
-    if (!(srcLaneSize == 32 && (dstElWidth < srcElWidth) &&
-          (dstLaneSize == srcLaneSize)))
-      return true;
-
-    return false;
-  });
 
   target.addDynamicallyLegalOp<math::ExpOp>([](math::ExpOp expOp) {
     auto srcType = dyn_cast<VectorType>(expOp.getOperand().getType());
@@ -1101,8 +851,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target) {
         return false;
       });
 
-  target.addIllegalOp<vector::ContractionOp, vector::TransposeOp,
-                      vector::FMAOp>();
+  target.addIllegalOp<vector::ContractionOp, vector::TransposeOp>();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1142,12 +891,10 @@ struct LowerVectorToAIEVec : PassWrapper<LowerVectorToAIEVec, OperationPass<>> {
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
     ConversionTarget target(*context);
-    populateAIEVecCommonConversionPatterns(patterns);
     configureAIEVecCommonLegalizations(target);
 
     // TODO: Reorder these alphabetically
-    patterns.add<LowerVectorTransposeOpToAIEVecShuffleOpPattern,
-                 ConvertVectorFMAOpToAIEVecFMAElemOpPattern>(
+    patterns.add<LowerVectorTransposeOpToAIEVecShuffleOpPattern>(
         patterns.getContext());
     patterns.add<LowerVectorContractionOpToAIEVecMatMulPattern>(
         patterns.getContext(), maybeDevice.value());
