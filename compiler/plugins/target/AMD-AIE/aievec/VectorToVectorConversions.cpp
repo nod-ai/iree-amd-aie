@@ -964,9 +964,6 @@ struct ToMinorIdentityTransferReadPattern
 /// are not rank-1. In this case all the operands are flattened to rank-1 with a
 /// vector.shape_cast.
 ///
-/// One example where this is required is for arith.truncf, because later
-/// aievec.srs in AIEVecToLLVM is expected to have 1-D source and target.
-///
 /// Example of what this pattern achieves (when TOp is arith::TruncFOp) :-
 /// INPUT
 ///     %0 = arith.truncf %inp : vector<2x3xf32> to vector<2x3xbf16>

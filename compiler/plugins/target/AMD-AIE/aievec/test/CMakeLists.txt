@@ -5,8 +5,6 @@ set(_mlir_files
   matmul.mlir
   canonicalize_vector_for_aievec.mlir
   test_shuffle.mlir
-  test_srs.mlir
-  test_ups.mlir
 )
 
 iree_lit_test_suite(
