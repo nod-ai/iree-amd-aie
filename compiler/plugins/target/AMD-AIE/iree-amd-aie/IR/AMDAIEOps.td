@@ -1197,7 +1197,7 @@ def AMDAIE_ConnectionOp: AMDAIE_Op<"connection",
     Value getTargetMemref() { return getTarget(); }
     Type getSourceType() { return getSource().getType(); }
     Type getTargetType() { return getTarget().getType(); }
-    FailureOr<NpuCircularDmaCpyNdOp> getNpuCircularDmaCpyNdUser();
+    FailureOr<NpuDmaCpyNdOp> getNpuDmaCpyNdUser();
   }];
 }
 
@@ -1786,20 +1786,24 @@ def AMDAIE_DMABDOp: AMDAIE_Op<"dma_bd", [
 }
 
 def AMDAIE_DMAStartOp: AMDAIE_Op<"dma_start", [
-    Terminator,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs I1:$valid)> {
 
   let summary = "An op to start DMA";
   let arguments = (
-    ins DMAChannelDir:$channel_dir,
+    ins Index:$tile,
+        DMAChannelDir:$channel_dir,
         ConfinedAttr<I8Attr, [IntMinValue<0>]>:$channel_index,
         // `repeat_count==1` means "do it once".
         DefaultValuedAttr<I8Attr, "1">:$repeat_count
   );
-  let successors = (successor AnySuccessor:$dest, AnySuccessor:$chain);
+  let regions = (region AnyRegion:$body);
+  // let successors = (successor AnySuccessor:$dest, AnySuccessor:$chain);
+  // let assemblyFormat = [{
+  //   `(` $tile `,` $channel_dir `,` $channel_index `,` $dest `,` $chain (`,` `repeat_count` `=` $repeat_count^)? `)` attr-dict
+  // }];
   let assemblyFormat = [{
-    `(` $channel_dir `,` $channel_index `,` $dest `,` $chain (`,` `repeat_count` `=` $repeat_count^)? `)` attr-dict
+    `(` $tile `,` $channel_dir `,` $channel_index (`,` `repeat_count` `=` $repeat_count^)? `)` regions attr-dict
   }];
 }
 

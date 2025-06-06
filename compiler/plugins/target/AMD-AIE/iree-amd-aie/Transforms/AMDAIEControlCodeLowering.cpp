@@ -13,6 +13,7 @@
 #include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/IR/Iterators.h"
 
 #define DEBUG_TYPE "iree-amdaie-controlcode-lowering"
 
@@ -202,6 +203,8 @@ struct HalfDmaCpyNdToNpuConverter final
   LogicalResult matchAndRewrite(
       AMDAIE::NpuHalfDmaCpyNdOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
+    llvm::outs()<<"HALF : "<<op<<"\n";
+    llvm::outs().flush();
     LLVM_DEBUG(llvm::dbgs() << "matchAndRewrite[AMDAIE::NpuHalfDmaCpyNdOp]\n");
     // First retrieve the connection and flow ops operated on.
     // NOTE(jornt): this will logic will simplify in the future when DMA ops can
@@ -240,6 +243,7 @@ struct HalfDmaCpyNdToNpuConverter final
     // otherwise, erase it. We must check both the memory space and port type,
     // as certain special ports (e.g., `CTRL`) have an undefined memory space
     // (currently set to 0), and we still want to exclude them.
+    // TODO(avarma): This needs to be addressed.
     if (op.getMemorySpaceAsUInt() != 0 ||
         maybeChannelOp->getPortType() != StrmSwPortType::DMA) {
       rewriter.eraseOp(op);
@@ -384,12 +388,13 @@ static FailureOr<size_t> getRepetitionCount(LogicalObjFifoOpInterface op) {
 
   for (Operation *userOp : op->getUsers()) {
     if (auto connectionOp = dyn_cast<AMDAIE::ConnectionOp>(userOp)) {
-      FailureOr<AMDAIE::NpuCircularDmaCpyNdOp> maybeNpuDmaUserOp =
-          connectionOp.getNpuCircularDmaCpyNdUser();
+      FailureOr<AMDAIE::NpuDmaCpyNdOp> maybeNpuDmaUserOp =
+          connectionOp.getNpuDmaCpyNdUser();
 
       if (failed(maybeNpuDmaUserOp)) continue;
 
-      AMDAIE::NpuCircularDmaCpyNdOp npuDma = maybeNpuDmaUserOp.value();
+      AMDAIE::NpuDmaCpyNdOp npuDma = maybeNpuDmaUserOp.value();
+      if (!npuDma) continue;
 
       if (connectionOp.getTarget() &&
           dyn_cast_if_present<LogicalObjFifoOpInterface>(
@@ -478,26 +483,43 @@ BDDimLayoutAndLength convertSizeStrideToBDDimLayoutArrayAttr(
 ///    aie.use_lock(%lock_0_1_52, Release, 2)
 ///    aie.next_bd ^bb1
 LogicalResult createDMABlocks(
-    IRRewriter &rewriter, Operation *memOp, AMDAIE::DMAChannelDir channelDir, int channelIndex,
+    IRRewriter &rewriter, Operation *tileOp, AMDAIE::DMAChannelDir channelDir, int channelIndex,
     ArrayRef<int64_t> sizes, ArrayRef<int64_t> strides, size_t acqNum,
     size_t relNum, int64_t offset, const SmallVector<AMDAIE::BufferOp> &bufferOps,
     const std::pair<AMDAIE::LockOp, AMDAIE::LockOp> &locks,
     std::optional<uint8_t> pktId) {
   OpBuilder::InsertionGuard g(rewriter);
 
-  Block &endBlock = memOp->getRegion(0).getBlocks().back();
-  assert(!endBlock.getOps<AMDAIE::EndOp>().empty() &&
-         "expected last block to have aie.end");
-  Block *lastDmaBlock = endBlock.getSinglePredecessor(),
-        *dmaBlock = rewriter.createBlock(&endBlock),
-        *bdBlock = rewriter.createBlock(&endBlock);
+  // Block &endBlock = memOp->getRegion(0).getBlocks().back();
+  // assert(!endBlock.getOps<AMDAIE::EndOp>().empty() &&
+  //        "expected last block to have aie.end");
+  // Block *lastDmaBlock = endBlock.getSinglePredecessor();
+  // Block *dmaBlock = rewriter.createBlock(&endBlock);
+  // Block *bdBlock = rewriter.createBlock(&endBlock);
 
   // Create DMA channel.
-  rewriter.setInsertionPointToStart(dmaBlock);
-  rewriter.create<AMDAIE::DMAStartOp>(rewriter.getUnknownLoc(), channelDir,
-                                   channelIndex, /*repeatCount=*/1, bdBlock,
-                                   &endBlock);
-  if (lastDmaBlock) lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
+  // rewriter.setInsertionPointToStart(dmaBlock);
+  auto dmaStartOp = rewriter.create<AMDAIE::DMAStartOp>(rewriter.getUnknownLoc(), tileOp->getResult(0), channelDir,
+                                   channelIndex, /*repeatCount=*/1);
+                                   llvm::outs()<<"1 = "<<dmaStartOp<<"\n";
+  rewriter.setInsertionPointToStart(&dmaStartOp.getRegion().emplaceBlock());
+  rewriter.create<AMDAIE::EndOp>(rewriter.getUnknownLoc());
+                                   llvm::outs()<<"2 = "<<dmaStartOp<<"\n";
+  Block &endBlock = dmaStartOp->getRegion(0).getBlocks().back();
+                                   llvm::outs()<<"3 = "<<dmaStartOp<<"\n";
+  Block *lastDmaBlock = endBlock.getSinglePredecessor();
+  // llvm::outs()<<"lastDmaBlock = "<<(*lastDmaBlock)<<"\n";
+  // llvm::outs().flush();
+  //                                  llvm::outs()<<"4 = "<<dmaStartOp<<"\n";
+  // Block *dmaBlock = rewriter.createBlock(&endBlock);
+  //                                  llvm::outs()<<"5 = "<<dmaStartOp<<"\n";
+  Block *bdBlock = rewriter.createBlock(&endBlock);
+                                   llvm::outs()<<"6 = "<<dmaStartOp<<"\n";
+  llvm::outs()<<"bdBlock = "<<(*bdBlock)<<"\n";
+  llvm::outs().flush();
+  if (lastDmaBlock) lastDmaBlock->getTerminator()->setSuccessor(bdBlock, 1);
+  // if (lastDmaBlock) lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
+                                   llvm::outs()<<"7 = "<<dmaStartOp<<"\n";
 
   auto createDMAOps = [&](Block *succ, AMDAIE::BufferOp buff,
                           AMDAIE::BDDimLayoutArrayAttr dims, bool shouldAcqLock,
@@ -570,9 +592,10 @@ LogicalResult createDMABlocks(
       bool isLast = llvm::all_of(
           indexRange, [&](size_t i) { return indices[i] == (sizes[i] - 1); });
       if (blockIndex == bufferOps.size() - 1 && isLast) {
-        succ = bdBlock;
+        succ = &endBlock;
       } else {
         succ = rewriter.createBlock(&endBlock);
+                                   llvm::outs()<<"8 = "<<dmaStartOp<<"\n";
       }
       rewriter.setInsertionPointToStart(curr);
       int64_t addOffset = 0;
@@ -635,10 +658,13 @@ LogicalResult foldDimsAndReturnAsStatic(
 /// 3. Source/target on MemTile: iterate through producer/consumer channels,
 /// lookup the correct `aie.mem` op and create new DMA BD blocks inside.
 LogicalResult connectionToAIE(
-    IRRewriter &rewriter, AMDAIE::AMDAIEDeviceModel deviceModel, AMDAIE::ConnectionOp connectionOp, Block *deviceBlock,
+    IRRewriter &rewriter, AMDAIE::AMDAIEDeviceModel deviceModel, AMDAIE::NpuDmaCpyNdOp dmaOp, Operation *deviceBlock,
     int &connectionIndex,
     DenseMap<Value, Operation *> &tileToMemOpMap) {
   LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::ConnectionOp]\n");
+  llvm::outs()<<"The DMA op : "<<dmaOp<<"\n";
+  llvm::outs().flush();
+  AMDAIE::ConnectionOp connectionOp = dmaOp.getConnectionOp();
   Value source = connectionOp.getSource();
   auto sourceObjFifoLikeOp =
       dyn_cast_if_present<AMDAIE::LogicalObjFifoOpInterface>(
@@ -660,7 +686,7 @@ LogicalResult connectionToAIE(
     return success();
   }
   // TODO(avarma): Need to set correct insertion point.
-  rewriter.setInsertionPoint(deviceBlock->getTerminator());
+  rewriter.setInsertionPoint(dmaOp);
   SmallVector<AMDAIE::ChannelOp> producerChannels;
   SmallVector<AMDAIE::ChannelOp> consumerChannels;
   for (Value producerChannel : connectionOp.getSourceChannels()) {
@@ -695,10 +721,12 @@ LogicalResult connectionToAIE(
 
   std::optional<uint8_t> packetId = maybeFlowOp->getPacketId();
 
-  FailureOr<AMDAIE::NpuCircularDmaCpyNdOp> maybeNpuDmaUserOp =
-      connectionOp.getNpuCircularDmaCpyNdUser();
+  llvm::outs()<<"Found connection op : "<<connectionOp<<"\n";
+  llvm::outs().flush();
+  FailureOr<AMDAIE::NpuDmaCpyNdOp> maybeNpuDmaUserOp =
+      connectionOp.getNpuDmaCpyNdUser();
   if (failed(maybeNpuDmaUserOp))
-    return connectionOp.emitOpError() << "has no circular NPU DMA op user";
+    return connectionOp.emitOpError() << "has no NPU DMA op user";
 
   SmallVector<Operation *> sourceMemOps;
   // if (sourceObjFifoLikeOp.getMemorySpaceAsUInt() == 0) {
@@ -748,7 +776,7 @@ LogicalResult connectionToAIE(
       acqNum = objFifoProducers.size() / objFifoConsumers.size();
     }
     for (AMDAIE::ChannelOp channel : producerChannels) {
-      Operation *memOp = tileToMemOpMap.at(channel.getTile());
+      // Operation *memOp = tileToMemOpMap.at(channel.getTile());
       AMDAIE::TileOp tileOp = channel.getTileOp();
       SmallVector<AMDAIE::BufferOp> buffers = sourceObjFifo.getBuffersOnTile(tileOp);
       SmallVector<AMDAIE::LockOp> producerLocks = sourceObjFifo.getProducerLocksOnTile(tileOp);
@@ -774,10 +802,10 @@ LogicalResult connectionToAIE(
               [&]() { return maybeNpuDmaUserOp->emitOpError(); }))) {
         return failure();
       };
-      rewriter.moveOpBefore(memOp, deviceBlock,
-                            deviceBlock->without_terminator().end());
+      // rewriter.moveOpBefore(memOp, deviceBlock,
+      //                       deviceBlock->without_terminator().end());
       if (failed(createDMABlocks(
-              rewriter, memOp, AMDAIE::DMAChannelDir::MM2S, channel.getValue(),
+              rewriter, tileOp, AMDAIE::DMAChannelDir::MM2S, channel.getValue(),
               canonicalizedSizes, canonicalizedStrides, acqNum, acqNum,
               maybeOffset.value(), buffers, lockPair, packetId))) {
         return sourceObjFifo.emitOpError() << "could not create DMA operations";
@@ -833,8 +861,7 @@ LogicalResult connectionToAIE(
       acqNum = objFifoConsumers.size() / objFifoProducers.size();
     }
     for (AMDAIE::ChannelOp channel : consumerChannels) {
-      // TODO(avarma): This line will still be required for more than 1 AIE core perhaps.
-      Operation *memOp = tileToMemOpMap.at(channel.getTile());
+      // Operation *memOp = tileToMemOpMap.at(channel.getTile());
       AMDAIE::TileOp tileOp = channel.getTileOp();
       SmallVector<AMDAIE::BufferOp> buffers = targetObjFifo.getBuffersOnTile(tileOp);
       SmallVector<AMDAIE::LockOp> producerLocks = targetObjFifo.getProducerLocksOnTile(tileOp);
@@ -860,10 +887,10 @@ LogicalResult connectionToAIE(
               [&]() { return maybeNpuDmaUserOp->emitOpError(); }))) {
         return failure();
       };
-      rewriter.moveOpBefore(memOp, deviceBlock,
-                            deviceBlock->without_terminator().end());
+      // rewriter.moveOpBefore(memOp, deviceBlock,
+      //                       deviceBlock->without_terminator().end());
       if (failed(createDMABlocks(
-              rewriter, memOp, AMDAIE::DMAChannelDir::S2MM, channel.getValue(),
+              rewriter, tileOp, AMDAIE::DMAChannelDir::S2MM, channel.getValue(),
               canonicalizedSizes, canonicalizedStrides, acqNum, acqNum,
               maybeOffset.value(), buffers, lockPair, packetId))) {
         return targetObjFifo.emitOpError() << "could not create DMA operations";
@@ -882,7 +909,7 @@ LogicalResult connectionToAIE(
 template <typename MemOp>
 LogicalResult logicalObjFifoFromBuffersToMemOp(
     IRRewriter &rewriter, AMDAIE::LogicalObjectFifoFromBuffersOp logicalObjFifo,
-    Block *deviceBlock,
+    Operation* controlCodeOp,
     DenseMap<Value, Operation *> &tileToMemOpMap) {
   LLVM_DEBUG(
       llvm::dbgs() << "Convert [AMDAIE::LogicalObjectFifoFromBuffersOp]\n");
@@ -900,7 +927,7 @@ LogicalResult logicalObjFifoFromBuffersToMemOp(
   for (Value tile : logicalObjFifo.getTiles()) {
     if (tileToMemOpMap.contains(tile)) continue;
     // Value aieTile = mapper.lookup(tile);
-    rewriter.setInsertionPoint(deviceBlock->getTerminator());
+    rewriter.setInsertionPoint(controlCodeOp);
     auto newMemOp = rewriter.create<MemOp>(rewriter.getUnknownLoc(), tile);
     rewriter.setInsertionPointToStart(&newMemOp.getRegion().emplaceBlock());
     rewriter.create<AMDAIE::EndOp>(rewriter.getUnknownLoc());
@@ -911,7 +938,7 @@ LogicalResult logicalObjFifoFromBuffersToMemOp(
 }
 
 LogicalResult logicalObjFifoFromBuffersToAIE(
-    IRRewriter &rewriter, AMDAIE::LogicalObjectFifoFromBuffersOp logicalObjFifo, Block *deviceBlock,
+    IRRewriter &rewriter, AMDAIE::LogicalObjectFifoFromBuffersOp logicalObjFifo, Operation* controlCodeOp,
     DenseMap<Value, Operation *> &tileToMemOpMap) {
   LLVM_DEBUG(
       llvm::dbgs() << "Convert [AMDAIE::LogicalObjectFifoFromBuffersOp]\n");
@@ -919,12 +946,11 @@ LogicalResult logicalObjFifoFromBuffersToAIE(
   if (memSpaceUInt == 1) {
     // L2
     return logicalObjFifoFromBuffersToMemOp<AMDAIE::MemTileDMAOp>(
-        rewriter, logicalObjFifo, deviceBlock, tileToMemOpMap);
-  // }
-  // else if (memSpaceUInt == 2) {
-  //   // L1
-  //   return logicalObjFifoFromBuffersToMemOp<AIE::MemOp>(
-  //       rewriter, logicalObjFifo, mapper, deviceBlock, tileToMemOpMap);
+        rewriter, logicalObjFifo, controlCodeOp, tileToMemOpMap);
+  }
+  else if (memSpaceUInt == 2) {
+    // L1
+    return success();
   } else {
     return logicalObjFifo.emitOpError()
            << "has unsupported memory space for lowering to AIE: "
@@ -933,22 +959,72 @@ LogicalResult logicalObjFifoFromBuffersToAIE(
   return success();
 }
 
-LogicalResult convertNpuDmaCpyToMemtileFunc(Operation* workgroupOp) {
-  IRRewriter rewriter(workgroupOp->getContext());
+LogicalResult convertNpuDmaCpyToMemtileFunc(Operation* moduleOp, AMDAIE::AMDAIEDeviceModel deviceModel) {
+  IRRewriter rewriter(moduleOp->getContext());
   OpBuilder::InsertionGuard guard(rewriter);
-  Block *deviceBlock = &workgroupOp->getRegion(0).front();
+  Operation* controlCodeOp = nullptr;
+  moduleOp->walk([&](AMDAIE::ControlCodeOp op) {
+    controlCodeOp = op;
+  });
+  // Block *deviceBlock = cast<AMDAIE::WorkgroupOp>(workgroupOp).getBody();
   DenseMap<Value, Operation *> tileToMemOpMap;
   // Create AMDAIE::Memtile_DMA
-  WalkResult res = workgroupOp->walk<WalkOrder::PreOrder>(
-    [&](AMDAIE::LogicalObjectFifoFromBuffersOp logicalObjFifo) {
-    if (failed(logicalObjFifoFromBuffersToAIE(rewriter, logicalObjFifo,
-                                              deviceBlock, tileToMemOpMap))) {
+  // WalkResult res = moduleOp->walk<WalkOrder::PreOrder>(
+  //   [&](AMDAIE::LogicalObjectFifoFromBuffersOp logicalObjFifo) {
+  //   if (failed(logicalObjFifoFromBuffersToAIE(rewriter, logicalObjFifo,
+  //                                             controlCodeOp, tileToMemOpMap))) {
+  //     return WalkResult::interrupt();
+  //   }
+  //   return WalkResult::advance();
+  // });
+  // if (res.wasInterrupted()) return failure();
+  // llvm::outs()<<"==========  BEFORE  ===========\n"<<(*moduleOp)<<"\n\n";
+  // llvm::outs().flush();
+  int connectionIndex{0};
+          llvm::outs()<<"Attempting walk\n";
+          llvm::outs().flush();
+  // WalkResult res = moduleOp->walk<WalkOrder::PostOrder, ReverseDominanceIterator<>>([&](Operation *op) {
+  // // WalkResult res = moduleOp->walk([&](Operation *op) {
+  //   return TypeSwitch<Operation *, WalkResult>(op)
+  //       .Case<AMDAIE::NpuDmaCpyNdOp>([&](auto dmaOp) {
+  //         llvm::outs()<<"Found npu.dma_cpy_nd op\n";
+  //         // llvm::outs()<<dmaOp<<"\n";
+  //         llvm::outs().flush();
+  //         if (failed(connectionToAIE(rewriter, deviceModel, dmaOp, controlCodeOp, connectionIndex, tileToMemOpMap))) {
+  //           return WalkResult::interrupt();
+  //         }
+  // // llvm::outs()<<"==========  MODULE OP  ===========\n"<<(*moduleOp)<<"\n\n";
+  // // llvm::outs().flush();
+  //         return WalkResult::advance();
+  //       })
+  //       // .Case<AMDAIE::LogicalObjectFifoFromBuffersOp>([&](auto logicalObjFifo) {
+  //       //   llvm::outs()<<"Found lof.buffer op\n";
+  //       //   llvm::outs().flush();
+  //       //   if (failed(logicalObjFifoFromBuffersToAIE(rewriter, logicalObjFifo, controlCodeOp,
+  //       //                                             tileToMemOpMap))) {
+  //       //     return WalkResult::interrupt();
+  //       //   }
+  //       //   return WalkResult::advance();
+  //       // })
+  //       .Default([&](Operation *op) {
+  //         return WalkResult::advance();
+  //       });
+  // });
+  SmallVector<Operation*> toBeErased;
+  WalkResult res = moduleOp->walk<WalkOrder::PostOrder, ReverseDominanceIterator<>>([&](AMDAIE::NpuDmaCpyNdOp dmaOp) {
+    if (failed(connectionToAIE(rewriter, deviceModel, dmaOp, controlCodeOp, connectionIndex, tileToMemOpMap))) {
       return WalkResult::interrupt();
     }
+    for (Operation* op : dmaOp->getUsers()) {
+      toBeErased.push_back(op);
+    }
+    toBeErased.push_back(dmaOp);
     return WalkResult::advance();
   });
   if (res.wasInterrupted()) return failure();
 
+  for (Operation* op : toBeErased)
+    rewriter.eraseOp(op);
   // Merge core operations into end of the device block
   // rewriter.inlineBlockBefore(deviceCoreBlock, deviceBlock,
   //                            deviceBlock->without_terminator().end());
@@ -983,6 +1059,12 @@ void AMDAIEControlCodeLoweringPass::runOnOperation() {
     return signalPassFailure();
   }
 
+
+  {
+    AMDAIE::AMDAIEDeviceModel deviceModel =
+        AMDAIE::getDeviceModel(maybeDevice.value());
+    (void)convertNpuDmaCpyToMemtileFunc(parentOp, deviceModel);
+  }
   // First conversion: HalfDmaCpyNdOp to WriteBdOp, AddressPatchOp and
   // PushToQueueOp.
   {
@@ -1014,10 +1096,6 @@ void AMDAIEControlCodeLoweringPass::runOnOperation() {
                                       std::move(patterns)))) {
       return signalPassFailure();
     }
-  }
-
-  {
-    (void)convertNpuDmaCpyToMemtileFunc(parentOp);
   }
 }
 

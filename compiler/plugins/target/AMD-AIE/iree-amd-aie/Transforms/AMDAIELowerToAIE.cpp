@@ -70,10 +70,8 @@ static FailureOr<size_t> getRepetitionCount(LogicalObjFifoOpInterface op) {
 
   for (Operation *userOp : op->getUsers()) {
     if (auto connectionOp = dyn_cast<AMDAIE::ConnectionOp>(userOp)) {
-      FailureOr<AMDAIE::NpuCircularDmaCpyNdOp> maybeNpuDmaUserOp =
-          connectionOp.getNpuCircularDmaCpyNdUser();
-
-      if (failed(maybeNpuDmaUserOp)) continue;
+      FailureOr<AMDAIE::NpuCircularDmaCpyNdOp> maybeNpuDmaUserOp;
+      // TODO(avarma): Fix this!
 
       AMDAIE::NpuCircularDmaCpyNdOp npuDma = maybeNpuDmaUserOp.value();
 
@@ -613,10 +611,8 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
 
   std::optional<uint8_t> packetId = maybeFlowOp->getPacketId();
 
-  FailureOr<AMDAIE::NpuCircularDmaCpyNdOp> maybeNpuDmaUserOp =
-      connectionOp.getNpuCircularDmaCpyNdUser();
-  if (failed(maybeNpuDmaUserOp))
-    return connectionOp.emitOpError() << "has no circular NPU DMA op user";
+  FailureOr<AMDAIE::NpuCircularDmaCpyNdOp> maybeNpuDmaUserOp;
+  // TODO(avarma): Fix this!
 
   SmallVector<Operation *> sourceMemOps;
   Value source = connectionOp.getSource();
