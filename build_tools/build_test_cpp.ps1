@@ -133,4 +133,3 @@ if ($llvm_install_dir -and (Test-Path "$llvm_install_dir"))
 }
 
 Copy-Item -Path "$build_dir/tools/testing/e2e/iree-e2e-matmul-test.exe" -Destination "$install_dir/bin" -Force
-Copy-Item -Path "$build_dir/tools/xrt_coreutil.dll" -Destination "$install_dir/python_packages/iree_runtime/iree/_runtime_libs" -Force
