@@ -2576,7 +2576,7 @@ class Tests:
                 test_params=TestParams(
                     name_suffix="chess",
                     aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=1",
+                        "--iree-amdaie-num-rows=4",
                         "--iree-amdaie-num-cols=1",
                     ],
                     use_chess=True,

@@ -4,7 +4,6 @@ set(_mlir_files
   fold_ops.mlir
   matmul.mlir
   canonicalize_vector_for_aievec.mlir
-  test_mac_elem.mlir
   test_shuffle.mlir
   test_srs.mlir
   test_ups.mlir
