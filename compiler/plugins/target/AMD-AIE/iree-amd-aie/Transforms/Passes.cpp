@@ -583,7 +583,7 @@ void addConvDecomposePassPipeline(OpPassManager &funcPassManager,
   funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
 }
 
-void addSoftmaxCopyPassPipeline(OpPassManager &funcPassManager,
+void addGeneralCopyPassPipeline(OpPassManager &funcPassManager,
                                 TilePassPipeline useTilePipeline) {
   auto addCleanups = [&]() {
     funcPassManager.addPass(createAMDAIECleanupPass());
@@ -604,11 +604,12 @@ void addSoftmaxCopyPassPipeline(OpPassManager &funcPassManager,
   funcPassManager.addPass(createAMDAIEInsertCopyOpsPass());
   addCleanups();
 
-  // Promote the softmax input and result to shared memory.
+  // Promote the input and result to shared memory.
   {
     AMDAIEBufferizeToAllocationOptions bufferizeOptions;
     bufferizeOptions.memorySpace = 1;
     bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgInputOutput;
+    bufferizeOptions.bufferizeElementwise = true;
     funcPassManager.addPass(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }
@@ -626,11 +627,12 @@ void addSoftmaxCopyPassPipeline(OpPassManager &funcPassManager,
   funcPassManager.addPass(createAMDAIEInsertCopyOpsPass());
   addCleanups();
 
-  // Promote the softmax input and result to local memory.
+  // Promote the input and result to local memory.
   {
     AMDAIEBufferizeToAllocationOptions bufferizeOptions;
     bufferizeOptions.memorySpace = 2;
     bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgInputOutput;
+    bufferizeOptions.bufferizeElementwise = true;
     funcPassManager.addPass(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }

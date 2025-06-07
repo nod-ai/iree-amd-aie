@@ -146,7 +146,8 @@ void AMDAIEInsertCopyOpsPass::runOnOperation() {
   mlir::FunctionOpInterface funcOp = getOperation();
   SmallVector<Operation *> targetOps;
   funcOp->walk<WalkOrder::PostOrder, ReverseIterator>([&](Operation *op) {
-    if (isa<linalg::SoftmaxOp>(op)) targetOps.push_back(op);
+    if (isa<linalg::SoftmaxOp>(op) || isa<linalg::GenericOp>(op))
+      targetOps.push_back(op);
   });
   for (Operation *targetOp : targetOps) {
     if (failed(promoteInputs(rewriter, targetOp))) return signalPassFailure();

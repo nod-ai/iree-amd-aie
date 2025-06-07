@@ -945,7 +945,7 @@ class Softmax(BaseTest):
             self.aie_compilation_flags,
             self.filename,
             use_ukernel=self.use_ukernel,
-            tile_pipeline="softmax-copy",
+            tile_pipeline="general-copy",
             function_name="softmax",
             rtol=2e-2,
         )
