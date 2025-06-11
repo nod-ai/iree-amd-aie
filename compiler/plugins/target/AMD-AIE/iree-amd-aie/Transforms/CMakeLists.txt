@@ -47,6 +47,7 @@ iree_cc_library(
     "AMDAIEAssignChannels.cpp"
     "AMDAIEAssignConnectionTypes.cpp"
     "AMDAIEAssignLogicalObjectFifoDepth.cpp"
+    "AMDAIEAssignBDIDs.cpp"
     "AMDAIEAssignNpuDmaBdIds.cpp"
     "AMDAIEAssignPacketIds.cpp"
     "AMDAIEAssignTiles.cpp"

@@ -63,6 +63,13 @@ LogicalResult convertOp(AMDAIE::NpuWriteBdOp op, TransactionBuilder &builder) {
   return success();
 }
 
+LogicalResult convertOp(AMDAIE::DMAStartOp op, TransactionBuilder &builder) {
+  if (failed(builder.appendDmaStartOp(op))) {
+    return failure();
+  }
+  return success();
+}
+
 LogicalResult controlCodeToTransaction(IRRewriter &rewriter,
                                        AMDAIE::ControlCodeOp controlCodeOp,
                                        TransactionBuilder &builder) {
@@ -71,7 +78,8 @@ LogicalResult controlCodeToTransaction(IRRewriter &rewriter,
     LogicalResult switchResult =
         TypeSwitch<Operation *, LogicalResult>(op)
             .Case<AMDAIE::NpuAddressPatchOp, AMDAIE::NpuTctSyncOp,
-                  AMDAIE::NpuPushToQueueOp, AMDAIE::NpuWriteBdOp>(
+                  AMDAIE::NpuPushToQueueOp, AMDAIE::NpuWriteBdOp,
+                  AMDAIE::DMAStartOp>(
                 [&](auto npuOp) {
                   if (failed(convertOp(npuOp, builder))) return failure();
                   toBeErased.push_back(npuOp);

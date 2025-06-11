@@ -77,6 +77,12 @@ def AMDAIEAssignNpuDmaBdIds :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAssignNpuDmaBdIdsPass()";
 }
 
+def AMDAIEAssignBDIDs :
+    Pass<"iree-amdaie-assign-bd-ids", ""> {
+  let summary = "Assign BD ids to `amdaie.npu.dma_cpy_nd` operations for L2/L1";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAssignBDIDsPass()";
+}
+
 def AMDAIEAssignPacketIds :
     Pass<"iree-amdaie-assign-packet-ids", ""> {
   let summary = "Assign packet ids to `amdaie.flow` operations.";

@@ -116,8 +116,6 @@ LogicalResult WorkgroupBuilder::buildForDmaCpyNdOp(
     CoreContext &coreContext, Block::iterator targetBegin,
     Block::iterator controlCodeBegin, Block::iterator controlCodeEnd) {
   LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [amdaie.dma_cpy_nd] Start\n");
-  uint8_t sourceMemSpace = dmaOp.getSourceObjectFifo().getMemorySpaceAsUInt();
-  uint8_t targetMemSpace = dmaOp.getTargetObjectFifo().getMemorySpaceAsUInt();
   // Error out if the DmaCpyNd involves transfer between L1/L2 as these are all
   // circular_dma_cpy_nd operations by this stage.
   // if (sourceMemSpace && targetMemSpace) {
@@ -213,7 +211,14 @@ LogicalResult WorkgroupBuilder::buildForDmaCpyNdOp(
   //               controlCodeRewriter.getType<AMDAIE::AsyncSourceTokenType>()));
   // types.push_back(static_cast<Type>(
   //               controlCodeRewriter.getType<AMDAIE::AsyncTargetTokenType>()));
+  // SmallVector<Type> ty;
+  // ty.push_back(static_cast<Type>(
+  //               controlCodeRewriter.getType<AMDAIE::AsyncTargetTokenType>()));
+  // ty.push_back(static_cast<Type>(
+  //               controlCodeRewriter.getType<AMDAIE::AsyncSourceTokenType>()));
   Type ty;
+  uint8_t sourceMemSpace = dmaOp.getSourceObjectFifo().getMemorySpaceAsUInt();
+  uint8_t targetMemSpace = dmaOp.getTargetObjectFifo().getMemorySpaceAsUInt();
   if (sourceMemSpace == 0 || targetMemSpace == 2) {
     ty = static_cast<Type>(
                 controlCodeRewriter.getType<AMDAIE::AsyncSourceTokenType>());

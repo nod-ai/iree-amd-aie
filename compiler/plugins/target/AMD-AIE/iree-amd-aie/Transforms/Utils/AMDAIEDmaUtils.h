@@ -355,8 +355,8 @@ struct DmaDimConfig {
     // llvm::outs()<<"maxNbDims = "<<maxNbDims<<"\n";
     // llvm::outs()<<"dims = "<<dims<<"\n";
     // llvm::outs().flush();
-    return false;
-    // return dims > maxNbDims; 
+    // return false;
+    return dims > maxNbDims; 
   }
 };
 

@@ -95,6 +95,25 @@ struct NpuDmaToHalfDmaCpyNdConverter final
       if (!dmaOp.getResult(0).use_empty())
         return dmaOp.emitOpError() << "should not have any uses anymore";
     }
+    if (dmaOp.getNumResults() == 2) {
+      // rewriter.replaceUsesWithIf
+      if (sourceDma.getNumResults() == 1) {
+        rewriter.replaceUsesWithIf(
+            dmaOp.getResult(0), sourceDma.getResult(0), [&](OpOperand &use) {
+              return isa<AMDAIE::AsyncSourceTokenType>(use.get().getType()) &&
+                     isa<AMDAIE::NpuDmaWaitOp>(use.getOwner());
+            });
+      }
+      if (targetDma.getNumResults() == 1) {
+        rewriter.replaceUsesWithIf(
+            dmaOp.getResult(1), targetDma.getResult(0), [&](OpOperand &use) {
+              return isa<AMDAIE::AsyncTargetTokenType>(use.get().getType()) &&
+                     isa<AMDAIE::NpuDmaWaitOp>(use.getOwner());
+            });
+      }
+      if (!dmaOp.getResult(0).use_empty())
+        return dmaOp.emitOpError() << "should not have any uses anymore";
+    }
     rewriter.eraseOp(dmaOp);
     return success();
   }

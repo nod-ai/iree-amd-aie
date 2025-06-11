@@ -67,6 +67,77 @@ LogicalResult TransactionBuilder::appendAddressPatch(uint32_t addr,
   return configureCustomTxnOp(deviceModel, opCode, data, size);
 }
 
+// configureDMABD
+//     const AMDAIEDeviceModel &deviceModel, XAie_DmaDesc &dmaDesc,
+//     const TileLoc &tileLoc, bool validBd, uint8_t bdId, bool enableNextBd,
+//     std::optional<uint8_t> nextBdId, bool enablePacket,
+//     std::optional<uint8_t> packetType, std::optional<uint8_t> packetId,
+//     uint64_t baseAddr, uint64_t lenInBytes, uint64_t offsetInBytes,
+//     uint32_t bufferElementTypeWidthInBytes,
+//     const std::optional<std::vector<BDDimLayout>> &maybeDims,
+//     const std::optional<std::vector<BDPadLayout>> &maybePadDims,
+//     const std::optional<BDIterLayout> &maybeIter)
+LogicalResult TransactionBuilder::appendDmaStartOp(
+    AMDAIE::DMAStartOp dmaStartOp) {
+  // Configure DMA Locks.
+  
+  auto tile = dmaStartOp.getTile().getDefiningOp<AMDAIE::TileOp>();
+  // BdIdGenerator gen(col, row, deviceModel);
+  std::optional<int64_t> col = getConstantIntValue(tile.getCol());
+  std::optional<int64_t> row = getConstantIntValue(tile.getRow());
+  if (!col || !row) {
+      return tile->emitOpError()
+                  << "expected column and row integer value/constant";
+  }
+  XAie_LocType tileLoc = XAie_TileLoc(col, row);
+  FailureOr<XAie_DmaDesc> dmaTileBd = initDMADesc(deviceModel, tileLoc);
+  if (failed(dmaTileBd)) return failure();
+  for (auto& region : dmaStartOp->getRegions()) {
+    for (auto& block : region.getBlocks()) {
+      for (Operation& operation : block.getOperations()) {
+        llvm::outs()<<"==== > "<<(operation)<<"\n";
+        llvm::outs().flush();
+        break;
+        deviceModel, /*dmaDesc=*/dmaTileBd, tileLoc, /*validBd=*/true, bdId
+      }
+      // break;
+    }
+    // break;
+  }
+  return success();
+  // dmaStartOp->walk<WalkOrder::PreOrder>([&](AMDAIE::DMABDOp bd) {
+
+  // });
+  // if (failed(configureDMALocks(deviceModel, dmaTileBd.value(), tileLoc,
+  //                              lockAcqVal, lockRelVal, lockAcqId, lockRelId,
+  //                              lockAcqEnable))) {
+  //   return failure();
+  // }
+  // // The aie-rt API expects `strides`, `iterationStride`, and `iterationSize` to
+  // // be clamped to at least 1, so that they can be encoded as (value - 1) in the
+  // // hardware.
+  // std::for_each(strides.begin(), strides.end(),
+  //               [](int32_t &stride) { stride = std::max(stride, 1); });
+  // iterationSize = std::max(iterationSize, 1U);
+  // iterationStride = std::max(iterationStride, 1U);
+  // // Configure DMA BD.
+  // uint32_t minStrideBitWidth = deviceModel.getMinStrideBitWidth();
+  // uint32_t bufferElementTypeWidthInBytes = minStrideBitWidth / 8;
+  // uint32_t bufferLengthInBytes = bufferLength * bufferElementTypeWidthInBytes;
+  // std::vector<BDDimLayout> dims = {
+  //     {static_cast<uint16_t>(sizes[0]), static_cast<uint32_t>(strides[0])},
+  //     {static_cast<uint16_t>(sizes[1]), static_cast<uint32_t>(strides[1])},
+  //     {static_cast<uint16_t>(sizes[2]), static_cast<uint32_t>(strides[2])}};
+  // std::optional<std::vector<BDPadLayout>> pads = std::nullopt;
+  // BDIterLayout iter = {iterationStride, static_cast<uint8_t>(iterationSize),
+  //                      static_cast<uint8_t>(iterationCurrent)};
+  // return configureDMABD(deviceModel, dmaTileBd.value(), tileLoc, validBd, bdId,
+  //                       useNextBd, nextBd, enablePacket, packetType, packetId,
+  //                       deviceModel.devInst.BaseAddr, bufferLengthInBytes,
+  //                       bufferOffset, bufferElementTypeWidthInBytes, dims, pads,
+  //                       iter);
+}
+
 LogicalResult TransactionBuilder::appendTCTSync(uint32_t col, uint32_t row,
                                                 uint32_t direction,
                                                 uint32_t rowNum,
