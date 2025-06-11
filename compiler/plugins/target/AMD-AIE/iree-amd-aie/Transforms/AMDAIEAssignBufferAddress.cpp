@@ -4,22 +4,20 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "AIEDialect.h"
-#include "Passes.h"
+#include "iree-amd-aie/IR/AMDAIEAttrs.h"
+#include "iree-amd-aie/IR/AMDAIEOps.h"
+#include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "llvm/ADT/Twine.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/Pass/Pass.h"
 
-#define DEBUG_TYPE "amdaie-assign-buffer-addresses"
-
-using namespace mlir;
-using namespace xilinx::AIE;
+#define DEBUG_TYPE "amdaie-assign-buffer-address"
 
 namespace mlir::iree_compiler::AMDAIE {
 
 /// Utility to get the maximum memory size of a given tile.
-static uint32_t getMaxMemorySize(AMDAIEDeviceModel deviceModel, TileOp tile) {
+static uint32_t getMaxMemorySize(AMDAIEDeviceModel deviceModel, AMDAIE::TileOp tile) {
   if (deviceModel.isMemTile(tile.getCol(), tile.getRow())) {
     return deviceModel.getMemTileSize(tile.getCol(), tile.getRow());
   } else {
@@ -30,7 +28,7 @@ static uint32_t getMaxMemorySize(AMDAIEDeviceModel deviceModel, TileOp tile) {
 //===----------------------------------------------------------------------===//
 // BasicAllocation : sequential allocation for all buffers
 //===----------------------------------------------------------------------===//
-static LogicalResult basicAllocation(TileOp tile, SetVector<BufferOp> buffers,
+static LogicalResult basicAllocation(AMDAIE::TileOp tile, SetVector<AMDAIE::BufferOp> buffers,
                                      AMDAIEDeviceModel deviceModel) {
   // Leave room at the bottom of the address range for stack.
   int64_t address = 0;
@@ -68,7 +66,7 @@ struct BankStates {
 // Function that sets the address attribute of the given buffer to the given
 // start address. It also updates the next available address in the
 // corresponding BankState.
-void setAndUpdateAddressInBank(BufferOp buffer, int64_t start_addr,
+void setAndUpdateAddressInBank(AMDAIE::BufferOp buffer, int64_t start_addr,
                                int64_t end_addr,
                                SmallVector<BankStates> &bankStates) {
   buffer.setAddress(start_addr);
@@ -80,7 +78,7 @@ void setAndUpdateAddressInBank(BufferOp buffer, int64_t start_addr,
 // whether there is enough space left for it. If there is the function returns
 // true and if not, the function emits an error.
 FailureOr<bool> checkAndAddBufferWithAddress(
-    BufferOp buffer, uint32_t bankSize, SmallVector<BankStates> &bankStates) {
+    AMDAIE::BufferOp buffer, uint32_t bankSize, SmallVector<BankStates> &bankStates) {
   std::optional<uint32_t> maybeAddr = buffer.getAddress();
   if (!maybeAddr) return false;
   uint32_t addr = maybeAddr.value();
@@ -110,7 +108,7 @@ FailureOr<bool> checkAndAddBufferWithAddress(
 // it. If there is, it sets the buffer's address field and if not, the function
 // emits an error.
 FailureOr<bool> checkAndAddBufferWithMemBank(
-    BufferOp buffer, SmallVector<BankStates> &bankStates) {
+    AMDAIE::BufferOp buffer, SmallVector<BankStates> &bankStates) {
   std::optional<uint32_t> maybeBank = buffer.getMemBank();
   if (!maybeBank) return false;
   uint32_t memBank = maybeBank.value();
@@ -137,7 +135,7 @@ FailureOr<bool> checkAndAddBufferWithMemBank(
 // the buffer's memory bank attribute and address, and updates the next
 // available address in the bank. If no suitable banks are found, it emits an
 // error and returns false.
-bool setBufferAddress(BufferOp buffer, uint32_t bankSize, int &startBankIndex,
+bool setBufferAddress(AMDAIE::BufferOp buffer, uint32_t bankSize, int &startBankIndex,
                       SmallVector<BankStates> &bankStates) {
   uint32_t numBanks = bankStates.size();
   assert(startBankIndex < numBanks &&
@@ -214,14 +212,14 @@ bool setBufferAddress(BufferOp buffer, uint32_t bankSize, int &startBankIndex,
 }
 
 // Function to deallocate attributes of buffers in case of a failure.
-void deAllocateBuffers(SmallVector<BufferOp> &buffers) {
+void deAllocateBuffers(SmallVector<AMDAIE::BufferOp> &buffers) {
   for (BufferOp buffer : buffers) {
     buffer->removeAttr("address");
     buffer->removeAttr("mem_bank");
   }
 }
 
-LogicalResult bankAwareAllocation(TileOp tile, SetVector<BufferOp> buffers,
+LogicalResult bankAwareAllocation(AMDAIE::TileOp tile, SetVector<BufferOp> buffers,
                                   AMDAIEDeviceModel deviceModel) {
   uint32_t maxDataMemorySize = getMaxMemorySize(deviceModel, tile);
   uint32_t numBanks = deviceModel.getNumBanks(tile.getCol(), tile.getRow());
@@ -265,7 +263,7 @@ LogicalResult bankAwareAllocation(TileOp tile, SetVector<BufferOp> buffers,
   // Sort by largest allocation size before allocating.
   // Note: The sorting may cause numerical error for depthwise conv2d op.
   std::sort(buffersToAlloc.begin(), buffersToAlloc.end(),
-            [](BufferOp a, BufferOp b) {
+            [](AMDAIE::BufferOp a, AMDAIE::BufferOp b) {
               return getAllocationSize(a) > getAllocationSize(b);
             });
 
@@ -285,21 +283,21 @@ LogicalResult bankAwareAllocation(TileOp tile, SetVector<BufferOp> buffers,
   return success();
 }
 
-struct AMDAIEAssignBufferAddressesPass
-    : public impl::AMDAIEAssignBufferAddressesBase<
-          AMDAIEAssignBufferAddressesPass> {
-  AMDAIEAssignBufferAddressesPass(
-      const AMDAIEAssignBufferAddressesOptions &options)
-      : AMDAIEAssignBufferAddressesBase(options) {}
+namespace {
+class AMDAIEAssignBufferAddressPass
+    : public impl::AMDAIEAssignBufferAddressBase<
+          AMDAIEAssignBufferAddressPass> {
+ public:
+  AMDAIEAssignBufferAddressPass(const AMDAIEAssignBufferAddressOptions &options)
+      : AMDAIEAssignBufferAddressBase(options) {}
 
-  void getDependentDialects(mlir::DialectRegistry &registry) const override {
-    registry.insert<xilinx::AIE::AIEDialect>();
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<AMDAIEDialect>();
   }
-
   void runOnOperation() override {
     DeviceOp device = getOperation();
     int counter = 0;
-    device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
+    device.walk<WalkOrder::PreOrder>([&](AMDAIE::BufferOp buffer) {
       if (!hasName(buffer))
         buffer.setSymName("_anonymous" + std::to_string(counter++));
     });
@@ -316,11 +314,11 @@ struct AMDAIEAssignBufferAddressesPass
     MLIRContext *ctx = &getContext();
     for (auto &&[tile, buffers] : tileToBuffers) {
       switch (allocScheme) {
-        case mlir::iree_compiler::AMDAIE::AllocScheme::Sequential:
+        case AllocScheme::Sequential:
           if (failed(basicAllocation(tile, buffers, deviceModel)))
             return signalPassFailure();
           break;
-        case mlir::iree_compiler::AMDAIE::AllocScheme::BankAware:
+        case AllocScheme::BankAware:
           if (failed(bankAwareAllocation(tile, buffers, deviceModel)))
             return signalPassFailure();
           break;
@@ -338,9 +336,11 @@ struct AMDAIEAssignBufferAddressesPass
   }
 };
 
-std::unique_ptr<OperationPass<DeviceOp>> createAMDAIEAssignBufferAddressesPass(
-    AMDAIEAssignBufferAddressesOptions options) {
-  return std::make_unique<AMDAIEAssignBufferAddressesPass>(options);
+}  // namespace
+
+std::unique_ptr<OperationPass<DeviceOp>> createAMDAIEAssignBufferAddressPass(
+    AMDAIEAssignBufferAddressOptions options) {
+  return std::make_unique<AMDAIEAssignBufferAddressPass>(options);
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE
