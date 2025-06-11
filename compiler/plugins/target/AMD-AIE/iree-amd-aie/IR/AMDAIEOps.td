@@ -181,6 +181,7 @@ def AMDAIE_TileOp: AMDAIE_Op<"tile", [
     // Comparator for `amdaie.tile` values based on column index first and then
     // row index.
     static bool tileValueColumnAndRowComparator(Value a, Value b);
+    CoreOp getCoreOp();
   }];
 }
 
@@ -254,13 +255,22 @@ def AMDAIE_BufferOp: AMDAIE_Op<"buffer", [
 
   let arguments = (
     ins Index:$tile,
-        OptionalAttr<UI32Attr>:$address
+        OptionalAttr<StrAttr>:$sym_name,
+        OptionalAttr<UI32Attr>:$address,
+        OptionalAttr<UI32Attr>:$mem_bank
   );
 
   let results = (outs AnyMemRef:$buffer);
 
   let assemblyFormat = [{
-    `(` $tile (`,` $address^)? `)` attr-dict `:` type($buffer)
+    `(` $tile `)` attr-dict `:` type($buffer)
+  }];
+
+  let extraClassDeclaration = [{
+    int64_t getAllocationSize() {
+      auto type = llvm::cast<mlir::MemRefType>(getType());
+      return type.getNumElements() * type.getElementTypeBitWidth() / 8;
+    }
   }];
 }
 
