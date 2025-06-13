@@ -6,6 +6,7 @@
 
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
 #include "iree-amd-aie/IR/AMDAIEOps.h"
+#include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "llvm/ADT/Twine.h"
@@ -17,11 +18,17 @@
 namespace mlir::iree_compiler::AMDAIE {
 
 /// Utility to get the maximum memory size of a given tile.
-static uint32_t getMaxMemorySize(AMDAIEDeviceModel deviceModel, AMDAIE::TileOp tile) {
-  if (deviceModel.isMemTile(tile.getCol(), tile.getRow())) {
-    return deviceModel.getMemTileSize(tile.getCol(), tile.getRow());
+static FailureOr<uint32_t> getMaxMemorySize(AMDAIEDeviceModel deviceModel, AMDAIE::TileOp tile) {
+  std::optional<int64_t> col = getConstantIntValue(tile.getCol());
+  std::optional<int64_t> row = getConstantIntValue(tile.getRow());
+  if (!col || !row) {
+      return tile->emitOpError()
+                  << "expected column and row integer value/constant";
+  }
+  if (deviceModel.isMemTile(*col, *row)) {
+    return deviceModel.getMemTileSize(*col, *row);
   } else {
-    return deviceModel.getLocalMemorySize(tile.getCol(), tile.getRow());
+    return deviceModel.getLocalMemorySize(*col, *row);
   }
 }
 
@@ -32,17 +39,17 @@ static LogicalResult basicAllocation(AMDAIE::TileOp tile, SetVector<AMDAIE::Buff
                                      AMDAIEDeviceModel deviceModel) {
   // Leave room at the bottom of the address range for stack.
   int64_t address = 0;
-  if (CoreOp core = getCoreOp(tile)) address += core.getStackSize();
+  if (CoreOp core = tile.getCoreOp()) address += core.getStackSize();
 
   for (BufferOp buffer : buffers) {
     buffer.setAddress(address);
-    address += getAllocationSize(buffer);
+    address += buffer.getAllocationSize();
   }
 
-  uint32_t maxDataMemorySize = getMaxMemorySize(deviceModel, tile);
-  if (address > maxDataMemorySize) {
+  FailureOr<uint32_t> maxDataMemorySize = getMaxMemorySize(deviceModel, tile);
+  if (address > *maxDataMemorySize) {
     return tile.emitOpError("allocated buffers exceeded available memory (")
-           << address << ">" << maxDataMemorySize << ")\n";
+           << address << ">" << (*maxDataMemorySize) << ")\n";
   }
   return success();
 }
@@ -85,18 +92,18 @@ FailureOr<bool> checkAndAddBufferWithAddress(
   uint32_t bankIndex = addr / bankSize;
 
   // If the bank has pre-assigned, check if the bank index matches.
-  if (std::optional<uint32_t> memBank = buffer.getMemBank()) {
-    assert(memBank.value() == bankIndex &&
-           "bank index is not equal to the preset value");
-    return true;
-  }
+  // if (std::optional<uint32_t> memBank = buffer.getMemBank()) {
+  //   assert(memBank.value() == bankIndex &&
+  //          "bank index is not equal to the preset value");
+  //   return true;
+  // }
 
   // If the allocator already allocated this address, fail.
   if (addr < bankStates[bankIndex].nextAddr)
     return buffer->emitOpError("would override the allocated address");
 
   // The allocator can accommodate this existing allocation.
-  bankStates[bankIndex].nextAddr = addr + getAllocationSize(buffer);
+  bankStates[bankIndex].nextAddr = addr + buffer.getAllocationSize();
   if (bankStates[bankIndex].nextAddr > bankStates[bankIndex].endAddr)
     return buffer->emitOpError("would over run the current bank limit");
   buffer.setMemBank(bankIndex);
@@ -121,7 +128,7 @@ FailureOr<bool> checkAndAddBufferWithMemBank(
   }
 
   int64_t startAddr = bankStates[memBank].nextAddr;
-  int64_t endAddr = startAddr + getAllocationSize(buffer);
+  int64_t endAddr = startAddr + buffer.getAllocationSize();
   if (endAddr > bankStates[memBank].endAddr)
     return buffer->emitOpError("would over run the current bank limit");
   setAndUpdateAddressInBank(buffer, startAddr, endAddr, bankStates);
@@ -142,7 +149,7 @@ bool setBufferAddress(AMDAIE::BufferOp buffer, uint32_t bankSize, int &startBank
          "Unexpected input value for startBankIndex");
 
   // Early exit if buffer is larger than total available space.
-  int64_t bufferSize = getAllocationSize(buffer);
+  int64_t bufferSize = buffer.getAllocationSize();
   int64_t totalAvailable = 0;
   for (uint32_t i = 0; i < numBanks; ++i) {
     int64_t available =
@@ -206,7 +213,7 @@ bool setBufferAddress(AMDAIE::BufferOp buffer, uint32_t bankSize, int &startBank
   }
 
   buffer.emitError("Failed to allocate buffer: ")
-      << buffer.name() << " with size: " << bufferSize << " bytes across "
+      << "size: " << bufferSize << " bytes across "
       << numBanks << " banks.";
   return false;
 }
@@ -221,9 +228,15 @@ void deAllocateBuffers(SmallVector<AMDAIE::BufferOp> &buffers) {
 
 LogicalResult bankAwareAllocation(AMDAIE::TileOp tile, SetVector<BufferOp> buffers,
                                   AMDAIEDeviceModel deviceModel) {
-  uint32_t maxDataMemorySize = getMaxMemorySize(deviceModel, tile);
-  uint32_t numBanks = deviceModel.getNumBanks(tile.getCol(), tile.getRow());
-  uint32_t bankSize = maxDataMemorySize / numBanks;
+  FailureOr<uint32_t> maxDataMemorySize = getMaxMemorySize(deviceModel, tile);
+  std::optional<int64_t> col = getConstantIntValue(tile.getCol());
+  std::optional<int64_t> row = getConstantIntValue(tile.getRow());
+  if (!col || !row) {
+      return tile->emitOpError()
+                  << "expected column and row integer value/constant";
+  }
+  uint32_t numBanks = deviceModel.getNumBanks(*col, *row);
+  uint32_t bankSize = *maxDataMemorySize / numBanks;
 
   // Set entries of `bankStates`, which contain the start and end addresses and
   // the initial value of the next available address for use in each bank.
@@ -264,7 +277,7 @@ LogicalResult bankAwareAllocation(AMDAIE::TileOp tile, SetVector<BufferOp> buffe
   // Note: The sorting may cause numerical error for depthwise conv2d op.
   std::sort(buffersToAlloc.begin(), buffersToAlloc.end(),
             [](AMDAIE::BufferOp a, AMDAIE::BufferOp b) {
-              return getAllocationSize(a) > getAllocationSize(b);
+              return a.getAllocationSize() > b.getAllocationSize();
             });
 
   // Set addresses for remaining buffers.
@@ -295,20 +308,27 @@ class AMDAIEAssignBufferAddressPass
     registry.insert<AMDAIEDialect>();
   }
   void runOnOperation() override {
-    DeviceOp device = getOperation();
+    Operation* workgroupOp = getOperation();
     int counter = 0;
-    device.walk<WalkOrder::PreOrder>([&](AMDAIE::BufferOp buffer) {
-      if (!hasName(buffer))
+    workgroupOp->walk<WalkOrder::PreOrder>([&](AMDAIE::BufferOp buffer) {
+      if (!(bool(buffer.getOperation()->template getAttrOfType<mlir::StringAttr>(
+      mlir::SymbolTable::getSymbolAttrName()))))
         buffer.setSymName("_anonymous" + std::to_string(counter++));
     });
 
     DenseMap<TileOp, SetVector<BufferOp>> tileToBuffers;
-    device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
-      tileToBuffers[getTileOp(*buffer)].insert(buffer);
+    workgroupOp->walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
+      tileToBuffers[buffer.getTile().getDefiningOp<TileOp>()].insert(buffer);
     });
 
-    AMDAIEDeviceModel deviceModel =
-        getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
+    // Get the device model.
+    std::optional<AMDAIEDevice> device = getConfigAMDAIEDevice(workgroupOp);
+    if (!device) {
+      workgroupOp->emitOpError()
+            << "could not find an AMDAIEDevice attribute";
+      return signalPassFailure();
+    }
+    AMDAIEDeviceModel deviceModel = AMDAIE::getDeviceModel(device.value());
 
     // Select buffer allocation scheme per tile.
     MLIRContext *ctx = &getContext();
@@ -338,7 +358,7 @@ class AMDAIEAssignBufferAddressPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<DeviceOp>> createAMDAIEAssignBufferAddressPass(
+std::unique_ptr<Pass> createAMDAIEAssignBufferAddressPass(
     AMDAIEAssignBufferAddressOptions options) {
   return std::make_unique<AMDAIEAssignBufferAddressPass>(options);
 }

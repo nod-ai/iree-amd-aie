@@ -21,8 +21,6 @@
 
 namespace mlir::iree_compiler {
 
-enum class AllocScheme { Sequential, BankAware, None };
-
 /// Helps in forming a `PackingConfigPackingLevelAttr`.
 AMDAIE::PackingConfigPackingLevelAttr getPackingConfigPackingLevelAttr(
     MLIRContext *context, ArrayRef<int64_t> packedSizes,

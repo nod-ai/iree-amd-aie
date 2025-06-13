@@ -316,11 +316,11 @@ struct AMDAIEAssignBufferAddressesPass
     MLIRContext *ctx = &getContext();
     for (auto &&[tile, buffers] : tileToBuffers) {
       switch (allocScheme) {
-        case mlir::iree_compiler::AMDAIE::AllocScheme::Sequential:
+        case AllocScheme::Sequential:
           if (failed(basicAllocation(tile, buffers, deviceModel)))
             return signalPassFailure();
           break;
-        case mlir::iree_compiler::AMDAIE::AllocScheme::BankAware:
+        case AllocScheme::BankAware:
           if (failed(bankAwareAllocation(tile, buffers, deviceModel)))
             return signalPassFailure();
           break;

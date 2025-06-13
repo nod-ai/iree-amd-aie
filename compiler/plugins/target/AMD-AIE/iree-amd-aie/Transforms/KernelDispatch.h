@@ -67,6 +67,8 @@ enum class PacketFlowStrategy {
   All,
 };
 
+enum class AllocScheme { Sequential, BankAware, None };
+
 LogicalResult initAIELaunchConfig(FunctionOpInterface funcOp,
                                   TilePassPipeline useTilePipeline,
                                   LowerToAIEPassPipeline useLowerToAIEPipeline,

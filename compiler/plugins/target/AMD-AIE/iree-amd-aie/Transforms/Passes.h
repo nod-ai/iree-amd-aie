@@ -95,7 +95,7 @@ std::unique_ptr<Pass> createAMDAIEAssignNpuDmaBdIdsPass();
 std::unique_ptr<Pass> createAMDAIEAssignBDIDsPass();
 
 /// Create a pass to assign buffer addresses.
-std::unique_ptr<Pass> createAMDAIEAssignBufferAddressPass();
+std::unique_ptr<Pass> createAMDAIEAssignBufferAddressPass(AMDAIEAssignBufferAddressOptions options = {});
 
 /// Create a pass to assign packet ids to `amdaie.flow` operations.
 std::unique_ptr<Pass> createAMDAIEAssignPacketIdsPass();

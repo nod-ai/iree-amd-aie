@@ -855,6 +855,14 @@ void addAMDAIEObjectFifoLoweringPasses(
   // passManager.addPass(createAMDAIEFoldDmaWaitsPass());
   passManager.addPass(createAMDAIEControlCodeLoweringPass());
   passManager.addPass(createAMDAIEAssignBDIDsPass());
+  {
+    // For Conv ops use basic sequential scheme to avoid numerical error.
+    // TODO: Find a better working scheme for Conv ops
+    AMDAIEAssignBufferAddressOptions options;
+    if (useTilePipeline == TilePassPipeline::ConvDecomposePipeline)
+      options.allocScheme = AllocScheme::Sequential;
+    passManager.addPass(createAMDAIEAssignBufferAddressPass(options));
+  }
   passManager.addPass(createAMDAIEControlCodeToTransactionPass());
 
   addAMDAIEToAIEPasses(passManager, insertLoopAroundCoreBlock);

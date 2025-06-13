@@ -7,6 +7,9 @@
 #ifndef IREE_AMD_AIE_TRANSFORMS_AMDAIETRANSACTIONBUILDER_H_
 #define IREE_AMD_AIE_TRANSFORMS_AMDAIETRANSACTIONBUILDER_H_
 
+#include "iree-amd-aie/IR/AMDAIEAttrs.h"
+#include "iree-amd-aie/IR/AMDAIEDialect.h"
+#include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/aie_runtime/AMDAIEEnums.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_configure.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
@@ -28,16 +31,16 @@ class TransactionBuilder {
   LogicalResult appendAddressPatch(uint32_t addr, uint32_t argIdx,
                                    uint32_t offset);
 
-  LogicalResult appendDmaStartOp(
-        uint32_t col, uint32_t row, uint32_t bdId, uint32_t bufferLength,
-        uint32_t bufferOffset, bool enablePacket, uint32_t packetId,
-        uint32_t packetType, ArrayRef<int32_t> sizes,
-        SmallVector<int32_t> strides, uint32_t iterationCurrent,
-        uint32_t iterationSize, uint32_t iterationStride, uint32_t nextBd,
-        bool useNextBd, bool validBd, int32_t lockRelVal, uint32_t lockRelId,
-        bool lockAcqEnable, int32_t lockAcqVal, uint32_t lockAcqId);
+//   LogicalResult appendDmaStartOp(
+//         uint32_t col, uint32_t row, uint32_t bdId, uint32_t bufferLength,
+//         uint32_t bufferOffset, bool enablePacket, uint32_t packetId,
+//         uint32_t packetType, ArrayRef<int32_t> sizes,
+//         SmallVector<int32_t> strides, uint32_t iterationCurrent,
+//         uint32_t iterationSize, uint32_t iterationStride, uint32_t nextBd,
+//         bool useNextBd, bool validBd, int32_t lockRelVal, uint32_t lockRelId,
+//         bool lockAcqEnable, int32_t lockAcqVal, uint32_t lockAcqId);
 
-  LogicalResult appendDmaStartOp(Operation* dmaStartOp);
+  LogicalResult appendDmaStartOp(AMDAIE::DMAStartOp dmaStartOp);
 
   LogicalResult appendTCTSync(uint32_t col, uint32_t row, uint32_t direction,
                               uint32_t rowNum, uint32_t colNum,

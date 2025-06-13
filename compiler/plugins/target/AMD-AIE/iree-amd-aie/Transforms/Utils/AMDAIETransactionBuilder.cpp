@@ -89,7 +89,7 @@ LogicalResult TransactionBuilder::appendDmaStartOp(
       return tile->emitOpError()
                   << "expected column and row integer value/constant";
   }
-  XAie_LocType tileLoc = XAie_TileLoc(col, row);
+  XAie_LocType tileLoc = XAie_TileLoc(*col, *row);
   FailureOr<XAie_DmaDesc> dmaTileBd = initDMADesc(deviceModel, tileLoc);
   if (failed(dmaTileBd)) return failure();
   for (auto& region : dmaStartOp->getRegions()) {
@@ -98,7 +98,7 @@ LogicalResult TransactionBuilder::appendDmaStartOp(
         llvm::outs()<<"==== > "<<(operation)<<"\n";
         llvm::outs().flush();
         break;
-        deviceModel, /*dmaDesc=*/dmaTileBd, tileLoc, /*validBd=*/true, bdId
+        // deviceModel, /*dmaDesc=*/dmaTileBd, tileLoc, /*validBd=*/true, bdId
       }
       // break;
     }
