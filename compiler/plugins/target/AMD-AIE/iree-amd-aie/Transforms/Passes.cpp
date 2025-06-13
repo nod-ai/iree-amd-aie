@@ -584,7 +584,12 @@ void addConvDecomposePassPipeline(OpPassManager &funcPassManager,
 }
 
 void addGeneralCopyPassPipeline(OpPassManager &funcPassManager,
-                                TilePassPipeline useTilePipeline) {
+                                TilePassPipeline useTilePipeline,
+                                Operation *rootOp) {
+  // Check if the root op is an elementwise operation.
+  auto linalgRootOp = dyn_cast<linalg::LinalgOp>(rootOp);
+  bool isElementwiseOp = linalgRootOp && isElementwise(linalgRootOp);
+
   auto addCleanups = [&]() {
     funcPassManager.addPass(createAMDAIECleanupPass());
     funcPassManager.addPass(createCanonicalizerPass());
@@ -609,7 +614,7 @@ void addGeneralCopyPassPipeline(OpPassManager &funcPassManager,
     AMDAIEBufferizeToAllocationOptions bufferizeOptions;
     bufferizeOptions.memorySpace = 1;
     bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgInputOutput;
-    bufferizeOptions.bufferizeElementwise = true;
+    bufferizeOptions.bufferizeElementwise = isElementwiseOp;
     funcPassManager.addPass(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }
@@ -632,7 +637,7 @@ void addGeneralCopyPassPipeline(OpPassManager &funcPassManager,
     AMDAIEBufferizeToAllocationOptions bufferizeOptions;
     bufferizeOptions.memorySpace = 2;
     bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgInputOutput;
-    bufferizeOptions.bufferizeElementwise = true;
+    bufferizeOptions.bufferizeElementwise = isElementwiseOp;
     funcPassManager.addPass(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }
