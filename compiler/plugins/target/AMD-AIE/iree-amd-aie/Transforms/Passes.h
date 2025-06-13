@@ -63,7 +63,8 @@ void addConvDecomposePassPipeline(OpPassManager &passManager,
 
 /// Populates passes needed to lower the IR via a General-Copy based approach.
 void addGeneralCopyPassPipeline(OpPassManager &passManager,
-                                TilePassPipeline useTilePipeline);
+                                TilePassPipeline useTilePipeline,
+                                Operation *rootOp);
 
 /// Populates passes needed to link HAL executables across AIE targets.
 void buildAMDAIELinkingPassPipeline(OpPassManager &passManager);

@@ -95,7 +95,8 @@ void AMDAIELowerExecutableTargetPass::runOnOperation() {
                                      TilePassPipeline::ConvDecomposePipeline);
       } else if (useTilePipeline == TilePassPipeline::GeneralCopyPipeline) {
         addGeneralCopyPassPipeline(executableLoweringPipeline,
-                                   TilePassPipeline::GeneralCopyPipeline);
+                                   TilePassPipeline::GeneralCopyPipeline,
+                                   getRootOp(funcOp));
       }
       break;
     }

@@ -952,6 +952,36 @@ class Softmax(BaseTest):
         return True
 
 
+class Reduction(BaseTest):
+    def __init__(
+        self,
+        file_base_name,
+        function_name,
+        test_params=None,
+    ):
+        super().__init__(
+            name=file_base_name,
+            test_params=test_params,
+        )
+        self.labels += ["Reduction"]
+        self.file_base_name = file_base_name
+        self.function_name = function_name
+
+    def _execute(self, config):
+        test_files_dir = config.file_dir / "test_files"
+        self.filename = test_files_dir / f"{self.file_base_name}.mlir"
+
+        aie_vs_llvm_cpu(
+            config,
+            self.aie_compilation_flags,
+            self.filename,
+            tile_pipeline="general-copy",
+            function_name=self.function_name,
+            n_repeats=self.n_repeats,
+        )
+        return True
+
+
 def find_executable(install_dir: Path, executable_name):
     """
     Search for an executable in the given directory and its subdirectories
@@ -2584,6 +2614,22 @@ class Tests:
                 ),
             )
         )
+
+        # Reduction op tests:
+        self.register(
+            Reduction(
+                file_base_name="reduction_sum",
+                function_name="reduction_sum",
+                test_params=TestParams(
+                    name_suffix="sum",
+                    aie_compilation_flags=[
+                        "--iree-amdaie-num-rows=4",
+                        "--iree-amdaie-num-cols=1",
+                    ],
+                ),
+            )
+        )
+
         # Soak testing.
         # See https://github.com/nod-ai/iree-amd-aie/issues/1264
         seed = 42
