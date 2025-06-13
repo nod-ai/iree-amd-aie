@@ -61,67 +61,39 @@ TEST(XCLBinGenTest, GetStackSize0) {
   // Intermediate lines of assembly omitted for brevity.
   {
     std::string asmStr = R"(
+
  Stack Sizes:
       Size     Functions
        224     core_0_2
-       200     core_11_12
+       200     func_1
+       48      func_2
 )";
-    mlir::FailureOr<llvm::DenseMap<std::pair<uint32_t, uint32_t>, uint32_t>>
-        ubs = detail::getUpperBoundStackSizes(asmStr);
-    EXPECT_TRUE(succeeded(ubs));
-    auto ub = ubs.value().find({0, 2});
-    EXPECT_TRUE(ub != ubs.value().end());
-    EXPECT_TRUE(ub->second == 224);
+    llvm::FailureOr<uint32_t> ub = detail::getMaxStackSize(asmStr);
+    EXPECT_TRUE(succeeded(ub));
+    EXPECT_EQ(ub, 472);
   }
 
   {
     std::string asmStr = R"(
  Stack Sizes:
       Size     Functions
-       100     some_func
-        48     core_0_2
-       200     core_11_12
 )";
 
-    mlir::FailureOr<llvm::DenseMap<std::pair<uint32_t, uint32_t>, uint32_t>>
-        ubs = detail::getUpperBoundStackSizes(asmStr);
-    EXPECT_TRUE(succeeded(ubs));
-    auto ub = ubs.value().find({0, 2});
-    EXPECT_TRUE(ub != ubs.value().end());
-    EXPECT_TRUE(ub->second == 100 + 48);
+    llvm::FailureOr<uint32_t> ub = detail::getMaxStackSize(asmStr);
+    EXPECT_TRUE(succeeded(ub));
+    EXPECT_EQ(ub, 0);
   }
 
   {
     std::string asmStr = R"(
  Stack Sizes:
       Size     Functions
-       100     some_func
-       224     some_other_func
-        20     core_0_2
-        20     core_0_3
-       200     core_11_12
+       abc     func_1
+       200     func_2
 )";
 
-    mlir::FailureOr<llvm::DenseMap<std::pair<uint32_t, uint32_t>, uint32_t>>
-        maybeUpperBounds = detail::getUpperBoundStackSizes(asmStr);
-    EXPECT_TRUE(succeeded(maybeUpperBounds));
-    auto upperBounds = maybeUpperBounds.value();
-    {
-      auto ub = upperBounds.find({0, 2});
-      EXPECT_TRUE(ub != upperBounds.end());
-      EXPECT_TRUE(ub->second == 224 + 20);
-    }
-
-    {
-      auto ub = upperBounds.find({5, 5});
-      EXPECT_TRUE(ub == upperBounds.end());
-    }
-
-    {
-      auto ub = upperBounds.find({0, 3});
-      EXPECT_TRUE(ub != upperBounds.end());
-      EXPECT_TRUE(ub->second == 224 + 20);
-    }
+    llvm::FailureOr<uint32_t> ub = detail::getMaxStackSize(asmStr);
+    EXPECT_FALSE(succeeded(ub));
   }
 }
 
