@@ -583,8 +583,13 @@ void addConvDecomposePassPipeline(OpPassManager &funcPassManager,
   funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
 }
 
-void addSoftmaxCopyPassPipeline(OpPassManager &funcPassManager,
-                                TilePassPipeline useTilePipeline) {
+void addGeneralCopyPassPipeline(OpPassManager &funcPassManager,
+                                TilePassPipeline useTilePipeline,
+                                Operation *rootOp) {
+  // Check if the root op is an elementwise operation.
+  auto linalgRootOp = dyn_cast<linalg::LinalgOp>(rootOp);
+  bool isElementwiseOp = linalgRootOp && isElementwise(linalgRootOp);
+
   auto addCleanups = [&]() {
     funcPassManager.addPass(createAMDAIECleanupPass());
     funcPassManager.addPass(createCanonicalizerPass());
@@ -604,11 +609,12 @@ void addSoftmaxCopyPassPipeline(OpPassManager &funcPassManager,
   funcPassManager.addPass(createAMDAIEInsertCopyOpsPass());
   addCleanups();
 
-  // Promote the softmax input and result to shared memory.
+  // Promote the input and result to shared memory.
   {
     AMDAIEBufferizeToAllocationOptions bufferizeOptions;
     bufferizeOptions.memorySpace = 1;
     bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgInputOutput;
+    bufferizeOptions.bufferizeElementwise = isElementwiseOp;
     funcPassManager.addPass(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }
@@ -626,11 +632,12 @@ void addSoftmaxCopyPassPipeline(OpPassManager &funcPassManager,
   funcPassManager.addPass(createAMDAIEInsertCopyOpsPass());
   addCleanups();
 
-  // Promote the softmax input and result to local memory.
+  // Promote the input and result to local memory.
   {
     AMDAIEBufferizeToAllocationOptions bufferizeOptions;
     bufferizeOptions.memorySpace = 2;
     bufferizeOptions.bufferizeOperand = BufferizeOperand::LinalgInputOutput;
+    bufferizeOptions.bufferizeElementwise = isElementwiseOp;
     funcPassManager.addPass(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }

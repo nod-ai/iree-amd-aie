@@ -179,9 +179,8 @@ void AMDAIEBufferizeToAllocationPass::runOnOperation() {
   SmallVector<Operation *> targetOps;
   funcOp->walk<WalkOrder::PostOrder, ReverseIterator>([&](Operation *op) {
     if (auto linalgOp = dyn_cast<linalg::LinalgOp>(op)) {
-      // Skip if the op is neither elementwise, a contraction, nor a
-      // convolution.
-      if (!isElementwise(linalgOp) &&
+      // Skip if the op is not elementwise/reduction/contraction/convolution.
+      if (!isElementwise(linalgOp) && !isReductionOp(linalgOp) &&
           !linalg::isaContractionOpInterface(linalgOp) &&
           !linalg::isaConvolutionOpInterface(linalgOp)) {
         return WalkResult::advance();

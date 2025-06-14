@@ -23,7 +23,7 @@ enum class TilePassPipeline {
   PackPeelPipeline,
   PackPeel4LevelTilingPipeline,
   ConvDecomposePipeline,
-  SoftmaxCopyPipeline,
+  GeneralCopyPipeline,
   None
 };
 
