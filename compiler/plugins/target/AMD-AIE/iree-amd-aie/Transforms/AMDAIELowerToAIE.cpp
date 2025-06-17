@@ -609,9 +609,9 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
   // No DMA op needed for control flow.
   if (isCtrlFlow.value()) return success();
 
-  std::optional<uint8_t> packetId = maybeFlowOp->getPacketId();
+  // std::optional<uint8_t> packetId = maybeFlowOp->getPacketId();
 
-  FailureOr<AMDAIE::NpuCircularDmaCpyNdOp> maybeNpuDmaUserOp;
+  // FailureOr<AMDAIE::NpuCircularDmaCpyNdOp> maybeNpuDmaUserOp;
   // TODO(avarma): Fix this!
 
   SmallVector<Operation *> sourceMemOps;
@@ -631,93 +631,94 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
           connectionIndex);
       sourceMemOps.push_back(shimDmaAllocOp.getOperation());
     }
-  } else {
-    auto sourceObjFifo =
-        dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromBuffersOp>(
-            source.getDefiningOp());
-    if (!sourceObjFifo) {
-      return connectionOp.emitOpError()
-             << "expected source to be an "
-                "`amdaie.logicalobjectfifo.from_buffers` op";
-    }
-    FailureOr<size_t> repetitionCount = getRepetitionCount(
-        cast<LogicalObjFifoOpInterface>(sourceObjFifo.getOperation()));
-    if (failed(repetitionCount)) {
-      return sourceObjFifo->emitOpError()
-             << "could not retrieve the repetition count";
-    }
-    std::optional<size_t> maybeOffset =
-        maybeNpuDmaUserOp->getSourceStaticBaseOffset();
-    if (!maybeOffset) {
-      return maybeNpuDmaUserOp->emitOpError()
-             << "could not compute a static base offset for source";
-    }
-    std::optional<uint8_t> maybeSourceMemSpace =
-        maybeNpuDmaUserOp->getSourceMemorySpaceAsUInt();
-    if (!maybeSourceMemSpace) {
-      return maybeNpuDmaUserOp->emitOpError()
-             << "expected to have a source memory space";
-    }
-    SmallVector<CopyOpInterface> objFifoProducers =
-        sourceObjFifo.getCopyLikeProducers();
-    SmallVector<CopyOpInterface> objFifoConsumers =
-        sourceObjFifo.getCopyLikeConsumers();
-    // Default acquire/release value is 1. Will be adjusted depending on number
-    // of producers/consumers.
-    int acqNum{1};
-    if (objFifoConsumers.size() < objFifoProducers.size()) {
-      assert(objFifoProducers.size() % objFifoConsumers.size() == 0);
-      acqNum = objFifoProducers.size() / objFifoConsumers.size();
-    }
-    for (AMDAIE::ChannelOp channel : producerChannels) {
-      Operation *memOp = tileToMemOpMap.at(channel.getTile());
-      AMDAIE::TileOp tileOp = channel.getTileOp();
-      SmallVector<AIE::BufferOp> buffers = llvm::map_to_vector(
-          sourceObjFifo.getBuffersOnTile(tileOp),
-          [&](AMDAIE::BufferOp bufferOp) {
-            return cast<AIE::BufferOp>(mapper.lookup(bufferOp.getOperation()));
-          });
-      SmallVector<AIE::LockOp> producerLocks = llvm::map_to_vector(
-          sourceObjFifo.getProducerLocksOnTile(tileOp),
-          [&](AMDAIE::LockOp lockOp) {
-            return cast<AIE::LockOp>(mapper.lookup(lockOp.getOperation()));
-          });
-      SmallVector<AIE::LockOp> consumerLocks = llvm::map_to_vector(
-          sourceObjFifo.getConsumerLocksOnTile(tileOp),
-          [&](AMDAIE::LockOp lockOp) {
-            return cast<AIE::LockOp>(mapper.lookup(lockOp.getOperation()));
-          });
-      if (producerLocks.size() != 1) {
-        return sourceObjFifo.emitOpError()
-               << "expected a single producer lock for tile: "
-               << channel.getTile() << ", channel: " << channel.getResult();
-      }
-      if (consumerLocks.size() != 1) {
-        return sourceObjFifo.emitOpError()
-               << "expected a single consumer lock for tile: "
-               << channel.getTile() << ", channel: " << channel.getResult();
-      }
-      std::pair<AIE::LockOp, AIE::LockOp> lockPair =
-          std::make_pair(consumerLocks[0], producerLocks[0]);
-      SmallVector<int64_t> canonicalizedSizes, canonicalizedStrides;
-      if (failed(foldDimsAndReturnAsStatic(
-              maybeNpuDmaUserOp->getSourceMixedSizes(),
-              maybeNpuDmaUserOp->getSourceMixedStrides(), canonicalizedSizes,
-              canonicalizedStrides, repetitionCount.value(),
-              maybeSourceMemSpace.value(),
-              [&]() { return maybeNpuDmaUserOp->emitOpError(); }))) {
-        return failure();
-      };
-      rewriter.moveOpBefore(memOp, deviceBlock,
-                            deviceBlock->without_terminator().end());
-      if (failed(createDMABlocks(
-              memOp, AIE::DMAChannelDir::MM2S, channel.getValue(),
-              canonicalizedSizes, canonicalizedStrides, acqNum, acqNum,
-              maybeOffset.value(), buffers, lockPair, packetId))) {
-        return sourceObjFifo.emitOpError() << "could not create DMA operations";
-      }
-    }
   }
+  // else {
+  //   auto sourceObjFifo =
+  //       dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromBuffersOp>(
+  //           source.getDefiningOp());
+  //   if (!sourceObjFifo) {
+  //     return connectionOp.emitOpError()
+  //            << "expected source to be an "
+  //               "`amdaie.logicalobjectfifo.from_buffers` op";
+  //   }
+  //   FailureOr<size_t> repetitionCount = getRepetitionCount(
+  //       cast<LogicalObjFifoOpInterface>(sourceObjFifo.getOperation()));
+  //   if (failed(repetitionCount)) {
+  //     return sourceObjFifo->emitOpError()
+  //            << "could not retrieve the repetition count";
+  //   }
+  //   std::optional<size_t> maybeOffset =
+  //       maybeNpuDmaUserOp->getSourceStaticBaseOffset();
+  //   if (!maybeOffset) {
+  //     return maybeNpuDmaUserOp->emitOpError()
+  //            << "could not compute a static base offset for source";
+  //   }
+  //   std::optional<uint8_t> maybeSourceMemSpace =
+  //       maybeNpuDmaUserOp->getSourceMemorySpaceAsUInt();
+  //   if (!maybeSourceMemSpace) {
+  //     return maybeNpuDmaUserOp->emitOpError()
+  //            << "expected to have a source memory space";
+  //   }
+  //   SmallVector<CopyOpInterface> objFifoProducers =
+  //       sourceObjFifo.getCopyLikeProducers();
+  //   SmallVector<CopyOpInterface> objFifoConsumers =
+  //       sourceObjFifo.getCopyLikeConsumers();
+  //   // Default acquire/release value is 1. Will be adjusted depending on number
+  //   // of producers/consumers.
+  //   int acqNum{1};
+  //   if (objFifoConsumers.size() < objFifoProducers.size()) {
+  //     assert(objFifoProducers.size() % objFifoConsumers.size() == 0);
+  //     acqNum = objFifoProducers.size() / objFifoConsumers.size();
+  //   }
+  //   for (AMDAIE::ChannelOp channel : producerChannels) {
+  //     Operation *memOp = tileToMemOpMap.at(channel.getTile());
+  //     AMDAIE::TileOp tileOp = channel.getTileOp();
+  //     SmallVector<AIE::BufferOp> buffers = llvm::map_to_vector(
+  //         sourceObjFifo.getBuffersOnTile(tileOp),
+  //         [&](AMDAIE::BufferOp bufferOp) {
+  //           return cast<AIE::BufferOp>(mapper.lookup(bufferOp.getOperation()));
+  //         });
+  //     SmallVector<AIE::LockOp> producerLocks = llvm::map_to_vector(
+  //         sourceObjFifo.getProducerLocksOnTile(tileOp),
+  //         [&](AMDAIE::LockOp lockOp) {
+  //           return cast<AIE::LockOp>(mapper.lookup(lockOp.getOperation()));
+  //         });
+  //     SmallVector<AIE::LockOp> consumerLocks = llvm::map_to_vector(
+  //         sourceObjFifo.getConsumerLocksOnTile(tileOp),
+  //         [&](AMDAIE::LockOp lockOp) {
+  //           return cast<AIE::LockOp>(mapper.lookup(lockOp.getOperation()));
+  //         });
+  //     if (producerLocks.size() != 1) {
+  //       return sourceObjFifo.emitOpError()
+  //              << "expected a single producer lock for tile: "
+  //              << channel.getTile() << ", channel: " << channel.getResult();
+  //     }
+  //     if (consumerLocks.size() != 1) {
+  //       return sourceObjFifo.emitOpError()
+  //              << "expected a single consumer lock for tile: "
+  //              << channel.getTile() << ", channel: " << channel.getResult();
+  //     }
+  //     std::pair<AIE::LockOp, AIE::LockOp> lockPair =
+  //         std::make_pair(consumerLocks[0], producerLocks[0]);
+  //     SmallVector<int64_t> canonicalizedSizes, canonicalizedStrides;
+  //     if (failed(foldDimsAndReturnAsStatic(
+  //             maybeNpuDmaUserOp->getSourceMixedSizes(),
+  //             maybeNpuDmaUserOp->getSourceMixedStrides(), canonicalizedSizes,
+  //             canonicalizedStrides, repetitionCount.value(),
+  //             maybeSourceMemSpace.value(),
+  //             [&]() { return maybeNpuDmaUserOp->emitOpError(); }))) {
+  //       return failure();
+  //     };
+  //     rewriter.moveOpBefore(memOp, deviceBlock,
+  //                           deviceBlock->without_terminator().end());
+  //     if (failed(createDMABlocks(
+  //             memOp, AIE::DMAChannelDir::MM2S, channel.getValue(),
+  //             canonicalizedSizes, canonicalizedStrides, acqNum, acqNum,
+  //             maybeOffset.value(), buffers, lockPair, packetId))) {
+  //       return sourceObjFifo.emitOpError() << "could not create DMA operations";
+  //     }
+  //   }
+  // }
 
   SmallVector<Operation *> targetMemOps;
   Value target = connectionOp.getTarget();
@@ -736,93 +737,94 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
           connectionIndex);
       targetMemOps.push_back(shimDmaAllocOp.getOperation());
     }
-  } else {
-    auto targetObjFifo =
-        dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromBuffersOp>(
-            target.getDefiningOp());
-    if (!targetObjFifo) {
-      return connectionOp.emitOpError()
-             << "expected target to be an "
-                "`amdaie.logicalobjectfifo.from_buffers` op";
-    }
-    FailureOr<size_t> repetitionCount = getRepetitionCount(
-        cast<LogicalObjFifoOpInterface>(targetObjFifo.getOperation()));
-    if (failed(repetitionCount)) {
-      return targetObjFifo->emitOpError()
-             << "could not retrieve the repetition count";
-    }
-    std::optional<size_t> maybeOffset =
-        maybeNpuDmaUserOp->getTargetStaticBaseOffset();
-    if (!maybeOffset) {
-      return maybeNpuDmaUserOp->emitOpError()
-             << "could not compute a static base offset for source";
-    }
-    std::optional<uint8_t> maybeTargetMemSpace =
-        maybeNpuDmaUserOp->getTargetMemorySpaceAsUInt();
-    if (!maybeTargetMemSpace) {
-      return maybeNpuDmaUserOp->emitOpError()
-             << "expected to have a target memory space";
-    }
-    SmallVector<CopyOpInterface> objFifoProducers =
-        targetObjFifo.getCopyLikeProducers();
-    SmallVector<CopyOpInterface> objFifoConsumers =
-        targetObjFifo.getCopyLikeConsumers();
-    // Default acquire/release value is 1. Will be adjusted depending on number
-    // of producers/consumers.
-    int acqNum{1};
-    if (objFifoProducers.size() < objFifoConsumers.size()) {
-      assert(objFifoConsumers.size() % objFifoProducers.size() == 0);
-      acqNum = objFifoConsumers.size() / objFifoProducers.size();
-    }
-    for (AMDAIE::ChannelOp channel : consumerChannels) {
-      Operation *memOp = tileToMemOpMap.at(channel.getTile());
-      AMDAIE::TileOp tileOp = channel.getTileOp();
-      SmallVector<AIE::BufferOp> buffers = llvm::map_to_vector(
-          targetObjFifo.getBuffersOnTile(tileOp),
-          [&](AMDAIE::BufferOp bufferOp) {
-            return cast<AIE::BufferOp>(mapper.lookup(bufferOp.getOperation()));
-          });
-      SmallVector<AIE::LockOp> producerLocks = llvm::map_to_vector(
-          targetObjFifo.getProducerLocksOnTile(tileOp),
-          [&](AMDAIE::LockOp lockOp) {
-            return cast<AIE::LockOp>(mapper.lookup(lockOp.getOperation()));
-          });
-      SmallVector<AIE::LockOp> consumerLocks = llvm::map_to_vector(
-          targetObjFifo.getConsumerLocksOnTile(tileOp),
-          [&](AMDAIE::LockOp lockOp) {
-            return cast<AIE::LockOp>(mapper.lookup(lockOp.getOperation()));
-          });
-      if (producerLocks.size() != 1) {
-        return targetObjFifo.emitOpError()
-               << "expected a single producer lock for tile: "
-               << channel.getTile();
-      }
-      if (consumerLocks.size() != 1) {
-        return targetObjFifo.emitOpError()
-               << "expected a single consumer lock for tile: "
-               << channel.getTile();
-      }
-      std::pair<AIE::LockOp, AIE::LockOp> lockPair =
-          std::make_pair(producerLocks[0], consumerLocks[0]);
-      SmallVector<int64_t> canonicalizedSizes, canonicalizedStrides;
-      if (failed(foldDimsAndReturnAsStatic(
-              maybeNpuDmaUserOp->getTargetMixedSizes(),
-              maybeNpuDmaUserOp->getTargetMixedStrides(), canonicalizedSizes,
-              canonicalizedStrides, repetitionCount.value(),
-              maybeTargetMemSpace.value(),
-              [&]() { return maybeNpuDmaUserOp->emitOpError(); }))) {
-        return failure();
-      };
-      rewriter.moveOpBefore(memOp, deviceBlock,
-                            deviceBlock->without_terminator().end());
-      if (failed(createDMABlocks(
-              memOp, AIE::DMAChannelDir::S2MM, channel.getValue(),
-              canonicalizedSizes, canonicalizedStrides, acqNum, acqNum,
-              maybeOffset.value(), buffers, lockPair, packetId))) {
-        return targetObjFifo.emitOpError() << "could not create DMA operations";
-      }
-    }
   }
+  // else {
+  //   auto targetObjFifo =
+  //       dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromBuffersOp>(
+  //           target.getDefiningOp());
+  //   if (!targetObjFifo) {
+  //     return connectionOp.emitOpError()
+  //            << "expected target to be an "
+  //               "`amdaie.logicalobjectfifo.from_buffers` op";
+  //   }
+  //   FailureOr<size_t> repetitionCount = getRepetitionCount(
+  //       cast<LogicalObjFifoOpInterface>(targetObjFifo.getOperation()));
+  //   if (failed(repetitionCount)) {
+  //     return targetObjFifo->emitOpError()
+  //            << "could not retrieve the repetition count";
+  //   }
+  //   std::optional<size_t> maybeOffset =
+  //       maybeNpuDmaUserOp->getTargetStaticBaseOffset();
+  //   if (!maybeOffset) {
+  //     return maybeNpuDmaUserOp->emitOpError()
+  //            << "could not compute a static base offset for source";
+  //   }
+  //   std::optional<uint8_t> maybeTargetMemSpace =
+  //       maybeNpuDmaUserOp->getTargetMemorySpaceAsUInt();
+  //   if (!maybeTargetMemSpace) {
+  //     return maybeNpuDmaUserOp->emitOpError()
+  //            << "expected to have a target memory space";
+  //   }
+  //   SmallVector<CopyOpInterface> objFifoProducers =
+  //       targetObjFifo.getCopyLikeProducers();
+  //   SmallVector<CopyOpInterface> objFifoConsumers =
+  //       targetObjFifo.getCopyLikeConsumers();
+  //   // Default acquire/release value is 1. Will be adjusted depending on number
+  //   // of producers/consumers.
+  //   int acqNum{1};
+  //   if (objFifoProducers.size() < objFifoConsumers.size()) {
+  //     assert(objFifoConsumers.size() % objFifoProducers.size() == 0);
+  //     acqNum = objFifoConsumers.size() / objFifoProducers.size();
+  //   }
+  //   for (AMDAIE::ChannelOp channel : consumerChannels) {
+  //     Operation *memOp = tileToMemOpMap.at(channel.getTile());
+  //     AMDAIE::TileOp tileOp = channel.getTileOp();
+  //     SmallVector<AIE::BufferOp> buffers = llvm::map_to_vector(
+  //         targetObjFifo.getBuffersOnTile(tileOp),
+  //         [&](AMDAIE::BufferOp bufferOp) {
+  //           return cast<AIE::BufferOp>(mapper.lookup(bufferOp.getOperation()));
+  //         });
+  //     SmallVector<AIE::LockOp> producerLocks = llvm::map_to_vector(
+  //         targetObjFifo.getProducerLocksOnTile(tileOp),
+  //         [&](AMDAIE::LockOp lockOp) {
+  //           return cast<AIE::LockOp>(mapper.lookup(lockOp.getOperation()));
+  //         });
+  //     SmallVector<AIE::LockOp> consumerLocks = llvm::map_to_vector(
+  //         targetObjFifo.getConsumerLocksOnTile(tileOp),
+  //         [&](AMDAIE::LockOp lockOp) {
+  //           return cast<AIE::LockOp>(mapper.lookup(lockOp.getOperation()));
+  //         });
+  //     if (producerLocks.size() != 1) {
+  //       return targetObjFifo.emitOpError()
+  //              << "expected a single producer lock for tile: "
+  //              << channel.getTile();
+  //     }
+  //     if (consumerLocks.size() != 1) {
+  //       return targetObjFifo.emitOpError()
+  //              << "expected a single consumer lock for tile: "
+  //              << channel.getTile();
+  //     }
+  //     std::pair<AIE::LockOp, AIE::LockOp> lockPair =
+  //         std::make_pair(producerLocks[0], consumerLocks[0]);
+  //     SmallVector<int64_t> canonicalizedSizes, canonicalizedStrides;
+  //     if (failed(foldDimsAndReturnAsStatic(
+  //             maybeNpuDmaUserOp->getTargetMixedSizes(),
+  //             maybeNpuDmaUserOp->getTargetMixedStrides(), canonicalizedSizes,
+  //             canonicalizedStrides, repetitionCount.value(),
+  //             maybeTargetMemSpace.value(),
+  //             [&]() { return maybeNpuDmaUserOp->emitOpError(); }))) {
+  //       return failure();
+  //     };
+  //     rewriter.moveOpBefore(memOp, deviceBlock,
+  //                           deviceBlock->without_terminator().end());
+  //     if (failed(createDMABlocks(
+  //             memOp, AIE::DMAChannelDir::S2MM, channel.getValue(),
+  //             canonicalizedSizes, canonicalizedStrides, acqNum, acqNum,
+  //             maybeOffset.value(), buffers, lockPair, packetId))) {
+  //       return targetObjFifo.emitOpError() << "could not create DMA operations";
+  //     }
+  //   }
+  // }
 
   // Keep track of source/target mem ops for this connection for later retrieval
   // to create NPU ops.
@@ -989,7 +991,7 @@ LogicalResult AIEDeviceBuilder::workgroupToAIE(AMDAIE::WorkgroupOp workgroupOp,
           if (failed(connectionToAIE(dmaOp, deviceBlock, connectionIndex))) {
             return WalkResult::interrupt();
           }
-          return WalkResult::advance();
+          return WalkResult::skip();
         })
         .Case<AMDAIE::ControlCodeOp>([&](auto controlCodeOp) {
           // Skip control code as it should already be translated into firmware

@@ -256,7 +256,7 @@ def AMDAIE_BufferOp: AMDAIE_Op<"buffer", [
   let arguments = (
     ins Index:$tile,
         OptionalAttr<StrAttr>:$sym_name,
-        OptionalAttr<UI32Attr>:$address,
+        OptionalAttr<I32Attr>:$address,
         OptionalAttr<UI32Attr>:$mem_bank
   );
 
