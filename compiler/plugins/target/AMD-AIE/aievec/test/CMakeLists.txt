@@ -7,6 +7,7 @@ set(_mlir_files
   test_shuffle.mlir
   test_srs.mlir
   test_ups.mlir
+  contract_vector_to_aievec.mlir
 )
 
 iree_lit_test_suite(
