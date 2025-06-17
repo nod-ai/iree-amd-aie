@@ -8,5 +8,4 @@
 
 this_dir="$(cd $(dirname $0) && pwd)"
 RELEASE=$(cat $this_dir/peano_commit_linux.txt)
-pip download llvm_aie==$RELEASE -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
-unzip llvm_aie*whl
+pip install llvm_aie==$RELEASE --upgrade --target $PWD -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
