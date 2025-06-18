@@ -9,6 +9,7 @@
 #include <optional>
 
 #include "llvm/ADT/StringExtras.h"
+#include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
 #include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -353,6 +354,44 @@ bool isMatmulWithElementwiseConsumer(linalg::LinalgOp linalgOp) {
     }
   }
   return false;
+}
+
+/// Utility to identify if `linalgOp` is a supported reduction op. Currently,
+/// we are using strict conditions for reduction op matching.
+bool isReductionOp(linalg::LinalgOp linalgOp) {
+  if (isMatmul(linalgOp) || isMatmulTransposeA(linalgOp) ||
+      isMatmulTransposeB(linalgOp))
+    return false;
+
+  // Make sure there is only one reduction dimension.
+  SmallVector<unsigned> reductionDims;
+  linalgOp.getReductionDims(reductionDims);
+  if (reductionDims.size() != 1) return false;
+
+  // Make sure the reduction dimension is static and innermost.
+  unsigned dim = reductionDims[0];
+  SmallVector<int64_t> bounds = linalgOp.getStaticLoopRanges();
+  if (ShapedType::isDynamic(bounds[dim])) return false;
+
+  int64_t numParallelDims = linalgOp.getNumParallelLoops();
+  if (dim < numParallelDims) return false;
+
+  // Only support projected permutation.
+  if (llvm::any_of(linalgOp.getDpsInputOperands(), [&](OpOperand *input) {
+        return !linalgOp.getMatchingIndexingMap(input).isProjectedPermutation();
+      }))
+    return false;
+
+  // Only support a single output.
+  if (linalgOp.getNumDpsInits() != 1) return false;
+
+  // Only support single combiner operation.
+  SmallVector<Operation *, 4> combinerOps;
+  if (!matchReduction(linalgOp.getRegionOutputArgs(), 0, combinerOps) ||
+      combinerOps.size() != 1)
+    return false;
+
+  return true;
 }
 
 std::string utohexstr(uint32_t value, size_t width, bool header,
