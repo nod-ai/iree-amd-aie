@@ -204,6 +204,172 @@ LogicalResult configureDMABD(
   return success();
 }
 
+LogicalResult configureDMABDWithLocks(
+    const AMDAIEDeviceModel &deviceModel, XAie_DmaDesc &dmaDesc,
+    const TileLoc &tileLoc, bool validBd, uint8_t bdId, bool enableNextBd,
+    std::optional<uint8_t> nextBdId, bool enablePacket,
+    std::optional<uint8_t> packetType, std::optional<uint8_t> packetId,
+    uint64_t baseAddr, uint64_t lenInBytes, uint64_t offsetInBytes,
+    uint32_t bufferElementTypeWidthInBytes,
+    const std::optional<std::vector<BDDimLayout>> &maybeDims,
+    const std::optional<std::vector<BDPadLayout>> &maybePadDims,
+    const std::optional<BDIterLayout> &maybeIter, int8_t acqValue,
+    int8_t relValue, uint8_t acqLockId, uint8_t relLockId, bool acqEn) {
+  assert(dmaDesc.IsReady == XAIE_COMPONENT_IS_READY &&
+         "XAie_DmaDescs need to be created using initDMADesc");
+  if (deviceModel.isShimNOCTile(tileLoc.col, tileLoc.row)) {
+    // TODO(max): revisit these values
+    // write them out like this so they show up with names in debug prints
+    uint8_t smid = 0;
+    uint8_t burstLen = 16;  // (10):BLEN=16 (256Byte) (corresponds to
+                            // 0x800000000 from target)
+    uint8_t qOs = 0;
+    uint8_t cache = 0;
+    uint8_t secure = 0;
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaSetAxi, &dmaDesc, smid, burstLen, qOs,
+                                cache, secure);
+  }
+
+  // std::string& FifoMode = disable; // FIXME: when to enable FIFO mode?
+  if (!deviceModel.isShimNOCTile(tileLoc.col, tileLoc.row)) {
+    if (deviceModel.isMemTile(tileLoc.col, tileLoc.row))
+      baseAddr += XAIE2IPU_ADDR_ARRAY_OFF;
+  }
+  uint64_t basePlusOffsetInBytes = baseAddr + offsetInBytes;
+
+  // aie-rt expects multiples of 32b words (see docstring on
+  // XAie_DmaSetMultiDimAddr). Thus, elementWidthIn32bWords is possibly a
+  // fraction, e.g. bf16 => elementWidthIn32bWords == 0.5 so that size = 10 => 5
+  // 32b words
+  double elementWidthIn32bWords =
+      static_cast<double>(bufferElementTypeWidthInBytes) / 4.0;
+
+  if (const auto &dims = maybeDims) {
+    XAie_DmaTensor dmaTileBdTensor = {};
+    dmaTileBdTensor.NumDim = dims->size();
+    dmaTileBdTensor.Dim = new XAie_DmaDimDesc[dmaTileBdTensor.NumDim];
+    for (size_t i = 0; i < dims->size(); i++) {
+      // Pass down dimensions in reverse order; in the MLIR, this allows
+      // us to specify step sizes/strides in the same order as we would for
+      // RankedTensorType/MemRefType.
+      uint16_t size = dims->at(i).size;
+      uint32_t stride = dims->at(i).stride;
+      size_t j = dims->size() - i - 1;
+      if (j > 0) {
+        if (stride * bufferElementTypeWidthInBytes % 4 != 0) {
+          llvm::errs() << "`stride` on dim " << i
+                       << ", times element width (in bytes), should "
+                          "be a multiple of 4 bytes";
+          return failure();
+        }
+        stride = static_cast<uint32_t>(stride * elementWidthIn32bWords);
+      } else {
+        if (size * bufferElementTypeWidthInBytes % 4 != 0) {
+          llvm::errs() << "`size` on dim " << i
+                       << ", times element width (in bytes), should "
+                          "be a multiple of 4 bytes";
+          return failure();
+        }
+        size = static_cast<uint16_t>(size * elementWidthIn32bWords);
+      }
+      stride = stride > 0 ? stride : 1;
+      // Assume AIE-ML architecture (ie use AieMlDimDesc instead of AieDimDesc);
+      // asserted in AIETranslateToCDODirect).
+      dmaTileBdTensor.Dim[j].AieMlDimDesc = {stride, size};
+    }
+
+    LLVM_DEBUG(llvm::dbgs() << dmaTileBdTensor << "\n");
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaSetMultiDimAddr, &dmaDesc,
+                                &dmaTileBdTensor, basePlusOffsetInBytes,
+                                lenInBytes);
+  } else {
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaSetAddrLen, &dmaDesc,
+                                basePlusOffsetInBytes, lenInBytes);
+  }
+
+  // ND zero padding.
+  if (const auto &padDims = maybePadDims) {
+    XAie_DmaPadTensor dmaPadTensor = {};
+    dmaPadTensor.NumDim = padDims->size();
+    dmaPadTensor.PadDesc = new XAie_PadDesc[dmaPadTensor.NumDim];
+    for (size_t i = 0; i < padDims->size(); i++) {
+      uint8_t before = padDims->at(i).const_pad_before;
+      uint8_t after = padDims->at(i).const_pad_after;
+      size_t j = padDims->size() - i - 1;
+      if (j == 0) {
+        if (before * bufferElementTypeWidthInBytes % 4 != 0) {
+          llvm::errs()
+              << "`before` padding on inner-most dim, times element width (in "
+                 "bytes), should be a multiple of 4 bytes";
+          return failure();
+        }
+        if (after * bufferElementTypeWidthInBytes % 4 != 0) {
+          llvm::errs()
+              << "`after` padding on inner-most dim, times element width (in "
+                 "bytes), should be a multiple of 4 bytes";
+          return failure();
+        }
+        before = static_cast<uint8_t>(before * elementWidthIn32bWords);
+        after = static_cast<uint8_t>(after * elementWidthIn32bWords);
+      }
+      dmaPadTensor.PadDesc[j] = {before, after};
+    }
+    LLVM_DEBUG(llvm::dbgs() << dmaPadTensor << "\n");
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaSetPadding, &dmaDesc, &dmaPadTensor);
+  }
+
+  if (maybeIter.has_value()) {
+    BDIterLayout iter = maybeIter.value();
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaSetBdIteration, &dmaDesc, iter.stride,
+                                iter.size, iter.current);
+  }
+
+  if (nextBdId) {
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaSetNextBd, &dmaDesc, nextBdId.value(),
+                                enableNextBd);
+  }
+
+  if (enablePacket) {
+    if (!packetId || !packetType) {
+      llvm::errs() << "must have packetType with packetId";
+      return failure();
+    }
+    if (lenInBytes == 0) {
+      llvm::errs()
+          << "For MM2S channels, if Buffer_Length=0 then Enable_Packet must be "
+             "set to 0, otherwise behavior is undefined (3.7.8 arch spec)";
+      return failure();
+    }
+
+    TRY_XAIE_API_LOGICAL_RESULT(
+        XAie_DmaSetPkt, &dmaDesc,
+        XAie_PacketInit(packetId.value(), packetType.value()));
+  }
+
+  if (validBd) {
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaEnableBd, &dmaDesc);
+  } else {
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaDisableBd, &dmaDesc);
+  }
+
+  auto devInst = const_cast<XAie_DevInst *>(&deviceModel.devInst);
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaWriteBd, devInst, &dmaDesc, tileLoc,
+                              bdId);
+
+  if (deviceModel.isMemTile(tileLoc.col, tileLoc.row)) {
+    acqLockId += XAIE2IPU_MEM_TILE_LOCK_ID_INCR;
+    relLockId += XAIE2IPU_MEM_TILE_LOCK_ID_INCR;
+  }
+
+  // no RelEn in the arch spec even though the API requires you to set it?
+  bool relEn = false;
+  XAie_Lock acqLock = XAie_LockInit(acqLockId, acqValue);
+  XAie_Lock relLock = XAie_LockInit(relLockId, relValue);
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaLockControl, &dmaDesc, acqLock,
+                              relLock, acqEn, relEn);
+  return success();
+}
+
 LogicalResult configurePushToBdQueue(const AMDAIEDeviceModel &deviceModel,
                                      const TileLoc &tileLoc, uint8_t chNum,
                                      const DMAChannelDir &channelDir,

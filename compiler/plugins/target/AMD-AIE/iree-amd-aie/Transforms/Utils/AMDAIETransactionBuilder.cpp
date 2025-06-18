@@ -99,11 +99,6 @@ LogicalResult TransactionBuilder::appendDmaStartOp(
         relLockId = lockOp.getValue();
       }
     }
-    if (failed(configureDMALocks(deviceModel, *dmaDesc, tileLoc,
-                      acqValue, relValue,
-                      acqLockId, relLockId,
-                      /*acqEn=*/true)))
-      return WalkResult::interrupt();
     
     std::optional<uint32_t> bdId = dmaBdOp.getBdId();
     if (!bdId)
@@ -126,17 +121,15 @@ LogicalResult TransactionBuilder::appendDmaStartOp(
     }
     uint32_t lenInBytes = bufferLength * bufferElementTypeWidthInBytes;
     uint32_t offsetInBytes = dmaBdOp.getOffset(); // offset in bytes ?
-    if (failed(configureDMABD(
+    if (failed(configureDMABDWithLocks(
       deviceModel, *dmaDesc, tileLoc, /*validBd=*/true, *bdId,
       /*enableNextBd=*/false, /*nextBdId=*/std::nullopt, /*enablePacket=*/ false,
       /*packetType=*/std::nullopt, /*packetId=*/std::nullopt, /*baseAddr=*/(*baseAddr),
       /*lenInBytes=*/lenInBytes, /*offsetInBytes=*/offsetInBytes,
       /*bufferElementTypeWidthInBytes=*/bufferElementTypeWidthInBytes,
-      /*maybeDims=*/dims, /*maybePadDims=*/std::nullopt, /*maybeIter=*/std::nullopt
-      // const std::optional<std::vector<BDDimLayout>> &maybeDims,
-      // const std::optional<std::vector<BDPadLayout>> &maybePadDims,
-      // const std::optional<BDIterLayout> &maybeIter
-    )))
+      /*maybeDims=*/dims, /*maybePadDims=*/std::nullopt, /*maybeIter=*/std::nullopt,
+      /*acqValue=*/acqValue, /*relValue=*/relValue, /*acqLockId=*/acqLockId,
+      /*relLockId=*/relLockId, /*acqEn=*/true)))
       return WalkResult::interrupt();
     return WalkResult::advance();
   });

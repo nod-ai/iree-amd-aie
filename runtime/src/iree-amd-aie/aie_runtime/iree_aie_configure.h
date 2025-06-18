@@ -168,6 +168,19 @@ LogicalResult configureDMABD(
     const std::optional<std::vector<BDPadLayout>> &maybePadDims,
     const std::optional<BDIterLayout> &maybeIter);
 
+/// Configures/sets up a buffer descriptor (bd) associated with a dma.
+LogicalResult configureDMABDWithLocks(
+    const AMDAIEDeviceModel &deviceModel, XAie_DmaDesc &dmaDesc,
+    const TileLoc &tileLoc, bool validBd, uint8_t bdId, bool enableNextBd,
+    std::optional<uint8_t> nextBdId, bool enablePacket,
+    std::optional<uint8_t> packetType, std::optional<uint8_t> packetId,
+    uint64_t baseAddr, uint64_t lenInBytes, uint64_t offsetInBytes,
+    uint32_t bufferElementTypeWidthInBytes,
+    const std::optional<std::vector<BDDimLayout>> &maybeDims,
+    const std::optional<std::vector<BDPadLayout>> &maybePadDims,
+    const std::optional<BDIterLayout> &maybeIter, int8_t acqValue,
+    int8_t relValue, uint8_t acqLockId, uint8_t relLockId, bool acqEn);
+
 /// Configures/sets up locks associated with a dma (actually the bd...).
 LogicalResult configureDMALocks(const AMDAIEDeviceModel &deviceModel,
                                 XAie_DmaDesc &dmaDesc, const TileLoc &tileLoc,

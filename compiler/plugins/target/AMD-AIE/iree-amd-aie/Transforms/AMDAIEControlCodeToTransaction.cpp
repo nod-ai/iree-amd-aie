@@ -78,6 +78,7 @@ LogicalResult controlCodeToTransaction(IRRewriter &rewriter,
     LogicalResult switchResult =
         TypeSwitch<Operation *, LogicalResult>(op)
             .Case<AMDAIE::NpuAddressPatchOp, AMDAIE::NpuTctSyncOp,
+                  // AMDAIE::NpuPushToQueueOp, AMDAIE::NpuWriteBdOp>(
                   AMDAIE::NpuPushToQueueOp, AMDAIE::NpuWriteBdOp,
                   AMDAIE::DMAStartOp>(
                 [&](auto npuOp) {
