@@ -36,7 +36,7 @@ iree_tablegen_library(
   OUTS
     -gen-dialect-decls -dialect=aievec AIEVecDialect.h.inc
     -gen-dialect-defs -dialect=aievec AIEVecDialect.cpp.inc
-    -gen-dialect-doc AIEVecDialect.md
+    -gen-dialect-doc -dialect=aievec AIEVecDialect.md
 )
 
 iree_tablegen_library(
