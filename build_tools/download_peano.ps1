@@ -8,8 +8,4 @@ $ErrorActionPreference = 'Stop'
 
 $this_dir = Split-Path -Path $MyInvocation.MyCommand.Path -Parent
 $RELEASE = (Get-Content -Path "$this_dir/peano_commit_windows.txt")
-pip download llvm_aie==$RELEASE -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
-$peano = (Get-ChildItem -Filter llvm*.whl)
-$new_name = ($peano.Basename + ".zip")
-Rename-Item -Path $peano.Name -NewName $new_name
-Expand-Archive $new_name -DestinationPath $PWD.Path -Force
+pip install llvm_aie==$RELEASE --upgrade --target $PWD.Path -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
