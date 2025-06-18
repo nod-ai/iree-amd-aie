@@ -16,6 +16,7 @@ iree_c_embed_data(
     "uKernels/npu1/chess/zero_fill.cc"
     "uKernels/npu4/chess/chess_intrinsic_wrapper.cpp"
     "uKernels/npu4/chess/matmul.cc"
+    "uKernels/npu4/chess/softmax.cc"
     "uKernels/npu4/chess/trunci.cc"
     "uKernels/npu4/chess/zero_fill.cc"
     "uKernels/npu4/peano/matmul.cc"
