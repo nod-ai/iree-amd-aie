@@ -605,7 +605,7 @@ void addGeneralCopyPassPipeline(OpPassManager &funcPassManager,
     funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
   }
 
-  // Insert copy operations to the softmax input and result.
+  // Insert copy operations.
   funcPassManager.addPass(createAMDAIEInsertCopyOpsPass());
   addCleanups();
 
@@ -628,7 +628,7 @@ void addGeneralCopyPassPipeline(OpPassManager &funcPassManager,
     funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
   }
 
-  // Insert copy operations to the softmax input and result.
+  // Insert copy operations.
   funcPassManager.addPass(createAMDAIEInsertCopyOpsPass());
   addCleanups();
 
