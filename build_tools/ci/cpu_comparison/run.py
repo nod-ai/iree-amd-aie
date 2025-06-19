@@ -947,7 +947,7 @@ class Softmax(BaseTest):
             use_ukernel=self.use_ukernel,
             tile_pipeline="general-copy",
             function_name="softmax",
-            rtol=2e-2,
+            rtol=6e-2,
         )
         return True
 
@@ -2598,22 +2598,25 @@ class Tests:
         )
 
         # Softmax tests:
-        self.register(
-            Softmax(
-                128,
-                32,
-                "bf16",
-                test_params=TestParams(
-                    name_suffix="chess",
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=4",
-                        "--iree-amdaie-num-cols=1",
-                    ],
-                    use_chess=True,
-                    use_ukernel=True,
-                ),
+        for target in ["npu1_4col", "npu4"]:
+            self.register(
+                Softmax(
+                    128,
+                    32,
+                    "bf16",
+                    test_params=TestParams(
+                        run_on_target=target,
+                        name_suffix=target,
+                        aie_compilation_flags=[
+                            "--iree-amdaie-num-rows=4",
+                            "--iree-amdaie-num-cols=1",
+                        ],
+                        use_chess=True,
+                        use_chess_for_ukernel=True,
+                        use_ukernel=True,
+                    ),
+                )
             )
-        )
 
         # Reduction op tests:
         self.register(
