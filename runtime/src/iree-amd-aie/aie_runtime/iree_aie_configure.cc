@@ -204,6 +204,16 @@ LogicalResult configureDMABD(
   return success();
 }
 
+LogicalResult initializeLocks(
+    const AMDAIEDeviceModel &deviceModel, XAie_DmaDesc &dmaDesc,
+    const TileLoc &tileLoc, uint8_t lockId, int8_t lockInitVal) {
+  auto devInst = const_cast<XAie_DevInst *>(&deviceModel.devInst);
+  XAie_Lock lock = XAie_LockInit(lockId, lockInitVal);
+  // TODO(avarma): How is error being caught?
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_LockSetValue, devInst, tileLoc, lock);
+  return success();
+}
+
 LogicalResult configureDMABDWithLocks(
     const AMDAIEDeviceModel &deviceModel, XAie_DmaDesc &dmaDesc,
     const TileLoc &tileLoc, bool validBd, uint8_t bdId, bool enableNextBd,

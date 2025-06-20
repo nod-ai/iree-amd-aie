@@ -67,6 +67,25 @@ LogicalResult TransactionBuilder::appendAddressPatch(uint32_t addr,
   return configureCustomTxnOp(deviceModel, opCode, data, size);
 }
 
+LogicalResult TransactionBuilder::appendLockOp(AMDAIE::LockOp lockOp) {
+  auto tile = lockOp.getTile().getDefiningOp<AMDAIE::TileOp>();
+  std::optional<int64_t> col = getConstantIntValue(tile.getCol());
+  std::optional<int64_t> row = getConstantIntValue(tile.getRow());
+  if (!col || !row) {
+      return tile->emitOpError()
+                  << "expected column and row integer value/constant";
+  }
+  // TODO(avarma): In adf_runtime_api.cpp I see relativeToAbsoluteRow(tileType, row).
+  XAie_LocType tileLoc = XAie_TileLoc(*col, *row);
+  FailureOr<XAie_DmaDesc> dmaDesc = initDMADesc(deviceModel, tileLoc);
+  if (failed(dmaDesc)) return failure();
+  int8_t lockId = lockOp.getValue();
+  int8_t lockInitVal = *(lockOp.getInitValue());
+  if (failed(initializeLocks(deviceModel, *dmaDesc, tileLoc, lockId, lockInitVal)))
+    return failure();
+  return success();
+}
+
 LogicalResult TransactionBuilder::appendDmaStartOp(
     AMDAIE::DMAStartOp dmaStartOp) {
   // Configure DMA Locks.

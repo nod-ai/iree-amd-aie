@@ -31,6 +31,7 @@ class TransactionBuilder {
   LogicalResult appendAddressPatch(uint32_t addr, uint32_t argIdx,
                                    uint32_t offset);
 
+  LogicalResult appendLockOp(AMDAIE::LockOp lockOp);
   LogicalResult appendDmaStartOp(AMDAIE::DMAStartOp dmaStartOp);
 
   LogicalResult appendTCTSync(uint32_t col, uint32_t row, uint32_t direction,

@@ -74,7 +74,18 @@ LogicalResult controlCodeToTransaction(IRRewriter &rewriter,
                                        AMDAIE::ControlCodeOp controlCodeOp,
                                        TransactionBuilder &builder) {
   SmallVector<Operation *> toBeErased;
-  WalkResult res = controlCodeOp->walk([&](Operation *op) {
+  DenseSet<AMDAIE::LockOp> lockOps;
+  WalkResult res = controlCodeOp->walk([&](AMDAIE::UseLockOp op) {
+    auto lockOp = op.getLock().getDefiningOp<AMDAIE::LockOp>();
+    if (lockOps.count(lockOp) == 0) {
+      if (failed(builder.appendLockOp(lockOp)))
+        return WalkResult::interrupt();
+      lockOps.insert(lockOp);
+    }
+    return WalkResult::advance();
+  });
+  if (res.wasInterrupted()) return failure();
+  res = controlCodeOp->walk([&](Operation *op) {
     LogicalResult switchResult =
         TypeSwitch<Operation *, LogicalResult>(op)
             .Case<AMDAIE::NpuAddressPatchOp, AMDAIE::NpuTctSyncOp,
