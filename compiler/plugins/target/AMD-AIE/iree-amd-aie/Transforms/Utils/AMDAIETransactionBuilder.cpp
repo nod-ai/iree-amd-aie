@@ -129,7 +129,7 @@ LogicalResult TransactionBuilder::appendDmaStartOp(
       /*bufferElementTypeWidthInBytes=*/bufferElementTypeWidthInBytes,
       /*maybeDims=*/dims, /*maybePadDims=*/std::nullopt, /*maybeIter=*/std::nullopt,
       /*acqValue=*/acqValue, /*relValue=*/relValue, /*acqLockId=*/acqLockId,
-      /*relLockId=*/relLockId, /*acqEn=*/true)))
+      /*relLockId=*/relLockId)))
       return WalkResult::interrupt();
     return WalkResult::advance();
   });

@@ -214,7 +214,7 @@ LogicalResult configureDMABDWithLocks(
     const std::optional<std::vector<BDDimLayout>> &maybeDims,
     const std::optional<std::vector<BDPadLayout>> &maybePadDims,
     const std::optional<BDIterLayout> &maybeIter, int8_t acqValue,
-    int8_t relValue, uint8_t acqLockId, uint8_t relLockId, bool acqEn) {
+    int8_t relValue, uint8_t acqLockId, uint8_t relLockId) {
   assert(dmaDesc.IsReady == XAIE_COMPONENT_IS_READY &&
          "XAie_DmaDescs need to be created using initDMADesc");
   if (deviceModel.isShimNOCTile(tileLoc.col, tileLoc.row)) {
@@ -346,6 +346,12 @@ LogicalResult configureDMABDWithLocks(
         XAie_PacketInit(packetId.value(), packetType.value()));
   }
 
+  
+  XAie_Lock acqLock = XAie_LockInit(acqLockId, acqValue);
+  XAie_Lock relLock = XAie_LockInit(relLockId, relValue);
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaSetLock, &dmaDesc, acqLock,
+                              relLock);
+                              
   if (validBd) {
     TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaEnableBd, &dmaDesc);
   } else {
@@ -356,17 +362,19 @@ LogicalResult configureDMABDWithLocks(
   TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaWriteBd, devInst, &dmaDesc, tileLoc,
                               bdId);
 
-  if (deviceModel.isMemTile(tileLoc.col, tileLoc.row)) {
-    acqLockId += XAIE2IPU_MEM_TILE_LOCK_ID_INCR;
-    relLockId += XAIE2IPU_MEM_TILE_LOCK_ID_INCR;
-  }
+  // if (deviceModel.isMemTile(tileLoc.col, tileLoc.row)) {
+  //   acqLockId += XAIE2IPU_MEM_TILE_LOCK_ID_INCR;
+  //   relLockId += XAIE2IPU_MEM_TILE_LOCK_ID_INCR;
+  // }
 
+  // let assemblyFormat = [{ `(` $tile `(` $value `)` (`,` $init_value^)? `)` attr-dict }];
+  // %lock_20 = amdaie.lock(%tile_0_2(2), 1)
+  // let assemblyFormat = [{
+  //   `(` $lock `,` $action `(` $value `)` `)` attr-dict
+  // }];
+  // amdaie.use_lock(%lock_7, AcquireGreaterOrEqual(1))
   // no RelEn in the arch spec even though the API requires you to set it?
-  bool relEn = false;
-  XAie_Lock acqLock = XAie_LockInit(acqLockId, acqValue);
-  XAie_Lock relLock = XAie_LockInit(relLockId, relValue);
-  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaLockControl, &dmaDesc, acqLock,
-                              relLock, acqEn, relEn);
+  // bool relEn = false;
   return success();
 }
 

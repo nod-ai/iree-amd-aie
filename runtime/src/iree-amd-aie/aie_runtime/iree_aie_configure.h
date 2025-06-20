@@ -179,7 +179,7 @@ LogicalResult configureDMABDWithLocks(
     const std::optional<std::vector<BDDimLayout>> &maybeDims,
     const std::optional<std::vector<BDPadLayout>> &maybePadDims,
     const std::optional<BDIterLayout> &maybeIter, int8_t acqValue,
-    int8_t relValue, uint8_t acqLockId, uint8_t relLockId, bool acqEn);
+    int8_t relValue, uint8_t acqLockId, uint8_t relLockId);
 
 /// Configures/sets up locks associated with a dma (actually the bd...).
 LogicalResult configureDMALocks(const AMDAIEDeviceModel &deviceModel,
