@@ -918,7 +918,11 @@ class Softmax(BaseTest):
         M,
         N,
         data_type,
+        rtol,
         test_params=None,
+        n_kernel_runs=100,
+        n_reconfigure_runs=1,
+        n_pdi_loads=1,
     ):
         super().__init__(
             name="softmax_{}_{}_{}".format(M, N, data_type),
@@ -929,6 +933,21 @@ class Softmax(BaseTest):
         self.M = M
         self.N = N
         self.data_type = data_type
+        self.rtol = rtol
+
+        if self.run_benchmark:
+            self.aie_compilation_flags += [
+                "--iree-amdaie-enable-infinite-loop-around-core-block=true"
+            ]
+            self.labels.append("SoftmaxBenchmark")
+            self.labels.append("Performance")
+        else:
+            self.labels.append("PerformanceCorrectness")
+
+        self.function_name = "softmax"
+        self.n_kernel_runs = n_kernel_runs
+        self.n_reconfigure_runs = n_reconfigure_runs
+        self.n_pdi_loads = n_pdi_loads
 
     def _execute(self, config):
         self.filename = self.get_filename(config)
@@ -940,15 +959,41 @@ class Softmax(BaseTest):
             n=self.N,
             data_type=self.data_type,
         )
+
+        if self.run_benchmark:
+            return self.benchmark(config)
+
+        return self.vs_cpu(config)
+
+    def vs_cpu(self, config):
         aie_vs_llvm_cpu(
-            config,
-            self.aie_compilation_flags,
-            self.filename,
+            config=config,
+            aie_compilation_flags=self.aie_compilation_flags,
+            test_file=self.filename,
             use_ukernel=self.use_ukernel,
-            tile_pipeline="general-copy",
-            function_name="softmax",
-            rtol=6e-2,
+            tile_pipeline=self.tile_pipeline,
+            function_name=self.function_name,
+            rtol=self.rtol,
         )
+
+        return True
+
+    def benchmark(self, config):
+        benchmark_aie(
+            config=config,
+            aie_compilation_flags=self.aie_compilation_flags,
+            test_file=self.filename,
+            use_ukernel=self.use_ukernel,
+            tile_pipeline=self.tile_pipeline,
+            lower_to_aie_pipeline=self.lower_to_aie_pipeline,
+            function_name=self.function_name,
+            enable_ctrlpkt=self.enable_ctrlpkt,
+            n_repeats=self.n_repeats,
+            n_kernel_runs=self.n_kernel_runs,
+            n_reconfigure_runs=self.n_reconfigure_runs,
+            n_pdi_loads=self.n_pdi_loads,
+        )
+
         return True
 
 
@@ -2598,25 +2643,29 @@ class Tests:
         )
 
         # Softmax tests:
-        for target in ["npu1_4col", "npu4"]:
-            self.register(
-                Softmax(
-                    128,
-                    32,
-                    "bf16",
-                    test_params=TestParams(
-                        run_on_target=target,
-                        name_suffix=target,
-                        aie_compilation_flags=[
-                            "--iree-amdaie-num-rows=4",
-                            "--iree-amdaie-num-cols=1",
-                        ],
-                        use_chess=True,
-                        use_chess_for_ukernel=True,
-                        use_ukernel=True,
-                    ),
+        # Note: The error tolerance for npu4 is higher than that for npu1_4col.
+        # npu1_4col uses a lookup table to compute exponentials,
+        # whereas npu4 uses a native exp2 instruction, which is less accurate.
+        for target, rtol in [["npu1_4col", 2e-2], ["npu4", 8e-2]]:
+            for run_benchmark in [False, True]:
+                self.register(
+                    Softmax(
+                        4096,
+                        32,
+                        "bf16",
+                        rtol,
+                        test_params=TestParams(
+                            run_on_target=target,
+                            name_suffix=target,
+                            use_chess=True,
+                            use_chess_for_ukernel=True,
+                            use_ukernel=True,
+                            tile_pipeline="general-copy",
+                            run_benchmark=run_benchmark,
+                            n_repeats=2,
+                        ),
+                    )
                 )
-            )
 
         # Reduction op tests:
         self.register(
