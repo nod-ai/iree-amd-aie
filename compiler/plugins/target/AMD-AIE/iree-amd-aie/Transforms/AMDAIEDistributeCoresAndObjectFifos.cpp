@@ -451,10 +451,12 @@ LogicalResult distributeCoresToMultiColumns(
         getConstantIntValue(tileOp.getCol());
     if (!maybeConstantColumn.has_value() || maybeConstantColumn.value() != 0)
       return WalkResult::advance();
-    // Check if the row is derived from a loop induction variable.
+    // Check if the row coordinate is derived from a loop induction variable.
     Value rowVal = tileOp.getRow();
     BlockArgument iv = nullptr;
     Operation *defOp = rowVal.getDefiningOp();
+    // defOp should be an arith::AddIOp, which adds an offset to the induction
+    // variable to account for the existence of shim and memtile rows.
     if (dyn_cast_if_present<arith::AddIOp>(defOp))
       iv = dyn_cast<BlockArgument>(defOp->getOperand(0));
     if (!iv) return WalkResult::advance();
@@ -466,6 +468,8 @@ LogicalResult distributeCoresToMultiColumns(
                                                    numRowsValue);
     Value newRow = rewriter.create<arith::RemUIOp>(rewriter.getUnknownLoc(), iv,
                                                    numRowsValue);
+    // Reuse the original defOp and its result (rowVal), while only update its
+    // input.
     defOp->setOperand(0, newRow);
     rewriter.setInsertionPointAfter(defOp);
     // Use (newCol, rowVal = newRow + offset) to create a new tile op.
