@@ -20,8 +20,10 @@ iree_tablegen_library(
   OUTS
     -gen-attrdef-decls -attrdefs-dialect=aievec AIEVecAttributes.h.inc
     -gen-attrdef-defs -attrdefs-dialect=aievec AIEVecAttributes.cpp.inc
+    -gen-attrdef-doc AIEVecAttributes.md
     -gen-enum-decls AIEVecEnums.h.inc
     -gen-enum-defs AIEVecEnums.cpp.inc
+    -gen-enum-doc AIEVecEnums.md
 )
 
 list(APPEND IREE_COMPILER_TABLEGEN_INCLUDE_DIRS
@@ -34,6 +36,7 @@ iree_tablegen_library(
   OUTS
     -gen-dialect-decls -dialect=aievec AIEVecDialect.h.inc
     -gen-dialect-defs -dialect=aievec AIEVecDialect.cpp.inc
+    -gen-dialect-doc -dialect=aievec AIEVecDialect.md
 )
 
 iree_tablegen_library(
@@ -44,6 +47,7 @@ iree_tablegen_library(
   OUTS
     -gen-op-decls AIEVecOps.h.inc
     -gen-op-defs AIEVecOps.cpp.inc
+    -gen-op-doc AIEVecOps.md
 )
 
 iree_tablegen_library(
@@ -54,8 +58,10 @@ iree_tablegen_library(
   OUTS
     -gen-dialect-decls -dialect=xllvm XLLVMDialect.h.inc
     -gen-dialect-defs -dialect=xllvm XLLVMDialect.cpp.inc
+    -gen-dialect-doc -dialect=xllvm XLLVMDialect.md
     -gen-op-decls XLLVMOps.h.inc
     -gen-op-defs XLLVMOps.cpp.inc
+    -gen-op-doc XLLVMOps.md
     -gen-llvmir-conversions XLLVMConversions.inc
 )
 
