@@ -14,6 +14,21 @@ module {
 
 // -----
 
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+// expected-error @+1 {{has no number of rows specified in the target attribute configuration}}
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @no_num_rows() {
+    amdaie.workgroup {
+      amdaie.controlcode {
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
 // Check for unrolling an amdaie.core within a parallel loop with a single
 // induction variable with multiple iterations. There are no dma ops in this
 // check.
@@ -32,7 +47,7 @@ module {
 // CHECK:         %{{.*}} = amdaie.core(%[[TILE_2]], in : [], out : [])
 // CHECK:         %[[TILE_3:.*]] = amdaie.tile(%[[C3]], %[[C2]])
 // CHECK:         %{{.*}} = amdaie.core(%[[TILE_3]], in : [], out : [])
-#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {num_cols = 4 : i32, num_rows = 4 : i32, target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @distribute_cores_and_objectfifos_1x4() {
     %c2 = arith.constant 2 : index
@@ -65,7 +80,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-DAG:     %[[CORE_1_0:.*]] = amdaie.core(%[[TILE_1_0]], in : [], out : [])
 // CHECK-DAG:     %[[TILE_1_1:.*]] = amdaie.tile(%[[C1]], %[[C1]])
 // CHECK-DAG:     %[[CORE_1_1:.*]] = amdaie.core(%[[TILE_1_1]], in : [], out : [])
-#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {num_cols = 4 : i32, num_rows = 4 : i32, target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @distribute_cores_and_objectfifos_2x2() {
     scf.forall (%arg0, %arg1) in (1, 1) {
@@ -108,7 +123,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-DAG:     %[[CORE_1:.*]] = amdaie.core(%[[TILE_1_2]], in : [%[[DMA_1]]], out : [])
 // CHECK:           %[[VAL_1:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_1]], Read)
 // CHECK:           linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_1]] : memref<32x64xi32, 2>)
-#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {num_cols = 4 : i32, num_rows = 4 : i32, target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @unroll_dma() {
     %c0_i32 = arith.constant 0 : i32
@@ -159,7 +174,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-DAG:     %[[CORE_1:.*]] = amdaie.core(%[[TILE_1_2]], in : [%[[DMA_0]]], out : [])
 // CHECK:           %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_1]], Read)
 // CHECK:           linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_0]] : memref<32x64xi32, 2>)
-#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {num_cols = 4 : i32, num_rows = 4 : i32, target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @hoist_dma_single_loop() {
     %c0_i32 = arith.constant 0 : i32
@@ -214,7 +229,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-DAG:     amdaie.core(%[[TILE_0_3]], in : [%[[DMA_0]]], out : [])
 // CHECK:           %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_1]], Read)
 #map = affine_map<(d0) -> (d0 * 32)>
-#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {num_cols = 4 : i32, num_rows = 4 : i32, target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @hoist_dma_and_affine_single_loop_2x1() {
     %c0_i32 = arith.constant 0 : i32
@@ -270,7 +285,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-DAG:     amdaie.core(%[[TILE_0_3]], in : [%[[DMA_1]]], out : [])
 // CHECK-DAG:       %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_1]], Read)
 #map = affine_map<(d0) -> (d0 * 32)>
-#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {num_cols = 4 : i32, num_rows = 4 : i32, target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @unroll_dma_and_affine_single_loop() {
     %c0_i32 = arith.constant 0 : i32
@@ -328,7 +343,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-DAG:       %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_1]], Read)
 // CHECK-DAG:     %[[CORE_1_3:.*]] = amdaie.core(%[[TILE_1_3]], in : [%[[DMA_0]]], out : [])
 // CHECK-DAG:       %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_1]], Read)
-#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {num_cols = 4 : i32, num_rows = 4 : i32, target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @hoist_dma_multi_loop() {
     %c0_i32 = arith.constant 0 : i32
@@ -388,7 +403,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-DAG:       amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_1]], Read)
 // CHECK-DAG:     %[[CORE_1_3:.*]] = amdaie.core(%[[TILE_1_3]], in : [%[[DMA_1]]], out : [])
 // CHECK-DAG:       amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_1]], Read)
-#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {num_cols = 4 : i32, num_rows = 4 : i32, target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @hoist_dma_one_of_multi_loop() {
     %c0_i32 = arith.constant 0 : i32
@@ -462,7 +477,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-DAG:     %[[CORE_1_3:.*]] = amdaie.core(%[[TILE_1_3]], in : [%[[DMA_3]]], out : [])
 // CHECK-DAG:       %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_3]], Read)
 // CHECK-DAG:       linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_0]] : memref<32x64xi32, 2>)
-#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {num_cols = 4 : i32, num_rows = 4 : i32, target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @hoist_dma_dependencies() {
     %c0_i32 = arith.constant 0 : i32
@@ -554,7 +569,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-DAG:       linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_1]] : memref<32x64xi32, 2>)
 // CHECK-DAG:       linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_0]] : memref<32x32xi32, 2>)
 // CHECK-DAG:     %[[DMA_7:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_9]][%[[ARG1]]] [%c1] [%c1], %[[FROM_MEMREF_8]]
-#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {num_cols = 4 : i32, num_rows = 4 : i32, target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @nested_dma_dependencies() {
     %c0_i32 = arith.constant 0 : i32
@@ -615,7 +630,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 //       CHECK:         linalg.fill ins(%[[C0]] : i32) outs(%[[ACCESS]] : memref<1x1x8x8x4x4xi32, 2 : i32>)
 //       CHECK:         amdaie.end
 //       CHECK:   memref.dealloc %[[ALLOC]] :
-#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {num_cols = 4 : i32, num_rows = 4 : i32, target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @l1_temporary_buffer_for_matmul_elem() {
       %c0_i32 = arith.constant 0 : i32
@@ -647,7 +662,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-SAME: to memref<1x1x10xbf16, strided<[200, 100, 1], offset: ?>, 2>
 // CHECK-NOT: memref.subview
 // CHECK: return
-#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {num_cols = 4 : i32, num_rows = 4 : i32, target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @not_distributable() {
     %cst = arith.constant 0.000000e+00 : bf16
@@ -735,7 +750,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 #map1 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d2, d0, d3, d5)>
 #map2 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d2, d5, d4)>
 #map3 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d0, d3, d4)>
-#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {num_cols = 4 : i32, num_rows = 4 : i32, target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @distribute_cores_and_objectfifos() {
     %c2 = arith.constant 2 : index
@@ -852,7 +867,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-DAG:                 vector.transfer_write %[[CONTRACT]], %[[VAL_2]]
 // CHECK-DAG-SAME:                      [%[[C0]], %[[C0]], %[[ARG3]], %[[ARG2]], %[[C0]], %[[C0]]]
 // CHECK-DAG-SAME:                      in_bounds = [true, true, true, true, true, true]
-#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {num_cols = 4 : i32, num_rows = 4 : i32, target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @distribute_cores_and_objectfifos_vectorization() {
     %c192 = arith.constant 192 : index
@@ -953,7 +968,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-DAG:           func.call @matmul_i32_i32
 // CHECK-DAG:           amdaie.end
 // CHECK-DAG:         } {elf_file = "/path/to/ukernel.o"}
-#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {num_cols = 4 : i32, num_rows = 4 : i32, target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func private @matmul_i32_i32(memref<i32, 2 : i32>, index, memref<i32, 2 : i32>, index, memref<i32, 2 : i32>, index) attributes {link_with = "/path/to/ukernels.o", llvm.bareptr = true}
   func.func @distribute_cores_and_objectfifos_ukernel() {
@@ -1023,7 +1038,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-SAME: ins(%[[ACCESS_1]] : memref<4x4xi32, 2 : i32>) outs(%[[SUBVIEW:.*]] : memref<4x4xi32, strided<[4, 1]>, 2 : i32>) {
 
 #map = affine_map<(d0, d1) -> (d0, d1)>
-#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {num_cols = 4 : i32, num_rows = 4 : i32, target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @mixed_alloc_subview_operands() {
     %c2 = arith.constant 2 : index
@@ -1046,6 +1061,67 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
         amdaie.end
       }
     } {mapping = [#gpu.thread<y>, #gpu.thread<x>, #gpu.thread<z>, #gpu.thread<linear_dim_0>]}
+    return
+  }
+}
+
+// -----
+
+// This test verifies that a logically 1D loop of `amdaie.core` operations,
+// originally placed in a single column, can be spatially distributed across
+// a 2D AIE array by factoring the loop induction variable into rows and columns.
+
+// CHECK-LABEL: map_single_column_to_multi_columns
+// CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
+// CHECK-DAG: %[[C3:.*]] = arith.constant 3 : index
+// CHECK-DAG: %[[C4:.*]] = arith.constant 4 : index
+// CHECK-DAG: %[[C5:.*]] = arith.constant 5 : index
+// CHECK:     %[[TILE_0_2:.*]] = amdaie.tile(%[[C0]], %[[C2]])
+// CHECK:     %[[CORE_0_2:.*]] = amdaie.core(%[[TILE_0_2]], in : [], out : [])
+// CHECK:     %[[TILE_0_3:.*]] = amdaie.tile(%[[C0]], %[[C3]])
+// CHECK:     %[[CORE_0_3:.*]] = amdaie.core(%[[TILE_0_3]], in : [], out : [])
+// CHECK:     %[[TILE_0_4:.*]] = amdaie.tile(%[[C0]], %[[C4]])
+// CHECK:     %[[CORE_0_4:.*]] = amdaie.core(%[[TILE_0_4]], in : [], out : [])
+// CHECK:     %[[TILE_0_5:.*]] = amdaie.tile(%[[C0]], %[[C5]])
+// CHECK:     %[[CORE_0_5:.*]] = amdaie.core(%[[TILE_0_5]], in : [], out : [])
+// CHECK:     %[[TILE_1_2:.*]] = amdaie.tile(%[[C1]], %[[C2]])
+// CHECK:     %[[CORE_1_2:.*]] = amdaie.core(%[[TILE_1_2]], in : [], out : [])
+// CHECK:     %[[TILE_1_3:.*]] = amdaie.tile(%[[C1]], %[[C3]])
+// CHECK:     %[[CORE_1_3:.*]] = amdaie.core(%[[TILE_1_3]], in : [], out : [])
+// CHECK:     %[[TILE_1_4:.*]] = amdaie.tile(%[[C1]], %[[C4]])
+// CHECK:     %[[CORE_1_4:.*]] = amdaie.core(%[[TILE_1_4]], in : [], out : [])
+// CHECK:     %[[TILE_1_5:.*]] = amdaie.tile(%[[C1]], %[[C5]])
+// CHECK:     %[[CORE_1_5:.*]] = amdaie.core(%[[TILE_1_5]], in : [], out : [])
+// CHECK:     %[[TILE_2_2:.*]] = amdaie.tile(%[[C2]], %[[C2]])
+// CHECK:     %[[CORE_2_2:.*]] = amdaie.core(%[[TILE_2_2]], in : [], out : [])
+// CHECK:     %[[TILE_2_3:.*]] = amdaie.tile(%[[C2]], %[[C3]])
+// CHECK:     %[[CORE_2_3:.*]] = amdaie.core(%[[TILE_2_3]], in : [], out : [])
+// CHECK:     %[[TILE_2_4:.*]] = amdaie.tile(%[[C2]], %[[C4]])
+// CHECK:     %[[CORE_2_4:.*]] = amdaie.core(%[[TILE_2_4]], in : [], out : [])
+// CHECK:     %[[TILE_2_5:.*]] = amdaie.tile(%[[C2]], %[[C5]])
+// CHECK:     %[[CORE_2_5:.*]] = amdaie.core(%[[TILE_2_5]], in : [], out : [])
+// CHECK:     %[[TILE_3_2:.*]] = amdaie.tile(%[[C3]], %[[C2]])
+// CHECK:     %[[CORE_3_2:.*]] = amdaie.core(%[[TILE_3_2]], in : [], out : [])
+// CHECK:     %[[TILE_3_3:.*]] = amdaie.tile(%[[C3]], %[[C3]])
+// CHECK:     %[[CORE_3_3:.*]] = amdaie.core(%[[TILE_3_3]], in : [], out : [])
+// CHECK:     %[[TILE_3_4:.*]] = amdaie.tile(%[[C3]], %[[C4]])
+// CHECK:     %[[CORE_3_4:.*]] = amdaie.core(%[[TILE_3_4]], in : [], out : [])
+// CHECK:     %[[TILE_3_5:.*]] = amdaie.tile(%[[C3]], %[[C5]])
+// CHECK:     %[[CORE_3_5:.*]] = amdaie.core(%[[TILE_3_5]], in : [], out : [])
+#executable_target_amdaie_pdi_fb = #hal.executable.target<"amd-aie", "amdaie-pdi-fb", {num_cols = 4 : i32, num_rows = 4 : i32, target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_pdi_fb} {
+  func.func @map_single_column_to_multi_columns() {
+    %c2 = arith.constant 2 : index
+    %c0 = arith.constant 0 : index
+    scf.forall (%arg0) in (16) {
+      %0 = arith.addi %arg0, %c2 : index
+      %tile_0_r = amdaie.tile(%c0, %0)
+      %1 = amdaie.core(%tile_0_r, in : [], out : []) {
+        amdaie.end
+      }
+    } {mapping = [#gpu.thread<y>]}
     return
   }
 }

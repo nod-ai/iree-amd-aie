@@ -33,7 +33,8 @@ std::optional<T> getConfigAttr(IREE::HAL::ExecutableTargetAttr targetAttr,
   if (!targetAttr) return std::nullopt;
   DictionaryAttr config = targetAttr.getConfiguration();
   if (!config) return std::nullopt;
-  std::optional<T> attr = config.getAs<T>(name);
+  T attr = config.getAs<T>(name);
+  if (!attr) return std::nullopt;
   return attr;
 }
 
