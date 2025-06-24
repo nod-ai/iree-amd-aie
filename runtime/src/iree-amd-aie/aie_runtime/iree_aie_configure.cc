@@ -357,10 +357,10 @@ LogicalResult configureDMABDWithLocks(
   }
 
   
-  XAie_Lock acqLock = XAie_LockInit(acqLockId, acqValue);
-  XAie_Lock relLock = XAie_LockInit(relLockId, relValue);
-  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaSetLock, &dmaDesc, acqLock,
-                              relLock);
+  // XAie_Lock acqLock = XAie_LockInit(acqLockId, acqValue);
+  // XAie_Lock relLock = XAie_LockInit(relLockId, relValue);
+  // TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaSetLock, &dmaDesc, acqLock,
+  //                             relLock);
                               
   if (validBd) {
     TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaEnableBd, &dmaDesc);
