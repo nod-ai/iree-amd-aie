@@ -119,6 +119,8 @@ LogicalResult TransactionBuilder::appendDmaStartOp(
                   << "expected column and row integer value/constant";
   }
   XAie_LocType tileLoc = XAie_TileLoc(*col, *row);
+  // Reset and unreset all DMA channels before configuring BDs.
+  if (failed(resetUnResetDmaChannels(deviceModel, tileLoc))) return failure();
   FailureOr<XAie_DmaDesc> dmaDesc = initDMADesc(deviceModel, tileLoc);
   if (failed(dmaDesc)) return failure();
   // uint32_t minStrideBitWidth = deviceModel.getMinStrideBitWidth();
@@ -264,6 +266,16 @@ LogicalResult TransactionBuilder::appendDmaStartOp(
     }
     return WalkResult::advance();
   });
+
+  AMDAIE::DMABDOp bd = *dmaStartOp.getBody().getOps<AMDAIE::DMABDOp>().begin();
+  int chNum = dmaStartOp.getChannelIndex();
+  auto channelDir = static_cast<DMAChannelDir>(dmaStartOp.getChannelDir());
+  bool issueToken = tileLoc.Row == 0 && channelDir == DMAChannelDir::MM2S;
+  bool setChannelEnable = true;
+  if (failed(configurePushToBdQueue(
+          deviceModel, tileLoc, chNum, channelDir, bd.getBdId().value(),
+          dmaStartOp.getRepeatCount(), issueToken, setChannelEnable)))
+    return failure();
   return success();
 }
 
