@@ -700,9 +700,9 @@ LogicalResult splitLogicalObjectFifo(IRRewriter &rewriter,
       llvm::to_vector(op.getMemrefType().getShape());
   int64_t splitFactor = maybeSplitFactor.has_value() ? maybeSplitFactor.value()
                                                      : memrefShape[splitDim];
-  if (memrefShape[splitDim] < splitFactor) {
-    splitFactor = memrefShape[splitDim];
-  }
+  if (memrefShape[splitDim] < splitFactor) splitFactor = memrefShape[splitDim];
+  // If the split factor is 1, we don't need to do anything.
+  if (splitFactor == 1) return success();
   assert(
       memrefShape[splitDim] % splitFactor == 0 &&
       "the target size for splitting is not divisible by the splitting factor");
