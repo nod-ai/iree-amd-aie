@@ -116,13 +116,15 @@ LogicalResult WorkgroupBuilder::buildForDmaCpyNdOp(
     CoreContext &coreContext, Block::iterator targetBegin,
     Block::iterator controlCodeBegin, Block::iterator controlCodeEnd) {
   LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [amdaie.dma_cpy_nd] Start\n");
+  uint8_t sourceMemSpace = dmaOp.getSourceObjectFifo().getMemorySpaceAsUInt();
+  uint8_t targetMemSpace = dmaOp.getTargetObjectFifo().getMemorySpaceAsUInt();
   // Error out if the DmaCpyNd involves transfer between L1/L2 as these are all
   // circular_dma_cpy_nd operations by this stage.
-  // if (sourceMemSpace && targetMemSpace) {
-  //   dmaOp.emitError()
-  //       << "neither source nor target of the DmaCpyNd op is on L3";
-  //   return failure();
-  // }
+  if (sourceMemSpace != 0 && targetMemSpace != 0) {
+    dmaOp.emitError()
+        << "neither source nor target of the DmaCpyNd op is on L3";
+    return failure();
+  }
   
   Location loc = rewriter.getUnknownLoc();
 
@@ -141,36 +143,65 @@ LogicalResult WorkgroupBuilder::buildForDmaCpyNdOp(
   SmallVector<OpFoldResult> npuDmaSourceOffsets = dmaOp.getSourceMixedOffsets();
   SmallVector<OpFoldResult> npuDmaSourceSizes = dmaOp.getSourceMixedSizes();
   SmallVector<OpFoldResult> npuDmaSourceStrides = dmaOp.getSourceMixedStrides();
-  // Value circularDmaTarget, circularDmaSource, npuDmaTarget, npuDmaSource;
-  Value npuDmaTarget, npuDmaSource;
+  Value circularDmaTarget, circularDmaSource, npuDmaTarget, npuDmaSource;
+  // Value npuDmaTarget, npuDmaSource;
+  if (sourceMemSpace == 0) {
+    // Check if the source of DmaCpyNd op is from L3 - then source addressing
+    // will be controlled by the uController and target addressing will stay in
+    // the circular DMA to be part of the AIE configuration.
+    auto logicalObjFifo =
+        dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+            dmaOp.getSource().getDefiningOp());
+    if (!logicalObjFifo) {
+      return dmaOp.emitOpError()
+             << "`amdaie.logicalobjectfifo.from_memref` expected as source";
+    }
+    auto type = cast<LogicalObjectFifoType>(dmaOp.getSource().getType());
+    auto placeholder =
+        rewriter.createAndLookup<AMDAIE::LogicalObjectFifoPlaceholderOp>(
+            rewriter.getUnknownLoc(), type, logicalObjFifo.getTiles());
+    circularDmaSource = placeholder.getResult();
+    circularDmaTarget = dmaOp.getTarget();
+    circularDmaTargetOffsets = npuDmaTargetOffsets;
+    circularDmaTargetSizes = npuDmaTargetSizes;
+    circularDmaTargetStrides = npuDmaTargetStrides;
+
+    npuDmaSource = dmaOp.getSource();
+    npuDmaTargetOffsets = empty;
+    npuDmaTargetSizes = empty;
+    npuDmaTargetStrides = empty;
+
+    auto connectionOp = rewriter.createAndMap<AMDAIE::ConnectionOp>(
+        rewriter.getUnknownLoc(), dmaOp, circularDmaTarget, circularDmaSource);
+
+    IRRewriter::InsertPoint dmaInsertionPoint = rewriter.saveInsertionPoint();
+    controlCodeRewriter.setInsertionPoint(controlCode, controlCodeEnd);
+    controlCodeRewriter.createAndLookup<AMDAIE::NpuCircularDmaCpyNdOp>(
+        rewriter.getUnknownLoc(), connectionOp.getResult(),
+        circularDmaTargetOffsets, circularDmaTargetSizes,
+        circularDmaTargetStrides, circularDmaSourceOffsets,
+        circularDmaSourceSizes, circularDmaSourceStrides);
+    Type ty =
+        !sourceMemSpace
+            ? static_cast<Type>(
+                  controlCodeRewriter.getType<AMDAIE::AsyncSourceTokenType>())
+            : static_cast<Type>(
+                  controlCodeRewriter.getType<AMDAIE::AsyncTargetTokenType>());
+    auto npuDmaCpy = controlCodeRewriter.createAndLookup<AMDAIE::NpuDmaCpyNdOp>(
+        loc, ty, connectionOp.getResult(), npuDmaTarget, npuDmaTargetOffsets,
+        npuDmaTargetSizes, npuDmaTargetStrides, /*target_bd_id=*/nullptr,
+        npuDmaSource, npuDmaSourceOffsets, npuDmaSourceSizes, npuDmaSourceStrides,
+        /*source_bd_id=*/nullptr);
+    controlCodeRewriter.createAndLookup<AMDAIE::NpuDmaWaitOp>(
+        rewriter.getUnknownLoc(), SmallVector<Type, 1>{}, npuDmaCpy.getResult(0));
+    rewriter.restoreInsertionPoint(dmaInsertionPoint);
+    LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [amdaie.dma_cpy_nd] End\n");
+    return success();
+  } 
+  
   npuDmaTarget = dmaOp.getTarget();
   npuDmaSource = dmaOp.getSource();
-  // if (!sourceMemSpace) {
-  //   // Check if the source of DmaCpyNd op is from L3 - then source addressing
-  //   // will be controlled by the uController and target addressing will stay in
-  //   // the circular DMA to be part of the AIE configuration.
-  //   auto logicalObjFifo =
-  //       dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-  //           dmaOp.getSource().getDefiningOp());
-  //   if (!logicalObjFifo) {
-  //     return dmaOp.emitOpError()
-  //            << "`amdaie.logicalobjectfifo.from_memref` expected as source";
-  //   }
-  //   auto type = cast<LogicalObjectFifoType>(dmaOp.getSource().getType());
-  //   auto placeholder =
-  //       rewriter.createAndLookup<AMDAIE::LogicalObjectFifoPlaceholderOp>(
-  //           rewriter.getUnknownLoc(), type, logicalObjFifo.getTiles());
-  //   circularDmaSource = placeholder.getResult();
-  //   circularDmaTarget = dmaOp.getTarget();
-  //   // circularDmaTargetOffsets = npuDmaTargetOffsets;
-  //   // circularDmaTargetSizes = npuDmaTargetSizes;
-  //   // circularDmaTargetStrides = npuDmaTargetStrides;
-
-  //   // npuDmaSource = dmaOp.getSource();
-  //   // npuDmaTargetOffsets = empty;
-  //   // npuDmaTargetSizes = empty;
-  //   // npuDmaTargetStrides = empty;
-  // } else if (!targetMemSpace) {
+  // else if (!targetMemSpace) {
   //   // Check if the target of DmaCpyNd op is from L3 - then target addressing
   //   // will be controlled by the uController and source addressing will stay in
   //   // the circular DMA to be part of the AIE configuration.
@@ -196,6 +227,32 @@ LogicalResult WorkgroupBuilder::buildForDmaCpyNdOp(
   //   // npuDmaSourceSizes = empty;
   //   // npuDmaSourceStrides = empty;
   // }
+  // if (!targetMemSpace) {
+  //   // Check if the target of DmaCpyNd op is from L3 - then target addressing
+  //   // will be controlled by the uController and source addressing will stay in
+  //   // the circular DMA to be part of the AIE configuration.
+  //   auto logicalObjFifo =
+  //       dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+  //           dmaOp.getTarget().getDefiningOp());
+  //   if (!logicalObjFifo) {
+  //     return dmaOp.emitOpError()
+  //            << "`amdaie.logicalobjectfifo.from_memref` expected as source";
+  //   }
+  //   auto type = cast<LogicalObjectFifoType>(dmaOp.getTarget().getType());
+  //   auto placeholder =
+  //       rewriter.createAndLookup<AMDAIE::LogicalObjectFifoPlaceholderOp>(
+  //           rewriter.getUnknownLoc(), type, logicalObjFifo.getTiles());
+  //   circularDmaSource = dmaOp.getSource();
+  //   circularDmaTarget = placeholder.getResult();
+  //   circularDmaSourceOffsets = npuDmaSourceOffsets;
+  //   circularDmaSourceSizes = npuDmaSourceSizes;
+  //   circularDmaSourceStrides = npuDmaSourceStrides;
+
+  //   npuDmaTarget = dmaOp.getTarget();
+  //   npuDmaSourceOffsets = empty;
+  //   npuDmaSourceSizes = empty;
+  //   npuDmaSourceStrides = empty;
+  // }
   auto connectionOp = rewriter.createAndMap<AMDAIE::ConnectionOp>(
       rewriter.getUnknownLoc(), dmaOp, npuDmaTarget, npuDmaSource);
 
@@ -217,8 +274,6 @@ LogicalResult WorkgroupBuilder::buildForDmaCpyNdOp(
   // ty.push_back(static_cast<Type>(
   //               controlCodeRewriter.getType<AMDAIE::AsyncSourceTokenType>()));
   Type ty;
-  uint8_t sourceMemSpace = dmaOp.getSourceObjectFifo().getMemorySpaceAsUInt();
-  uint8_t targetMemSpace = dmaOp.getTargetObjectFifo().getMemorySpaceAsUInt();
   if (sourceMemSpace == 0 || targetMemSpace == 2) {
     ty = static_cast<Type>(
                 controlCodeRewriter.getType<AMDAIE::AsyncSourceTokenType>());
