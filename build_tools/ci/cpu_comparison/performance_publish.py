@@ -15,14 +15,15 @@ def append_history(results_json_path: str, results_history_path: str):
     # Append the results to the history.
     results_history = []
     max_history = 100
-    with open(results_history_path, "r+") as f:
+    with open(results_history_path, "r") as f:
         results_history = json.load(f)
         results_history.append(results)
         # Keep only the most recent results.
         if len(results_history) > max_history:
             results_history = results_history[-max_history:]
-        f.seek(0)
-        # Write the updated history back to the file.
+
+    # Write the updated history back to the file.
+    with open(results_history_path, "w") as f:
         json.dump(results_history, f, indent=2)
 
 
