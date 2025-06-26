@@ -120,7 +120,7 @@ LogicalResult TransactionBuilder::appendDmaStartOp(
   }
   XAie_LocType tileLoc = XAie_TileLoc(*col, *row);
   // Reset and unreset all DMA channels before configuring BDs.
-  if (failed(resetUnResetDmaChannels(deviceModel, tileLoc))) return failure();
+  // if (failed(resetUnResetDmaChannels(deviceModel, tileLoc))) return failure();
   FailureOr<XAie_DmaDesc> dmaDesc = initDMADesc(deviceModel, tileLoc);
   if (failed(dmaDesc)) return failure();
   // uint32_t minStrideBitWidth = deviceModel.getMinStrideBitWidth();
