@@ -11,10 +11,10 @@ func.func @multi_reduction_innerparallel(%v : vector<4xf16>, %acc: f16) -> f16 {
 
 // CHECK-LABEL: func.func @multi_reduction_2d
 func.func @multi_reduction_2d(%v : vector<4x6xf32>, %acc: vector<4xf32>) -> vector<4xf32> {
-  // CHECK: vector.reduction <add>, 
-  // CHECK: vector.reduction <add>, 
-  // CHECK: vector.reduction <add>, 
-  // CHECK: vector.reduction <add>, 
+  // CHECK: vector.reduction <add>,
+  // CHECK: vector.reduction <add>,
+  // CHECK: vector.reduction <add>,
+  // CHECK: vector.reduction <add>,
   // CHECK-NOT: vector.reduction <add>,
   %0 = vector.multi_reduction #vector.kind<add>, %v, %acc [1] : vector<4x6xf32> to vector<4xf32>
   return %0 : vector<4xf32>
@@ -40,4 +40,3 @@ func.func @multi_reduction_1d_bf16(%v : vector<32xbf16>, %acc: bf16) -> bf16 {
   %0 = vector.multi_reduction <add>, %v, %acc[0] : vector<32xbf16> to bf16
   return %0 : bf16
 }
-

@@ -111,8 +111,9 @@ void AMDAIEVectorizationPass::runOnOperation() {
   vector::populateVectorTransferPermutationMapLoweringPatterns(
       vectorizationPatterns);
 
-   vector::populateVectorMultiReductionLoweringPatterns(
-          vectorizationPatterns, vector::VectorMultiReductionLowering::InnerReduction);
+  vector::populateVectorMultiReductionLoweringPatterns(
+      vectorizationPatterns,
+      vector::VectorMultiReductionLowering::InnerReduction);
   (void)applyPatternsGreedily(funcOp, std::move(vectorizationPatterns));
 }
 }  // namespace
