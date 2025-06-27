@@ -1208,6 +1208,7 @@ def AMDAIE_ConnectionOp: AMDAIE_Op<"connection",
     Type getSourceType() { return getSource().getType(); }
     Type getTargetType() { return getTarget().getType(); }
     FailureOr<NpuDmaCpyNdOp> getNpuDmaCpyNdUser();
+    FailureOr<NpuCircularDmaCpyNdOp> getNpuCircularDmaCpyNdUser();
   }];
 }
 

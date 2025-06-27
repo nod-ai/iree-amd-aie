@@ -150,6 +150,10 @@ void AMDAIEControlCodeToTransactionPass::runOnOperation() {
     }
     ArrayRef<uint32_t> instructions =
         transactionBuilder.finalizeAndReturnInstructions();
+    // std::stringstream ss;
+    // for (auto x : instructions)
+    //   ss << x;
+    // llvm::outs()<<"STRING : "<<ss.str()<<"\n\n";
     workgroupOp.setNpuInstructionsAttr(DenseUI32ResourceElementsAttr::get(
         RankedTensorType::get(
             transactionBuilder.getInstructionSize(),
