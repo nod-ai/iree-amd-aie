@@ -394,33 +394,16 @@ void AMDAIESplitLogicalObjFifosPass::runOnOperation() {
   // split factor.
   int64_t numColumns = maybeNumColumns.value();
 
-  // Check if any CoreOp is present, and if so, get the number of columns
-  // actually in use.
-  std::optional<int64_t> mayNumColumnsInUse;
-  WalkResult res = moduleOp->walk([&](AMDAIE::CoreOp coreOp) {
-    AMDAIE::TileOp tileOp = coreOp.getTileOp();
-    std::optional<int64_t> maybeColumn = getConstantIntValue(tileOp.getCol());
-    std::optional<int64_t> maybeRow = getConstantIntValue(tileOp.getRow());
-    if (!maybeColumn || !maybeRow) {
-      coreOp.emitOpError() << "has non-constant tile location";
-      return WalkResult::interrupt();
-    }
-    // +1 for 0-based indexing.
-    int64_t column = maybeColumn.value() + 1;
-    mayNumColumnsInUse = mayNumColumnsInUse.has_value()
-                             ? std::max(mayNumColumnsInUse.value(), column)
-                             : column;
-    return WalkResult::advance();
-  });
-  if (res.wasInterrupted()) return signalPassFailure();
-  // If the column usage info is available, use it for determining the split
-  // factor instead.
+  // If the number of columns used by all CoreOps is known,use it for
+  // determining the split factor instead.
+  std::optional<int64_t> mayNumColumnsInUse =
+      getNumColumnsUsedByCores(moduleOp);
   if (mayNumColumnsInUse.has_value()) numColumns = mayNumColumnsInUse.value();
 
   // Walk and collect all dma ops between L3 and L2.
   SmallVector<AMDAIE::DmaCpyNdOp> l3L2DmaOps;
   SmallVector<DmaObjFifoPairT> dmaObjFifoPairs;
-  res = moduleOp->walk([&](AMDAIE::DmaCpyNdOp op) {
+  WalkResult res = moduleOp->walk([&](AMDAIE::DmaCpyNdOp op) {
     std::optional<uint8_t> sourceMemSpace = op.getSourceMemorySpaceAsUInt();
     std::optional<uint8_t> targetMemSpace = op.getTargetMemorySpaceAsUInt();
     if (!sourceMemSpace || !targetMemSpace) {
