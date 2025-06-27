@@ -2674,10 +2674,6 @@ class Tests:
                 function_name="reduction_sum",
                 test_params=TestParams(
                     name_suffix="sum",
-                    aie_compilation_flags=[
-                        "--iree-amdaie-num-rows=4",
-                        "--iree-amdaie-num-cols=1",
-                    ],
                 ),
             )
         )

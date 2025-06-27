@@ -8,6 +8,7 @@
 
 #include <optional>
 
+#include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "llvm/ADT/StringExtras.h"
 #include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
@@ -560,6 +561,31 @@ getFunctionsAndTheirCallers(Operation *rootOp) {
     }
   });
   return functionsAndCallers;
+}
+
+std::optional<int64_t> getNumColumnsUsedByCores(ModuleOp moduleOp) {
+  int64_t minColumn = std::numeric_limits<int64_t>::max();
+  int64_t maxColumn = std::numeric_limits<int64_t>::min();
+  bool foundCoreOp = false;
+
+  WalkResult res = moduleOp->walk([&](AMDAIE::CoreOp coreOp) {
+    foundCoreOp = true;
+    // Check if the core op has a constant column location.
+    AMDAIE::TileOp tileOp = coreOp.getTileOp();
+    std::optional<int64_t> maybeColumn = getConstantIntValue(tileOp.getCol());
+    if (!maybeColumn) {
+      coreOp.emitOpError() << "has non-constant tile location";
+      return WalkResult::interrupt();
+    }
+    // Update the min and max column values.
+    int64_t column = maybeColumn.value();
+    minColumn = std::min(minColumn, column);
+    maxColumn = std::max(maxColumn, column);
+    return WalkResult::advance();
+  });
+
+  if (res.wasInterrupted() || !foundCoreOp) return std::nullopt;
+  return (maxColumn - minColumn + 1);
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE
