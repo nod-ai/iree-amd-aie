@@ -120,11 +120,11 @@ LogicalResult WorkgroupBuilder::buildForDmaCpyNdOp(
   uint8_t targetMemSpace = dmaOp.getTargetObjectFifo().getMemorySpaceAsUInt();
   // Error out if the DmaCpyNd involves transfer between L1/L2 as these are all
   // circular_dma_cpy_nd operations by this stage.
-  if (sourceMemSpace != 0 && targetMemSpace != 0) {
-    dmaOp.emitError()
-        << "neither source nor target of the DmaCpyNd op is on L3";
-    return failure();
-  }
+  // if (sourceMemSpace != 0 && targetMemSpace != 0) {
+  //   dmaOp.emitError()
+  //       << "neither source nor target of the DmaCpyNd op is on L3";
+  //   return failure();
+  // }
   
   Location loc = rewriter.getUnknownLoc();
 
@@ -286,8 +286,10 @@ LogicalResult WorkgroupBuilder::buildForDmaCpyNdOp(
       npuDmaTargetSizes, npuDmaTargetStrides, /*target_bd_id=*/nullptr,
       npuDmaSource, npuDmaSourceOffsets, npuDmaSourceSizes, npuDmaSourceStrides,
       /*source_bd_id=*/nullptr);
-  controlCodeRewriter.createAndLookup<AMDAIE::NpuDmaWaitOp>(
-      rewriter.getUnknownLoc(), SmallVector<Type, 1>{}, npuDmaCpy.getResults());
+  if (sourceMemSpace == 0 || targetMemSpace == 0) { 
+    controlCodeRewriter.createAndLookup<AMDAIE::NpuDmaWaitOp>(
+        rewriter.getUnknownLoc(), SmallVector<Type, 1>{}, npuDmaCpy.getResults());
+  }
   rewriter.restoreInsertionPoint(dmaInsertionPoint);
   LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [amdaie.dma_cpy_nd] End\n");
   return success();

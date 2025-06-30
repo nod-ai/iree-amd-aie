@@ -20,9 +20,9 @@ namespace {
 LogicalResult convertDmaToCircularDma(Operation *op) {
   IRRewriter rewriter(op->getContext());
   op->walk([&](AMDAIE::DmaCpyNdOp dmaOp) {
-    Attribute sourceMemSpace = dmaOp.getSourceObjectFifo().getMemorySpace();
-    Attribute targetMemSpace = dmaOp.getTargetObjectFifo().getMemorySpace();
-    if (sourceMemSpace && targetMemSpace) {
+    auto sourceMemSpace = dmaOp.getSourceObjectFifo().getMemorySpaceAsUInt();
+    auto targetMemSpace = dmaOp.getTargetObjectFifo().getMemorySpaceAsUInt();
+    if (sourceMemSpace == 1 && targetMemSpace == 2) {
       // L2 -> L1 or L1 -> L2 goes to uController instructions in MLIR-AIE.
       rewriter.setInsertionPointAfter(dmaOp);
       rewriter.replaceOpWithNewOp<AMDAIE::CircularDmaCpyNdOp>(
