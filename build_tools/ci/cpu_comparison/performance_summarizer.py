@@ -58,8 +58,9 @@ def get_json_summary(lines):
             test_name = Path(path_str).stem
             json_summary["tests"].append({"name": test_name})
         if "real_time_mean" in line:
-            # Extract the first number and unit.
-            match = re.search(r"(\d+)\s+([a-zA-Z]+)", line)
+            # Extract the first number (may contain a decimal point) and unit.
+            match = re.search(r"(\d+(?:\.\d+)?)\s+([a-zA-Z]+)", line)
+            print(line.strip())
             json_summary["tests"][-1]["time_mean"] = match.group(1)
             json_summary["tests"][-1]["time_mean_unit"] = match.group(2)
 
