@@ -656,6 +656,9 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
       return sourceObjFifo->emitOpError()
              << "could not retrieve the repetition count";
     }
+    size_t newRepetitionCount = repetitionCount.value();
+    if (sourceObjFifoLikeOp.getMemorySpaceAsUInt() == 1)
+      newRepetitionCount = 1;
     std::optional<size_t> maybeOffset =
         maybeNpuDmaUserOp->getSourceStaticBaseOffset();
     if (!maybeOffset) {
@@ -713,7 +716,7 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
       if (failed(foldDimsAndReturnAsStatic(
               maybeNpuDmaUserOp->getSourceMixedSizes(),
               maybeNpuDmaUserOp->getSourceMixedStrides(), canonicalizedSizes,
-              canonicalizedStrides, repetitionCount.value(),
+              canonicalizedStrides, newRepetitionCount,
               maybeSourceMemSpace.value(),
               [&]() { return maybeNpuDmaUserOp->emitOpError(); }))) {
         return failure();
@@ -762,6 +765,9 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
       return targetObjFifo->emitOpError()
              << "could not retrieve the repetition count";
     }
+    size_t newRepetitionCount = repetitionCount.value();
+    if (targetObjFifoLikeOp.getMemorySpaceAsUInt() == 1)
+      newRepetitionCount = 1;
     std::optional<size_t> maybeOffset =
         maybeNpuDmaUserOp->getTargetStaticBaseOffset();
     if (!maybeOffset) {
@@ -819,7 +825,7 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
       if (failed(foldDimsAndReturnAsStatic(
               maybeNpuDmaUserOp->getTargetMixedSizes(),
               maybeNpuDmaUserOp->getTargetMixedStrides(), canonicalizedSizes,
-              canonicalizedStrides, repetitionCount.value(),
+              canonicalizedStrides, newRepetitionCount,
               maybeTargetMemSpace.value(),
               [&]() { return maybeNpuDmaUserOp->emitOpError(); }))) {
         return failure();
