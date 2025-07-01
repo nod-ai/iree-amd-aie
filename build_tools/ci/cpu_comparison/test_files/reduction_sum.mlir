@@ -1,9 +1,9 @@
 // These lines are required for e2e numerical testing:
-// input 128x128xf32
-// output 128xf32
+// input 1024x128xf32
+// output 1024xf32
 
-!in_ty = tensor<128x128xf32>
-!out_ty = tensor<128xf32>
+!in_ty = tensor<1024x128xf32>
+!out_ty = tensor<1024xf32>
 
 func.func @reduction_sum(%arg0: !in_ty) -> !out_ty {
   %cst = arith.constant 0.0 : f32

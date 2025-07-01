@@ -852,7 +852,7 @@ static LogicalResult setRootConfigForReductionCopyPipeline(
           .getShape();
   assert(inputShape.size() == 2 && "expected the input as 2D");
   int64_t m1Tile = std::min<int64_t>(inputShape[0], 32);
-  int64_t m0Tile = std::min<int64_t>(inputShape[0], numRows * m1Tile);
+  int64_t m0Tile = std::min<int64_t>(inputShape[0], numRows * numCols * m1Tile);
 
   SmallVector<int64_t> tileSizeLevel0 = {m0Tile, 0};
   SmallVector<int64_t> tileSizeLevel1 = {m1Tile, 0};
