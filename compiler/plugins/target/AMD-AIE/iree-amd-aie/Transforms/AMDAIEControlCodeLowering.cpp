@@ -1098,15 +1098,16 @@ LogicalResult convertNpuDmaCpyToMemtileFunc(Operation* moduleOp, AMDAIE::AMDAIED
   //             return WalkResult::advance();
   //           });
   // });
-  DenseSet<ConnectionOp> connectionOpSet;
-  moduleOp->walk([&](AMDAIE::NpuCircularDmaCpyNdOp circularDmaOp) {
-    connectionOpSet.insert(circularDmaOp.getConnectionOp());
-  });
+  // DenseSet<ConnectionOp> connectionOpSet;
+  // moduleOp->walk([&](AMDAIE::NpuCircularDmaCpyNdOp circularDmaOp) {
+  //   connectionOpSet.insert(circularDmaOp.getConnectionOp());
+  // });
   WalkResult res = moduleOp->walk<WalkOrder::PreOrder>(
   // WalkResult res = moduleOp->walk<WalkOrder::PreOrder, ReverseDominanceIterator<>>(
     [&](AMDAIE::NpuHalfDmaCpyNdOp halfDmaOp) {
       std::optional<AMDAIE::BdIdOp> bdIdOp = halfDmaOp.getBdIdOp();
-      if (!bdIdOp && connectionOpSet.count(*(halfDmaOp.getConnectionOp())) == 0) {
+      // if (!bdIdOp && connectionOpSet.count(*(halfDmaOp.getConnectionOp())) == 0) {
+      if (!bdIdOp) {
         // llvm::outs()<<"HALF : "<<halfDmaOp<<"\n";
         // llvm::outs().flush();
         std::optional<AMDAIE::ConnectionOp> connectionOp = halfDmaOp.getConnectionOp();
