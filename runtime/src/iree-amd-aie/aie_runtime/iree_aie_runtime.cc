@@ -626,6 +626,10 @@ uint32_t AMDAIEDeviceModel::getColumnShift() const {
 
 uint32_t AMDAIEDeviceModel::getRowShift() const { return configPtr.RowShift; }
 
+uint32_t AMDAIEDeviceModel::getCoreTileRowStart() const {
+  return configPtr.AieTileRowStart;
+}
+
 uint32_t AMDAIEDeviceModel::getColumnFromAddress(uint32_t address) const {
   uint32_t columnMask = (1 << (getColumnShift() - getRowShift())) - 1;
   return (address >> getColumnShift()) & columnMask;
