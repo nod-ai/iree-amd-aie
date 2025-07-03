@@ -828,7 +828,7 @@ static LogicalResult setRootConfigForSoftmaxCopyPipeline(
   // as the softmax op is not a pure reduction op.
   ArrayRef<int64_t> inputShape = softmaxOp.getInput().getType().getShape();
   assert(inputShape.size() == 2 && "expected the input as 2D");
-  int64_t m1Tile = std::min<int64_t>(inputShape[0], 32);
+  int64_t m1Tile = std::min<int64_t>(inputShape[0], 128);
   int64_t m0Tile = std::min<int64_t>(inputShape[0], numRows * numCols * m1Tile);
 
   SmallVector<int64_t> tileSizeLevel0 = {m0Tile, 0};
