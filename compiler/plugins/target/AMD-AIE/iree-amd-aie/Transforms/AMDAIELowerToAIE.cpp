@@ -642,7 +642,7 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
       sourceMemOps.push_back(shimDmaAllocOp.getOperation());
     }
   }
-  else {
+  else if (maybeNpuDmaUserOp->hasSourceAddressing()) {
     auto sourceObjFifo =
         dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromBuffersOp>(
             source.getDefiningOp());
@@ -751,7 +751,7 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
       targetMemOps.push_back(shimDmaAllocOp.getOperation());
     }
   }
-  else {
+  else if (maybeNpuDmaUserOp->hasTargetAddressing()) {
     auto targetObjFifo =
         dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromBuffersOp>(
             target.getDefiningOp());

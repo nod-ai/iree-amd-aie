@@ -37,7 +37,8 @@ struct NpuDmaToHalfDmaCpyNdConverter final
     // }
     // Convert source half.
     AMDAIE::NpuHalfDmaCpyNdOp sourceDma, targetDma;
-    bool shouldHaveAsync = dmaOp.hasSourceAddressing() && dmaOp.hasTargetAddressing();
+    bool shouldHaveAsync = true;
+    // bool shouldHaveAsync = dmaOp.hasSourceAddressing() && dmaOp.hasTargetAddressing();
     if (dmaOp.hasSourceAddressing()) {
       Value source =
         dmaOp.getSource() ? dmaOp.getSource() : connectionOp.getSource();
