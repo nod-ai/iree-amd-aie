@@ -42,6 +42,7 @@ zero_fill_combos(zero_fill_vectorized_c_func, 16, 16)
 zero_fill_combos(zero_fill_vectorized_c_func, 32, 32)
 zero_fill_combos(zero_fill_vectorized_c_func, 64, 32)
 zero_fill_combos(zero_fill_vectorized_c_func, 64, 64)
+zero_fill_vectorized_c_func(bfloat16, bf16, 4, 1024, 32)
 
 }  // extern "C"
 
