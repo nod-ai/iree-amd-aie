@@ -78,14 +78,14 @@ def AMDAIE_CoreOp: AMDAIE_Op<"core", [SingleBlock, AttrSizedOperandSegments]>, R
   let assemblyFormat = [{ `(` $tile `,` `in` `:` `[` $input_dmas `]` `,` `out` `:` `[` $output_dmas `]` `)` regions attr-dict }];
 
   let builders = [
-    OpBuilder<(ins "mlir::Value":$coreCol, "mlir::Value":$coreRow)>,
-    OpBuilder<(ins "mlir::Value":$coreCol, "mlir::Value":$coreRow,
+    OpBuilder<(ins "mlir::Value":$coreCol, "mlir::Value":$coreRow, "uint32_t":$rowOffset)>,
+    OpBuilder<(ins "mlir::Value":$coreCol, "mlir::Value":$coreRow, "uint32_t":$rowOffset,
       "ValueRange":$input_dmas, "ValueRange":$output_dmas)>,
-    OpBuilder<(ins "mlir::Value":$coreCol, "mlir::Value":$coreRow, "ValueRange":$input_dmas,
+    OpBuilder<(ins "mlir::Value":$coreCol, "mlir::Value":$coreRow, "uint32_t":$rowOffset, "ValueRange":$input_dmas,
                    "ValueRange":$output_dmas, "mlir::IntegerAttr":$stack_size)>,
-    OpBuilder<(ins "mlir::Value":$coreCol, "mlir::Value":$coreRow, "ValueRange":$input_dmas,
+    OpBuilder<(ins "mlir::Value":$coreCol, "mlir::Value":$coreRow, "uint32_t":$rowOffset, "ValueRange":$input_dmas,
                    "ValueRange":$output_dmas, "uint32_t":$stack_size), [{
-      build($_builder, $_state, coreCol, coreRow, input_dmas, output_dmas,
+      build($_builder, $_state, coreCol, coreRow, rowOffset, input_dmas, output_dmas,
             $_builder.getIntegerAttr($_builder.getIntegerType(32), stack_size));
     }]>,
     OpBuilder<(ins "TileOp":$tile, "ValueRange":$input_dmas, "ValueRange":$output_dmas), [{

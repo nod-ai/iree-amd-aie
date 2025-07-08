@@ -683,6 +683,7 @@ void buildAMDAIETransformPassPipeline(
     options.numRows = numRows;
     options.numCols = numCols;
     options.enableAMDAIEUkernels = enableAMDAIEUkernels;
+    options.stackSize = coreStackSize;
     modulePassManager.addPass(createAMDAIELoweringStrategyPass(options));
   }
   modulePassManager.addPass(createLowerExecutableUsingTransformDialectPass());
