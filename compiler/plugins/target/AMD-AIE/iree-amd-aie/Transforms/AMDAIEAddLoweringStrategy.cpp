@@ -54,7 +54,7 @@ void AMDAIELoweringStrategyPass::runOnOperation() {
     // Set the strategy with default heuristics.
     if (failed(initAIELaunchConfig(funcOp, useTilePipeline,
                                    useLowerToAIEPipeline, targetDevice, numRows,
-                                   numCols, enableAMDAIEUkernels))) {
+                                   numCols, stackSize, enableAMDAIEUkernels))) {
       funcOp.emitOpError("failed to have a lowering configuration set for it.");
       return signalPassFailure();
     }

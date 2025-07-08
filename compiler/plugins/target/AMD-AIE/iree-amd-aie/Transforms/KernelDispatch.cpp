@@ -823,12 +823,39 @@ static LogicalResult setRootConfigForConvDecomposePipeline(
 static LogicalResult setRootConfigForSoftmaxCopyPipeline(
     mlir::FunctionOpInterface entryPointFn, linalg::SoftmaxOp softmaxOp,
     AMDAIEDevice targetDevice, uint32_t numRows, uint32_t numCols,
-    std::string enableAMDAIEUkernels) {
-  // For now, the L1 tile sizes are hardcoded. We don't tile the reduction dim
-  // as the softmax op is not a pure reduction op.
-  ArrayRef<int64_t> inputShape = softmaxOp.getInput().getType().getShape();
+    uint32_t stackSize, std::string enableAMDAIEUkernels) {
+  Value input = softmaxOp.getDpsInputOperand(0)->get();
+  Value output = softmaxOp.getDpsInitOperand(0)->get();
+  auto inputType = llvm::cast<ShapedType>(input.getType());
+  auto outType = llvm::cast<ShapedType>(output.getType());
+  // Get the number of bytes per element for input and output types.
+  uint32_t nBytesIn = inputType.getElementTypeBitWidth() / 8;
+  uint32_t nBytesOut = outType.getElementTypeBitWidth() / 8;
+  // Get the device model for the target device.
+  AMDAIEDeviceModel deviceModel = getDeviceModel(targetDevice);
+  // We don't tile the reduction dim as the softmax op is not a pure reduction
+  // op.  For the outer dimension, the maximum tile size is constrained by:
+  // - the local memory capacity of the AIE core tile,
+  // - the size of local memory reserved for the stack,
+  // - the shape of the input tensor (identical to the output shape),
+  // - the size of each element in bytes, and
+  // - the use of double buffering
+  ArrayRef<int64_t> inputShape = inputType.getShape();
   assert(inputShape.size() == 2 && "expected the input as 2D");
-  int64_t m1Tile = std::min<int64_t>(inputShape[0], 32);
+  int64_t maxM1Tile = (deviceModel.getCoreTileLocalMemorySize() - stackSize) /
+                      (inputShape[1] * (nBytesIn + nBytesOut) * 2);
+  if (maxM1Tile <= 0) {
+    return softmaxOp.emitError(
+        "failed to set the tile size, the reduction dimension is too large to "
+        "fit in the local memory");
+  }
+  // TODO (zhewen): The value `32` is currently an arbitrary choice.
+  // Increasing it may improve local memory utilization but could limit
+  // parallelism across multiple AIE cores. Decreasing it may allow better
+  // parallelization across cores but might result in less efficient data
+  // transfer due to smaller tile sizes.
+  int64_t m1Tile =
+      std::min<int64_t>(findLargestFactor(inputShape[0], maxM1Tile), 32);
   int64_t m0Tile = std::min<int64_t>(inputShape[0], numRows * numCols * m1Tile);
 
   SmallVector<int64_t> tileSizeLevel0 = {m0Tile, 0};
@@ -968,14 +995,14 @@ static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
                                    TilePassPipeline passPipeline,
                                    LowerToAIEPassPipeline useLowerToAIEPipeline,
                                    AMDAIEDevice targetDevice, uint32_t numRows,
-                                   uint32_t numCols,
+                                   uint32_t numCols, uint32_t stackSize,
                                    std::string enableAMDAIEUkernels) {
   assert(!getLoweringConfig<IREE::Codegen::LoweringConfigAttr>(softmaxOp) &&
          "expected lowering_config is not set");
   if (passPipeline == TilePassPipeline::GeneralCopyPipeline)
     return setRootConfigForSoftmaxCopyPipeline(entryPointFn, softmaxOp,
                                                targetDevice, numRows, numCols,
-                                               enableAMDAIEUkernels);
+                                               stackSize, enableAMDAIEUkernels);
   return softmaxOp.emitError("Unhandled pass pipeline in setRootConfig.");
 }
 
@@ -1001,7 +1028,7 @@ static LogicalResult setRootConfigImpl(
     mlir::FunctionOpInterface entryPointFn, Operation *op,
     TilePassPipeline passPipeline, LowerToAIEPassPipeline useLowerToAIEPipeline,
     AMDAIEDevice targetDevice, uint32_t numRows, uint32_t numCols,
-    std::string enableAMDAIEUkernels) {
+    uint32_t stackSize, std::string enableAMDAIEUkernels) {
   auto setRootConfigFn = [&](Operation *op) -> LogicalResult {
     return TypeSwitch<Operation *, LogicalResult>(op)
         // TODO (nmeshram): This is very limited for now, plan is to
@@ -1026,7 +1053,7 @@ static LogicalResult setRootConfigImpl(
         .Case<linalg::SoftmaxOp>([&](auto op) {
           return setRootConfig(entryPointFn, op, passPipeline,
                                useLowerToAIEPipeline, targetDevice, numRows,
-                               numCols, enableAMDAIEUkernels);
+                               numCols, stackSize, enableAMDAIEUkernels);
         })
         .Default([&](Operation *op) { return success(); });
   };
@@ -1038,7 +1065,7 @@ static LogicalResult setTranslationInfoAndRootConfig(
     mlir::FunctionOpInterface entryPointFn, ArrayRef<Operation *> computeOps,
     TilePassPipeline passPipeline, LowerToAIEPassPipeline useLowerToAIEPipeline,
     AMDAIEDevice targetDevice, uint32_t numRows, uint32_t numCols,
-    std::string enableAMDAIEUkernels) {
+    uint32_t stackSize, std::string enableAMDAIEUkernels) {
   // Make sure that lowering_config is not preset on any compute ops.
   for (auto computeOp : computeOps) {
     if (getLoweringConfig<IREE::Codegen::LoweringConfigAttr>(computeOp))
@@ -1055,7 +1082,7 @@ static LogicalResult setTranslationInfoAndRootConfig(
 
   if (failed(setRootConfigImpl(entryPointFn, rootOperation, passPipeline,
                                useLowerToAIEPipeline, targetDevice, numRows,
-                               numCols, enableAMDAIEUkernels)))
+                               numCols, stackSize, enableAMDAIEUkernels)))
     return failure();
   return success();
 }
@@ -1068,7 +1095,7 @@ LogicalResult initAIELaunchConfig(FunctionOpInterface funcOp,
                                   TilePassPipeline passPipeline,
                                   LowerToAIEPassPipeline useLowerToAIEPipeline,
                                   AMDAIEDevice targetDevice, uint32_t numRows,
-                                  uint32_t numCols,
+                                  uint32_t numCols, uint32_t stackSize,
                                   std::string enableAMDAIEUkernels) {
   if (getTranslationInfo(funcOp)) return success();
 
@@ -1079,7 +1106,7 @@ LogicalResult initAIELaunchConfig(FunctionOpInterface funcOp,
   SmallVector<Operation *> computeOps = getComputeOps(funcOp);
   if (failed(setTranslationInfoAndRootConfig(
           funcOp, computeOps, passPipeline, useLowerToAIEPipeline, targetDevice,
-          numRows, numCols, enableAMDAIEUkernels)))
+          numRows, numCols, stackSize, enableAMDAIEUkernels)))
     return failure();
 
   // The root configuration setting introduces `tensor.dim` operations.
