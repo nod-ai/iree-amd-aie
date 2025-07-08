@@ -191,7 +191,9 @@ class FlattenContiguousRowMajorTransferReadPattern
     VectorType flatVectorType = VectorType::get({vectorType.getNumElements()},
                                                 vectorType.getElementType());
     vector::TransferReadOp flatRead = rewriter.create<vector::TransferReadOp>(
-        loc, flatVectorType, collapsedSource, collapsedIndices, collapsedMap);
+        loc, flatVectorType, collapsedSource, collapsedIndices, /*padding=*/
+        arith::getZeroConstant(rewriter, loc, flatVectorType.getElementType()),
+        collapsedMap);
     flatRead.setInBoundsAttr(rewriter.getBoolArrayAttr({true}));
 
     // 4. Replace the old transfer_read with the new one reading from the
@@ -947,7 +949,8 @@ struct ToMinorIdentityTransferReadPattern
     if (!vector::isContiguousSlice(sourceType, newVectorTy)) return failure();
 
     auto newReadOp = rewriter.create<vector::TransferReadOp>(
-        readOp.getLoc(), newVectorTy, readOp.getBase(), readOp.getIndices());
+        readOp.getLoc(), newVectorTy, readOp.getBase(), readOp.getIndices(),
+        readOp.getPadding());
 
     newReadOp.getProperties().setInBounds(
         rewriter.getBoolArrayAttr(newInBounds));

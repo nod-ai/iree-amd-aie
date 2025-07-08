@@ -103,8 +103,7 @@ static void addAMDAIEBufferizePasses(OpPassManager &pm,
   BufferizationOptions::AllocationFn allocationFn =
       aieComprehensiveBufferizeAllocationFn;
   BufferizationOptions::MemCpyFn memCpyFn = aieComprehensiveBufferizeCopyFn;
-  addIREEComprehensiveBufferizePasses(pm, allocationFn, memCpyFn,
-                                      /*injectAssumeAlignmentOp=*/false);
+  addIREEComprehensiveBufferizePasses(pm, allocationFn, memCpyFn);
 }
 
 void addAMDAIEToAIEPasses(OpPassManager &passManager,

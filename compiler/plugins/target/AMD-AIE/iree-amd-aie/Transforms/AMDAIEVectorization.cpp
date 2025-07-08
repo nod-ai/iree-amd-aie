@@ -99,7 +99,11 @@ void AMDAIEVectorizationPass::runOnOperation() {
   });
 
   for (Operation *op : candidates) {
-    (void)linalg::vectorize(rewriter, op);
+    FailureOr<linalg::VectorizationResult> result =
+        linalg::vectorize(rewriter, op);
+    if (succeeded(result)) {
+      rewriter.replaceOp(op, result->replacements);
+    }
   }
 
   RewritePatternSet vectorizationPatterns(funcOp.getContext());

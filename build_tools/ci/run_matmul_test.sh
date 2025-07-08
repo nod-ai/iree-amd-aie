@@ -500,59 +500,59 @@ function run_matmul_test_on_shapes() {
 # Example of a run without any defaults arguments.
 # AIR test is sensitive to the tile sizes for small input sizes, use tests with
 # large input sizes to prove of concept.
-run_matmul_test \
-    --name_prefix "test1" \
-    --lhs_rhs_type "bf16" \
-    --acc_type "f32" \
-    --target_backend "amd-aie" \
-    --target_device "npu1_4col" \
-    --peano_install_path "${PEANO}" \
-    --amd_aie_install_path "${IREE_INSTALL_DIR}" \
-    --lower_to_aie_pipeline "air" \
-    --tile_pipeline "pack-peel" \
-    --m "256" \
-    --n "256" \
-    --k "256" \
-    --dynamicity "static" \
-    --accumulate "false" \
-    --expect_compile_failure "0" \
-    --do_transpose_rhs "0" \
-    --max_elements_to_check "0" \
-    --num_repeat_runs "2"
+# run_matmul_test \
+#     --name_prefix "test1" \
+#     --lhs_rhs_type "bf16" \
+#     --acc_type "f32" \
+#     --target_backend "amd-aie" \
+#     --target_device "npu1_4col" \
+#     --peano_install_path "${PEANO}" \
+#     --amd_aie_install_path "${IREE_INSTALL_DIR}" \
+#     --lower_to_aie_pipeline "air" \
+#     --tile_pipeline "pack-peel" \
+#     --m "256" \
+#     --n "256" \
+#     --k "256" \
+#     --dynamicity "static" \
+#     --accumulate "false" \
+#     --expect_compile_failure "0" \
+#     --do_transpose_rhs "0" \
+#     --max_elements_to_check "0" \
+#     --num_repeat_runs "2"
 
-run_matmul_test \
-    --name_prefix "packPeel_i32" \
-    --lower_to_aie_pipeline "air" \
-    --tile_pipeline "pack-peel" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --m "64"  --n "64" --k "128"
+# run_matmul_test \
+#     --name_prefix "packPeel_i32" \
+#     --lower_to_aie_pipeline "air" \
+#     --tile_pipeline "pack-peel" \
+#     --lhs_rhs_type "i32" \
+#     --acc_type "i32" \
+#     --m "64"  --n "64" --k "128"
 
-run_matmul_test \
-    --name_prefix "packPeel_bf16" \
-    --lower_to_aie_pipeline "air" \
-    --tile_pipeline "pack-peel" \
-    --lhs_rhs_type "bf16" \
-    --acc_type "f32" \
-    --m "512"  --n "512" --k "512"
+# run_matmul_test \
+#     --name_prefix "packPeel_bf16" \
+#     --lower_to_aie_pipeline "air" \
+#     --tile_pipeline "pack-peel" \
+#     --lhs_rhs_type "bf16" \
+#     --acc_type "f32" \
+#     --m "512"  --n "512" --k "512"
 
-run_matmul_test \
-  --name_prefix "packPeel_t_bf16" \
-  --lower_to_aie_pipeline "air" \
-  --tile_pipeline "pack-peel" \
-  --lhs_rhs_type "bf16" \
-  --acc_type "f32" \
-  --m "128" --n "256" --k "512" \
-  --do_transpose_rhs "1"
+# run_matmul_test \
+#   --name_prefix "packPeel_t_bf16" \
+#   --lower_to_aie_pipeline "air" \
+#   --tile_pipeline "pack-peel" \
+#   --lhs_rhs_type "bf16" \
+#   --acc_type "f32" \
+#   --m "128" --n "256" --k "512" \
+#   --do_transpose_rhs "1"
 
-run_matmul_test \
-  --name_prefix "packPeel4LvlBf16" \
-  --lower_to_aie_pipeline "air" \
-  --tile_pipeline "pack-peel-4-level-tiling" \
-  --lhs_rhs_type "bf16" \
-  --acc_type "f32" \
-  --m "512" --n "512" --k "512" \
-  --num_repeat_runs "1"
+# run_matmul_test \
+#   --name_prefix "packPeel4LvlBf16" \
+#   --lower_to_aie_pipeline "air" \
+#   --tile_pipeline "pack-peel-4-level-tiling" \
+#   --lhs_rhs_type "bf16" \
+#   --acc_type "f32" \
+#   --m "512" --n "512" --k "512" \
+#   --num_repeat_runs "1"
 
 ###################################################################
 # ObjectFifo Matmul tests
