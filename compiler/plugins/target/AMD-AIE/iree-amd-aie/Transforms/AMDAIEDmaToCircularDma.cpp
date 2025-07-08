@@ -20,17 +20,17 @@ namespace {
 LogicalResult convertDmaToCircularDma(Operation *op) {
   IRRewriter rewriter(op->getContext());
   op->walk([&](AMDAIE::DmaCpyNdOp dmaOp) {
-    auto sourceMemSpace = dmaOp.getSourceObjectFifo().getMemorySpaceAsUInt();
-    auto targetMemSpace = dmaOp.getTargetObjectFifo().getMemorySpaceAsUInt();
-    if (sourceMemSpace == 1 && targetMemSpace == 2) {
-      // L2 -> L1 or L1 -> L2 goes to uController instructions in MLIR-AIE.
-      rewriter.setInsertionPointAfter(dmaOp);
-      rewriter.replaceOpWithNewOp<AMDAIE::CircularDmaCpyNdOp>(
-          dmaOp, dmaOp.getTarget(), dmaOp.getTargetMixedOffsets(),
-          dmaOp.getTargetMixedSizes(), dmaOp.getTargetMixedStrides(),
-          dmaOp.getSource(), dmaOp.getSourceMixedOffsets(),
-          dmaOp.getSourceMixedSizes(), dmaOp.getSourceMixedStrides());
-    }
+    // auto sourceMemSpace = dmaOp.getSourceObjectFifo().getMemorySpaceAsUInt();
+    // auto targetMemSpace = dmaOp.getTargetObjectFifo().getMemorySpaceAsUInt();
+    // if (sourceMemSpace == 1 && targetMemSpace == 2) {
+    //   // L2 -> L1 or L1 -> L2 goes to uController instructions in MLIR-AIE.
+    //   rewriter.setInsertionPointAfter(dmaOp);
+    //   rewriter.replaceOpWithNewOp<AMDAIE::CircularDmaCpyNdOp>(
+    //       dmaOp, dmaOp.getTarget(), dmaOp.getTargetMixedOffsets(),
+    //       dmaOp.getTargetMixedSizes(), dmaOp.getTargetMixedStrides(),
+    //       dmaOp.getSource(), dmaOp.getSourceMixedOffsets(),
+    //       dmaOp.getSourceMixedSizes(), dmaOp.getSourceMixedStrides());
+    // }
   });
   return success();
 }
