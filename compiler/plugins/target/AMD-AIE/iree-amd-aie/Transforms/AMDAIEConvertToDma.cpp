@@ -161,7 +161,7 @@ LogicalResult setDmaInputs(Operation *&operandOp,
                            SmallVector<OpFoldResult> &strides) {
   MLIRContext *ctx = operandOp->getContext();
   if (isa<memref::AllocOp>(operandOp) ||
-      isa<IREE::HAL::InterfaceBindingSubspanOp>(operandOp)) {
+      isa<memref::AssumeAlignmentOp>(operandOp)) {
     MemRefType memRefType = cast<MemRefType>(operandOp->getResult(0).getType());
     auto [stridesI64, baseOffset] = memRefType.getStridesAndOffset();
     if (baseOffset != 0) {
@@ -238,7 +238,7 @@ LogicalResult setDmaInputs(Operation *&operandOp,
   }
   return operandOp->emitOpError(
       "is an unsupported operation. This pass currently only supports "
-      "hal.interface.binding.subspan, memref.alloc and memref.subview as "
+      "memref.assume_alignment, memref.alloc and memref.subview as "
       "inputs.");
 }
 

@@ -57,7 +57,6 @@ func.func @generic_matmul_i32i32i32_pad_pack(%arg0 : tensor<8x16x4x8xi32>, %arg1
 // CHECK-SAME:       ins(%[[ARG0]], %[[ARG1]] :
 // CHECK-SAME:       outs(%[[ARG2]] :
 // CHECK-SAME:       fn_def_attrs {link_with = "matmul.o"}
-// CHECK-SAME:       strided_outer_dims(0)
 //      CHECK:   return %[[MICRO_KERNEL]]
 
 // -----
@@ -93,7 +92,6 @@ module {
 // CHECK-SAME:       ins(%[[ARG0]], %[[ARG1]] :
 // CHECK-SAME:       outs(%[[ARG2]] :
 // CHECK-SAME:       fn_def_attrs {link_with = "matmul.o"}
-// CHECK-SAME:       strided_outer_dims(0)
 //      CHECK:   return %[[MICRO_KERNEL]]
 
 // -----
@@ -132,7 +130,6 @@ module {
 // CHECK-SAME:       ins(%[[ARG0]], %[[ARG1]] :
 // CHECK-SAME:       outs(%[[ARG2]] :
 // CHECK-SAME:       fn_def_attrs {link_with = "matmul.o"}
-// CHECK-SAME:       strided_outer_dims(0)
 //      CHECK:   return %[[MICRO_KERNEL]]
 
 // -----
@@ -171,7 +168,6 @@ module {
 // CHECK-SAME:       ins(%[[ARG0]], %[[ARG1]] :
 // CHECK-SAME:       outs(%[[ARG2]] :
 // CHECK-SAME:       fn_def_attrs {link_with = "matmul.o"}
-// CHECK-SAME:       strided_outer_dims(0)
 //      CHECK:   return %[[MICRO_KERNEL]]
 
 // -----
@@ -189,7 +185,6 @@ func.func @zero_fill(%arg0 : tensor<16x16x4x4xbf16>) -> tensor<16x16x4x4xbf16> a
 //      CHECK:   %[[MICRO_KERNEL:.+]] = iree_codegen.ukernel.generic "zero_fill_bf16_64x64"
 // CHECK-SAME:       outs(%[[ARG0]] :
 // CHECK-SAME:       fn_def_attrs {link_with = "zero_fill.o"}
-// CHECK-SAME:       strided_outer_dims(0)
 //      CHECK:   return %[[MICRO_KERNEL]]
 
 // -----
@@ -236,13 +231,11 @@ func.func @zero_fill_with_matmul(%arg0 : tensor<8x16x4x8xbf16>, %arg1 : tensor<1
 //      CHECK:   %[[ZERO_FILL_MICRO_KERNEL:.+]] = iree_codegen.ukernel.generic "zero_fill_bf16_64x64"
 // CHECK-SAME:       outs(%[[ARG2]] :
 // CHECK-SAME:       fn_def_attrs {link_with = "zero_fill.o"}
-// CHECK-SAME:       strided_outer_dims(0)
 //  CHECK-NOT:   linalg.generic
 //      CHECK:   %[[MATMUL_MICRO_KERNEL:.+]] = iree_codegen.ukernel.generic "matmul_bf16_bf16_bf16_64x64x64_4x8x4"
 // CHECK-SAME:       ins(%[[ARG0]], %[[ARG1]] :
 // CHECK-SAME:       outs(%[[ZERO_FILL_MICRO_KERNEL]] :
 // CHECK-SAME:       fn_def_attrs {link_with = "matmul.o"}
-// CHECK-SAME:       strided_outer_dims(0)
 //      CHECK:   return %[[MATMUL_MICRO_KERNEL]]
 
 // -----
@@ -338,7 +331,6 @@ module {
 // CHECK-SAME:       ins(%[[ARG0]], %[[ARG1]] :
 // CHECK-SAME:       outs(%[[ARG2]] :
 // CHECK-SAME:       fn_def_attrs {link_with = "matmul.o"}
-// CHECK-SAME:       strided_outer_dims(0)
 //      CHECK:   return %[[MICRO_KERNEL]]
 
 // -----
@@ -365,7 +357,6 @@ func.func @shift_trunci(%arg0 : tensor<16x16x4x4xi32>) -> tensor<16x16x4x4xi8> a
 // CHECK:        %[[MICRO_KERNEL:.+]] = iree_codegen.ukernel.generic "trunci_i32_i8_64x64"
 // CHECK-SAME:       ins(%[[ARG0]], %[[C5]] : tensor<16x16x4x4xi32>, i32
 // CHECK-SAME:       fn_def_attrs {link_with = "trunci.o"}
-// CHECK-SAME:       strided_outer_dims(0)
 // CHECK-SAME:       -> tensor<16x16x4x4xi8>
 // CHECK:        return %[[MICRO_KERNEL]]
 
@@ -391,6 +382,5 @@ func.func @trunci(%arg0 : tensor<16x16x4x4xi16>) -> tensor<16x16x4x4xi8> attribu
 // CHECK:        %[[MICRO_KERNEL:.+]] = iree_codegen.ukernel.generic "trunci_i16_i8_64x64"
 // CHECK-SAME:       ins(%[[ARG0]], %[[C0]] : tensor<16x16x4x4xi16>, i16
 // CHECK-SAME:       fn_def_attrs {link_with = "trunci.o"}
-// CHECK-SAME:       strided_outer_dims(0)
 // CHECK-SAME:       -> tensor<16x16x4x4xi8>
 // CHECK:        return %[[MICRO_KERNEL]]

@@ -64,12 +64,20 @@ struct HalfDmaCpyNdToNpuConverter final
         return op.emitOpError() << "expected input to be an "
                                    "`amdaie.logicalobjectfifo.from_memref`";
       }
-      auto subspanOp =
-          dyn_cast_if_present<IREE::HAL::InterfaceBindingSubspanOp>(
-              logicalObjFifo.getMemref().getDefiningOp());
+      auto assumeAlignmentOp = dyn_cast_if_present<memref::AssumeAlignmentOp>(
+          logicalObjFifo.getMemref().getDefiningOp());
+
+      IREE::HAL::InterfaceBindingSubspanOp subspanOp;
+      if (assumeAlignmentOp) {
+        subspanOp = dyn_cast_if_present<IREE::HAL::InterfaceBindingSubspanOp>(
+            assumeAlignmentOp.getViewSource().getDefiningOp());
+      } else {
+        subspanOp = dyn_cast_if_present<IREE::HAL::InterfaceBindingSubspanOp>(
+            logicalObjFifo.getMemref().getDefiningOp());
+      }
       if (!subspanOp) {
         return logicalObjFifo.emitOpError()
-               << "must operate on an `hal.interface.binding.subspan`";
+               << "must operate on a `hal.interface.binding.subspan`";
       }
       argIdx = subspanOp.getBinding().getZExtValue();
       MemRefType memrefType = logicalObjFifo.getMemrefType();
