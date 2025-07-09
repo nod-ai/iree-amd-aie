@@ -121,7 +121,7 @@ void AMDAIETilePass::runOnOperation() {
       op->emitOpError("failed to tile the operation");
       return signalPassFailure();
     }
-    rewriter.replaceOp(op, tiledResults->mergeResult.replacements);
+    rewriter.replaceOp(op, tiledResults->replacements);
   }
 }
 

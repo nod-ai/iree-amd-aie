@@ -564,7 +564,9 @@ def AMDAIELowerExecutableTarget :
         clEnumValN(mlir::iree_compiler::AMDAIE::TilePassPipeline::PackPeel4LevelTilingPipeline, "pack-peel-4-level-tiling",
                    "Use the pack-peel based lowering strategy with 4 tiling levels for matmul-like ops."),
         clEnumValN(mlir::iree_compiler::AMDAIE::TilePassPipeline::ConvDecomposePipeline, "conv-decompose",
-                   "Use the conv-decompose based lowering strategy for convolution interface ops.")
+                   "Use the conv-decompose based lowering strategy for convolution interface ops."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::TilePassPipeline::GeneralCopyPipeline, "general-copy",
+                   "Use the copy based lowering strategy for elementwise or reduction ops")
       )}]>,
     Option<"enableVectorizationPasses", "enable-vectorization-passes", "bool", /*default=*/"true",
             "Enable/disable vectorization.">
@@ -586,7 +588,9 @@ def AMDAIELoweringStrategy :
         clEnumValN(mlir::iree_compiler::AMDAIE::TilePassPipeline::PackPeel4LevelTilingPipeline, "pack-peel-4-level-tiling",
                    "Use the pack-peel based lowering strategy with 4 tiling levels for matmul-like ops."),
         clEnumValN(mlir::iree_compiler::AMDAIE::TilePassPipeline::ConvDecomposePipeline, "conv-decompose",
-                   "Use the conv-decompose based lowering strategy for convolution interface ops.")
+                   "Use the conv-decompose based lowering strategy for convolution interface ops."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::TilePassPipeline::GeneralCopyPipeline, "general-copy",
+                   "Use the copy based lowering strategy for elementwise or reduction ops")
       )}]>,
     Option<"useLowerToAIEPipeline", "use-lower-to-aie-pipeline",
       "mlir::iree_compiler::AMDAIE::LowerToAIEPassPipeline",
@@ -612,6 +616,8 @@ def AMDAIELoweringStrategy :
       "Number of rows used in an AIE core array">,
     Option<"numCols", "num-cols", "uint32_t", /*default=*/"4",
       "Number of columns used in an AIE core array">,
+    Option<"stackSize", "stack-size", "uint32_t", /*default=*/"1024",
+      "Stack size reserved in each AIE core">,
     Option<"enableAMDAIEUkernels", "enable-ukernels", "std::string", /*default=*/"",
       "Enables microkernels in the amdaie backend. May be `none`, `all`, or a comma-separated list of specific unprefixed microkernels to enable, e.g. `matmul`.">,
   ];

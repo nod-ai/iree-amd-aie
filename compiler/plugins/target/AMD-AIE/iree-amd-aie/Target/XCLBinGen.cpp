@@ -6,6 +6,7 @@
 
 #include "XCLBinGen.h"
 
+#include <cctype>
 #include <charconv>
 #include <chrono>
 #include <filesystem>
@@ -94,93 +95,58 @@ std::optional<int> safeStoi(std::string_view intString) {
   return std::nullopt;
 }
 
-// We assume that input string is of the form:
-//
-// ```
-// Stack Sizes:
-//      Size     Functions
-//        32     some_func
-//        64     some_other_func
-//       288     core_3_5
-//       288     core_2_5
-//       288     core_1_5
-//       288     core_0_5
-//       288     core_3_4
-//       288     core_3_3
-//       288     core_2_3
-//       288     core_3_2
-//       288     core_1_2
-//       288     core_0_2
-// ```
-//
-// In terms of how we estimate stack sizes, we assume that function call
-// structure is as follows: functions with names core_0_0, core_0_1, core_0_2,
-// et cetera are the entry point functions. These functions call into the
-// other functions like some_func and some_other_func, but never in a
-// nested manner. With these assumptions, an upper bound on the total stack size
-// of a core is the maximum sum of it's stack size, and another function's stack
-// size.
-FailureOr<llvm::DenseMap<std::pair<uint32_t, uint32_t>, uint32_t>>
-getUpperBoundStackSizes(const std::string &readElfOutput) {
-  llvm::DenseMap<std::pair<uint32_t, uint32_t>, uint32_t> coreStackSizes;
+static bool isBlank(const std::string &line) {
+  return std::all_of(line.begin(), line.end(), [](char c) {
+    return std::isspace(static_cast<unsigned char>(c));
+  });
+}
 
-  // Split input on whitespace. For the example above, tokens becomes
-  // ['Functions', '32', 'some_func', '64', 'some_other', 288, 'core_3_5', ...]
-  SmallVector<std::string> tokens;
-  size_t index0 = readElfOutput.find("Functions");
-  std::istringstream stackSizesStream(readElfOutput.substr(index0));
-  std::copy(std::istream_iterator<std::string>(stackSizesStream),
-            std::istream_iterator<std::string>(), std::back_inserter(tokens));
+/// Returns the maximum stack size by parsing the output string of 'llvm-readelf
+/// --stack-sizes'.
+///
+/// We assume that stack sizes output is of the form:
+///
+/// ```
+/// Stack Sizes:
+///      Size     Functions
+///        64     core_0_5, main
+///        32     some_func
+///        64     some_other_func
+/// ```
+///
+/// In terms of how we estimate stack sizes, we assume that all functions
+/// could be called in nested fashion and the maximum stack size is the
+/// sum of all functions' stack sizes.
+///
+/// TODO(jornt): For the exact stack size of the program we need the function
+/// call graph as well as all functions' stack sizes. Once the retrieval of this
+/// is supported in peano, we can use the exact stack size of the program.
+FailureOr<uint32_t> getMaxStackSize(const std::string &stackSizesOutput) {
+  std::istringstream stackSizesStream(stackSizesOutput);
+  std::string line;
 
-  uint32_t maxNonCoreStackSize = 0;
-  for (uint32_t i = 1; i < tokens.size(); i += 2) {
-    std::string_view stackSizeStr = tokens[i];
-    std::string_view functionName = tokens[i + 1];
-
-    std::optional<int> maybeSize = safeStoi(stackSizeStr);
-    if (!maybeSize) {
-      llvm::errs() << "Failed to convert stack size (" << stackSizeStr
-                   << ") to integer.\n";
-      return failure();
+  // Skip 'Stack Sizes:', possibly preceded by blank lines
+  while (std::getline(stackSizesStream, line)) {
+    if (!isBlank(line)) {
+      break;
     }
-    uint32_t size = maybeSize.value();
-    size_t coreIndex = functionName.find("core_");
-
-    // If the function is not a core function, in the example above either
-    // 'some_func' or 'some_other_func', then we track the maximum stack size
-    // for these.
-    if (coreIndex == std::string::npos) {
-      maxNonCoreStackSize = std::max<uint32_t>(maxNonCoreStackSize, size);
-      continue;
-    }
-
-    // The case where the function is a core function.
-    size_t colIndex = functionName.find("_", coreIndex) + 1;
-    std::optional<int> col = safeStoi(functionName.substr(colIndex));
-    if (!col.has_value()) {
-      llvm::errs() << "Failed to extract column from " << functionName << "\n";
-      return failure();
-    }
-
-    size_t rowIndex = functionName.find("_", colIndex) + 1;
-    std::optional<int> row = safeStoi(functionName.substr(rowIndex));
-    if (!row.has_value()) {
-      llvm::errs() << "Failed to extract row from " << functionName << "\n";
-      return failure();
-    }
-
-    coreStackSizes.insert({{col.value(), row.value()}, size});
   }
 
-  // Add the maximum non-core stack size to all core stack sizes. The
-  // logic here is that each core calls into all the non-core functions
-  // (without nesting calls), and so the maximum stack for the core is
-  // the maximum non-core stack size plus the core stack.
-  for (auto &[_, size] : coreStackSizes) {
-    size += maxNonCoreStackSize;
-  }
+  // Skip the header lines:
+  //      Size     Functions
+  std::getline(stackSizesStream, line);
 
-  return coreStackSizes;
+  uint32_t maxStackSize = 0;
+  while (std::getline(stackSizesStream, line)) {
+    std::istringstream linestream(line);
+    uint32_t size;
+    if (linestream >> size) {
+      maxStackSize += size;
+    } else {
+      return failure();
+    }
+  }
+  return maxStackSize;
 }
 
 // Peano's `opt` program optimizes llvm-ir (.ll files). We run it with a system
@@ -640,6 +606,10 @@ static LogicalResult assembleFileUsingPeano(
   // can be discarded later during linking with `-Wl,--gc-sections`.
   args.emplace_back("-ffunction-sections");
   args.emplace_back("-fdata-sections");
+  // The `-fstack-size-section` adds stack size metadata to a special section of
+  // the object file, so we can retrieve it later for stack size checking
+  // purposes.
+  args.emplace_back("-fstack-size-section");
   args.emplace_back("-c");
   args.emplace_back(inputFile);
   args.emplace_back("-o");
@@ -718,6 +688,25 @@ FailureOr<std::string> getUkernelFileContent(StringRef fileName) {
     if (fileName == file->name) return StringRef(file->data, file->size).str();
   }
   return failure();
+}
+
+/// Retrieves the maximum stack size for the provided program (ELF file) using
+/// 'llvm-readelf'.
+FailureOr<uint32_t> getMaxStackSizeFromExecutable(const std::string &outputFile,
+                                                  bool verbose, Path peanoDir) {
+  std::string stackSizesFile = outputFile + ".stacksizes";
+  std::vector<std::string> args{outputFile, "--stack-sizes"};
+  if (failed(runTool((peanoDir / "bin" / "llvm-readelf").string(), args,
+                     verbose, std::nullopt, stackSizesFile))) {
+    llvm::errs() << "Failed to get stack sizes with peano\n";
+    return failure();
+  }
+  // Read the contents of the file stackSizesFile.
+  std::ifstream stackSizesFileStream(stackSizesFile);
+  std::stringstream stackSizesBuffer;
+  stackSizesBuffer << stackSizesFileStream.rdbuf();
+  std::string stackSizes = stackSizesBuffer.str();
+  return mlir::iree_compiler::AMDAIE::detail::getMaxStackSize(stackSizes);
 }
 
 // Generate the elf files for the core
@@ -941,6 +930,27 @@ LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
                          verboseForThisIteration))) {
         return failure();
       }
+
+      // If this is not windows, we can do this check. On windows checkTool
+      // doesn't pipe logging in the way thay's needed for this to work.
+#ifndef _WIN32
+      FailureOr<uint32_t> maybeMaxStackSize =
+          getMaxStackSizeFromExecutable(elfFile.string(), verbose, peanoDir);
+      if (failed(maybeMaxStackSize)) {
+        return failure();
+      }
+      uint32_t stackSize = maybeMaxStackSize.value();
+      if (stackSize > coreOp.getStackSize()) {
+        llvm::errs() << "An upper bound for the stack size of the core (col="
+                     << col << ", row=" << row
+                     << "), inferred from the object file, is " << stackSize
+                     << " bytes. The assigned memory for the stack is "
+                     << coreOp.getStackSize()
+                     << " bytes, which is insufficient (" << stackSize << " > "
+                     << coreOp.getStackSize() << ").\n";
+        return failure();
+      }
+#endif
     }
   }
   return success();
@@ -1280,57 +1290,6 @@ void addLowerToLLVMPasses(OpPassManager &pm) {
   pm.addPass(createCSEPass());
 }
 
-LogicalResult checkStackSize(const std::string &outputFile, bool verbose,
-                             Path peanoReadElfBin, AIE::DeviceOp deviceOp) {
-  std::string stackSizesFile = outputFile + ".stacksizes";
-  std::vector<std::string> args{outputFile, "--stack-sizes"};
-  if (failed(runTool(peanoReadElfBin.string(), args, verbose, std::nullopt,
-                     stackSizesFile))) {
-    llvm::errs() << "Failed to get stack sizes with peano\n";
-    return failure();
-  }
-
-  // Read the contents of the file stackSizesFile.
-  std::ifstream stackSizesFileStream(stackSizesFile);
-  std::stringstream stackSizesBuffer;
-  stackSizesBuffer << stackSizesFileStream.rdbuf();
-  std::string stackSizes = stackSizesBuffer.str();
-  FailureOr<llvm::DenseMap<std::pair<uint32_t, uint32_t>, uint32_t>>
-      maybeUpperBounds =
-          mlir::iree_compiler::AMDAIE::detail::getUpperBoundStackSizes(
-              stackSizes);
-  if (failed(maybeUpperBounds)) {
-    llvm::errs() << "Failed to get upper bounds of stack sizes\n";
-    return failure();
-  }
-  llvm::DenseMap<std::pair<uint32_t, uint32_t>, uint32_t> upperBounds =
-      std::move(maybeUpperBounds.value());
-
-  SmallVector<AIE::CoreOp> coreOps;
-  deviceOp->walk([&](AIE::CoreOp coreOp) { coreOps.push_back(coreOp); });
-  for (auto coreOp : coreOps) {
-    int col = coreOp.getTileOp().getCol();
-    int row = coreOp.getTileOp().getRow();
-    auto iter = upperBounds.find({col, row});
-    if (iter == upperBounds.end()) {
-      llvm::errs() << "The stack size for core (" << col << ", " << row
-                   << ") has no upper bound. ";
-      return failure();
-    }
-    auto stackSize = coreOp.getStackSize();
-    if (stackSize < iter->second) {
-      llvm::errs() << "An upper bound for the stack size of the core (col="
-                   << col << ", row=" << row
-                   << "), inferred from the object file, is " << iter->second
-                   << " bytes. The assigned memory for the stack is "
-                   << stackSize << " bytes, which is insufficient ("
-                   << iter->second << " > " << stackSize << ").\n";
-      return failure();
-    }
-  }
-  return success();
-}
-
 LogicalResult generateUnifiedObject(
     MLIRContext *context, AIE::DeviceOp deviceOp, const std::string &outputFile,
     bool printIRBeforeAll, bool printIRAfterAll, bool printIRModuleScope,
@@ -1449,15 +1408,6 @@ LogicalResult generateUnifiedObject(
       llvm::errs() << "Failed to assemble ll with peano\n";
       return failure();
     }
-
-    // If this is not windows, we can do this check. On windows checkTool
-    // doesn't pipe logging in the way thay's needed for this to work.
-#ifndef _WIN32
-    if (failed(
-            checkStackSize(outputFile, verbose, peanoReadElfBin, deviceOp))) {
-      return failure();
-    }
-#endif
   }
 
   moduleOpCopy->erase();

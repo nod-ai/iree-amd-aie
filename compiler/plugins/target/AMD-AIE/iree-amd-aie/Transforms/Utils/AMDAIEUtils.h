@@ -91,6 +91,9 @@ bool isElementwiseWithMatmulProducer(linalg::LinalgOp linalgOp);
 /// elementwise op as its consumer.
 bool isMatmulWithElementwiseConsumer(linalg::LinalgOp linalgOp);
 
+/// Utility to identify if `linalgOp` is a supported reduction op.
+bool isReductionOp(linalg::LinalgOp linalgOp);
+
 /// Utility to convert a `uint32_t` value into a hex string.
 std::string utohexstr(uint32_t value, size_t width, bool header = true,
                       bool lowercase = false);
@@ -153,6 +156,9 @@ scf::ForOp createForOpWithUnrollingDisabled(OpBuilder &builder, Location loc,
 SmallVector<std::pair<func::FuncOp, SmallVector<func::CallOp>>>
 getFunctionsAndTheirCallers(Operation *rootOp);
 
+/// Get the number of columns used by the cores in the module. Returns an
+/// empty optional if the number cannot be determined.
+std::optional<int64_t> getNumColumnsUsedByCores(ModuleOp moduleOp);
 }  // namespace mlir::iree_compiler::AMDAIE
 
 #endif

@@ -63,5 +63,20 @@ std::optional<int> safeStoi(std::string_view intString);
 FailureOr<llvm::DenseMap<std::pair<uint32_t, uint32_t>, uint32_t>>
 getUpperBoundStackSizes(const std::string &);
 
+/// Returns the maximum stack size by parsing the output string of 'llvm-readelf
+/// --stack-sizes'.
+///
+/// In terms of how we estimate stack sizes, we assume that all functions
+/// could be called in nested fashion and the maximum stack size is the
+/// sum of all functions' stack sizes.
+///
+/// TODO(jornt): For the exact stack size of the program we need the function
+/// call graph as well as all functions' stack sizes. Once the retrieval of this
+/// is supported in peano, we can use the exact stack size of the program.
+///
+/// \return The maximum stack size if parsing succeeds. Otherwise, a failure is
+///         returned.
+FailureOr<uint32_t> getMaxStackSize(const std::string &stackSizesOutput);
+
 }  // namespace detail
 }  // namespace mlir::iree_compiler::AMDAIE

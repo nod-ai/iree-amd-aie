@@ -23,7 +23,7 @@ enum class TilePassPipeline {
   PackPeelPipeline,
   PackPeel4LevelTilingPipeline,
   ConvDecomposePipeline,
-  SoftmaxCopyPipeline,
+  GeneralCopyPipeline,
   None
 };
 
@@ -73,7 +73,7 @@ LogicalResult initAIELaunchConfig(FunctionOpInterface funcOp,
                                   TilePassPipeline useTilePipeline,
                                   LowerToAIEPassPipeline useLowerToAIEPipeline,
                                   AMDAIEDevice targetDevice, uint32_t numRows,
-                                  uint32_t numCols,
+                                  uint32_t numCols, uint32_t stackSize,
                                   std::string enableAMDAIEUkernels);
 
 }  // namespace mlir::iree_compiler::AMDAIE

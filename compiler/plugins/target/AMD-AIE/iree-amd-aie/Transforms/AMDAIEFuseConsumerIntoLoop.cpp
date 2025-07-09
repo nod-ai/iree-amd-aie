@@ -163,15 +163,16 @@ void AMDAIEFuseConsumerIntoLoopPass::runOnOperation() {
           break;
         }
         std::optional<scf::SCFFuseConsumerOfSliceResult> fusedConsumer =
-            scf::tileAndFuseConsumerOfSlice(rewriter, candidateSliceOp,
-                                            MutableArrayRef(loop));
+            scf::tileAndFuseConsumerOfSlices(rewriter, candidateSliceOp,
+                                             MutableArrayRef(loop));
         if (!fusedConsumer) {
           break;
         }
         changedLocal = true;
         changedGlobal = true;
-        fusedConsumer->origConsumerOperand->getOwner()->erase();
-        computeOp = fusedConsumer->tiledAndFusedConsumerOperand->getOwner();
+        fusedConsumer->origConsumerOperands.front()->getOwner()->erase();
+        computeOp =
+            fusedConsumer->tiledAndFusedConsumerOperands.front()->getOwner();
         break;
       } while (computeOp && computeOp->getParentOp() != funcOp);
     }

@@ -306,14 +306,15 @@ void softmax_simple_bf16(bfloat16 *restrict input_matrix,
   return;
 }
 
+// clang-format off
 extern "C" {
 
-#define softmax_c_func(ctype, mlir_type, M, N)                        \
-  void softmax_##mlir_type##_##M##x##N(ctype *input, ctype *output) { \
-    softmax_simple_bf16(input, output, M, N);                         \
+#define softmax_bf16_c_func(M, N)                                  \
+  void softmax_bf16_##M##x##N(bfloat16 *input, bfloat16 *output) { \
+    softmax_simple_bf16(input, output, M, N);                      \
   }
 
-softmax_c_func(bfloat16, bf16, 32, 32)
+softmax_bf16_c_func(4, 1024)
 
 }  // extern "C"
 // clang-format on

@@ -169,6 +169,10 @@ enum class XAie_TxnOpcode : uint8_t {
   XAIE_IO_MASKPOLL_BUSY,
   XAIE_IO_LOADPDI,
   XAIE_IO_LOAD_PM_START,
+  XAIE_IO_CREATE_SCRATCHPAD,
+  XAIE_IO_UPDATE_STATE_TABLE,
+  XAIE_IO_UPDATE_REG,
+  XAIE_IO_UPDATE_SCRATCH,
   XAIE_CONFIG_SHIMDMA_BD,
   XAIE_CONFIG_SHIMDMA_DMABUF_BD,
   XAIE_IO_CUSTOM_OP_BEGIN = ::XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_BEGIN,
@@ -178,6 +182,7 @@ enum class XAie_TxnOpcode : uint8_t {
   XAIE_IO_CUSTOM_OP_RECORD_TIMER,
   XAIE_IO_CUSTOM_OP_MERGE_SYNC,
   XAIE_IO_CUSTOM_OP_NEXT,
+  XAIE_IO_LOAD_PM_END_INTERNAL = ::XAie_TxnOpcode::XAIE_IO_LOAD_PM_END_INTERNAL,
   XAIE_IO_CUSTOM_OP_MAX = ::XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_MAX,
 };
 
@@ -603,6 +608,9 @@ struct AMDAIEDeviceModel {
 
   uint32_t getColumnShift() const;
   uint32_t getRowShift() const;
+
+  /// Returns the starting row index of the core tiles (i.e., AIE tiles).
+  uint32_t getCoreTileRowStart() const;
 
   // Return the magic location in the ELF files containing the size of the
   // program in bytes. The location is returned as a byte offset and number of
