@@ -987,7 +987,8 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
   passManager.addPass(xilinx::air::createAIRDependencyPass());
   if (!(useTilePipeline == TilePassPipeline::PackPeelPipeline &&
         matmulElementwiseFusion)) {
-    passManager.addPass(xilinx::air::createAIRDependencyScheduleOptPass());
+    passManager.addPass(xilinx::air::createAIRBroadcastDetection());
+    passManager.addPass(xilinx::air::createAIRHoistDmaInAccumPattern());
     passManager.addPass(xilinx::air::createAIRSpecializeDmaBroadcast());
   }
   passManager.addPass(xilinx::air::createDmaToChannelPass());
