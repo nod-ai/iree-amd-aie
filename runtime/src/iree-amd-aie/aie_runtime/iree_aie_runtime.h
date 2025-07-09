@@ -609,6 +609,9 @@ struct AMDAIEDeviceModel {
   uint32_t getColumnShift() const;
   uint32_t getRowShift() const;
 
+  /// Returns the starting row index of the core tiles (i.e., AIE tiles).
+  uint32_t getCoreTileRowStart() const;
+
   // Return the magic location in the ELF files containing the size of the
   // program in bytes. The location is returned as a byte offset and number of
   // bytes being used to store the number. NOTE: this could potentially change

@@ -1,13 +1,25 @@
 // RUN: iree-opt --split-input-file --pass-pipeline="builtin.module(iree-amdaie-insert-cores)" --verify-diagnostics %s | FileCheck %s
 
-func.func @insert_cores_with_non_normalized_forall() {
-  %c2 = arith.constant 2 : index
-  scf.forall (%arg0, %arg1) in (1, 1) {
-    // expected-error @+1 {{scf.forall operations must be normalized before core operation insertion}}
-    scf.forall (%arg2, %arg3) = (0, 0) to (8, 16) step (8, 8) {
-    } {mapping = [#gpu.thread<y>, #gpu.thread<x>]}
-  } {mapping = [#gpu.block<y>, #gpu.block<x>]}
-  return
+// expected-error @+1 {{has no AMDAIEDevice in the target attribute configuration}}
+module {
+  func.func @no_amdaie_device() {
+    return
+  }
+}
+
+// -----
+
+#executable_target_amdaie_pdi_fb = #hal.executable.target<"amd-aie", "amdaie-pdi-fb", {num_cols = 4 : i32, num_rows = 4 : i32, target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_pdi_fb} {
+  func.func @insert_cores_with_non_normalized_forall() {
+    %c2 = arith.constant 2 : index
+    scf.forall (%arg0, %arg1) in (1, 1) {
+      // expected-error @+1 {{scf.forall operations must be normalized before core operation insertion}}
+      scf.forall (%arg2, %arg3) = (0, 0) to (8, 16) step (8, 8) {
+      } {mapping = [#gpu.thread<y>, #gpu.thread<x>]}
+    } {mapping = [#gpu.block<y>, #gpu.block<x>]}
+    return
+  }
 }
 
 // -----
@@ -49,7 +61,8 @@ func.func @insert_cores_with_non_normalized_forall() {
 #map1 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d2, d0, d3, d5)>
 #map2 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d2, d5, d4)>
 #map3 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d0, d3, d4)>
-module {
+#executable_target_amdaie_pdi_fb = #hal.executable.target<"amd-aie", "amdaie-pdi-fb", {num_cols = 4 : i32, num_rows = 4 : i32, target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_pdi_fb} {
   func.func @insert_cores() {
     %c1024 = arith.constant 1024 : index
     %c512 = arith.constant 512 : index
@@ -149,7 +162,8 @@ module {
 #map = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d2, d5, d3, d6, d8)>
 #map1 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d2, d1, d4, d5, d8, d7)>
 #map2 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d1, d4, d3, d6, d7)>
-module {
+#executable_target_amdaie_pdi_fb = #hal.executable.target<"amd-aie", "amdaie-pdi-fb", {num_cols = 4 : i32, num_rows = 4 : i32, target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_pdi_fb} {
   func.func @insert_cores_with_vectorized_matmul() {
     %c8192 = arith.constant 8192 : index
     %c4096 = arith.constant 4096 : index
@@ -223,7 +237,8 @@ module {
 // CHECK:             amdaie.end
 // CHECK:           } {link_with = "zero_fill.o,matmul.o"}
 // CHECK:         } {mapping = [#gpu.thread<y>, #gpu.thread<x>]}
-module {
+#executable_target_amdaie_pdi_fb = #hal.executable.target<"amd-aie", "amdaie-pdi-fb", {num_cols = 4 : i32, num_rows = 4 : i32, target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_pdi_fb} {
   func.func private @zero_fill_i32(memref<i32, 2 : i32>, index) attributes {link_with = "zero_fill.o", llvm.bareptr = true}
   func.func private @matmul_i32_i32(memref<i32, 2 : i32>, index, memref<i32, 2 : i32>, index, memref<i32, 2 : i32>, index) attributes {link_with = "matmul.o", llvm.bareptr = true}
   func.func @insert_cores_with_ukernel_linking() {
@@ -283,7 +298,8 @@ module {
 // CHECK-NOT:     scf.for
 // CHECK:         linalg.conv_1d_nwc_wcf
 // CHECK:         amdaie.end
-module {
+#executable_target_amdaie_pdi_fb = #hal.executable.target<"amd-aie", "amdaie-pdi-fb", {num_cols = 4 : i32, num_rows = 4 : i32, target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_pdi_fb} {
   func.func @stripped_down_conv2d(%arg0: memref<1x3x6x32xi32, 2 : i32>, %arg1: memref<3x3x32x4xi32, 2 : i32>, %arg2: memref<1x1x4x4xi32, 2 : i32>) {
     %c1 = arith.constant 1 : index
     %c3 = arith.constant 3 : index
