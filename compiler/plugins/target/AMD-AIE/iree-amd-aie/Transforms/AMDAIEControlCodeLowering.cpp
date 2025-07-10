@@ -540,7 +540,7 @@ LogicalResult createDMABlocks(
   // Create DMA channel.
   // rewriter.setInsertionPointToStart(dmaBlock);
   auto dmaStartOp = rewriter.create<AMDAIE::DMAStartOp>(rewriter.getUnknownLoc(), tileOp->getResult(0), channelDir,
-                                   channelIndex, /*repeatCount=*/1);
+                                   channelIndex, /*repeatCount=*/1, /*enOutOfOrder=*/nullptr);
                                   //  llvm::outs()<<"1 = "<<dmaStartOp<<"\n";
   rewriter.setInsertionPointToStart(&dmaStartOp.getRegion().emplaceBlock());
   rewriter.create<AMDAIE::EndOp>(rewriter.getUnknownLoc());

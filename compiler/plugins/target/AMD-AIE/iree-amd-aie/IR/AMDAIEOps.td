@@ -140,7 +140,8 @@ def AMDAIE_FlowOp: AMDAIE_Op<"flow", [AttrSizedOperandSegments]>,
     ins Variadic<Index>:$sources,
         Variadic<Index>:$targets,
         BoolAttr:$is_packet_flow,
-        OptionalAttr<UI8Attr>:$packet_id
+        OptionalAttr<UI8Attr>:$packet_id,
+        OptionalAttr<BoolAttr>:$keep_pkt_header
   );
 
   let assemblyFormat = [{ `(` `{` $sources `}` `->` `{` $targets `}` `)` attr-dict }];
@@ -1758,6 +1759,19 @@ def AMDAIE_MemTileDMAOp: AMDAIE_Op<"memtile_dma", [
   // }];
 }
 
+def AMDAIE_DmaBdPacketOp: AMDAIE_Op<"dma_bd_packet"> {
+  let summary = "Enable packet headers for a dma block descriptor";
+  let arguments = (
+    ins I32Attr:$packet_type,
+        I32Attr:$packet_id,
+        OptionalAttr<I32Attr>:$out_of_order_bd_id
+  );
+
+  let assemblyFormat = [{
+    `(` $packet_type `,` $packet_id `)` attr-dict
+  }];
+}
+
 def AMDAIE_DMABDOp: AMDAIE_Op<"dma_bd", [
     DeclareOpInterfaceMethods<OpAsmOpInterface>
   ]> {
@@ -1806,7 +1820,8 @@ def AMDAIE_DMAStartOp: AMDAIE_Op<"dma_start", [
         DMAChannelDir:$channel_dir,
         ConfinedAttr<I8Attr, [IntMinValue<0>]>:$channel_index,
         // `repeat_count==1` means "do it once".
-        DefaultValuedAttr<I8Attr, "1">:$repeat_count
+        DefaultValuedAttr<I8Attr, "1">:$repeat_count,
+        OptionalAttr<BoolAttr>:$en_out_of_order
   );
   let regions = (region AnyRegion:$body);
   // let successors = (successor AnySuccessor:$dest, AnySuccessor:$chain);

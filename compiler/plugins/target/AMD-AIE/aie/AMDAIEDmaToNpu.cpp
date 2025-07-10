@@ -61,7 +61,7 @@ LogicalResult appendWriteBd(xilinx::AIEX::NpuWriteBdOp op,
   if (failed(transactionBuilder.appendWriteBdOp(
           op.getColumn(), op.getRow(), op.getBdId(), op.getBufferLength(),
           op.getBufferOffset(), op.getEnablePacket(), op.getPacketId(),
-          op.getPacketType(), sizes, strides, op.getIterationCurrent(),
+          op.getPacketType(),  op.getOutOfOrderId(), sizes, strides, op.getIterationCurrent(),
           op.getIterationSize(), op.getIterationStride(), op.getNextBd(),
           op.getUseNextBd(), op.getValidBd(), op.getLockRelVal(),
           op.getLockRelId(), op.getLockAcqEnable(), op.getLockAcqVal(),

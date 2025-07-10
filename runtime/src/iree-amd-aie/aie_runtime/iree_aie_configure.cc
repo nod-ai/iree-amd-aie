@@ -56,6 +56,7 @@ LogicalResult configureDMABD(
     const TileLoc &tileLoc, bool validBd, uint8_t bdId, bool enableNextBd,
     std::optional<uint8_t> nextBdId, bool enablePacket,
     std::optional<uint8_t> packetType, std::optional<uint8_t> packetId,
+    std::optional<uint8_t> outOfOrderBdId,
     uint64_t baseAddr, uint64_t lenInBytes, uint64_t offsetInBytes,
     uint32_t bufferElementTypeWidthInBytes,
     const std::optional<std::vector<BDDimLayout>> &maybeDims,
@@ -197,6 +198,12 @@ LogicalResult configureDMABD(
   } else {
     TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaDisableBd, &dmaDesc);
   }
+
+  if (outOfOrderBdId.has_value()) {
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaSetOutofOrderBdId, &dmaDesc,
+                                outOfOrderBdId.value());
+  }
+
 
   auto devInst = const_cast<XAie_DevInst *>(&deviceModel.devInst);
   TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaWriteBd, devInst, &dmaDesc, tileLoc,
@@ -392,12 +399,28 @@ LogicalResult configurePushToBdQueue(const AMDAIEDeviceModel &deviceModel,
                                      const TileLoc &tileLoc, uint8_t chNum,
                                      const DMAChannelDir &channelDir,
                                      uint8_t bdId, uint32_t repeatCount,
-                                     bool enTokenIssue, bool setChannelEnable) {
+                                     bool enTokenIssue, bool enOutofOrder,
+                                     bool setChannelEnable) {
   XAie_DmaDirection direction = static_cast<XAie_DmaDirection>(channelDir);
   auto devInst = const_cast<XAie_DevInst *>(&deviceModel.devInst);
-  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelSetStartQueue, devInst, tileLoc,
-                              chNum, direction, bdId, repeatCount,
-                              enTokenIssue);
+
+  XAie_DmaQueueDesc dmaQueueDesc = {repeatCount, bdId, enTokenIssue, enOutofOrder};
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelSetStartQueueGeneric, devInst, tileLoc,
+                              chNum, direction, &dmaQueueDesc);
+
+  if (enOutofOrder) {
+    if (direction != XAie_DmaDirection::DMA_S2MM) {
+      llvm::errs() << "Out-of-order can only be enabled for S2MM.\n";
+      return failure();
+    }
+    XAie_DmaChannelDesc dmaChannelDesc;
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelDescInit, devInst, &dmaChannelDesc, tileLoc);
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelEnOutofOrder, &dmaChannelDesc, XAIE_ENABLE);
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaWriteChannel, devInst, &dmaChannelDesc, tileLoc, chNum, 
+                                direction);
+  }
+
+
   if (setChannelEnable) {
     TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelEnable, devInst, tileLoc, chNum,
                                 direction);

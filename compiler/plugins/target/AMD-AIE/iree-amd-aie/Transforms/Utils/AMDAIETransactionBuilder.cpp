@@ -201,16 +201,18 @@ LogicalResult TransactionBuilder::appendDmaStartOp(
     bool validBd = true;
     std::optional<uint8_t> packetType;
     std::optional<uint8_t> packetID;
+    std::optional<uint8_t> outOfOrderBdId;
     bool enablePacket = false;
-    // auto maybePacketOps = block.getOps<DMABDPACKETOp>();
-    // if (!maybePacketOps.empty()) {
-    //   assert(llvm::range_size(maybePacketOps) == 1 &&
-    //         "expected only one dma_bd_packet");
-    //   DMABDPACKETOp packetOp = *maybePacketOps.begin();
-    //   packetType = packetOp.getPacketType();
-    //   packetID = packetOp.getPacketId();
-    //   enablePacket = true;
-    // }
+    auto maybePacketOps = parentBlock->getOps<AMDAIE::DmaBdPacketOp>();
+    if (!maybePacketOps.empty()) {
+      assert(llvm::range_size(maybePacketOps) == 1 &&
+            "expected only one dma_bd_packet");
+      AMDAIE::DmaBdPacketOp packetOp = *maybePacketOps.begin();
+      packetType = packetOp.getPacketType();
+      packetID = packetOp.getPacketId();
+      outOfOrderBdId = packetOp.getOutOfOrderBdId();
+      enablePacket = true;
+    }
 
     auto bufferOp = dmaBdOp.getBuffer().getDefiningOp<AMDAIE::BufferOp>();
     if (!bufferOp)
@@ -258,6 +260,7 @@ LogicalResult TransactionBuilder::appendDmaStartOp(
     if (failed(configureDMABD(deviceModel, dmaDesc.value(), tileLoc, validBd,
                               static_cast<uint8_t>(*bdId), enableNextBd,
                               nextBdId, enablePacket, packetType, packetID,
+                              outOfOrderBdId,
                               *baseAddr, getLenInBytes(dmaBdOp),
                               getOffsetInBytes(dmaBdOp),
                               getBufferElementTypeWidthInBytes(dmaBdOp), maybeDims,
@@ -271,10 +274,10 @@ LogicalResult TransactionBuilder::appendDmaStartOp(
   int chNum = dmaStartOp.getChannelIndex();
   auto channelDir = static_cast<DMAChannelDir>(dmaStartOp.getChannelDir());
   bool issueToken = tileLoc.Row == 0 && channelDir == DMAChannelDir::MM2S;
-  bool setChannelEnable = true;
+  bool enOutOfOrder = dmaStartOp.getEnOutOfOrder().value_or(false);
   if (failed(configurePushToBdQueue(
           deviceModel, tileLoc, chNum, channelDir, bd.getBdId().value(),
-          dmaStartOp.getRepeatCount(), issueToken, setChannelEnable)))
+          dmaStartOp.getRepeatCount(), issueToken, enOutOfOrder, /*setChannelEnable=*/true)))
     return failure();
   return success();
 }
@@ -303,17 +306,15 @@ LogicalResult TransactionBuilder::appendTCTSync(uint32_t col, uint32_t row,
 LogicalResult TransactionBuilder::appendPushToQueueOp(
     uint32_t col, uint32_t row, AMDAIE::DMAChannelDir direction,
     uint32_t channel, uint32_t bdId, uint32_t repeatCount, bool issueToken) {
-  // Assume channel is enabled by default.
-  bool setChannelEnable = false;
   auto tileLoc = XAie_TileLoc(col, row);
   return configurePushToBdQueue(deviceModel, tileLoc, channel, direction, bdId,
-                                repeatCount, issueToken, setChannelEnable);
+                                repeatCount, issueToken, /*enOutofOrder=*/false, /*setChannelEnable=*/false);
 }
 
 LogicalResult TransactionBuilder::appendWriteBdOp(
     uint32_t col, uint32_t row, uint32_t bdId, uint32_t bufferLength,
     uint32_t bufferOffset, bool enablePacket, uint32_t packetId,
-    uint32_t packetType, ArrayRef<int32_t> sizes, SmallVector<int32_t> strides,
+    uint32_t packetType, uint32_t outOfOrderBdId, ArrayRef<int32_t> sizes, SmallVector<int32_t> strides,
     uint32_t iterationCurrent, uint32_t iterationSize, uint32_t iterationStride,
     uint32_t nextBd, bool useNextBd, bool validBd, int32_t lockRelVal,
     uint32_t lockRelId, bool lockAcqEnable, int32_t lockAcqVal,
@@ -347,6 +348,7 @@ LogicalResult TransactionBuilder::appendWriteBdOp(
                        static_cast<uint8_t>(iterationCurrent)};
   return configureDMABD(deviceModel, dmaTileBd.value(), tileLoc, validBd, bdId,
                         useNextBd, nextBd, enablePacket, packetType, packetId,
+                        outOfOrderBdId,
                         deviceModel.devInst.BaseAddr, bufferLengthInBytes,
                         bufferOffset, bufferElementTypeWidthInBytes, dims, pads,
                         iter);

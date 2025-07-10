@@ -233,7 +233,8 @@ LogicalResult configureLocksAndBd(Block &block, const TileLoc &tileLoc,
   std::optional<BDIterLayout> maybeIter = std::nullopt;
   if (failed(configureDMABD(deviceModel, dmaTileBd.value(), tileLoc, validBd,
                             static_cast<uint8_t>(*bdOp.getBdId()), enableNextBd,
-                            nextBdId, enablePacket, packetType, packetID,
+                            nextBdId, enablePacket, packetType, packetID, 
+                            /*outOfOrderBdId=*/std::nullopt,
                             *bufferOp.getAddress(), getLenInBytes(bdOp),
                             getOffsetInBytes(bdOp),
                             getBufferElementTypeWidthInBytes(bdOp), maybeDims,
@@ -298,10 +299,9 @@ LogicalResult addInitConfig(const AMDAIEDeviceModel &deviceModel,
         int chNum = op.getChannelIndex();
         auto channelDir = static_cast<DMAChannelDir>(op.getChannelDir());
         bool issueToken = tileLoc.row == 0 && channelDir == DMAChannelDir::MM2S;
-        bool setChannelEnable = true;
         if (failed(configurePushToBdQueue(
                 deviceModel, tileLoc, chNum, channelDir, bd.getBdId().value(),
-                op.getRepeatCount(), issueToken, setChannelEnable)))
+                op.getRepeatCount(), issueToken, /*enOutOfOrder=*/false, /*setChannelEnable=*/true)))
           return failure();
       }
     }

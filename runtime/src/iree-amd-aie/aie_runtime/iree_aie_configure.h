@@ -162,6 +162,7 @@ LogicalResult configureDMABD(
     const TileLoc &tileLoc, bool validBd, uint8_t bdId, bool enableNextBd,
     std::optional<uint8_t> nextBdId, bool enablePacket,
     std::optional<uint8_t> packetType, std::optional<uint8_t> packetId,
+    std::optional<uint8_t> outOfOrderBdId,
     uint64_t baseAddr, uint64_t lenInBytes, uint64_t offsetInBytes,
     uint32_t bufferElementTypeWidthInBytes,
     const std::optional<std::vector<BDDimLayout>> &maybeDims,
@@ -202,8 +203,8 @@ LogicalResult configurePushToBdQueue(const AMDAIEDeviceModel &deviceModel,
                                      const TileLoc &tileLoc, uint8_t chNum,
                                      const DMAChannelDir &channelDir,
                                      uint8_t bdId, uint32_t repeatCount,
-                                     bool issueToken,
-                                     bool configureChannelEnable);
+                                     bool enTokenIssue, bool enOutofOrder,
+                                     bool setChannelEnable);
 
 LogicalResult configureCustomTxnOp(const AMDAIEDeviceModel &deviceModel,
                                    uint8_t opCode, uint32_t *data,

@@ -46,7 +46,7 @@ class TransactionBuilder {
   LogicalResult appendWriteBdOp(
       uint32_t col, uint32_t row, uint32_t bdId, uint32_t bufferLength,
       uint32_t bufferOffset, bool enablePacket, uint32_t packetId,
-      uint32_t packetType, ArrayRef<int32_t> sizes,
+      uint32_t packetType, uint32_t outOfOrderBdId, ArrayRef<int32_t> sizes,
       SmallVector<int32_t> strides, uint32_t iterationCurrent,
       uint32_t iterationSize, uint32_t iterationStride, uint32_t nextBd,
       bool useNextBd, bool validBd, int32_t lockRelVal, uint32_t lockRelId,
