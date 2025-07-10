@@ -13,26 +13,26 @@ namespace {
 
 namespace mlir::iree_compiler::AMDAIE {
 void registerAIRTransformPasses() {
+  registerAIRBroadcastDetection();
+  registerAIRCollapseHerdPass();
   registerAIRDependency();
   registerAIRDependencyCanonicalize();
-  registerAIRDependencyScheduleOpt();
+  registerAIRFuseAllocDealloc();
   registerAIRFuseChannels();
+  registerAIRHerdPlacementPass();
+  registerAIRHoistDmaInAccumPattern();
   registerAIRIsolateAsyncDmaLoopNests();
   registerAIRLabelScfForLoopInAIRSegmentPattern();
   registerAIRLabelScfForLoopForPingPongPattern();
+  registerAIROptimizeMemtileDMABDs();
   registerAIRPingPongTransformationPattern();
   registerAIRRenumberDmaIdPass();
-  registerAIRHerdPlacementPass();
+  registerAIRShrinkMemrefSizesByAccess();
   registerAIRSpecializeChannelWrapAndStridePattern();
   registerAIRSpecializeDmaBroadcast();
-  registerAIRUnrollLoopForPipeliningPattern();
-  registerAIRCollapseHerdPass();
-  registerAIRUnrollOuterPerfectlyNestedLoopsPass();
-  registerAffineLoopOptPass();
   registerAIRSplitL2MemrefForBufferConstraintPass();
+  registerAIRUnrollLoopForPipeliningPattern();
+  registerAIRUnrollOuterPerfectlyNestedLoopsPass();
   registerDmaToChannel();
-  registerAIRFuseAllocDealloc();
-  registerAIRShrinkMemrefSizesByAccess();
-  registerAIROptimizeMemtileDMABDs();
 }
 }  // namespace mlir::iree_compiler::AMDAIE

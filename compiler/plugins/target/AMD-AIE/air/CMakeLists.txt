@@ -357,11 +357,23 @@ replace_string_in_file(
   "getDeviceModel(*device)")
 replace_string_in_file(
   ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Transform/AIRDependencyScheduleOpt.cpp
+  "AIE::getTargetModel(device)"
+  "getDeviceModel(device)")
+replace_string_in_file(
+  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Transform/AIRDependencyScheduleOpt.cpp
   "isa<AIE::AIE1TargetModel>(getDeviceModel(*device))"
   "false")
 replace_string_in_file(
   ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Transform/AIRDependencyScheduleOpt.cpp
+  "isa<AIE::AIE1TargetModel>(getDeviceModel(device))"
+  "false")
+replace_string_in_file(
+  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Transform/AIRDependencyScheduleOpt.cpp
   "isa<AIE::AIE2TargetModel>(getDeviceModel(*device))"
+  "true")
+replace_string_in_file(
+  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Transform/AIRDependencyScheduleOpt.cpp
+  "isa<AIE::AIE2TargetModel>(getDeviceModel(device))"
   "true")
 
 ###############################################################################
