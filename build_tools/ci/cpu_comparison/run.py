@@ -541,7 +541,7 @@ class MatmulThinBias(BaseMatmul):
             test_params=(
                 test_params
                 if test_params is not None
-                else TestParams(lower_to_aie_pipeline="air", enable_ctrlpkt=False)
+                else TestParams(enable_ctrlpkt=True)
             ),
             M=M,
             N=N,
@@ -586,7 +586,7 @@ class MatmulFullBias(BaseMatmul):
             test_params=(
                 test_params
                 if test_params is not None
-                else TestParams(lower_to_aie_pipeline="air", enable_ctrlpkt=False)
+                else TestParams(enable_ctrlpkt=True)
             ),
             M=M,
             N=N,
@@ -1829,10 +1829,10 @@ class Tests:
         )
 
         # MatmulThinBias test(s):
-        # self.register(MatmulThinBias(1024, 1024, 512, "bf16", "f32"))
+        self.register(MatmulThinBias(1024, 1024, 512, "bf16", "f32"))
 
         # MatmulFullBias test:
-        # self.register(MatmulFullBias(128, 128, 256, "bf16", "f32"))
+        self.register(MatmulFullBias(128, 128, 256, "bf16", "f32"))
 
         # MatmulTransposeB test(s):
         for input_type, acc_type in zip(["i8", "bf16"], ["i32", "f32"]):
