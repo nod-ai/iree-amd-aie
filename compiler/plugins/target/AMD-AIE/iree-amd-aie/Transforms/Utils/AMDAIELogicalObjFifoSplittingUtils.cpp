@@ -361,29 +361,31 @@ LogicalResult splitLogicalObjectFifoForElementwiseOp(
       l3ToL2DmaOp.getTargetMixedOffsets();
   SmallVector<OpFoldResult> staticL2AsTargetSizes =
       l3ToL2DmaOp.getTargetMixedSizes();
-  SmallVector<OpFoldResult> staticL3AsSourceOffsets =
-      l3ToL2DmaOp.getSourceMixedOffsets();
   SmallVector<OpFoldResult> staticL3AsSourceSizes =
       l3ToL2DmaOp.getSourceMixedSizes();
 
   OpFoldResult zeroVal = getAsIndexOpFoldResult(context, 0);
   OpFoldResult oneVal = getAsIndexOpFoldResult(context, 1);
 
-  FailureOr<bool> maybeTransposed = isDmaTransposedOnTargetSide(l3ToL2DmaOp);
-  if (failed(maybeTransposed)) return failure();
-  bool dmaTransposeOnTarget = maybeTransposed.value();
+  FailureOr<bool> maybeTransposedOnTarget =
+      isDmaTransposedOnTargetSide(l3ToL2DmaOp);
+  FailureOr<bool> maybeTransposedOnSource =
+      isDmaTransposedOnSourceSide(l3ToL2DmaOp);
+  if (failed(maybeTransposedOnTarget) || failed(maybeTransposedOnSource))
+    return failure();
+  bool dmaTransposeOnTarget = maybeTransposedOnTarget.value();
+  bool dmaTransposeOnSource = maybeTransposedOnSource.value();
 
-  if (!dmaTransposeOnTarget) {
+  if (dmaTransposeOnSource) {
     // Update split dimensions' offset/size for L2 as target and L3 as source.
     // We can afford to do this here because it's going to be the same for all
     // L3->L2 splits. Here we are setting offset = 0 and size = 1.
     for (size_t dim : splitDimsForL2) {
       staticL2AsTargetOffsets[dim] = zeroVal;
       staticL2AsTargetSizes[dim] = oneVal;
-      staticL3AsSourceOffsets[dim] = zeroVal;
       staticL3AsSourceSizes[dim] = oneVal;
     }
-  } else {
+  } else if (dmaTransposeOnTarget) {
     // The L2 target side has transposed dimensions, while the L3 source side
     // data are continuous and don't have `nonSplitDim`. Then the L3 source
     // sizes need to be modified to match the new L2 target sizes.
@@ -394,6 +396,18 @@ LogicalResult splitLogicalObjectFifoForElementwiseOp(
       staticL3AsSourceSizes[splitDim] =
           staticL2AsTargetSizes[transposedL2Dims[nonSplitdim]];
     }
+  } else if (!dmaTransposeOnTarget && !dmaTransposeOnSource) {
+    // No transposition on either side.
+    for (auto &&[splitDim, nonSplitdim] :
+         llvm::zip_equal(splitDimsForL2, nonSplitDimsForL2)) {
+      staticL2AsTargetOffsets[splitDim] = zeroVal;
+      staticL2AsTargetSizes[splitDim] = oneVal;
+      staticL3AsSourceSizes[splitDim] = staticL2AsTargetSizes[nonSplitdim];
+    }
+  } else {
+    return l3ToL2DmaOp->emitOpError()
+           << "Unhandled case for L3->L2, where both source and target "
+              "sides are transposed";
   }
 
   // Traverse each L2->L1 DmaCpyNd op and split them.
@@ -411,6 +425,9 @@ LogicalResult splitLogicalObjectFifoForElementwiseOp(
     // target(source) side has the sizes in order.
     SmallVector<OpFoldResult> newL2Sizes =
         dmaTransposeOnTarget ? staticL2AsSourceSizes : staticL2AsTargetSizes;
+    if (!dmaTransposeOnSource && !dmaTransposeOnTarget) {
+      newL2Sizes = staticL2AsSourceSizes;
+    }
     AMDAIE::LogicalObjectFifoFromMemrefOp source =
         createNewLogicalObjectFifo(rewriter, oldL2ObjectFifo, newL2Sizes);
 
@@ -439,9 +456,10 @@ LogicalResult splitLogicalObjectFifoForElementwiseOp(
       }
       int64_t offsetToAdd = constantOffset.value() * constantSize.value();
 
-      // If the dma transpose is on the target side, L3 source side data are
-      // continuous and don't have `nonSplitDim`.
-      size_t dim = dmaTransposeOnTarget ? splitDim : nonSplitdim;
+      // L3 source has `nonSplitDim` only when the source side is transposed.
+      // Otherwise (including cases where the target is transposed or neither
+      // side is), use splitDim as the source data is assumed to be contiguous.
+      size_t dim = dmaTransposeOnSource ? nonSplitdim : splitDim;
       FailureOr<OpFoldResult> newOffset =
           addToOffset(rewriter, staticL3AsSourceOffsets[dim], offsetToAdd);
       if (failed(newOffset)) {
