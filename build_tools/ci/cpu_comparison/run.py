@@ -2546,6 +2546,24 @@ class Tests:
                 )
             )
 
+        self.register(
+            Matmul(
+                32,
+                256,
+                64,
+                "i32",
+                "i32",
+                test_params=TestParams(
+                    run_on_target=["npu4"],
+                    tile_pipeline="pack-peel-4-level-tiling",
+                    aie_compilation_flags=[
+                        "--iree-amdaie-num-rows=1",
+                        "--iree-amdaie-num-cols=1",
+                    ],
+                ),
+                additional_labels=["Debug"],
+            )
+        )
 
 def all_tests(
     tests,
