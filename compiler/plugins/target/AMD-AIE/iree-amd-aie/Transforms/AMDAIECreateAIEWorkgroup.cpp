@@ -116,8 +116,8 @@ LogicalResult WorkgroupBuilder::buildForDmaCpyNdOp(
     CoreContext &coreContext, Block::iterator targetBegin,
     Block::iterator controlCodeBegin, Block::iterator controlCodeEnd) {
   LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [amdaie.dma_cpy_nd] Start\n");
-  Attribute sourceMemSpace = dmaOp.getSourceObjectFifo().getMemorySpace();
-  Attribute targetMemSpace = dmaOp.getTargetObjectFifo().getMemorySpace();
+  uint8_t sourceMemSpace = dmaOp.getSourceObjectFifo().getMemorySpaceAsUInt();
+  uint8_t targetMemSpace = dmaOp.getTargetObjectFifo().getMemorySpaceAsUInt();
   // Error out if the DmaCpyNd involves transfer between L1/L2 as these are all
   // circular_dma_cpy_nd operations by this stage in case no reprogramming of
   // DMAs are performed.
@@ -147,6 +147,8 @@ LogicalResult WorkgroupBuilder::buildForDmaCpyNdOp(
   if (reprogramDmas) {
     npuDmaTarget = dmaOp.getTarget();
     npuDmaSource = dmaOp.getSource();
+    circularDmaTarget = npuDmaTarget;
+    circularDmaSource = npuDmaSource;
   } else if (!sourceMemSpace) {
     // Check if the source of DmaCpyNd op is from L3 - then source addressing
     // will be controlled by the uController and target addressing will stay in
@@ -210,18 +212,20 @@ LogicalResult WorkgroupBuilder::buildForDmaCpyNdOp(
         circularDmaTargetStrides, circularDmaSourceOffsets,
         circularDmaSourceSizes, circularDmaSourceStrides);
   }
-  Type ty =
-      !sourceMemSpace
-          ? static_cast<Type>(
-                controlCodeRewriter.getType<AMDAIE::AsyncSourceTokenType>())
-          : static_cast<Type>(
+  Type ty;
+  if (sourceMemSpace == 0 || (targetMemSpace == 2 && reprogramDmas)) {
+    ty = static_cast<Type>(
+                controlCodeRewriter.getType<AMDAIE::AsyncSourceTokenType>());
+  } else if (targetMemSpace == 0 || (sourceMemSpace == 2 && reprogramDmas)) {
+    ty = static_cast<Type>(
                 controlCodeRewriter.getType<AMDAIE::AsyncTargetTokenType>());
+  }
   auto npuDmaCpy = controlCodeRewriter.createAndLookup<AMDAIE::NpuDmaCpyNdOp>(
       loc, ty, connectionOp.getResult(), npuDmaTarget, npuDmaTargetOffsets,
       npuDmaTargetSizes, npuDmaTargetStrides, /*target_bd_id=*/nullptr,
       npuDmaSource, npuDmaSourceOffsets, npuDmaSourceSizes, npuDmaSourceStrides,
       /*source_bd_id=*/nullptr);
-  if (!reprogramDmas && (sourceMemSpace == 0 || targetMemSpace == 0)) { 
+  if (sourceMemSpace == 0 || targetMemSpace == 0) { 
     controlCodeRewriter.createAndLookup<AMDAIE::NpuDmaWaitOp>(
         rewriter.getUnknownLoc(), SmallVector<Type, 1>{}, npuDmaCpy.getResult(0));
   }
