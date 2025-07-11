@@ -1175,15 +1175,13 @@ void AMDAIEControlCodeLoweringPass::runOnOperation() {
     return signalPassFailure();
   }
 
+  AMDAIE::AMDAIEDeviceModel deviceModel =
+      AMDAIE::getDeviceModel(maybeDevice.value());
 
-  {
-    AMDAIE::AMDAIEDeviceModel deviceModel =
-        AMDAIE::getDeviceModel(maybeDevice.value());
+  if (reprogramDmas) {
     (void)convertNpuDmaCpyToMemtileFunc(parentOp, deviceModel);
   }
 
-  llvm::outs()<<"AFTER L2/L1 DMA_BD :=====================\n";
-  llvm::outs()<<(*parentOp)<<"\n\n";
   // First conversion: HalfDmaCpyNdOp to WriteBdOp, AddressPatchOp and
   // PushToQueueOp.
   {
@@ -1202,8 +1200,6 @@ void AMDAIEControlCodeLoweringPass::runOnOperation() {
     }
   }
 
-  llvm::outs()<<"AFTER HalfDmaCpyNd -> Npu Converter :=====================\n";
-  llvm::outs()<<(*parentOp)<<"\n\n";
   // Second conversion: DmaWaitOp to TctSyncOp.
   // The two conversions are separate to simplify the attribute handling, such
   // as col, row, direction, channel, etc.
@@ -1212,16 +1208,12 @@ void AMDAIEControlCodeLoweringPass::runOnOperation() {
     ConversionTarget conversionTarget(*context);
     conversionTarget.addLegalDialect<AMDAIEDialect>();
     conversionTarget.addIllegalOp<AMDAIE::NpuDmaWaitOp>();
-    llvm::outs()<<"INSERTED PATTERN DmaWaitToTctSyncConverter\n";
-    llvm::outs().flush();
     patterns.insert<DmaWaitToTctSyncConverter>(context);
     if (failed(applyPartialConversion(parentOp, conversionTarget,
                                       std::move(patterns)))) {
       return signalPassFailure();
     }
   }
-    llvm::outs()<<"FINAL OUTPUT ========================\n";
-    llvm::outs().flush();
 }
 
 }  // namespace
