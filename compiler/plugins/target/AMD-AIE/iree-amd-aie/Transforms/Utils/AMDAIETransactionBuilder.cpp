@@ -111,7 +111,8 @@ LogicalResult TransactionBuilder::appendDmaStartOp(
     AMDAIE::DMAStartOp dmaStartOp) {
   // Configure DMA Locks.
   
-  auto tile = dmaStartOp.getTile().getDefiningOp<AMDAIE::TileOp>();
+  auto channelOp = dmaStartOp.getChannel().getDefiningOp<AMDAIE::ChannelOp>();
+  AMDAIE::TileOp tile = channelOp.getTileOp();
   std::optional<int64_t> col = getConstantIntValue(tile.getCol());
   std::optional<int64_t> row = getConstantIntValue(tile.getRow());
   if (!col || !row) {
@@ -271,8 +272,8 @@ LogicalResult TransactionBuilder::appendDmaStartOp(
   });
 
   AMDAIE::DMABDOp bd = *dmaStartOp.getBody().getOps<AMDAIE::DMABDOp>().begin();
-  int chNum = dmaStartOp.getChannelIndex();
-  auto channelDir = static_cast<DMAChannelDir>(dmaStartOp.getChannelDir());
+  int chNum = channelOp.getValue();
+  auto channelDir = static_cast<DMAChannelDir>(channelOp.getDirection());
   bool issueToken = tileLoc.Row == 0 && channelDir == DMAChannelDir::MM2S;
   bool enOutOfOrder = dmaStartOp.getEnOutOfOrder().value_or(false);
   if (failed(configurePushToBdQueue(

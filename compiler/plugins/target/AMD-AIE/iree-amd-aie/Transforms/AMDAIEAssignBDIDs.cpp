@@ -63,7 +63,8 @@ LogicalResult assignBdIds(Operation* deviceOp) {
   for (AMDAIE::DMAStartOp dmaStartOp : memOps) {
     // llvm::outs()<<"DMA start = "<<dmaStartOp<<"\n";
     // llvm::outs().flush();
-    auto tile = dmaStartOp.getTile().getDefiningOp<AMDAIE::TileOp>();
+    auto channelOp  = dmaStartOp.getChannel().getDefiningOp<AMDAIE::ChannelOp>();
+    AMDAIE::TileOp tile = channelOp.getTileOp();
     // BdIdGenerator gen(col, row, deviceModel);
     std::optional<int64_t> col = getConstantIntValue(tile.getCol());
     std::optional<int64_t> row = getConstantIntValue(tile.getRow());
@@ -84,7 +85,7 @@ LogicalResult assignBdIds(Operation* deviceOp) {
     // dma_start
     // for (Block &block : memOp->getRegion(0))
     //   for (auto op : block.getOps<DMAStartOp>()) {
-    int chNum = dmaStartOp.getChannelIndex();
+    int chNum = channelOp.getValue();
     // blockChannelMap[&block] = chNum;
     // for (Block &block : dmaStartOp->getRegion(0)) {
         // blockChannelMap[dest] = chNum;

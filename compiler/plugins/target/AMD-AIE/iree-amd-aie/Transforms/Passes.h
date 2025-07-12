@@ -228,6 +228,9 @@ std::unique_ptr<Pass> createAMDAIEHoistLogicalObjFifoPass();
 /// Create pass to chain DMA BD IDs by updating next_bd operands.
 std::unique_ptr<Pass> createAMDAIEInsertDmaBdChainPass();
 
+/// Create a pass to generate out-of-order blocks for DMA S2MM channels.
+std::unique_ptr<Pass> createAMDAIEInsertDmaOutOfOrderBlockPass();
+
 /// Create a pass to transform linalg.generics into a form which benefits later
 /// vectorization passes (to vector and aievec dialects).
 std::unique_ptr<Pass> createAMDAIEInsertLoopsForVectorizationPass(
