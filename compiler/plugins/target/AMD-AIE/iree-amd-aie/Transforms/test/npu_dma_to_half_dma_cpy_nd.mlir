@@ -238,3 +238,41 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
     return
   }
 }
+
+// -----
+
+// CHECK-LABEL: @l2_l1_half_dma_cpy_nd
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @l2_l1_half_dma_cpy_nd() {
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    %c1 = arith.constant 1 : index
+    amdaie.workgroup {
+      %tile_0_1 = amdaie.tile(%c0, %c1)
+      %buffer = amdaie.buffer(%tile_0_1) : memref<1024xi32, 1 : i32>
+      %lock = amdaie.lock(%tile_0_1(2), 1)
+      %lock_0 = amdaie.lock(%tile_0_1(3), 0)
+      %alloc = memref.alloc() : memref<1x1x32x32xi32, 1 : i32>
+      %0 = amdaie.logicalobjectfifo.from_buffers({%buffer}, {%lock}, {%lock_0}) : memref<1024xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<1024xi32, 1 : i32>>
+      %tile_0_2 = amdaie.tile(%c0, %c2)
+      %buffer_1 = amdaie.buffer(%tile_0_2) : memref<1024xi32, 2 : i32>
+      %lock_2 = amdaie.lock(%tile_0_2(2), 1)
+      %lock_3 = amdaie.lock(%tile_0_2(3), 0)
+      %lock_4 = amdaie.lock(%tile_0_2(0), 1)
+      %lock_5 = amdaie.lock(%tile_0_2(1), 0)
+      %1 = amdaie.logicalobjectfifo.from_buffers({%buffer_1}, {%lock_2}, {%lock_3}) : memref<1024xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<1024xi32, 2 : i32>>
+      %channel = amdaie.channel(%tile_0_1, 0, port_type = DMA, direction = MM2S)
+      %channel_6 = amdaie.channel(%tile_0_2, 0, port_type = DMA, direction = S2MM)
+      %2 = amdaie.flow({%channel} -> {%channel_6}) {is_packet_flow = false}
+      // CHECK: %[[CONNECTION:.*]] = amdaie.connection
+      %3 = amdaie.connection(%1 {%channel_6}, %0 {%channel}, flow = %2) {connection_type = #amdaie<connection_type Circuit>} : (!amdaie.logicalobjectfifo<memref<1024xi32, 2 : i32>>, !amdaie.logicalobjectfifo<memref<1024xi32, 1 : i32>>)
+      amdaie.controlcode {
+        // CHECK-COUNT-2: amdaie.npu.half_dma_cpy_nd async %[[CONNECTION]]
+        %4:2 = amdaie.npu.dma_cpy_nd async_target async_source %3(%1[0, 0, 0] [32, 8, 4] [4, 128, 1], %0[0, 0] [32, 32] [32, 1]) : target_type = !amdaie.logicalobjectfifo<memref<1024xi32, 2 : i32>> source_type = !amdaie.logicalobjectfifo<memref<1024xi32, 1 : i32>>
+        amdaie.end
+      }
+    }
+    return
+  }/
+}
