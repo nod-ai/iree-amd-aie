@@ -24,6 +24,14 @@ def AMDAIEAcquireReleaseToUseLock :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAcquireReleaseToUseLockPass()";
 }
 
+// Copied from AIE dialect.
+def AMDAIEAssignBDIDs :
+    Pass<"iree-amdaie-assign-bd-ids", ""> {
+  let summary = "Assign BD ids to `amdaie.npu.dma_cpy_nd` operations for L2/L1";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAssignBDIDsPass()";
+}
+
+// Copied from AIE dialect.
 def AMDAIEAssignBufferAddress :
     Pass<"iree-amdaie-assign-buffer-address", ""> {
   let summary = "Pass to assign buffers to memory addresses.";
