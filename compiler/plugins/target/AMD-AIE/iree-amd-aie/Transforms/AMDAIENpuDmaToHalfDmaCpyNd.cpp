@@ -31,19 +31,13 @@ struct NpuDmaToHalfDmaCpyNdConverter final
       return dmaOp.emitOpError()
              << "should operate on an `amdaie.connection` op";
     }
-    // We only need to convert those NpuDmaCpyNd ops which have BD IDs assigned.
-    // if (!dmaOp.getSourceBdIdOp() && !dmaOp.getTargetBdIdOp()) {
-    //   return success();
-    // }
-    // Convert source half.
+    SmallVector<Type> resultTypes = {
+        rewriter.getType<AMDAIE::AsyncTokenType>()};
     AMDAIE::NpuHalfDmaCpyNdOp sourceDma, targetDma;
-    bool shouldHaveAsync = true;
-    // bool shouldHaveAsync = dmaOp.hasSourceAddressing() && dmaOp.hasTargetAddressing();
+    // Convert source half.
     if (dmaOp.hasSourceAddressing()) {
       Value source =
-        dmaOp.getSource() ? dmaOp.getSource() : connectionOp.getSource();
-      llvm::outs()<<"SOURCE TYPE = "<<source.getType()<<"\n";
-      llvm::outs().flush();
+          dmaOp.getSource() ? dmaOp.getSource() : connectionOp.getSource();
       if (connectionOp.getSourceChannels().size() != 1)
         return connectionOp.emitOpError() << "expected a single source channel";
       auto sourceChannelOp = dyn_cast<AMDAIE::ChannelOp>(
@@ -52,10 +46,8 @@ struct NpuDmaToHalfDmaCpyNdConverter final
           llvm::any_of(dmaOp.getAsyncTokens(), [](Value token) {
             return isa<AMDAIE::AsyncSourceTokenType>(token.getType());
           });
-      SmallVector<Type> resultTypes = {
-          rewriter.getType<AMDAIE::AsyncTokenType>()};
       TypeRange sourceResultTypes =
-          hasAsyncSourceToken && shouldHaveAsync ? TypeRange{resultTypes} : TypeRange{};
+          hasAsyncSourceToken ? TypeRange{resultTypes} : TypeRange{};
       rewriter.setInsertionPoint(dmaOp);
       sourceDma = rewriter.create<AMDAIE::NpuHalfDmaCpyNdOp>(
           dmaOp.getLoc(), sourceResultTypes, connectionOp, source,
@@ -79,15 +71,14 @@ struct NpuDmaToHalfDmaCpyNdConverter final
           llvm::any_of(dmaOp.getAsyncTokens(), [](Value token) {
             return isa<AMDAIE::AsyncTargetTokenType>(token.getType());
           });
-      SmallVector<Type> resultTypes = {
-          rewriter.getType<AMDAIE::AsyncTokenType>()};
       TypeRange targetResultTypes =
-          hasAsyncTargetToken && shouldHaveAsync? TypeRange{resultTypes} : TypeRange{};
+          hasAsyncTargetToken ? TypeRange{resultTypes} : TypeRange{};
       targetDma = rewriter.create<AMDAIE::NpuHalfDmaCpyNdOp>(
           dmaOp.getLoc(), targetResultTypes, connectionOp, target,
           dmaOp.getTargetMixedOffsets(), dmaOp.getTargetMixedSizes(),
           dmaOp.getTargetMixedStrides(), dmaOp.getTargetBdId(), targetChannelOp);
     }
+
     if (dmaOp.getNumResults() == 1) {
       if (sourceDma && sourceDma.getNumResults() == 1) {
         rewriter.replaceUsesWithIf(

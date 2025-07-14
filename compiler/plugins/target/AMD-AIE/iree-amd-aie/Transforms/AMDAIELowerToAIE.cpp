@@ -658,8 +658,8 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
              << "could not retrieve the repetition count";
     }
     size_t newRepetitionCount = repetitionCount.value();
-    if (sourceObjFifoLikeOp.getMemorySpaceAsUInt() == 1)
-      newRepetitionCount = 1;
+    // if (sourceObjFifoLikeOp.getMemorySpaceAsUInt() == 1)
+    //   newRepetitionCount = 1;
     std::optional<size_t> maybeOffset =
         maybeNpuDmaUserOp->getSourceStaticBaseOffset();
     if (!maybeOffset) {
@@ -767,8 +767,8 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
              << "could not retrieve the repetition count";
     }
     size_t newRepetitionCount = repetitionCount.value();
-    if (targetObjFifoLikeOp.getMemorySpaceAsUInt() == 1)
-      newRepetitionCount = 1;
+    // if (targetObjFifoLikeOp.getMemorySpaceAsUInt() == 1)
+    //   newRepetitionCount = 1;
     std::optional<size_t> maybeOffset =
         maybeNpuDmaUserOp->getTargetStaticBaseOffset();
     if (!maybeOffset) {
