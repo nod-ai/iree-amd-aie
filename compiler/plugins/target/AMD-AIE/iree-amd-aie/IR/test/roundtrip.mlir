@@ -668,3 +668,37 @@ func.func @from_memref_unknown_row_column(%arg0 : memref<8xi32>, %t0 : index) {
   }
   return
 }
+
+// -----
+
+// CHECK-LABEL: @dma_start_block_ops
+//       CHECK: %[[TILE:.*]] = amdaie.tile
+//       CHECK: %[[LOCK_0:.*]] = amdaie.lock
+//       CHECK: %[[LOCK_1:.*]] = amdaie.lock
+//       CHECK: %[[BUFFER:.*]] = amdaie.buffer
+//       CHECK: amdaie.dma_start(%[[TILE]], S2MM, 1) {
+//       CHECK:   amdaie.use_lock(%[[LOCK_0]], AcquireGreaterOrEqual(1))
+//       CHECK:   amdaie.dma_bd(%[[BUFFER]] : memref<1024xi32, 2 : i32>)
+//  CHECK-SAME:     {dimensions = #amdaie<bd_dim_layout_array[<size = 32, stride = 8>, <size = 4, stride = 256>, <size = 8, stride = 1>]>, len = 1024 : i32}
+//       CHECK:   amdaie.use_lock(%[[LOCK_1]], Release(1))
+//       CHECK:   amdaie.next_bd ^bb1
+//       CHECK:  ^bb1:
+//       CHECK:   amdaie.end
+//       CHECK: }
+func.func @dma_start_block_ops() {
+  %c0 = arith.constant 0 : index
+  %c2 = arith.constant 2 : index
+  %tile_0_2 = amdaie.tile(%c0, %c2)
+  %lock = amdaie.lock(%tile_0_2(0), 1)
+  %lock_0 = amdaie.lock(%tile_0_2(1), 0)
+  %buffer = amdaie.buffer(%tile_0_2) : memref<1024xi32, 2 : i32>
+  %0 = amdaie.dma_start(%tile_0_2, S2MM, 1) {
+    amdaie.use_lock(%lock, AcquireGreaterOrEqual(1))
+    amdaie.dma_bd(%buffer : memref<1024xi32, 2 : i32>) {dimensions = #amdaie<bd_dim_layout_array[<size = 32, stride = 8>, <size = 4, stride = 256>, <size = 8, stride = 1>]>, len = 1024 : i32}
+    amdaie.use_lock(%lock_0, Release(1))
+    amdaie.next_bd ^bb1
+  ^bb1:  // pred: ^bb0
+    amdaie.end
+  }
+  return
+}
