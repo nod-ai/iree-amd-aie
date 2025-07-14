@@ -149,7 +149,8 @@ std::unique_ptr<Pass> createAMDAIEConvertDeviceToControlPacketsPass(
 std::unique_ptr<Pass> createAMDAIEInsertInfiniteLoopAroundCoreBlockPass();
 
 /// Pass to create a single AIE workgroup.
-std::unique_ptr<Pass> createAMDAIECreateAIEWorkgroupPass();
+std::unique_ptr<Pass> createAMDAIECreateAIEWorkgroupPass(
+    AMDAIECreateAIEWorkgroupOptions options = {});
 
 /// Pass to create references to allocations in L1 memory space.
 std::unique_ptr<Pass> createAMDAIECreateReferenceToAllocationPass();
