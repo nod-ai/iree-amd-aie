@@ -11,6 +11,8 @@ iree_lit_test_suite(
     "access_to_acquire_release.mlir"
     "aie_link_executables.mlir"
     "acquire_release_to_use_lock.mlir"
+    "assign_bd_ids.mlir"
+    "assign_buffer_address.mlir"
     "assign_channels.mlir"
     "assign_connection_types.mlir"
     "assign_logical_objectfifo_depth.mlir"

@@ -24,6 +24,30 @@ def AMDAIEAcquireReleaseToUseLock :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAcquireReleaseToUseLockPass()";
 }
 
+// Copied from AIE dialect.
+def AMDAIEAssignBDIDs :
+    Pass<"iree-amdaie-assign-bd-ids", ""> {
+  let summary = "Assign BD ids to `amdaie.npu.dma_cpy_nd` operations for L2/L1";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAssignBDIDsPass()";
+}
+
+// Copied from AIE dialect.
+def AMDAIEAssignBufferAddress :
+    Pass<"iree-amdaie-assign-buffer-address", ""> {
+  let summary = "Pass to assign memory addresses to buffers.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAssignBufferAddressPass()";
+  let options = [
+    Option<"allocScheme", "alloc-scheme", "AllocScheme", /*default=*/"mlir::iree_compiler::AMDAIE::AllocScheme::None",
+      "Choose which scheme to apply for buffer allocation",
+      [{::llvm::cl::values(
+        clEnumValN(mlir::iree_compiler::AMDAIE::AllocScheme::Sequential, "sequential",
+                   "Basic sequential allocation."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::AllocScheme::BankAware, "bank-aware",
+                   "Bank aware scheme to round-robin each alloc over available banks.")
+      )}]>
+  ];
+}
+
 def AMDAIEAssignChannels :
     Pass<"iree-amdaie-assign-channels", ""> {
   let summary = "Assign channels to `amdaie.connection` ops.";
