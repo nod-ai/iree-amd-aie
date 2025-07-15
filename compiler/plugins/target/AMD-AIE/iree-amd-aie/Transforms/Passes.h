@@ -273,7 +273,8 @@ std::unique_ptr<Pass> createAMDAIELowerFuncArgsPass();
 
 /// Create pass to lower from the AMDAIE dialect to the AIE/AIEX dialects.
 void addAMDAIEToAIEPasses(OpPassManager &);
-std::unique_ptr<Pass> createAMDAIELowerToAIEPass();
+std::unique_ptr<Pass> createAMDAIELowerToAIEPass(
+    AMDAIELowerToAIEOptions options = {});
 
 /// Create pass to lower a sequence of operation(s) to a iree_codegen.ukernel.*
 /// operation.
