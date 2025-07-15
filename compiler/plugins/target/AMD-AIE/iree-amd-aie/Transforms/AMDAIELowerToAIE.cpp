@@ -35,82 +35,6 @@
 using namespace xilinx;
 
 namespace mlir::iree_compiler::AMDAIE {
-
-/// Compute the 'global' repetition count: the product over all dimensions with
-/// zero stride of the size of the dimension.
-///
-/// The case where sizes and strides are empty is a special case, and '0' is
-/// returned.
-static int64_t getRepetitionCount(ArrayRef<OpFoldResult> sizes,
-                                  ArrayRef<OpFoldResult> strides) {
-  assert(sizes.size() == strides.size() &&
-         "expected stride and size vectors of same size");
-  if (strides.empty()) return 0;
-  size_t repetitionCount{1};
-  for (uint32_t i = 0; i < strides.size(); ++i) {
-    if (!isConstantIntValue(strides[i], 0)) continue;
-    std::optional<int64_t> maybeSize = getConstantIntValue(sizes[i]);
-    assert(maybeSize.has_value() &&
-           "expected constant size in this zero stride dimension");
-    assert(maybeSize.value() >= 0 && "expected a non-negative size");
-    repetitionCount *= maybeSize.value();
-  }
-  return repetitionCount;
-}
-
-/// Utility to retrieve the common repetition count from all producers and
-/// consumers of a logical objectFifo.
-static FailureOr<size_t> getRepetitionCount(LogicalObjFifoOpInterface op) {
-  SmallVector<int64_t> repetitionCounts;
-  auto appendRepetitionCount = [&](ArrayRef<OpFoldResult> sizes,
-                                   ArrayRef<OpFoldResult> strides) {
-    size_t repetitionCount = getRepetitionCount(sizes, strides);
-    if (repetitionCount != 0) repetitionCounts.push_back(repetitionCount);
-  };
-
-  for (Operation *userOp : op->getUsers()) {
-    if (auto connectionOp = dyn_cast<AMDAIE::ConnectionOp>(userOp)) {
-      FailureOr<AMDAIE::NpuCircularDmaCpyNdOp> maybeNpuDmaUserOp =
-          connectionOp.getNpuCircularDmaCpyNdUser();
-
-      if (failed(maybeNpuDmaUserOp)) continue;
-
-      AMDAIE::NpuCircularDmaCpyNdOp npuDma = maybeNpuDmaUserOp.value();
-
-      if (connectionOp.getTarget() &&
-          dyn_cast_if_present<LogicalObjFifoOpInterface>(
-              connectionOp.getTarget().getDefiningOp()) == op) {
-        appendRepetitionCount(npuDma.getTargetMixedSizes(),
-                              npuDma.getTargetMixedStrides());
-      }
-
-      if (connectionOp.getSource() &&
-          dyn_cast_if_present<LogicalObjFifoOpInterface>(
-              connectionOp.getSource().getDefiningOp()) == op) {
-        appendRepetitionCount(npuDma.getSourceMixedSizes(),
-                              npuDma.getSourceMixedStrides());
-      }
-    }
-  }
-
-  // merge the repetition counts:
-  if (repetitionCounts.empty()) return 1;
-  int64_t combinedRepetitionCount =
-      *std::min_element(repetitionCounts.begin(), repetitionCounts.end());
-
-  // if any of the repetition counts are not divisible by the combined
-  // repetition count, that's a problem:
-  if (!std::all_of(
-          repetitionCounts.begin(), repetitionCounts.end(),
-          [&](size_t c) { return c % combinedRepetitionCount == 0; })) {
-    return op.emitOpError()
-           << " could not resolved a common repetition count based on the "
-              "individual repetition counts: "
-           << getArrayString<int64_t>(repetitionCounts);
-  }
-  return combinedRepetitionCount;
-}
-
 //===----------------------------------------------------------------------===//
 // AIEDeviceBuilder utilities
 //===----------------------------------------------------------------------===//
@@ -332,44 +256,6 @@ void AIEDeviceBuilder::eraseOp(Operation *op) {
   mapper.erase(op);
   op->dropAllUses();
   rewriter.eraseOp(op);
-}
-
-LogicalResult AIEDeviceBuilder::foldDimsAndReturnAsStatic(
-    SmallVector<OpFoldResult> sizes, SmallVector<OpFoldResult> strides,
-    SmallVector<int64_t> &newSizes, SmallVector<int64_t> &newStrides,
-    size_t repetitionCount, uint8_t memSpace,
-    function_ref<InFlightDiagnostic()> emitError) {
-  if (failed(foldRepetitionCount(rewriter.getContext(), sizes, strides,
-                                 repetitionCount))) {
-    return emitError() << "could not fold repetition counts from sizes: "
-                       << getConstantIntValuesString(sizes)
-                       << " strides: " << getConstantIntValuesString(strides)
-                       << " repetitionCount: " << repetitionCount << ".";
-  }
-  SmallVector<OpFoldResult> offsets(
-      strides.size(), getAsIndexOpFoldResult(rewriter.getContext(), 0));
-  (void)foldUnitDims(rewriter.getContext(), offsets, sizes, strides);
-
-  DmaDimConfig dmaDimConfig(deviceModel, memSpace);
-  SmallVector<int64_t> maxSizes = dmaDimConfig.getMaxSizes(offsets.size());
-  SmallVector<OpFoldResult> linearOffsets, linearSizes, linearStrides;
-  (void)foldLinearDims(
-      rewriter.getContext(), offsets, sizes, strides, linearOffsets,
-      linearSizes, linearStrides, [&](size_t idxFromEnd, int64_t size) {
-        return idxFromEnd < maxSizes.size() &&
-               size <= maxSizes[maxSizes.size() - idxFromEnd - 1];
-      });
-  std::optional<SmallVector<int64_t>> maybeStaticSizes =
-      getConstantIntValues(linearSizes);
-  std::optional<SmallVector<int64_t>> maybeStaticStrides =
-      getConstantIntValues(linearStrides);
-  if (!maybeStaticSizes || !maybeStaticStrides) {
-    return emitError()
-           << "found dynamic sizes or strides which is not supported";
-  }
-  newSizes = std::move(maybeStaticSizes.value());
-  newStrides = std::move(maybeStaticStrides.value());
-  return success();
 }
 
 void AIEDeviceBuilder::remapOperands(Operation *op) {
@@ -615,8 +501,10 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
 
   FailureOr<AMDAIE::NpuCircularDmaCpyNdOp> maybeNpuDmaUserOp =
       connectionOp.getNpuCircularDmaCpyNdUser();
-  if (failed(maybeNpuDmaUserOp))
+  if (failed(maybeNpuDmaUserOp)) {
+    if (reprogramDmas) return success();
     return connectionOp.emitOpError() << "has no circular NPU DMA op user";
+  }
 
   SmallVector<Operation *> sourceMemOps;
   Value source = connectionOp.getSource();
@@ -705,7 +593,7 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
           std::make_pair(consumerLocks[0], producerLocks[0]);
       SmallVector<int64_t> canonicalizedSizes, canonicalizedStrides;
       if (failed(foldDimsAndReturnAsStatic(
-              maybeNpuDmaUserOp->getSourceMixedSizes(),
+              rewriter, deviceModel, maybeNpuDmaUserOp->getSourceMixedSizes(),
               maybeNpuDmaUserOp->getSourceMixedStrides(), canonicalizedSizes,
               canonicalizedStrides, repetitionCount.value(),
               maybeSourceMemSpace.value(),
@@ -810,7 +698,7 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
           std::make_pair(producerLocks[0], consumerLocks[0]);
       SmallVector<int64_t> canonicalizedSizes, canonicalizedStrides;
       if (failed(foldDimsAndReturnAsStatic(
-              maybeNpuDmaUserOp->getTargetMixedSizes(),
+              rewriter, deviceModel, maybeNpuDmaUserOp->getTargetMixedSizes(),
               maybeNpuDmaUserOp->getTargetMixedStrides(), canonicalizedSizes,
               canonicalizedStrides, repetitionCount.value(),
               maybeTargetMemSpace.value(),
@@ -993,7 +881,7 @@ LogicalResult AIEDeviceBuilder::workgroupToAIE(AMDAIE::WorkgroupOp workgroupOp,
           if (failed(connectionToAIE(dmaOp, deviceBlock, connectionIndex))) {
             return WalkResult::interrupt();
           }
-          return WalkResult::advance();
+          return WalkResult::skip();
         })
         .Case<AMDAIE::ControlCodeOp>([&](auto controlCodeOp) {
           // Skip control code as it should already be translated into firmware
@@ -1178,6 +1066,9 @@ LogicalResult AIEDeviceBuilder::lowerToAIE(ModuleOp moduleOp) {
 class AMDAIELowerToAIEPass
     : public impl::AMDAIELowerToAIEBase<AMDAIELowerToAIEPass> {
  public:
+  AMDAIELowerToAIEPass(const AMDAIELowerToAIEOptions &options)
+      : AMDAIELowerToAIEBase(options) {}
+
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mlir::memref::MemRefDialect, AMDAIEDialect,
                     xilinx::AIE::AIEDialect, xilinx::AIEX::AIEXDialect>();
@@ -1196,13 +1087,15 @@ class AMDAIELowerToAIEPass
       return signalPassFailure();
     }
     AMDAIEDeviceModel deviceModel = getDeviceModel(maybeDevice.value());
-    AIEDeviceBuilder builder(moduleOp.getContext(), std::move(deviceModel));
+    AIEDeviceBuilder builder(moduleOp.getContext(), std::move(deviceModel),
+                             reprogramDmas);
     if (failed(builder.lowerToAIE(moduleOp))) return signalPassFailure();
   }
 };
 
-std::unique_ptr<Pass> createAMDAIELowerToAIEPass() {
-  return std::make_unique<AMDAIELowerToAIEPass>();
+std::unique_ptr<Pass> createAMDAIELowerToAIEPass(
+    AMDAIELowerToAIEOptions options) {
+  return std::make_unique<AMDAIELowerToAIEPass>(options);
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE

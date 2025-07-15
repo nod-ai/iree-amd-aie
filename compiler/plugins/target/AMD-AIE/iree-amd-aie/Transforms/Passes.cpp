@@ -121,7 +121,13 @@ void addAMDAIEToAIEPasses(OpPassManager &passManager,
   passManager.addPass(createAMDAIESinkIntoCorePass());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createAMDAIEAddNoAliasFunctionArgumentsPass());
-  passManager.addPass(createAMDAIELowerToAIEPass());
+  {
+    AMDAIELowerToAIEOptions options;
+    // TODO(avarma): In follow-up PRs this will be replaced by a global flag.
+    // Currently setting as `false`.
+    options.reprogramDmas = /*reprogramDmas=*/false;
+    passManager.addPass(createAMDAIELowerToAIEPass(options));
+  }
   passManager.addPass(createAMDAIERemoveMemorySpacePass());
   passManager.addPass(createCanonicalizerPass());
 }
