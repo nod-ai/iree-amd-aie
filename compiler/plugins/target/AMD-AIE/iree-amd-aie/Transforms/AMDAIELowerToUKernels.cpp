@@ -129,7 +129,7 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchMatmulDAGForUKernel(
   auto genericMicroKernelOp = rewriter.create<IREE::Codegen::UKernelGenericOp>(
       loc, outType, fn.name, ValueRange{lhs, rhs}, out, ValueRange{},
       /*fn_def_attrs=*/rewriter.getDictionaryAttr(fn.defAttrs),
-      /*strided_outer_dims=*/rewriter.getIndexAttr(0));
+      /*strided_outer_dims=*/0);
 
   return cast<IREE::Codegen::UKernelOpInterface>(
       genericMicroKernelOp.getOperation());
@@ -173,7 +173,7 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchFillDAGForUKernel(
   auto genericMicroKernelOp = rewriter.create<IREE::Codegen::UKernelGenericOp>(
       loc, outType, fn.name, ValueRange{}, output, ValueRange{},
       /*fn_def_attrs=*/rewriter.getDictionaryAttr(fn.defAttrs),
-      /*strided_outer_dims=*/rewriter.getIndexAttr(0));
+      /*strided_outer_dims=*/0);
 
   return cast<IREE::Codegen::UKernelOpInterface>(
       genericMicroKernelOp.getOperation());
@@ -248,7 +248,7 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchTruncIDAGForUKernel(
   auto genericMicroKernelOp = rewriter.create<IREE::Codegen::UKernelGenericOp>(
       loc, outType, fn.name, ValueRange{input, shiftVal}, output, ValueRange{},
       /*fn_def_attrs=*/rewriter.getDictionaryAttr(fn.defAttrs),
-      /*strided_outer_dims=*/rewriter.getIndexAttr(0));
+      /*strided_outer_dims=*/0);
 
   return cast<IREE::Codegen::UKernelOpInterface>(
       genericMicroKernelOp.getOperation());
@@ -278,7 +278,7 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchSoftmaxDAGForUKernel(
   auto genericMicroKernelOp = rewriter.create<IREE::Codegen::UKernelGenericOp>(
       loc, outType, fn.name, ValueRange{input}, output, ValueRange{},
       /*fn_def_attrs=*/rewriter.getDictionaryAttr(fn.defAttrs),
-      /*strided_outer_dims=*/rewriter.getIndexAttr(0));
+      /*strided_outer_dims=*/0);
 
   return cast<IREE::Codegen::UKernelOpInterface>(
       genericMicroKernelOp.getOperation());

@@ -18,6 +18,8 @@
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-amd-aie/Transforms/Utils/AMDAIEOpUtils.h"
+#include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
+#include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
@@ -59,6 +61,17 @@ void getAttributeMapping(SmallVector<scf::ForallOp> forallOps,
 /// add synchronization ops along the way to synchronize with surrounding
 /// dma ops.
 static LogicalResult insertCoreOps(mlir::ModuleOp moduleOp, int64_t stackSize) {
+  // Get the device model from the target attribute.
+  auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(moduleOp);
+  std::optional<AMDAIEDevice> maybeDevice = getConfigAMDAIEDevice(targetAttr);
+  if (!maybeDevice) {
+    return moduleOp->emitOpError()
+           << "has no AMDAIEDevice in the target attribute configuration. This "
+              "device-specific information is required to insert cores.";
+  }
+  AMDAIE::AMDAIEDeviceModel deviceModel =
+      AMDAIE::getDeviceModel(maybeDevice.value());
+
   IRRewriter rewriter(moduleOp.getContext());
   WalkResult res = moduleOp->walk([&](scf::ForallOp forallOp) {
     // Currently, innermost `scf.forall` operations are expected to have thread
@@ -125,9 +138,10 @@ static LogicalResult insertCoreOps(mlir::ModuleOp moduleOp, int64_t stackSize) {
 
     // Create CoreOp at the end of the innermost forall
     rewriter.setInsertionPoint(forallOp.getBody()->getTerminator());
-    auto coreOp = rewriter.create<AMDAIE::CoreOp>(rewriter.getUnknownLoc(),
-                                                  threadX, threadY, inputDmas,
-                                                  outputDmas, stackSize);
+    uint32_t rowOffset = deviceModel.getCoreTileRowStart();
+    auto coreOp = rewriter.create<AMDAIE::CoreOp>(
+        rewriter.getUnknownLoc(), threadX, threadY, rowOffset, inputDmas,
+        outputDmas, stackSize);
     Region &region = coreOp.getRegion();
     Block *newBlock = rewriter.createBlock(&region);
     rewriter.setInsertionPointToStart(newBlock);

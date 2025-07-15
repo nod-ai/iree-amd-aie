@@ -115,7 +115,7 @@ void registerLowerVectorToAIEVecPass();
 void buildConvertVectorToAIEVec(mlir::OpPassManager &);
 
 /**
- * Lower from the vector dialect to the AIEVec dialect. The pass is called
+ * Lower from the AIEVec dialect to the LLVM dialect. The pass is called
  * `convert-aievec-to-llvm`.
  * */
 std::unique_ptr<mlir::Pass> createConvertAIEVecToLLVMPass();

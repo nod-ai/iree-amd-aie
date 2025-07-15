@@ -26,9 +26,10 @@ LogicalResult bufferizeTemporaryMemrefs(Operation *parentOp) {
         Key key{allocOp, coreOp, workgroupOp};
         if (bufferMap.count(key) == 0) {
           rewriter.setInsertionPointAfter(tileOp);
-          auto bufferOp =
-              rewriter.create<BufferOp>(allocOp.getLoc(), allocOp.getType(),
-                                        tileOp, /* address */ nullptr);
+          auto bufferOp = rewriter.create<BufferOp>(
+              allocOp.getLoc(), allocOp.getType(), tileOp,
+              /* sym_name */ nullptr, /* address */ nullptr,
+              /* mem_bank */ nullptr);
           bufferMap[key] = bufferOp;
         }
       }

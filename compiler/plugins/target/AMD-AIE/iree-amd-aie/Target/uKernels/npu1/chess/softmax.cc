@@ -314,7 +314,7 @@ extern "C" {
     softmax_simple_bf16(input, output, M, N);                      \
   }
 
-softmax_bf16_c_func(32, 32)
+softmax_bf16_c_func(4, 1024)
 
 }  // extern "C"
 // clang-format on

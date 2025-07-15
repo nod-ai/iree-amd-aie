@@ -9,8 +9,11 @@
 #include <aie_api/aie.hpp>
 #include <type_traits>
 
-template <typename T, int M, int N, int r>
+template <typename T, int M, int N>
 void zero_fill_vectorized(T *__restrict pC, unsigned offsetC) {
+  // 512 bit store units for npu4.
+  constexpr int r = 512 / (sizeof(T) * 8);
+  static_assert(M * N / r > 0);
   const aie::vector<T, r> zeros = aie::zeros<T, r>();
   T *__restrict pC1 = pC + offsetC;
   const T *__restrict c_end = pC1 + M * N;
@@ -27,22 +30,22 @@ void zero_fill_vectorized(T *__restrict pC, unsigned offsetC) {
 // clang-format off
 extern "C" {
 
-#define zero_fill_combos(X, M, N)  \
-  X(bfloat16, bf16, M, N, N)     \
-  X(float, f32, M, N, N/2)         \
-  X(int32, i32, M, N, N/2)
+#define zero_fill_combos_bf16(X, M, N)  \
+  X(bfloat16, bf16, M, N)
 
-#define zero_fill_vectorized_c_func(ctype_out, mlir_type_out, M, N, r)             \
+#define zero_fill_combos_f32(X, M, N)  \
+  X(float, f32, M, N)
+
+#define zero_fill_combos_i32(X, M, N)  \
+  X(int32, i32, M, N)
+
+#define zero_fill_vectorized_c_func(ctype_out, mlir_type_out, M, N)             \
   void zero_fill_##mlir_type_out##_##M##x##N(ctype_out *c_out, unsigned offsetC) { \
-    zero_fill_vectorized<ctype_out, M, N, r>(c_out, offsetC);                      \
+    zero_fill_vectorized<ctype_out, M, N>(c_out, offsetC);                      \
   }
 
-zero_fill_combos(zero_fill_vectorized_c_func, 16, 8)
-zero_fill_combos(zero_fill_vectorized_c_func, 16, 16)
-zero_fill_combos(zero_fill_vectorized_c_func, 32, 16)
-zero_fill_combos(zero_fill_vectorized_c_func, 32, 32)
-zero_fill_combos(zero_fill_vectorized_c_func, 64, 32)
-zero_fill_combos(zero_fill_vectorized_c_func, 64, 64)
+zero_fill_combos_bf16(zero_fill_vectorized_c_func, 4, 1024)
+zero_fill_combos_i32(zero_fill_vectorized_c_func, 64, 64)
 
 }  // extern "C"
 // clang-format on

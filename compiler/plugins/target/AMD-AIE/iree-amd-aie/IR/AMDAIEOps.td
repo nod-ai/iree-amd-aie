@@ -78,14 +78,14 @@ def AMDAIE_CoreOp: AMDAIE_Op<"core", [SingleBlock, AttrSizedOperandSegments]>, R
   let assemblyFormat = [{ `(` $tile `,` `in` `:` `[` $input_dmas `]` `,` `out` `:` `[` $output_dmas `]` `)` regions attr-dict }];
 
   let builders = [
-    OpBuilder<(ins "mlir::Value":$coreCol, "mlir::Value":$coreRow)>,
-    OpBuilder<(ins "mlir::Value":$coreCol, "mlir::Value":$coreRow,
+    OpBuilder<(ins "mlir::Value":$coreCol, "mlir::Value":$coreRow, "uint32_t":$rowOffset)>,
+    OpBuilder<(ins "mlir::Value":$coreCol, "mlir::Value":$coreRow, "uint32_t":$rowOffset,
       "ValueRange":$input_dmas, "ValueRange":$output_dmas)>,
-    OpBuilder<(ins "mlir::Value":$coreCol, "mlir::Value":$coreRow, "ValueRange":$input_dmas,
+    OpBuilder<(ins "mlir::Value":$coreCol, "mlir::Value":$coreRow, "uint32_t":$rowOffset, "ValueRange":$input_dmas,
                    "ValueRange":$output_dmas, "mlir::IntegerAttr":$stack_size)>,
-    OpBuilder<(ins "mlir::Value":$coreCol, "mlir::Value":$coreRow, "ValueRange":$input_dmas,
+    OpBuilder<(ins "mlir::Value":$coreCol, "mlir::Value":$coreRow, "uint32_t":$rowOffset, "ValueRange":$input_dmas,
                    "ValueRange":$output_dmas, "uint32_t":$stack_size), [{
-      build($_builder, $_state, coreCol, coreRow, input_dmas, output_dmas,
+      build($_builder, $_state, coreCol, coreRow, rowOffset, input_dmas, output_dmas,
             $_builder.getIntegerAttr($_builder.getIntegerType(32), stack_size));
     }]>,
     OpBuilder<(ins "TileOp":$tile, "ValueRange":$input_dmas, "ValueRange":$output_dmas), [{
@@ -181,6 +181,7 @@ def AMDAIE_TileOp: AMDAIE_Op<"tile", [
     // Comparator for `amdaie.tile` values based on column index first and then
     // row index.
     static bool tileValueColumnAndRowComparator(Value a, Value b);
+    CoreOp getCoreOp();
   }];
 }
 
@@ -254,13 +255,22 @@ def AMDAIE_BufferOp: AMDAIE_Op<"buffer", [
 
   let arguments = (
     ins Index:$tile,
-        OptionalAttr<UI32Attr>:$address
+        OptionalAttr<StrAttr>:$sym_name,
+        OptionalAttr<UI32Attr>:$address,
+        OptionalAttr<UI32Attr>:$mem_bank
   );
 
   let results = (outs AnyMemRef:$buffer);
 
   let assemblyFormat = [{
-    `(` $tile (`,` $address^)? `)` attr-dict `:` type($buffer)
+    `(` $tile `)` attr-dict `:` type($buffer)
+  }];
+
+  let extraClassDeclaration = [{
+    int64_t getAllocationSizeInBytes() {
+      auto type = llvm::cast<mlir::MemRefType>(getType());
+      return type.getNumElements() * type.getElementTypeBitWidth() / 8;
+    }
   }];
 }
 
@@ -1731,6 +1741,87 @@ def AMDAIE_ReferenceToOp: AMDAIE_Op<"reference_to", [SameOperandsAndResultType]>
   let results = (outs AnyMemRef:$output);
 
   let assemblyFormat = "$memref attr-dict `:` type($memref)";
+}
+
+def AMDAIE_DMAStartOp: AMDAIE_Op<"dma_start", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>
+  ]>, Results<(outs I1:$valid)> {
+
+  let summary = "An op to start DMA";
+  let arguments = (
+    ins Index:$tile,
+        DMAChannelDir:$channel_dir,
+        ConfinedAttr<I8Attr, [IntMinValue<0>]>:$channel_index,
+        // `repeat_count==1` means "do it once".
+        DefaultValuedAttr<I8Attr, "1">:$repeat_count
+  );
+  let regions = (region AnyRegion:$body);
+  let assemblyFormat = [{
+    `(` $tile `,` $channel_dir `,` $channel_index (`,` `repeat_count` `=` $repeat_count^)? `)` regions attr-dict
+  }];
+}
+
+def AMDAIE_DMABDOp: AMDAIE_Op<"dma_bd", [
+    DeclareOpInterfaceMethods<OpAsmOpInterface>
+  ]> {
+  let summary = "Declare a dma buffer descriptor op";
+  let arguments = (
+    ins AnyMemRef:$buffer,
+        // in multiples of element width (not bytes)
+        DefaultValuedOptionalAttr<I32Attr, "0">:$offset,
+        // in multiples of element width (not bytes)
+        OptionalAttr<I32Attr>:$len,
+        OptionalAttr<BDDimLayoutArrayAttr>:$dimensions,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$pad_value,
+        OptionalAttr<I32Attr>:$bd_id,
+        // should never be assigned by user...
+        OptionalAttr<I32Attr>:$next_bd_id
+  );
+
+  let assemblyFormat = [{
+    `(` $buffer `:` type($buffer) `)` attr-dict
+  }];
+
+  let builders = [
+    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len), [{
+      $_state.addOperands(buffer);
+      $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
+      $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
+    }]>,
+    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDDimLayoutArrayAttr":$dims), [{
+      $_state.addOperands(buffer);
+      $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
+      $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
+      $_state.addAttribute("dimensions", dims);
+    }]>,
+  ];
+
+  let extraClassDeclaration = [{
+    int32_t getBufferElementTypeWidthInBytes() {
+      return getBuffer().getType().getElementTypeBitWidth() / 8;
+    }
+
+    int32_t getLenInBytes() {
+      if (std::optional<int32_t> len = getLen(); len.has_value())
+        return len.value() * getBufferElementTypeWidthInBytes();
+      else
+        return getBuffer().getType().getNumElements() *
+              getBufferElementTypeWidthInBytes();
+    }
+
+    int32_t getOffsetInBytes() {
+      return getOffset() * getBufferElementTypeWidthInBytes();
+    }
+  }];
+}
+
+def AMDAIE_NextBDOp: AMDAIE_Op<"next_bd", [Terminator]> {
+  let summary = "The next buffer descriptor";
+  let successors = (successor AnySuccessor:$dest);
+
+  let assemblyFormat = [{
+    $dest attr-dict
+  }];
 }
 
 #endif // IREE_AMDAIE_DIALECT_IREEAMDAIE_OPS

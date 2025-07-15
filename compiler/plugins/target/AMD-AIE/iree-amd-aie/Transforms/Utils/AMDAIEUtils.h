@@ -156,6 +156,9 @@ scf::ForOp createForOpWithUnrollingDisabled(OpBuilder &builder, Location loc,
 SmallVector<std::pair<func::FuncOp, SmallVector<func::CallOp>>>
 getFunctionsAndTheirCallers(Operation *rootOp);
 
+/// Get the number of columns used by the cores in the module. Returns an
+/// empty optional if the number cannot be determined.
+std::optional<int64_t> getNumColumnsUsedByCores(ModuleOp moduleOp);
 }  // namespace mlir::iree_compiler::AMDAIE
 
 #endif

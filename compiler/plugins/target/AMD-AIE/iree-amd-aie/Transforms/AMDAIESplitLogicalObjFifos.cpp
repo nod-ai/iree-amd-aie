@@ -390,7 +390,15 @@ void AMDAIESplitLogicalObjFifosPass::runOnOperation() {
                               "correctly split logical objectFifos.";
     return signalPassFailure();
   }
+  // Use the maximum number of columns available on the device for the default
+  // split factor.
   int64_t numColumns = maybeNumColumns.value();
+
+  // If the number of columns used by all CoreOps is known,use it for
+  // determining the split factor instead.
+  std::optional<int64_t> mayNumColumnsInUse =
+      getNumColumnsUsedByCores(moduleOp);
+  if (mayNumColumnsInUse.has_value()) numColumns = mayNumColumnsInUse.value();
 
   // Walk and collect all dma ops between L3 and L2.
   SmallVector<AMDAIE::DmaCpyNdOp> l3L2DmaOps;

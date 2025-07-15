@@ -103,8 +103,7 @@ static void addAMDAIEBufferizePasses(OpPassManager &pm,
   BufferizationOptions::AllocationFn allocationFn =
       aieComprehensiveBufferizeAllocationFn;
   BufferizationOptions::MemCpyFn memCpyFn = aieComprehensiveBufferizeCopyFn;
-  addIREEComprehensiveBufferizePasses(pm, allocationFn, memCpyFn,
-                                      /*injectAssumeAlignmentOp=*/false);
+  addIREEComprehensiveBufferizePasses(pm, allocationFn, memCpyFn);
 }
 
 void addAMDAIEToAIEPasses(OpPassManager &passManager,
@@ -684,6 +683,7 @@ void buildAMDAIETransformPassPipeline(
     options.numRows = numRows;
     options.numCols = numCols;
     options.enableAMDAIEUkernels = enableAMDAIEUkernels;
+    options.stackSize = coreStackSize;
     modulePassManager.addPass(createAMDAIELoweringStrategyPass(options));
   }
   modulePassManager.addPass(createLowerExecutableUsingTransformDialectPass());
@@ -781,9 +781,11 @@ void addAMDAIEObjectFifoLoweringPasses(
   passManager.addPass(createCanonicalizerPass());
 
   passManager.addPass(createAMDAIESplitLogicalObjFifosForConnectionReusePass());
-  // Currently, SplitLogicalObjFifos pass only works for matmul-like ops.
+  // Currently, SplitLogicalObjFifos pass has only been tested with the
+  // following pipelines.
   if (useTilePipeline == TilePassPipeline::PackPeelPipeline ||
-      useTilePipeline == TilePassPipeline::PackPeel4LevelTilingPipeline)
+      useTilePipeline == TilePassPipeline::PackPeel4LevelTilingPipeline ||
+      useTilePipeline == TilePassPipeline::GeneralCopyPipeline)
     passManager.addPass(createAMDAIESplitLogicalObjFifosPass());
 
   passManager.addPass(createCSEPass());
@@ -795,7 +797,14 @@ void addAMDAIEObjectFifoLoweringPasses(
   passManager.addPass(createCanonicalizerPass());
 
   passManager.addPass(createAMDAIEDmaToCircularDmaPass());
-  passManager.addNestedPass<func::FuncOp>(createAMDAIECreateAIEWorkgroupPass());
+  {
+    AMDAIECreateAIEWorkgroupOptions options;
+    // TODO(avarma): In follow-up PRs this will be replaced by a global flag.
+    // Currently setting as `false`.
+    options.reprogramDmas = /*reprogramDmas=*/false;
+    passManager.addNestedPass<func::FuncOp>(
+        createAMDAIECreateAIEWorkgroupPass(options));
+  }
   passManager.addPass(createCSEPass());
   passManager.addPass(createAMDAIEDmaCSEPass());
 
@@ -986,7 +995,8 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
   passManager.addPass(xilinx::air::createAIRDependencyPass());
   if (!(useTilePipeline == TilePassPipeline::PackPeelPipeline &&
         matmulElementwiseFusion)) {
-    passManager.addPass(xilinx::air::createAIRDependencyScheduleOptPass());
+    passManager.addPass(xilinx::air::createAIRBroadcastDetection());
+    passManager.addPass(xilinx::air::createAIRHoistDmaInAccumPattern());
     passManager.addPass(xilinx::air::createAIRSpecializeDmaBroadcast());
   }
   passManager.addPass(xilinx::air::createDmaToChannelPass());

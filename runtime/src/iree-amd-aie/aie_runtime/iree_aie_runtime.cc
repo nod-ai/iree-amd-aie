@@ -626,6 +626,10 @@ uint32_t AMDAIEDeviceModel::getColumnShift() const {
 
 uint32_t AMDAIEDeviceModel::getRowShift() const { return configPtr.RowShift; }
 
+uint32_t AMDAIEDeviceModel::getCoreTileRowStart() const {
+  return configPtr.AieTileRowStart;
+}
+
 uint32_t AMDAIEDeviceModel::getColumnFromAddress(uint32_t address) const {
   uint32_t columnMask = (1 << (getColumnShift() - getRowShift())) - 1;
   return (address >> getColumnShift()) & columnMask;
@@ -1103,6 +1107,7 @@ std::string to_string(const AieRC &value) {
     STRINGIFY_ENUM_CASE(AieRC::XAIE_INVALID_LOCK_VALUE)
     STRINGIFY_ENUM_CASE(AieRC::XAIE_LOCK_RESULT_FAILED)
     STRINGIFY_ENUM_CASE(AieRC::XAIE_INVALID_DMA_DESC)
+    STRINGIFY_ENUM_CASE(AieRC::XAIE_NOT_SUPPORTED)
     STRINGIFY_ENUM_CASE(AieRC::XAIE_INVALID_ADDRESS)
     STRINGIFY_ENUM_CASE(AieRC::XAIE_FEATURE_NOT_SUPPORTED)
     STRINGIFY_ENUM_CASE(AieRC::XAIE_INVALID_BURST_LENGTH)
@@ -1141,6 +1146,10 @@ std::string to_string(const XAie_TxnOpcode &value) {
     STRINGIFY_ENUM_CASE(XAie_TxnOpcode::XAIE_IO_MASKPOLL_BUSY)
     STRINGIFY_ENUM_CASE(XAie_TxnOpcode::XAIE_IO_LOADPDI)
     STRINGIFY_ENUM_CASE(XAie_TxnOpcode::XAIE_IO_LOAD_PM_START)
+    STRINGIFY_ENUM_CASE(XAie_TxnOpcode::XAIE_IO_CREATE_SCRATCHPAD)
+    STRINGIFY_ENUM_CASE(XAie_TxnOpcode::XAIE_IO_UPDATE_STATE_TABLE)
+    STRINGIFY_ENUM_CASE(XAie_TxnOpcode::XAIE_IO_UPDATE_REG)
+    STRINGIFY_ENUM_CASE(XAie_TxnOpcode::XAIE_IO_UPDATE_SCRATCH)
     STRINGIFY_ENUM_CASE(XAie_TxnOpcode::XAIE_CONFIG_SHIMDMA_BD)
     STRINGIFY_ENUM_CASE(XAie_TxnOpcode::XAIE_CONFIG_SHIMDMA_DMABUF_BD)
     STRINGIFY_ENUM_CASE(XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_TCT)
@@ -1149,6 +1158,7 @@ std::string to_string(const XAie_TxnOpcode &value) {
     STRINGIFY_ENUM_CASE(XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_RECORD_TIMER)
     STRINGIFY_ENUM_CASE(XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_MERGE_SYNC)
     STRINGIFY_ENUM_CASE(XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_NEXT)
+    STRINGIFY_ENUM_CASE(XAie_TxnOpcode::XAIE_IO_LOAD_PM_END_INTERNAL)
     STRINGIFY_ENUM_CASE(XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_MAX)
   }
 

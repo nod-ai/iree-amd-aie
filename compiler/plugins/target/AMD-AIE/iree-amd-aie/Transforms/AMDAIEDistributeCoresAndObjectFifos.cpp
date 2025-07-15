@@ -424,6 +424,65 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
   return success();
 }
 
+/// Distributes logically 1D-tiled cores (all in column 0) across a 2D AIE array
+/// by factorizing the loop induction variable.
+///
+/// This is applicable when:
+/// - All cores are originally located in column 0
+/// - The row coordinate is derived from a loop induction variable (with an
+/// offset)
+///
+/// The transformation rewrites:
+///   row = iv + offset  →  row = iv % numRows + offset
+///   col = 0            →  col = iv / numRows
+///
+/// This effectively maps the original single-column vertical strip into a 2D
+/// block, distributing the computation across multiple physical columns.
+///
+/// For example, if `iv` ranges from 0 to 15 and numRows = 4, then:
+///   tile(row=iv, col=2)  →  tile(row=iv%4, col=iv/4+2)
+LogicalResult distributeCoresToMultiColumns(
+    ModuleOp moduleOp, const AMDAIEDeviceModel &deviceModel, int64_t numRows) {
+  IRRewriter rewriter(moduleOp.getContext());
+  WalkResult res = moduleOp->walk([&](AMDAIE::CoreOp coreOp) {
+    // Check if the core is in column 0.
+    TileOp tileOp = coreOp.getTileOp();
+    std::optional<int64_t> maybeConstantColumn =
+        getConstantIntValue(tileOp.getCol());
+    if (!maybeConstantColumn.has_value() || maybeConstantColumn.value() != 0)
+      return WalkResult::advance();
+    // Check if the row coordinate is derived from a loop induction variable.
+    Value rowVal = tileOp.getRow();
+    BlockArgument iv = nullptr;
+    Operation *defOp = rowVal.getDefiningOp();
+    // defOp should be an arith::AddIOp, which adds an offset to the induction
+    // variable to account for the existence of shim and memtile rows.
+    if (dyn_cast_if_present<arith::AddIOp>(defOp))
+      iv = dyn_cast<BlockArgument>(defOp->getOperand(0));
+    if (!iv) return WalkResult::advance();
+    // Rewrite the tile location to distribute across columns.
+    rewriter.setInsertionPointToStart(iv.getOwner());
+    Value numRowsValue = rewriter.create<arith::ConstantIndexOp>(
+        rewriter.getUnknownLoc(), numRows);
+    Value newCol = rewriter.create<arith::DivUIOp>(rewriter.getUnknownLoc(), iv,
+                                                   numRowsValue);
+    Value newRow = rewriter.create<arith::RemUIOp>(rewriter.getUnknownLoc(), iv,
+                                                   numRowsValue);
+    // Reuse the original defOp and its result (rowVal), while only update its
+    // input.
+    defOp->setOperand(0, newRow);
+    rewriter.setInsertionPointAfter(defOp);
+    // Use (newCol, rowVal = newRow + offset) to create a new tile op.
+    Operation *newTile =
+        rewriter.create<AMDAIE::TileOp>(tileOp.getLoc(), newCol, rowVal);
+    tileOp.replaceAllUsesWith(newTile);
+    rewriter.eraseOp(tileOp);
+    return WalkResult::advance();
+  });
+  if (res.wasInterrupted()) return failure();
+  return success();
+}
+
 class AMDAIEDistributeCoresAndObjectFifosPass
     : public impl::AMDAIEDistributeCoresAndObjectFifosBase<
           AMDAIEDistributeCoresAndObjectFifosPass> {
@@ -471,6 +530,22 @@ void AMDAIEDistributeCoresAndObjectFifosPass::runOnOperation() {
                           << moduleOp << "\n");
 
   if (failed(verify(moduleOp, true))) {
+    return signalPassFailure();
+  }
+
+  // Distribute the cores across the 2D AIE array.
+  std::optional<int64_t> maybeNumRows = getConfigNumRows(targetAttr);
+  if (!maybeNumRows) {
+    moduleOp.emitOpError() << "has no number of rows specified in the "
+                              "target attribute configuration. This "
+                              "device-specific information is required to "
+                              "correctly distribute cores.";
+    return signalPassFailure();
+  }
+
+  if (failed(distributeCoresToMultiColumns(moduleOp, deviceModel,
+                                           maybeNumRows.value()))) {
+    moduleOp.emitOpError() << "core distribution failed";
     return signalPassFailure();
   }
 
