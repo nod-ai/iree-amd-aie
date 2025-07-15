@@ -1550,8 +1550,7 @@ bool TileOp::tileValueColumnAndRowComparator(Value a, Value b) {
 };
 
 CoreOp TileOp::getCoreOp() {
-  auto users = getResult().getUsers();
-  for (auto user : users)
+  for (Operation *user : getResult().getUsers())
     if (auto coreOp = llvm::dyn_cast<CoreOp>(*user)) return coreOp;
   return nullptr;
 }

@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 // COPIED FROM AIE DIALECT.
+// TODO: Unify this AMDAIE specific pass with the one for AIE dialect.
 
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
 #include "iree-amd-aie/IR/AMDAIEOps.h"
@@ -47,7 +48,7 @@ static LogicalResult basicAllocation(AMDAIE::TileOp tile,
 
   for (BufferOp buffer : buffers) {
     buffer.setAddress(address);
-    address += buffer.getAllocationSize();
+    address += buffer.getAllocationSizeInBytes();
   }
 
   FailureOr<uint32_t> maxDataMemorySize = getMaxMemorySize(deviceModel, tile);
@@ -101,7 +102,7 @@ FailureOr<bool> checkAndAddBufferWithAddress(
     return buffer->emitOpError("would override the allocated address");
 
   // The allocator can accommodate this existing allocation.
-  bankStates[bankIndex].nextAddr = addr + buffer.getAllocationSize();
+  bankStates[bankIndex].nextAddr = addr + buffer.getAllocationSizeInBytes();
   if (bankStates[bankIndex].nextAddr > bankStates[bankIndex].endAddr)
     return buffer->emitOpError("would over run the current bank limit");
   buffer.setMemBank(bankIndex);
@@ -126,7 +127,7 @@ FailureOr<bool> checkAndAddBufferWithMemBank(
   }
 
   int64_t startAddr = bankStates[memBank].nextAddr;
-  int64_t endAddr = startAddr + buffer.getAllocationSize();
+  int64_t endAddr = startAddr + buffer.getAllocationSizeInBytes();
   if (endAddr > bankStates[memBank].endAddr)
     return buffer->emitOpError("would over run the current bank limit");
   setAndUpdateAddressInBank(buffer, startAddr, endAddr, bankStates);
@@ -148,7 +149,7 @@ bool setBufferAddress(AMDAIE::BufferOp buffer, uint32_t bankSize,
          "Unexpected input value for startBankIndex");
 
   // Early exit if buffer is larger than total available space.
-  int64_t bufferSize = buffer.getAllocationSize();
+  int64_t bufferSize = buffer.getAllocationSizeInBytes();
   int64_t totalAvailable = 0;
   for (uint32_t i = 0; i < numBanks; ++i) {
     int64_t available =
@@ -276,7 +277,8 @@ LogicalResult bankAwareAllocation(AMDAIE::TileOp tile,
   // Note: The sorting may cause numerical error for depthwise conv2d op.
   std::sort(buffersToAlloc.begin(), buffersToAlloc.end(),
             [](AMDAIE::BufferOp a, AMDAIE::BufferOp b) {
-              return a.getAllocationSize() > b.getAllocationSize();
+              return a.getAllocationSizeInBytes() >
+                     b.getAllocationSizeInBytes();
             });
 
   // Set addresses for remaining buffers.

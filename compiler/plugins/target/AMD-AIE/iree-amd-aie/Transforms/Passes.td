@@ -34,7 +34,7 @@ def AMDAIEAssignBDIDs :
 // Copied from AIE dialect.
 def AMDAIEAssignBufferAddress :
     Pass<"iree-amdaie-assign-buffer-address", ""> {
-  let summary = "Pass to assign buffers to memory addresses.";
+  let summary = "Pass to assign memory addresses to buffers.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAssignBufferAddressPass()";
   let options = [
     Option<"allocScheme", "alloc-scheme", "AllocScheme", /*default=*/"mlir::iree_compiler::AMDAIE::AllocScheme::None",

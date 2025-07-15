@@ -267,7 +267,7 @@ def AMDAIE_BufferOp: AMDAIE_Op<"buffer", [
   }];
 
   let extraClassDeclaration = [{
-    int64_t getAllocationSize() {
+    int64_t getAllocationSizeInBytes() {
       auto type = llvm::cast<mlir::MemRefType>(getType());
       return type.getNumElements() * type.getElementTypeBitWidth() / 8;
     }
