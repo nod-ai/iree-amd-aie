@@ -143,12 +143,12 @@ LogicalResult WorkgroupBuilder::buildForDmaCpyNdOp(
   SmallVector<OpFoldResult> npuDmaSourceOffsets = dmaOp.getSourceMixedOffsets();
   SmallVector<OpFoldResult> npuDmaSourceSizes = dmaOp.getSourceMixedSizes();
   SmallVector<OpFoldResult> npuDmaSourceStrides = dmaOp.getSourceMixedStrides();
-  Value circularDmaTarget, circularDmaSource, npuDmaTarget, npuDmaSource;
+  Value connectionTarget, connectionSource, npuDmaTarget, npuDmaSource;
   if (reprogramDmas) {
     npuDmaTarget = dmaOp.getTarget();
     npuDmaSource = dmaOp.getSource();
-    circularDmaTarget = npuDmaTarget;
-    circularDmaSource = npuDmaSource;
+    connectionTarget = npuDmaTarget;
+    connectionSource = npuDmaSource;
   } else if (!sourceMemSpace) {
     // Check if the source of DmaCpyNd op is from L3 - then source addressing
     // will be controlled by the uController and target addressing will stay in
@@ -164,8 +164,8 @@ LogicalResult WorkgroupBuilder::buildForDmaCpyNdOp(
     auto placeholder =
         rewriter.createAndLookup<AMDAIE::LogicalObjectFifoPlaceholderOp>(
             rewriter.getUnknownLoc(), type, logicalObjFifo.getTiles());
-    circularDmaSource = placeholder.getResult();
-    circularDmaTarget = dmaOp.getTarget();
+    connectionSource = placeholder.getResult();
+    connectionTarget = dmaOp.getTarget();
     circularDmaTargetOffsets = npuDmaTargetOffsets;
     circularDmaTargetSizes = npuDmaTargetSizes;
     circularDmaTargetStrides = npuDmaTargetStrides;
@@ -189,8 +189,8 @@ LogicalResult WorkgroupBuilder::buildForDmaCpyNdOp(
     auto placeholder =
         rewriter.createAndLookup<AMDAIE::LogicalObjectFifoPlaceholderOp>(
             rewriter.getUnknownLoc(), type, logicalObjFifo.getTiles());
-    circularDmaSource = dmaOp.getSource();
-    circularDmaTarget = placeholder.getResult();
+    connectionSource = dmaOp.getSource();
+    connectionTarget = placeholder.getResult();
     circularDmaSourceOffsets = npuDmaSourceOffsets;
     circularDmaSourceSizes = npuDmaSourceSizes;
     circularDmaSourceStrides = npuDmaSourceStrides;
@@ -201,7 +201,7 @@ LogicalResult WorkgroupBuilder::buildForDmaCpyNdOp(
     npuDmaSourceStrides = empty;
   }
   auto connectionOp = rewriter.createAndMap<AMDAIE::ConnectionOp>(
-      rewriter.getUnknownLoc(), dmaOp, circularDmaTarget, circularDmaSource);
+      rewriter.getUnknownLoc(), dmaOp, connectionTarget, connectionSource);
 
   IRRewriter::InsertPoint dmaInsertionPoint = rewriter.saveInsertionPoint();
   controlCodeRewriter.setInsertionPoint(controlCode, controlCodeEnd);
