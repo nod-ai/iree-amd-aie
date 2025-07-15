@@ -182,7 +182,7 @@ module {
 // -----
 
 // CHECK-LABEL: @no_consumer_fusion
-// CHECK:       linalg.elemwise_binary
+// CHECK:       linalg.elementwise
 // CHECK:       tensor.insert_slice
 
 func.func @no_consumer_fusion(%arg0: tensor<64xf32>) -> tensor<64xf32> {
@@ -190,7 +190,7 @@ func.func @no_consumer_fusion(%arg0: tensor<64xf32>) -> tensor<64xf32> {
   %c1 = arith.constant 1 : index
   %c8 = arith.constant 8 : index
   %0 = scf.for %arg1 = %c0 to %c8 step %c1 iter_args(%out = %arg0) -> tensor<64xf32> {
-    %1 = linalg.elemwise_binary {fun = #linalg.binary_fn<add>} ins(%arg0, %arg0 : tensor<64xf32>, tensor<64xf32>) outs(%arg0 : tensor<64xf32>) -> tensor<64xf32>
+    %1 = linalg.elementwise kind=#linalg.elementwise_kind<add> ins(%arg0, %arg0 : tensor<64xf32>, tensor<64xf32>) outs(%arg0 : tensor<64xf32>) -> tensor<64xf32>
     %2 = tensor.insert_slice %1 into %out[%arg1] [64] [1] : tensor<64xf32> into tensor<64xf32>
     scf.yield %2 : tensor<64xf32>
   }
@@ -378,13 +378,13 @@ module {
 // -----
 
 // CHECK-LABEL: @no_consumer_fusion
-// CHECK:       linalg.elemwise_binary
+// CHECK:       linalg.elementwise
 // CHECK:       scf.forall.in_parallel
 // CHECK:         tensor.parallel_insert_slice
 
 func.func @no_consumer_fusion(%arg0: tensor<64xf32>) -> tensor<64xf32> {
   %0 = scf.forall (%arg1, %arg2) in (1,2) shared_outs(%out = %arg0) -> tensor<64xf32> {
-    %1 = linalg.elemwise_binary {fun = #linalg.binary_fn<add>} ins(%arg0, %arg0 : tensor<64xf32>, tensor<64xf32>) outs(%arg0 : tensor<64xf32>) -> tensor<64xf32>
+    %1 = linalg.elementwise kind=#linalg.elementwise_kind<add> ins(%arg0, %arg0 : tensor<64xf32>, tensor<64xf32>) outs(%arg0 : tensor<64xf32>) -> tensor<64xf32>
     scf.forall.in_parallel {
       tensor.parallel_insert_slice %1 into %out[%arg1] [64] [1] : tensor<64xf32> into tensor<64xf32>
     }
