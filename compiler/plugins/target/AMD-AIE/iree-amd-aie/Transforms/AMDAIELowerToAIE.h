@@ -32,8 +32,11 @@ using BDDimLayoutAndLength = std::pair<AIE::BDDimLayoutArrayAttr, int64_t>;
 /// `amdaie.workgroup`.
 class AIEDeviceBuilder {
  public:
-  AIEDeviceBuilder(MLIRContext *ctx, AMDAIEDeviceModel deviceModel)
-      : rewriter(ctx), deviceModel(std::move(deviceModel)) {}
+  AIEDeviceBuilder(MLIRContext *ctx, AMDAIEDeviceModel deviceModel,
+                   bool reprogramDmas)
+      : rewriter(ctx),
+        deviceModel(std::move(deviceModel)),
+        reprogramDmas(reprogramDmas) {}
 
   LogicalResult lowerToAIE(ModuleOp moduleOp);
 
@@ -98,14 +101,6 @@ class AIEDeviceBuilder {
   /// might be used after `op` is erased.
   void eraseOp(Operation *op);
 
-  /// Utility to fold the provided repetition count, unit dims, linear dims and
-  /// to convert the sizes and strides into static versions and return them.
-  LogicalResult foldDimsAndReturnAsStatic(
-      SmallVector<OpFoldResult> sizes, SmallVector<OpFoldResult> strides,
-      SmallVector<int64_t> &newSizes, SmallVector<int64_t> &newStrides,
-      size_t repetitionCount, uint8_t memSpace,
-      function_ref<InFlightDiagnostic()> emitError);
-
   /// Utility to remap the provided operation's operands.
   void remapOperands(Operation *op);
 
@@ -127,6 +122,7 @@ class AIEDeviceBuilder {
       connectionToSourceTargetMemOps;
   /// Map from connection ops to the flow ops they have been converted into.
   DenseMap<AMDAIE::ConnectionOp, SmallVector<Operation *>> connectionToFlowOps;
+  bool reprogramDmas;
 };
 
 }  // namespace mlir::iree_compiler::AMDAIE

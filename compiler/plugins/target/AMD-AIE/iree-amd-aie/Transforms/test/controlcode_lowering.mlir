@@ -1,6 +1,7 @@
 // RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-controlcode-lowering)" --split-input-file --verify-diagnostics %s | FileCheck %s
 // RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-controlcode-lowering{arg-idx-offset=1})" -split-input-file --verify-diagnostics %s | FileCheck %s --check-prefix=ADD1
 // RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-controlcode-lowering{arg-idx-offset=2})" -split-input-file --verify-diagnostics %s | FileCheck %s --check-prefix=ADD2
+// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-controlcode-lowering{reprogram-dmas=true})" --split-input-file --verify-diagnostics %s | FileCheck %s --check-prefix=REPROGRAM
 
 // expected-error @+1 {{op has no AMDAIEDevice in the target attribute configuration}}
 module {
@@ -30,6 +31,87 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 }
 // ADD1-LABEL: @no_ops
 // ADD2-LABEL: @no_ops
+
+// -----
+
+// REPROGRAM-LABEL: @reprogram_dmas
+#executable_target_amdaie_pdi_fb = #hal.executable.target<"amd-aie", "amdaie-pdi-fb", {num_cols = 1 : i32, num_rows = 1 : i32, target_device = "npu1_4col", ukernels = "none"}>
+#pipeline_layout = #hal.pipeline.layout<bindings = [#hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, Indirect>], flags = Indirect>
+module attributes {hal.executable.target = #executable_target_amdaie_pdi_fb} {
+  func.func @reprogram_dmas() {
+    // REPROGRAM: %[[C0:.*]] = arith.constant 0 : index
+    // REPROGRAM: %[[C2:.*]] = arith.constant 2 : index
+    // REPROGRAM: %[[C1:.*]] = arith.constant 1 : index
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    %c1 = arith.constant 1 : index
+    amdaie.workgroup {
+      %tile_0_0 = amdaie.tile(%c0, %c0)
+      %0 = hal.interface.binding.subspan layout(#pipeline_layout) binding(1) alignment(64) offset(%c0) flags("ReadOnly|Indirect") : memref<32x32xi32>
+      // REPROGRAM: %[[TILE:.*]] = amdaie.tile(%[[C0]], %[[C1]])
+      // REPROGRAM: %[[BUFFER_L2:.*]] = amdaie.buffer(%[[TILE]]) : memref<1024xi32, 1 : i32>
+      // REPROGRAM: %[[TILE_1:.*]] = amdaie.tile(%[[C0]], %[[C2]])
+      // REPROGRAM: %[[BUFFER_L1:.*]] = amdaie.buffer(%[[TILE_1]]) : memref<1024xi32, 2 : i32>
+      %tile_0_1 = amdaie.tile(%c0, %c1)
+      %buffer = amdaie.buffer(%tile_0_1) : memref<1024xi32, 1 : i32>
+      %lock = amdaie.lock(%tile_0_1(2), 1)
+      %lock_0 = amdaie.lock(%tile_0_1(3), 0)
+      %1 = amdaie.logicalobjectfifo.from_buffers({%buffer}, {%lock}, {%lock_0}) : memref<1024xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<1024xi32, 1 : i32>>
+      %lof_0_0 = amdaie.logicalobjectfifo.from_memref %0, {%tile_0_0} : memref<32x32xi32> -> !amdaie.logicalobjectfifo<memref<1024xi32>>
+      %channel = amdaie.channel(%tile_0_0, 0, port_type = DMA, direction = MM2S)
+      %channel_1 = amdaie.channel(%tile_0_1, 2, port_type = DMA, direction = S2MM)
+      %2 = amdaie.flow({%channel} -> {%channel_1}) {is_packet_flow = true, packet_id = 2 : ui8}
+      %3 = amdaie.connection(%1 {%channel_1}, %lof_0_0 {%channel}, flow = %2) {connection_type = #amdaie<connection_type Packet>} : (!amdaie.logicalobjectfifo<memref<1024xi32, 1 : i32>>, !amdaie.logicalobjectfifo<memref<1024xi32>>)
+      %tile_0_2 = amdaie.tile(%c0, %c2)
+      %buffer_2 = amdaie.buffer(%tile_0_2) : memref<1024xi32, 2 : i32>
+      %lock_3 = amdaie.lock(%tile_0_2(2), 1)
+      %lock_4 = amdaie.lock(%tile_0_2(3), 0)
+      %4 = amdaie.logicalobjectfifo.from_buffers({%buffer_2}, {%lock_3}, {%lock_4}) : memref<1024xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<1024xi32, 2 : i32>>
+      %channel_5 = amdaie.channel(%tile_0_1, 0, port_type = DMA, direction = MM2S)
+      %channel_6 = amdaie.channel(%tile_0_2, 0, port_type = DMA, direction = S2MM)
+      %5 = amdaie.flow({%channel_5} -> {%channel_6}) {is_packet_flow = false}
+      %6 = amdaie.connection(%4 {%channel_6}, %1 {%channel_5}, flow = %5) {connection_type = #amdaie<connection_type Circuit>} : (!amdaie.logicalobjectfifo<memref<1024xi32, 2 : i32>>, !amdaie.logicalobjectfifo<memref<1024xi32, 1 : i32>>)
+      amdaie.controlcode {
+        %bd_id = amdaie.bd_id(%tile_0_0, %c0)
+        %bd_id_7 = amdaie.bd_id(%tile_0_0, %c1)
+        %bd_id_8 = amdaie.bd_id(%tile_0_0, %c2)
+        // REPROGRAM: amdaie.npu.write_bd {bd_id = 1 : ui32
+        %7 = amdaie.npu.half_dma_cpy_nd async %3(%lof_0_0 [0, 0] [32, 32] [32, 1] bd_id = %bd_id_7 channel = %channel) : !amdaie.logicalobjectfifo<memref<1024xi32>>
+        // REPROGRAM: amdaie.dma_start(%[[TILE]], S2MM, 2) {
+        // REPROGRAM:    amdaie.use_lock
+        // REPROGRAM:    amdaie.dma_bd(%[[BUFFER_L2]] : memref<1024xi32, 1 : i32>) {dimensions = #amdaie<bd_dim_layout_array[<size = 32, stride = 32>, <size = 32, stride = 1>]>, len = 1024 : i32}
+        // REPROGRAM:    amdaie.use_lock
+        // REPROGRAM:    amdaie.next_bd ^bb1
+        // REPROGRAM:  ^bb1:  // pred: ^bb0
+        // REPROGRAM:    amdaie.end
+        // REPROGRAM: }
+        amdaie.npu.half_dma_cpy_nd  %3(%1 [0, 0] [32, 32] [32, 1] channel = %channel_1) : !amdaie.logicalobjectfifo<memref<1024xi32, 1 : i32>>
+        // REPROGRAM: amdaie.npu.tct_sync
+        amdaie.npu.dma_wait(%7 : !amdaie.async_token)
+        // REPROGRAM: amdaie.dma_start(%[[TILE]], MM2S, 0) {
+        // REPROGRAM:   amdaie.use_lock
+        // REPROGRAM:   amdaie.dma_bd(%[[BUFFER_L2]] : memref<1024xi32, 1 : i32>) {dimensions = #amdaie<bd_dim_layout_array[<size = 32, stride = 32>, <size = 32, stride = 1>]>, len = 1024 : i32}
+        // REPROGRAM:   amdaie.use_lock
+        // REPROGRAM:   amdaie.next_bd ^bb1
+        // REPROGRAM: ^bb1:  // pred: ^bb0
+        // REPROGRAM:   amdaie.end
+        // REPROGRAM: }
+        // REPROGRAM: amdaie.dma_start(%[[TILE_1]], S2MM, 0) {
+        // REPROGRAM:   amdaie.use_lock
+        // REPROGRAM:   amdaie.dma_bd(%[[BUFFER_L1]] : memref<1024xi32, 2 : i32>) {dimensions = #amdaie<bd_dim_layout_array[<size = 32, stride = 4>, <size = 8, stride = 128>, <size = 4, stride = 1>]>, len = 1024 : i32}
+        // REPROGRAM:   amdaie.use_lock
+        // REPROGRAM:   amdaie.next_bd ^bb1
+        // REPROGRAM: ^bb1:  // pred: ^bb0
+        // REPROGRAM:   amdaie.end
+        // REPROGRAM: }
+        %8 = amdaie.npu.half_dma_cpy_nd async %6(%1 [0, 0] [32, 32] [32, 1] channel = %channel_5) : !amdaie.logicalobjectfifo<memref<1024xi32, 1 : i32>>
+        amdaie.npu.half_dma_cpy_nd  %6(%4 [0, 0, 0] [32, 8, 4] [4, 128, 1] channel = %channel_6) : !amdaie.logicalobjectfifo<memref<1024xi32, 2 : i32>>
+        amdaie.end
+      }
+    }
+    return
+  }
+}
 
 // -----
 
