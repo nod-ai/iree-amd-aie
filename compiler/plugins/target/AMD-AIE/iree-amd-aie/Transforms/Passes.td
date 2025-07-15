@@ -258,6 +258,10 @@ def AMDAIECreateAIEWorkgroup :
   Pass<"iree-amdaie-create-aie-workgroup", "func::FuncOp"> {
   let summary = "Creates a single AIE workgroup.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIECreateAIEWorkgroupPass()";
+  let options = [
+    Option<"reprogramDmas", "reprogram-dmas", "bool", /*default=*/"false",
+           "Flag to reprogram DMAs. When enabled, no circular DMAs will be produced">,
+  ];
 }
 
 def AMDAIECreateReferenceToAllocation :
