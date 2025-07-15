@@ -1549,6 +1549,12 @@ bool TileOp::tileValueColumnAndRowComparator(Value a, Value b) {
   return colA < colB;
 };
 
+CoreOp TileOp::getCoreOp() {
+  for (Operation *user : getResult().getUsers())
+    if (auto coreOp = llvm::dyn_cast<CoreOp>(*user)) return coreOp;
+  return nullptr;
+}
+
 //===----------------------------------------------------------------------===//
 // AMDAIE_WorkgroupOp
 //===----------------------------------------------------------------------===//

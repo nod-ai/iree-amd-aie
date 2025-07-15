@@ -797,7 +797,14 @@ void addAMDAIEObjectFifoLoweringPasses(
   passManager.addPass(createCanonicalizerPass());
 
   passManager.addPass(createAMDAIEDmaToCircularDmaPass());
-  passManager.addNestedPass<func::FuncOp>(createAMDAIECreateAIEWorkgroupPass());
+  {
+    AMDAIECreateAIEWorkgroupOptions options;
+    // TODO(avarma): In follow-up PRs this will be replaced by a global flag.
+    // Currently setting as `false`.
+    options.reprogramDmas = /*reprogramDmas=*/false;
+    passManager.addNestedPass<func::FuncOp>(
+        createAMDAIECreateAIEWorkgroupPass(options));
+  }
   passManager.addPass(createCSEPass());
   passManager.addPass(createAMDAIEDmaCSEPass());
 

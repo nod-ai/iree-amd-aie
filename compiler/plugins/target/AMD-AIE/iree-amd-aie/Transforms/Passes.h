@@ -92,6 +92,14 @@ std::unique_ptr<Pass> createAMDAIEAssignLogicalObjectFifoDepthPass(
 /// Create a pass to assign BD ids to `amdaie.npu.dma_cpy_nd` operations.
 std::unique_ptr<Pass> createAMDAIEAssignNpuDmaBdIdsPass();
 
+/// Create a pass to assign BD ids to `amdaie.npu.dma_cpy_nd` operations for
+/// L2/L1.
+std::unique_ptr<Pass> createAMDAIEAssignBDIDsPass();
+
+/// Create a pass to assign buffer addresses to DMA BD ops.
+std::unique_ptr<Pass> createAMDAIEAssignBufferAddressPass(
+    AMDAIEAssignBufferAddressOptions options = {});
+
 /// Create a pass to assign packet ids to `amdaie.flow` operations.
 std::unique_ptr<Pass> createAMDAIEAssignPacketIdsPass();
 
@@ -149,7 +157,8 @@ std::unique_ptr<Pass> createAMDAIEConvertDeviceToControlPacketsPass(
 std::unique_ptr<Pass> createAMDAIEInsertInfiniteLoopAroundCoreBlockPass();
 
 /// Pass to create a single AIE workgroup.
-std::unique_ptr<Pass> createAMDAIECreateAIEWorkgroupPass();
+std::unique_ptr<Pass> createAMDAIECreateAIEWorkgroupPass(
+    AMDAIECreateAIEWorkgroupOptions options = {});
 
 /// Pass to create references to allocations in L1 memory space.
 std::unique_ptr<Pass> createAMDAIECreateReferenceToAllocationPass();

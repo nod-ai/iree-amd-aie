@@ -19,14 +19,14 @@ func.func @bd_id() {
 // CHECK:       %[[TILE_0:.*]] = amdaie.tile(%[[C0]], %[[C0]])
 // CHECK:       %[[TILE_1:.*]] = amdaie.tile(%[[C0]], %[[C1]])
 // CHECK:       %[[BUFFER:.*]] = amdaie.buffer(%[[TILE_0]]) : memref<1024xi32>
-// CHECK:       %[[BUFFER_1:.*]] = amdaie.buffer(%[[TILE_1]], 0) : memref<1024xi32, 1 : i32>
+// CHECK:       %[[BUFFER_1:.*]] = amdaie.buffer(%[[TILE_1]]) {address = 0 : ui32, mem_bank = 0 : ui32, sym_name = "a"} : memref<1024xi32, 1 : i32>
 func.func @buffer() {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
   %tile = amdaie.tile(%c0, %c0)
   %tile_1 = amdaie.tile(%c0, %c1)
   %buffer = amdaie.buffer(%tile) : memref<1024xi32>
-  %buffer_1 = amdaie.buffer(%tile_1, 0) : memref<1024xi32, 1 : i32>
+  %buffer_1 = amdaie.buffer(%tile_1) {sym_name = "a", address = 0 : ui32, mem_bank = 0 : ui32} : memref<1024xi32, 1 : i32>
   return
 }
 
@@ -213,7 +213,7 @@ func.func @logicalobjectfifo_acquire(%arg0: !amdaie.logicalobjectfifo<memref<1x1
 // CHECK:       %[[C1:.*]] = arith.constant 1 : index
 // CHECK:       %[[TILE:.*]] = amdaie.tile(%[[C0]], %[[C1]])
 // CHECK:       %[[BUFFER:.*]] = amdaie.buffer(%[[TILE]]) : memref<1024xi32, 1 : i32>
-// CHECK:       %[[BUFFER_1:.*]] = amdaie.buffer(%[[TILE]], 0) : memref<1024xi32, 1 : i32>
+// CHECK:       %[[BUFFER_1:.*]] = amdaie.buffer(%[[TILE]]) : memref<1024xi32, 1 : i32>
 // CHECK:       %[[LOCK:.*]] = amdaie.lock(%[[TILE]](0), 2)
 // CHECK:       %[[LOCK_1:.*]] = amdaie.lock(%[[TILE]](1), 0)
 // CHECK:       %[[FROM_BUFFERS:.+]] = amdaie.logicalobjectfifo.from_buffers({%[[BUFFER]], %[[BUFFER_1]]}, {%[[LOCK]]}, {%[[LOCK_1]]}) : memref<1024xi32, 1 : i32>, memref<1024xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<1024xi32, 1 : i32>, 2>
@@ -222,7 +222,7 @@ func.func @logicalobjectfifo_from_buffers() {
   %c1 = arith.constant 1 : index
   %tile = amdaie.tile(%c0, %c1)
   %buffer = amdaie.buffer(%tile) : memref<1024xi32, 1 : i32>
-  %buffer_1 = amdaie.buffer(%tile, 0) : memref<1024xi32, 1 : i32>
+  %buffer_1 = amdaie.buffer(%tile) : memref<1024xi32, 1 : i32>
   %lock = amdaie.lock(%tile(0), 2)
   %lock_1 = amdaie.lock(%tile(1), 0)
   %0 = amdaie.logicalobjectfifo.from_buffers({%buffer, %buffer_1}, {%lock}, {%lock_1}) : memref<1024xi32, 1 : i32>, memref<1024xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<1024xi32, 1 : i32>, 2>

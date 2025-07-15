@@ -1,4 +1,5 @@
 // RUN: iree-opt --split-input-file --pass-pipeline="builtin.module(func.func(iree-amdaie-create-aie-workgroup))" --verify-diagnostics %s | FileCheck %s
+// RUN: iree-opt --split-input-file --pass-pipeline="builtin.module(func.func(iree-amdaie-create-aie-workgroup{reprogram-dmas=true}))" %s | FileCheck %s --check-prefix=REPROGRAM
 
 // CHECK-LABEL: @func
 // CHECK:       amdaie.workgroup
@@ -149,13 +150,26 @@ func.func @dma_cpy_nd_L2_L3_target_addressing(%arg0: memref<1x1x8x16xi32>, %arg1
 
 // -----
 
-func.func @error_dma_cpy_nd_L2_L1(%arg0: memref<1x1x8x16xi32, 2>, %arg1: memref<8x16xi32, 1>) {
+func.func @dma_cpy_nd_L2_L1(%arg0: memref<1x1x8x16xi32, 2>, %arg1: memref<8x16xi32, 1>) {
   %0 = amdaie.logicalobjectfifo.from_memref %arg0, {} : memref<1x1x8x16xi32, 2> -> !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>>
   %1 = amdaie.logicalobjectfifo.from_memref %arg1, {} : memref<8x16xi32, 1> -> !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>
   // expected-error @+1 {{neither source nor target of the DmaCpyNd op is on L3}}
   %2 = amdaie.dma_cpy_nd(%0[0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1], %1[0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
   return
 }
+// REPROGRAM-LABEL: @dma_cpy_nd_L2_L1
+//       REPROGRAM:  amdaie.workgroup {
+//       REPROGRAM:   %[[LOF_0:.*]] = amdaie.logicalobjectfifo.from_memref
+//       REPROGRAM:   %[[LOF_1:.*]] = amdaie.logicalobjectfifo.from_memref
+//       REPROGRAM:   %[[CONNECTION:.*]] = amdaie.connection(%[[LOF_0]], %[[LOF_1]])
+//       REPROGRAM:   amdaie.controlcode {
+//       REPROGRAM:     %[[LOF_0:.*]] = amdaie.logicalobjectfifo.from_memref
+//       REPROGRAM:     %[[LOF_1:.*]] = amdaie.logicalobjectfifo.from_memref
+//       REPROGRAM:     amdaie.npu.dma_cpy_nd async_source %[[CONNECTION]]
+//  REPROGRAM-SAME:            (%[[LOF_0]][0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1], %[[LOF_1]][0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1]) :
+//  REPROGRAM-SAME:            target_type = !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>> source_type = !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>
+//       REPROGRAM:   }
+//       REPROGRAM:  }
 
 // -----
 

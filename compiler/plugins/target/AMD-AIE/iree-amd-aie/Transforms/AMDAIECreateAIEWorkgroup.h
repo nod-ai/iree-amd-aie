@@ -197,10 +197,13 @@ class CoreContext {
 class WorkgroupBuilder {
  public:
   WorkgroupBuilder(IRRewriterAndMapper &rewriter,
-                   IRRewriterAndMapper &controlCodeRewriter)
-      : rewriter(rewriter), controlCodeRewriter(controlCodeRewriter) {}
+                   IRRewriterAndMapper &controlCodeRewriter, bool reprogramDmas)
+      : rewriter(rewriter),
+        controlCodeRewriter(controlCodeRewriter),
+        reprogramDmas(reprogramDmas) {}
   WorkgroupBuilder(IRRewriterAndMapper &&rewriter,
-                   IRRewriterAndMapper &controlCodeRewriter) = delete;
+                   IRRewriterAndMapper &controlCodeRewriter,
+                   bool reprogramDmas) = delete;
 
   /// Recursive workgroup build function for an operation.
   LogicalResult build(Operation *op, Block *target, Block *controlCode,
@@ -258,6 +261,9 @@ class WorkgroupBuilder {
 
   /// Rewriter and mapper for the control code context.
   IRRewriterAndMapper &controlCodeRewriter;
+
+  // Flag to enable/disable reprogramming of DMAs.
+  bool reprogramDmas;
 };
 
 }  // namespace mlir::iree_compiler::AMDAIE
