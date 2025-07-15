@@ -32,6 +32,8 @@ struct NpuDmaToHalfDmaCpyNdConverter final
              << "should operate on an `amdaie.connection` op";
     }
     AMDAIE::NpuHalfDmaCpyNdOp sourceDma, targetDma;
+    SmallVector<Type> resultTypes = {
+        rewriter.getType<AMDAIE::AsyncTokenType>()};
     // Convert source half.
     if (dmaOp.hasSourceAddressing()) {
       Value source =
@@ -44,8 +46,6 @@ struct NpuDmaToHalfDmaCpyNdConverter final
           llvm::any_of(dmaOp.getAsyncTokens(), [](Value token) {
             return isa<AMDAIE::AsyncSourceTokenType>(token.getType());
           });
-      SmallVector<Type> resultTypes = {
-          rewriter.getType<AMDAIE::AsyncTokenType>()};
       TypeRange sourceResultTypes =
           hasAsyncSourceToken ? TypeRange{resultTypes} : TypeRange{};
       rewriter.setInsertionPoint(dmaOp);
@@ -74,6 +74,7 @@ struct NpuDmaToHalfDmaCpyNdConverter final
           });
       TypeRange targetResultTypes =
           hasAsyncTargetToken ? TypeRange{resultTypes} : TypeRange{};
+      rewriter.setInsertionPoint(dmaOp);
       targetDma = rewriter.create<AMDAIE::NpuHalfDmaCpyNdOp>(
           dmaOp.getLoc(), targetResultTypes, connectionOp, target,
           dmaOp.getTargetMixedOffsets(), dmaOp.getTargetMixedSizes(),
