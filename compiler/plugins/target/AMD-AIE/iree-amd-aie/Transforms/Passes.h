@@ -20,7 +20,7 @@ void addAMDAIEObjectFifoLoweringPasses(
     bool enableCoalescingLoops, bool enableCollapsingUnitDims,
     OutliningStrategy enableFunctionOutlining, int outliningLoopInCallCount,
     bool insertLoopAroundCoreBlock, uint32_t numCols, bool emitCtrlPkt,
-    uint32_t coreStackSize);
+    uint32_t coreStackSize, bool reprogramDmas);
 
 /// Add passes to lower from MLIR-AIR through AIE. This is
 /// currently the default passes used for lowering after IREEs tiling.
@@ -45,7 +45,7 @@ void buildAMDAIETransformPassPipeline(
     PacketFlowStrategy packetFlowStrategy, bool enableCoalescingLoops,
     bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
     int outliningLoopInCallCount, bool insertLoopAroundCoreBlock,
-    bool emitCtrlPkt, uint32_t coreStackSize);
+    bool emitCtrlPkt, uint32_t coreStackSize, bool reprogramDmas);
 
 /// Populates passes needed to lower the IR via a Pack-Peel based approach.
 void addPackPeelBasedPassPipeline(OpPassManager &passManager,
@@ -272,7 +272,7 @@ std::unique_ptr<OperationPass<ModuleOp>> createAMDAIELoweringStrategyPass(
 std::unique_ptr<Pass> createAMDAIELowerFuncArgsPass();
 
 /// Create pass to lower from the AMDAIE dialect to the AIE/AIEX dialects.
-void addAMDAIEToAIEPasses(OpPassManager &);
+void addAMDAIEToAIEPasses(OpPassManager &, bool);
 std::unique_ptr<Pass> createAMDAIELowerToAIEPass(
     AMDAIELowerToAIEOptions options = {});
 
