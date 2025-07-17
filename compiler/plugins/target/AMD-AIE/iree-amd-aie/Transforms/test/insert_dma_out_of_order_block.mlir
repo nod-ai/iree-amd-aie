@@ -1,7 +1,30 @@
-// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-insert-dma-out-of-order-block)" --split-input-file --verify-diagnostics %s | FileCheck %s
+// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-insert-dma-out-of-order-block)" %s | FileCheck %s
 
+// CHECK-LABEL: @out_of_order_l2_to_l1
+// CHECK:       %[[C0:.+]] = arith.constant 0 : index
+// CHECK:       %[[C1:.+]] = arith.constant 1 : index
+// CHECK:       %[[C2:.+]] = arith.constant 2 : index
+// CHECK:       amdaie.workgroup {
+// CHECK:         %[[TILE_0_1:.+]] = amdaie.tile(%[[C0]], %[[C1]])
+// CHECK:         %[[TILE_0_2:.+]] = amdaie.tile(%[[C0]], %[[C2]])
+// CHECK:         %[[CHANNEL_0:.+]] = amdaie.channel(%[[TILE_0_1]], 0, port_type = DMA, direction = MM2S)
+// CHECK:         %[[CHANNEL_1:.+]] = amdaie.channel(%[[TILE_0_1]], 1, port_type = DMA, direction = MM2S)
+// CHECK:         %[[CHANNEL_2:.+]] = amdaie.channel(%[[TILE_0_2]], 0, port_type = DMA, direction = S2MM)
+// CHECK:         amdaie.flow({%[[CHANNEL_0]]} -> {%[[CHANNEL_2]]}) {is_packet_flow = true, keep_pkt_header = true, packet_id = 0 : ui8}
+// CHECK:         amdaie.flow({%[[CHANNEL_1]]} -> {%[[CHANNEL_2]]}) {is_packet_flow = true, keep_pkt_header = true, packet_id = 1 : ui8}
+// CHECK:         amdaie.controlcode {
+// CHECK:           %[[DMA_START_0:.+]] = amdaie.dma_start(%[[CHANNEL_0]], {%{{.+}}}) {
+// CHECK:             amdaie.dma_bd_packet(0, 0) {out_of_order_bd_id = 0 : i32}
+// CHECK:           }
+// CHECK:           %[[DMA_START_1:.+]] = amdaie.dma_start(%[[CHANNEL_2]], {%{{.+}}}, repeat_count = 2) {
+// CHECK-COUNT-2:     amdaie.dma_bd(
+// CHECK-NOT:         amdaie.dma_bd(
+// CHECK:           } {en_out_of_order = true}
+// CHECK:           %[[DMA_START_2:.+]] = amdaie.dma_start(%[[CHANNEL_1]], {%{{.+}}}) {
+// CHECK:             amdaie.dma_bd_packet(0, 1) {out_of_order_bd_id = 1 : i32}
+// CHECK:           }
 module {
-  func.func @l2_to_l1() {
+  func.func @out_of_order_l2_to_l1() {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %c2 = arith.constant 2 : index
