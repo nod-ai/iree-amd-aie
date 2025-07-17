@@ -140,6 +140,7 @@ struct Router {
   std::map<PhysPort, PhysPort> dijkstraShortestPaths(PhysPort src);
   std::optional<std::map<PhysPort, SwitchSettings>> findPaths(
       int maxIterations = 1000);
+  int8_t nextAvailablePacketGroupId = 0;
 };
 
 // A map from a switchbox output (physical) port to the number of that port.
