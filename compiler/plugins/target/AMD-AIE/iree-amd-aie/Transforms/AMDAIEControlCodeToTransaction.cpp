@@ -64,10 +64,7 @@ LogicalResult convertOp(AMDAIE::NpuWriteBdOp op, TransactionBuilder &builder) {
 }
 
 LogicalResult convertOp(AMDAIE::DMAStartOp op, TransactionBuilder &builder) {
-  if (failed(builder.appendDmaStartOp(op))) {
-    return failure();
-  }
-  return success();
+  return builder.appendDmaStartOp(op);
 }
 
 LogicalResult controlCodeToTransaction(IRRewriter &rewriter,
@@ -75,12 +72,13 @@ LogicalResult controlCodeToTransaction(IRRewriter &rewriter,
                                        TransactionBuilder &builder) {
   SmallVector<Operation *> toBeErased;
   DenseSet<AMDAIE::LockOp> lockOps;
+  // All locks used within control code are initialized before converting other
+  // ops to transaction binary.
   WalkResult res = controlCodeOp->walk([&](AMDAIE::UseLockOp op) {
     auto lockOp = op.getLock().getDefiningOp<AMDAIE::LockOp>();
-    if (lockOps.count(lockOp) == 0) {
-      if (failed(builder.appendLockOp(lockOp))) return WalkResult::interrupt();
-      lockOps.insert(lockOp);
-    }
+    if (lockOps.contains(lockOp)) return WalkResult::advance();
+    if (failed(builder.appendLockOp(lockOp))) return WalkResult::interrupt();
+    lockOps.insert(lockOp);
     return WalkResult::advance();
   });
   if (res.wasInterrupted()) return failure();
