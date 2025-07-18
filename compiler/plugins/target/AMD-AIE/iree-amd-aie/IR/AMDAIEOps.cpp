@@ -494,12 +494,13 @@ ConnectionOp::getNpuCircularDmaCpyNdUser() {
     if (auto userNpuDmaOp = dyn_cast<AMDAIE::NpuCircularDmaCpyNdOp>(userOp))
       npuDmaUsers.push_back(userNpuDmaOp);
   }
-  if (npuDmaUsers.size() != 1) {
+  if (npuDmaUsers.size() > 1) {
     return emitOpError() << "only a single `amdaie.npu.circular_dma_cpy_nd` "
                             "user supported currently, but got: "
                          << npuDmaUsers.size();
   }
-  return npuDmaUsers[0];
+  if (npuDmaUsers.size() == 1) return npuDmaUsers[0];
+  return failure();
 }
 
 std::optional<AMDAIE::FlowOp> ConnectionOp::getFlowOp() {

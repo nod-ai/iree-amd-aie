@@ -363,6 +363,26 @@ LogicalResult WorkgroupBuilder::build(Operation *op, Block *target,
         return workgroupOp.emitOpError()
                << "not supported in `amdaie.workgroup` creation";
       })
+      .Case<AMDAIE::LogicalObjectFifoFromMemrefOp>([&](auto lofOp) {
+        // Try to clone in workgroup.
+        if (llvm::all_of(lofOp->getOperands(), [&](Value operand) {
+              return rewriter.contains(operand);
+            })) {
+          Operation *oldLofOp = lofOp.getOperation();
+          Operation *newLofOp = rewriter.cloneAndMap(*oldLofOp);
+          controlCodeRewriter.map(lofOp->getResult(0), newLofOp->getResult(0));
+          return success();
+        }
+        // Try to clone in controlcode.
+        if (llvm::all_of(op->getOperands(), [&](Value operand) {
+              return controlCodeRewriter.contains(operand);
+            })) {
+          controlCodeRewriter.setInsertionPoint(controlCode, controlCodeEnd);
+          controlCodeRewriter.cloneAndMap(*op);
+          return success();
+        }
+        return failure();
+      })
       .Default([&](Operation *) {
         // All other operations are cloned.
         // Case 1: Try to clone in workgroup.
