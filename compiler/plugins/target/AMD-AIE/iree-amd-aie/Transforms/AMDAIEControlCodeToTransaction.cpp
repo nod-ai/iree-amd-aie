@@ -63,20 +63,35 @@ LogicalResult convertOp(AMDAIE::NpuWriteBdOp op, TransactionBuilder &builder) {
   return success();
 }
 
+LogicalResult convertOp(AMDAIE::DMAStartOp op, TransactionBuilder &builder) {
+  return builder.appendDmaStartOp(op);
+}
+
 LogicalResult controlCodeToTransaction(IRRewriter &rewriter,
                                        AMDAIE::ControlCodeOp controlCodeOp,
                                        TransactionBuilder &builder) {
   SmallVector<Operation *> toBeErased;
-  WalkResult res = controlCodeOp->walk([&](Operation *op) {
+  DenseSet<AMDAIE::LockOp> lockOps;
+  // All locks used within control code are initialized before converting other
+  // ops to transaction binary.
+  WalkResult res = controlCodeOp->walk([&](AMDAIE::UseLockOp op) {
+    auto lockOp = op.getLock().getDefiningOp<AMDAIE::LockOp>();
+    if (lockOps.contains(lockOp)) return WalkResult::advance();
+    if (failed(builder.appendLockOp(lockOp))) return WalkResult::interrupt();
+    lockOps.insert(lockOp);
+    return WalkResult::advance();
+  });
+  if (res.wasInterrupted()) return failure();
+  res = controlCodeOp->walk([&](Operation *op) {
     LogicalResult switchResult =
         TypeSwitch<Operation *, LogicalResult>(op)
             .Case<AMDAIE::NpuAddressPatchOp, AMDAIE::NpuTctSyncOp,
-                  AMDAIE::NpuPushToQueueOp, AMDAIE::NpuWriteBdOp>(
-                [&](auto npuOp) {
-                  if (failed(convertOp(npuOp, builder))) return failure();
-                  toBeErased.push_back(npuOp);
-                  return success();
-                })
+                  AMDAIE::NpuPushToQueueOp, AMDAIE::NpuWriteBdOp,
+                  AMDAIE::DMAStartOp>([&](auto npuOp) {
+              if (failed(convertOp(npuOp, builder))) return failure();
+              toBeErased.push_back(npuOp);
+              return success();
+            })
             .Default([&](Operation *) { return success(); });
     if (failed(switchResult)) return WalkResult::interrupt();
     return WalkResult::advance();
