@@ -385,7 +385,8 @@ LogicalResult moveNpuDmaSyncUsersAfterAncestorInSameBlock(
 
 /// Utility to retrieve the common repetition count from all producers and
 /// consumers of a logical objectFifo.
-FailureOr<size_t> getRepetitionCount(LogicalObjFifoOpInterface op);
+FailureOr<size_t> getRepetitionCount(LogicalObjFifoOpInterface op,
+                                     bool reprogramDmas = false);
 
 /// Utility to fold the provided repetition count, unit dims, linear dims and
 /// to convert the sizes and strides into static versions and return them.

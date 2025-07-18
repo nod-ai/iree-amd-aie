@@ -463,6 +463,7 @@ LogicalResult AIEDeviceBuilder::bufferToAIE(AMDAIE::BufferOp bufferOp,
 LogicalResult AIEDeviceBuilder::connectionToAIE(
     AMDAIE::ConnectionOp connectionOp, Block *deviceBlock,
     int &connectionIndex) {
+  if (reprogramDmas) return success();
   LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::ConnectionOp]\n");
   rewriter.setInsertionPoint(deviceBlock->getTerminator());
   SmallVector<AMDAIE::ChannelOp> producerChannels;
@@ -501,10 +502,8 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
 
   FailureOr<AMDAIE::NpuCircularDmaCpyNdOp> maybeNpuDmaUserOp =
       connectionOp.getNpuCircularDmaCpyNdUser();
-  if (failed(maybeNpuDmaUserOp)) {
-    if (reprogramDmas) return success();
+  if (failed(maybeNpuDmaUserOp))
     return connectionOp.emitOpError() << "has no circular NPU DMA op user";
-  }
 
   SmallVector<Operation *> sourceMemOps;
   Value source = connectionOp.getSource();

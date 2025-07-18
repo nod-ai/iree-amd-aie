@@ -798,7 +798,8 @@ static int64_t getRepetitionCount(ArrayRef<OpFoldResult> sizes,
 
 /// Utility to retrieve the common repetition count from all producers and
 /// consumers of a logical objectFifo.
-FailureOr<size_t> getRepetitionCount(LogicalObjFifoOpInterface op) {
+FailureOr<size_t> getRepetitionCount(LogicalObjFifoOpInterface op,
+                                     bool reprogramDmas) {
   SmallVector<int64_t> repetitionCounts;
   auto appendRepetitionCount = [&](ArrayRef<OpFoldResult> sizes,
                                    ArrayRef<OpFoldResult> strides) {
@@ -818,7 +819,8 @@ FailureOr<size_t> getRepetitionCount(LogicalObjFifoOpInterface op) {
     } else if (auto halfDmaOp = dyn_cast<AMDAIE::NpuHalfDmaCpyNdOp>(userOp)) {
       appendRepetitionCount(halfDmaOp.getMixedSizes(),
                             halfDmaOp.getMixedStrides());
-    } else if (auto connectionOp = dyn_cast<AMDAIE::ConnectionOp>(userOp)) {
+    } else if (auto connectionOp = dyn_cast<AMDAIE::ConnectionOp>(userOp);
+               connectionOp && !reprogramDmas) {
       FailureOr<AMDAIE::NpuCircularDmaCpyNdOp> maybeNpuDmaUserOp =
           connectionOp.getNpuCircularDmaCpyNdUser();
 
