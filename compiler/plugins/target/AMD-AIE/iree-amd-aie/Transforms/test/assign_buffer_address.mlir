@@ -4,9 +4,9 @@
 // CHECK-LABEL: @mix_prealloc
 // CHECK:         amdaie.workgroup {
 // CHECK:           %[[TILE:.*]] = amdaie.tile
-// CHECK:           amdaie.buffer(%[[TILE]]) {address = 327680 : ui32, mem_bank = 5 : ui32, sym_name = "_anonymous0"} : memref<200xi32>
-// CHECK:           amdaie.buffer(%[[TILE]]) {address = 393216 : ui32, mem_bank = 6 : ui32, sym_name = "_anonymous1"} : memref<100xi32>
-// CHECK:           amdaie.buffer(%[[TILE]]) {address = 0 : ui32, mem_bank = 0 : ui32, sym_name = "a"} : memref<1024xi32>
+// CHECK:           amdaie.buffer(%[[TILE]]) {address = 327680 : i32, mem_bank = 5 : ui32, sym_name = "_anonymous0"} : memref<200xi32>
+// CHECK:           amdaie.buffer(%[[TILE]]) {address = 393216 : i32, mem_bank = 6 : ui32, sym_name = "_anonymous1"} : memref<100xi32>
+// CHECK:           amdaie.buffer(%[[TILE]]) {address = 0 : i32, mem_bank = 0 : ui32, sym_name = "a"} : memref<1024xi32>
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module @mix_prealloc attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   amdaie.workgroup {
