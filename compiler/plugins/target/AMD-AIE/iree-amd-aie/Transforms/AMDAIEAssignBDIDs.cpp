@@ -60,6 +60,7 @@ LogicalResult assignBdIds(Operation* deviceOp) {
 //   llvm::append_range(memOps, deviceOp->getRegion(0).back().getOps<MemTileDMAOp>());
     // llvm::outs()<<"DB - 1.2\n";
     // llvm::outs().flush();
+  DenseMap<AMDAIE::ChannelOp, ChannelBdIdGenerator> channelOpToBdIdGenerator;
   for (AMDAIE::DMAStartOp dmaStartOp : memOps) {
     // llvm::outs()<<"DMA start = "<<dmaStartOp<<"\n";
     // llvm::outs().flush();
@@ -72,10 +73,14 @@ LogicalResult assignBdIds(Operation* deviceOp) {
         return tile->emitOpError()
                     << "expected column and row integer value/constant";
     }
-    ChannelBdIdGenerator gen = deviceModel.isMemTile(*col, *row)
-                                   ? memTileChannelBdIdGenerator
-                                   : shimChannelBdIdGenerator;
 
+    if (!channelOpToBdIdGenerator.contains(channelOp)) {
+      channelOpToBdIdGenerator[channelOp] = deviceModel.isMemTile(*col, *row)
+        ? memTileChannelBdIdGenerator
+        : shimChannelBdIdGenerator;
+    }
+    ChannelBdIdGenerator &gen = channelOpToBdIdGenerator[channelOp];
+                                
     dmaStartOp->walk<WalkOrder::PreOrder>([&](AMDAIE::DMABDOp bd) {
       if (bd.getBdId().has_value()) gen.assignBdId(bd.getBdId().value());
     });

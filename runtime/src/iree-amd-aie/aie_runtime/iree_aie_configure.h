@@ -193,6 +193,10 @@ LogicalResult configureDMALocks(const AMDAIEDeviceModel &deviceModel,
                                 uint8_t acqLockId, uint8_t relLockId,
                                 bool acqEn);
 
+LogicalResult configureOutofOrderMode(const AMDAIEDeviceModel &deviceModel,
+                                     const TileLoc &tileLoc, uint8_t chNum,
+                                     const DMAChannelDir &channelDir, bool enOutofOrder);
+
 /// DMAs operate on "task queues" of bds. "Enqueueing" a bd is what actually
 /// instructs/makes the DMA execute the reading/writing represented by the bd.
 /// **Note**, in english (and in iree-amd-aie) repeat_count==0 means "do it
@@ -203,8 +207,7 @@ LogicalResult configurePushToBdQueue(const AMDAIEDeviceModel &deviceModel,
                                      const TileLoc &tileLoc, uint8_t chNum,
                                      const DMAChannelDir &channelDir,
                                      uint8_t bdId, uint32_t repeatCount,
-                                     bool enTokenIssue, bool enOutofOrder,
-                                     bool setChannelEnable);
+                                     bool enTokenIssue, bool enOutofOrder);
 
 LogicalResult configureCustomTxnOp(const AMDAIEDeviceModel &deviceModel,
                                    uint8_t opCode, uint32_t *data,

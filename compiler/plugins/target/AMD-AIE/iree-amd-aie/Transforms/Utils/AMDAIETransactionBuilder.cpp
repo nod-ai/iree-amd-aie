@@ -120,13 +120,19 @@ LogicalResult TransactionBuilder::appendDmaStartOp(
                   << "expected column and row integer value/constant";
   }
   XAie_LocType tileLoc = XAie_TileLoc(*col, *row);
-  // Reset and unreset all DMA channels before configuring BDs.
-  // if (failed(resetUnResetDmaChannels(deviceModel, tileLoc))) return failure();
+  int chNum = channelOp.getValue();
+  auto channelDir = static_cast<DMAChannelDir>(channelOp.getDirection());
+  bool enOutOfOrder = dmaStartOp.getEnOutOfOrder().value_or(false);
+  // Configure the DMA channel as in-order or out-of-order mode.
+  if (failed(configureOutofOrderMode(deviceModel, tileLoc, chNum, channelDir, enOutOfOrder))) {
+    return failure();
+  }
+  // Initialize the DMA descriptor
   FailureOr<XAie_DmaDesc> dmaDesc = initDMADesc(deviceModel, tileLoc);
   if (failed(dmaDesc)) return failure();
   // uint32_t minStrideBitWidth = deviceModel.getMinStrideBitWidth();
   // uint32_t bufferElementTypeWidthInBytes = minStrideBitWidth / v8;
-  dmaStartOp->walk([&](AMDAIE::DMABDOp dmaBdOp) -> WalkResult {
+  WalkResult res = dmaStartOp->walk([&](AMDAIE::DMABDOp dmaBdOp) {
     Block* parentBlock = dmaBdOp->getBlock();
     auto useLockIter = parentBlock->getOps<AMDAIE::UseLockOp>();
     std::optional<int> acqValue, relValue, acqLockId, relLockId;
@@ -158,7 +164,7 @@ LogicalResult TransactionBuilder::appendDmaStartOp(
     if (failed(configureDMALocks(deviceModel, dmaDesc.value(), tileLoc,
                                 *acqValue, *relValue, *acqLockId, *relLockId,
                                 /*acqEn=*/true))) {
-      return failure();
+      return WalkResult::interrupt();
     }
     
     // std::optional<uint32_t> bdId = dmaBdOp.getBdId();
@@ -224,15 +230,16 @@ LogicalResult TransactionBuilder::appendDmaStartOp(
     // Convert `xilinx::AIE::BDDimLayoutAttr` to
     // `mlir::iree_compiler::AMDAIE::BDDimLayout`.
 
-    std::optional<llvm::ArrayRef<BDDimLayoutAttr>> dims = dmaBdOp.getDimensions();
-    if (!dims)
-      return WalkResult::interrupt();
+    std::optional<llvm::ArrayRef<BDDimLayoutAttr>> maybeDimsAttr = dmaBdOp.getDimensions();
     std::optional<std::vector<BDDimLayout>> maybeDims;
-    maybeDims = std::vector<BDDimLayout>{};
-    // int64_t bufferLength = 1;
-    for (auto dim : *dims){
-      // bufferLength *= dim.getSize();
-      maybeDims->push_back(BDDimLayout{dim.getSize(), dim.getStride()});
+    if (maybeDimsAttr)
+    {
+      maybeDims = std::vector<BDDimLayout>{};
+      // int64_t bufferLength = 1;
+      for (auto dimAttr : *maybeDimsAttr){
+        // bufferLength *= dim.getSize();
+        maybeDims->push_back(BDDimLayout{dimAttr.getSize(), dimAttr.getStride()});
+      }
     }
     std::optional<std::vector<BDPadLayout>> maybePadDims;
 
@@ -270,15 +277,13 @@ LogicalResult TransactionBuilder::appendDmaStartOp(
     }
     return WalkResult::advance();
   });
+  if (res.wasInterrupted()) return failure();
 
   AMDAIE::DMABDOp bd = *dmaStartOp.getBody().getOps<AMDAIE::DMABDOp>().begin();
-  int chNum = channelOp.getValue();
-  auto channelDir = static_cast<DMAChannelDir>(channelOp.getDirection());
   bool issueToken = tileLoc.Row == 0 && channelDir == DMAChannelDir::MM2S;
-  bool enOutOfOrder = dmaStartOp.getEnOutOfOrder().value_or(false);
   if (failed(configurePushToBdQueue(
           deviceModel, tileLoc, chNum, channelDir, bd.getBdId().value(),
-          dmaStartOp.getRepeatCount(), issueToken, enOutOfOrder, /*setChannelEnable=*/true)))
+          dmaStartOp.getRepeatCount(), issueToken, enOutOfOrder)))
     return failure();
   return success();
 }
@@ -309,7 +314,7 @@ LogicalResult TransactionBuilder::appendPushToQueueOp(
     uint32_t channel, uint32_t bdId, uint32_t repeatCount, bool issueToken) {
   auto tileLoc = XAie_TileLoc(col, row);
   return configurePushToBdQueue(deviceModel, tileLoc, channel, direction, bdId,
-                                repeatCount, issueToken, /*enOutofOrder=*/false, /*setChannelEnable=*/false);
+                                repeatCount, issueToken, /*enOutofOrder=*/false);
 }
 
 LogicalResult TransactionBuilder::appendWriteBdOp(

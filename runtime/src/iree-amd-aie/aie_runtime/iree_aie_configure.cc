@@ -395,33 +395,31 @@ LogicalResult configureDMABDWithLocks(
   return success();
 }
 
+LogicalResult configureOutofOrderMode(const AMDAIEDeviceModel &deviceModel,
+                                     const TileLoc &tileLoc, uint8_t chNum,
+                                     const DMAChannelDir &channelDir, bool enOutOfOrder) {
+  XAie_DmaDirection direction = static_cast<XAie_DmaDirection>(channelDir);                               
+  auto devInst = const_cast<XAie_DevInst *>(&deviceModel.devInst);
+  XAie_DmaChannelDesc dmaChannelDesc;
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelDescInit, devInst, &dmaChannelDesc, tileLoc);
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelEnOutofOrder, &dmaChannelDesc, enOutOfOrder);
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaWriteChannel, devInst, &dmaChannelDesc, tileLoc, chNum, 
+                              direction);
+  return success();
+}
+
 LogicalResult configurePushToBdQueue(const AMDAIEDeviceModel &deviceModel,
                                      const TileLoc &tileLoc, uint8_t chNum,
                                      const DMAChannelDir &channelDir,
                                      uint8_t bdId, uint32_t repeatCount,
-                                     bool enTokenIssue, bool enOutofOrder,
-                                     bool setChannelEnable) {
+                                     bool enTokenIssue, bool enOutOfOrder) {
   XAie_DmaDirection direction = static_cast<XAie_DmaDirection>(channelDir);
   auto devInst = const_cast<XAie_DevInst *>(&deviceModel.devInst);
-
-  XAie_DmaQueueDesc dmaQueueDesc = {repeatCount, bdId, enTokenIssue, enOutofOrder};
+  XAie_DmaQueueDesc dmaQueueDesc = {repeatCount, bdId, enTokenIssue, enOutOfOrder};
   TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelSetStartQueueGeneric, devInst, tileLoc,
                               chNum, direction, &dmaQueueDesc);
-
-  if (enOutofOrder) {
-    if (direction != XAie_DmaDirection::DMA_S2MM) {
-      llvm::errs() << "Out-of-order can only be enabled for S2MM.\n";
-      return failure();
-    }
-    XAie_DmaChannelDesc dmaChannelDesc;
-    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelDescInit, devInst, &dmaChannelDesc, tileLoc);
-    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelEnOutofOrder, &dmaChannelDesc, XAIE_ENABLE);
-    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaWriteChannel, devInst, &dmaChannelDesc, tileLoc, chNum, 
-                                direction);
-  }
-
-
-  if (setChannelEnable) {
+  // Channel enable is required only for AIE1. Using it on later generations may unintentionally overwrite the channel control register.
+  if (deviceModel.configPtr.AieGen == XAIE_DEV_GEN_AIE) {
     TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelEnable, devInst, tileLoc, chNum,
                                 direction);
   }

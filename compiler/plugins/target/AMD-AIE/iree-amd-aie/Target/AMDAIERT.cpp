@@ -301,7 +301,7 @@ LogicalResult addInitConfig(const AMDAIEDeviceModel &deviceModel,
         bool issueToken = tileLoc.row == 0 && channelDir == DMAChannelDir::MM2S;
         if (failed(configurePushToBdQueue(
                 deviceModel, tileLoc, chNum, channelDir, bd.getBdId().value(),
-                op.getRepeatCount(), issueToken, /*enOutOfOrder=*/false, /*setChannelEnable=*/true)))
+                op.getRepeatCount(), issueToken, /*enOutOfOrder=*/false)))
           return failure();
       }
     }

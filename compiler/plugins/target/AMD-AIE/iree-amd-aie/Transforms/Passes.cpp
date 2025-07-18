@@ -883,6 +883,7 @@ void addAMDAIEObjectFifoLoweringPasses(
       passManager.addPass(createAMDAIEAssignBufferAddressPass(options));
     }
   }
+  passManager.addPass(createAMDAIEInsertDmaOutOfOrderBlockPass());
   passManager.addPass(createAMDAIEControlCodeToTransactionPass());
 
   addAMDAIEToAIEPasses(passManager, insertLoopAroundCoreBlock);

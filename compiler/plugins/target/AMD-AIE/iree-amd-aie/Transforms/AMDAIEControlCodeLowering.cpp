@@ -572,11 +572,12 @@ LogicalResult createDMABlocks(
     }
     // Insert a packet op for MM2S DMAs if part of a packet flow. Only do
     // this for MM2S DMA ports as only those can insert packet headers.
-    // if (channelDir == AIE::DMAChannelDir::MM2S && pktId.has_value()) {
-    //   rewriter.create<AIE::DMABDPACKETOp>(rewriter.getUnknownLoc(),
-    //                                       /*pkt_type*/ 0,
-    //                                       /*pkt_id*/ pktId.value());
-    // }
+    if (channelOp.getDirection() == AMDAIE::DMAChannelDir::MM2S && pktId.has_value()) {
+      rewriter.create<AMDAIE::DmaBdPacketOp>(rewriter.getUnknownLoc(),
+                                          /*pkt_type=*/0,
+                                          /*pkt_id=*/pktId.value(),
+                                          /*out_of_order_bd_id=*/nullptr);
+    }
     if (!dims.getValue().empty()) {
       rewriter.create<AMDAIE::DMABDOp>(rewriter.getUnknownLoc(), buff, offset,
                                     transferLength, dims);
