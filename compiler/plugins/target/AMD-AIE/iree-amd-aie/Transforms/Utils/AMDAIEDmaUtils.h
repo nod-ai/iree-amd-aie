@@ -7,6 +7,7 @@
 #ifndef IREE_AMD_AIE_TRANSFORMS_AMDAIEDMAUTILS_H_
 #define IREE_AMD_AIE_TRANSFORMS_AMDAIEDMAUTILS_H_
 
+#include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "mlir/IR/AffineExprVisitor.h"
 #include "mlir/IR/MLIRContext.h"
@@ -381,6 +382,20 @@ struct CircularDmaDimConfig final : public DmaDimConfig {
 /// async DMA operation and its synchronization op.
 LogicalResult moveNpuDmaSyncUsersAfterAncestorInSameBlock(
     RewriterBase &rewriter, Operation *parentOp);
+
+/// Utility to retrieve the common repetition count from all producers and
+/// consumers of a logical objectFifo.
+FailureOr<size_t> getRepetitionCount(LogicalObjFifoOpInterface op,
+                                     bool reprogramDmas = false);
+
+/// Utility to fold the provided repetition count, unit dims, linear dims and
+/// to convert the sizes and strides into static versions and return them.
+LogicalResult foldDimsAndReturnAsStatic(
+    IRRewriter &rewriter, AMDAIE::AMDAIEDeviceModel deviceModel,
+    SmallVector<OpFoldResult> sizes, SmallVector<OpFoldResult> strides,
+    SmallVector<int64_t> &newSizes, SmallVector<int64_t> &newStrides,
+    size_t repetitionCount, uint8_t memSpace,
+    function_ref<InFlightDiagnostic()> emitError);
 
 }  // namespace mlir::iree_compiler::AMDAIE
 
