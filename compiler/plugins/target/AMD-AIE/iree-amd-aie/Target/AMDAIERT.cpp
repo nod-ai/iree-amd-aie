@@ -205,9 +205,9 @@ LogicalResult configureLocksAndBd(Block &block, const TileLoc &tileLoc,
     return bufferOp.emitError("buffer must have address assigned");
   // Convert `xilinx::AIE::BDDimLayoutAttr` to
   // `mlir::iree_compiler::AMDAIE::BDDimLayout`.
-  std::optional<std::vector<BDDimLayout>> maybeDims;
+  std::optional<SmallVector<BDDimLayout>> maybeDims;
   if (std::optional<std::vector<BDDimLayoutAttr>> dims = bdOp.getDimensions()) {
-    maybeDims = std::vector<BDDimLayout>{};
+    maybeDims = SmallVector<BDDimLayout>{};
     for (const BDDimLayoutAttr &dim : (*dims)) {
       maybeDims->emplace_back(BDDimLayout{dim.getSize(), dim.getStride()});
     }
@@ -215,10 +215,10 @@ LogicalResult configureLocksAndBd(Block &block, const TileLoc &tileLoc,
 
   // Convert `xilinx::AIE::BDPadLayoutAttr` to
   // `mlir::iree_compiler::AMDAIE::BDPadLayout`.
-  std::optional<std::vector<BDPadLayout>> maybePadDims;
+  std::optional<SmallVector<BDPadLayout>> maybePadDims;
   if (std::optional<std::vector<BDPadLayoutAttr>> dims =
           bdOp.getPadDimensions()) {
-    maybePadDims = std::vector<BDPadLayout>{};
+    maybePadDims = SmallVector<BDPadLayout>{};
     for (const BDPadLayoutAttr &dim : (*dims)) {
       maybePadDims->emplace_back(
           BDPadLayout{dim.getConstPadBefore(), dim.getConstPadAfter()});

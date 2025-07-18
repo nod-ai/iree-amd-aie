@@ -164,8 +164,8 @@ LogicalResult configureDMABD(
     std::optional<uint8_t> packetType, std::optional<uint8_t> packetId,
     uint64_t baseAddr, uint64_t lenInBytes, uint64_t offsetInBytes,
     uint32_t bufferElementTypeWidthInBytes,
-    const std::optional<std::vector<BDDimLayout>> &maybeDims,
-    const std::optional<std::vector<BDPadLayout>> &maybePadDims,
+    const std::optional<SmallVector<BDDimLayout>> &maybeDims,
+    const std::optional<SmallVector<BDPadLayout>> &maybePadDims,
     const std::optional<BDIterLayout> &maybeIter);
 
 /// Configures/sets up locks associated with a dma (actually the bd...).
