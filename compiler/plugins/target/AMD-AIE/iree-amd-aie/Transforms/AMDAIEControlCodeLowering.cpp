@@ -746,7 +746,8 @@ LogicalResult lowerDmasForReprogramming(
   IRRewriter rewriter(moduleOp->getContext());
   OpBuilder::InsertionGuard guard(rewriter);
   Operation *controlCodeOp = nullptr;
-  moduleOp->walk([&](AMDAIE::ControlCodeOp op) { controlCodeOp = op; });
+  moduleOp->walk(
+      [&](AMDAIE::WorkgroupOp op) { controlCodeOp = op.getControlCode(); });
   DenseMap<Value, Operation *> tileToMemOpMap;
   uint8_t connectionIndex{0};
   llvm::SmallSetVector<Operation *, 16> toBeErased;
