@@ -19,14 +19,14 @@ func.func @bd_id() {
 // CHECK:       %[[TILE_0:.*]] = amdaie.tile(%[[C0]], %[[C0]])
 // CHECK:       %[[TILE_1:.*]] = amdaie.tile(%[[C0]], %[[C1]])
 // CHECK:       %[[BUFFER:.*]] = amdaie.buffer(%[[TILE_0]]) : memref<1024xi32>
-// CHECK:       %[[BUFFER_1:.*]] = amdaie.buffer(%[[TILE_1]]) {address = 0 : ui32, mem_bank = 0 : ui32, sym_name = "a"} : memref<1024xi32, 1 : i32>
+// CHECK:       %[[BUFFER_1:.*]] = amdaie.buffer(%[[TILE_1]]) {address = 0 : i32, mem_bank = 0 : ui32, sym_name = "a"} : memref<1024xi32, 1 : i32>
 func.func @buffer() {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
   %tile = amdaie.tile(%c0, %c0)
   %tile_1 = amdaie.tile(%c0, %c1)
   %buffer = amdaie.buffer(%tile) : memref<1024xi32>
-  %buffer_1 = amdaie.buffer(%tile_1) {sym_name = "a", address = 0 : ui32, mem_bank = 0 : ui32} : memref<1024xi32, 1 : i32>
+  %buffer_1 = amdaie.buffer(%tile_1) {sym_name = "a", address = 0 : i32, mem_bank = 0 : ui32} : memref<1024xi32, 1 : i32>
   return
 }
 

@@ -31,7 +31,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
     %c2 = arith.constant 2 : index
     %c1 = arith.constant 1 : index
     %t01 = amdaie.tile(%c2, %c1)
-    %buf01_0 = amdaie.buffer(%t01) { address = 8192 : ui32, sym_name = "in" } : memref<16xi32>
+    %buf01_0 = amdaie.buffer(%t01) { address = 8192 : i32, sym_name = "in" } : memref<16xi32>
     %l01_0 = amdaie.lock(%t01(1), 0)
     %l01_1 = amdaie.lock(%t01(0), 1)
     %dstDma = amdaie.dma_start(%t01, MM2S, 0) {
