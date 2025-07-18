@@ -122,6 +122,8 @@ class AIEDeviceBuilder {
       connectionToSourceTargetMemOps;
   /// Map from connection ops to the flow ops they have been converted into.
   DenseMap<AMDAIE::ConnectionOp, SmallVector<Operation *>> connectionToFlowOps;
+  /// Set using the pass' flag `reprogram-dmas` and is used to enable/disable
+  /// reprogramming of DMAs.
   bool reprogramDmas;
 };
 
