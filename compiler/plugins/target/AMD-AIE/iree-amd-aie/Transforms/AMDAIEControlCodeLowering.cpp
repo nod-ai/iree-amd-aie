@@ -497,7 +497,6 @@ LogicalResult createDMABlocks(
         succ = &endBlock;
       } else {
         succ = rewriter.createBlock(&endBlock);
-        llvm::outs() << "8 = " << dmaStartOp << "\n";
       }
       rewriter.setInsertionPointToStart(curr);
       int64_t addOffset = 0;
