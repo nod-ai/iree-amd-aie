@@ -274,24 +274,23 @@ void Router::addFlow(TileLoc srcCoords, Port srcPort, TileLoc dstCoords,
   }
 
   // Assign a group ID to packet flows:
-  // - If the source or any destination overlaps with an existing flow, reuse its group ID.
+  // - If the source or any destination overlaps with an existing flow, reuse
+  // its group ID.
   // - Flows sharing the same group ID can share channels.
   // - For circuit flows, always assign group ID -1 (no channel sharing).
-  int8_t packetGroupId = -1;
-  if (isPacketFlow) {
-    auto assignPacketGroupId = [&]() -> int8_t {
-      for (auto &[existingId, src, dsts] : impl->flows) {
-        if (src.tileLoc == srcCoords && src.port == srcPort) 
-          return existingId;
-        for (auto &dst : dsts) {
-          if (dst.tileLoc == dstCoords && dst.port == dstPort)
-            return existingId;
-        }
+  int8_t packetGroupId = [&]() -> int8_t {
+    if (!isPacketFlow) return -1;
+    for (auto &[existingId, src, dsts] : impl->flows) {
+      if (src.tileLoc == srcCoords && src.port == srcPort) return existingId;
+      if (llvm::any_of(dsts, [&](const auto &dst) {
+            return dst.tileLoc == dstCoords && dst.port == dstPort;
+          })) {
+        return existingId;
       }
-      return nextAvailablePacketGroupId++;
-    };
-    packetGroupId = assignPacketGroupId();
-  }
+    }
+    return nextAvailablePacketGroupId++;
+  }();
+
   // If no existing flow was found with this source, create a new flow.
   PhysPort srcPhysPort{srcCoords, srcPort, PhysPort::Direction::SRC};
   PhysPort dstPhysPort{dstCoords, dstPort, PhysPort::Direction::DST};
