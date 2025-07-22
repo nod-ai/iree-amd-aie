@@ -271,3 +271,105 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
     return
   }
 }
+
+// -----
+
+// CHECK:       0x06030100
+// CHECK:       0x00000104
+// CHECK:       0x00000008
+// CHECK:       0x00000100
+// CHECK:       0x00200100
+// CHECK:       0x00000000
+// CHECK:       0x001C0020
+// CHECK:       0x00000000
+// CHECK:       0x00000001
+// CHECK:       0x00000018
+// CHECK:       0x00300100
+// CHECK:       0x00000000
+// CHECK:       0x001C0030
+// CHECK:       0x00000000
+// CHECK:       0x00000000
+// CHECK:       0x00000018
+// CHECK:       0x00000101
+// CHECK:       0x00000000
+// CHECK:       0x001A0000
+// CHECK:       0x00000030
+// CHECK:       0x00000400
+// CHECK:       0x00024000
+// CHECK:       0x00400000
+// CHECK:       0x0040001F
+// CHECK:       0x00000000
+// CHECK:       0x00000000
+// CHECK:       0x00000000
+// CHECK:       0x8143FF42
+// CHECK:       0x00140100
+// CHECK:       0x00000000
+// CHECK:       0x001A0614
+// CHECK:       0x00000000
+// CHECK:       0x00000000
+// CHECK:       0x00000018
+// CHECK:       0x00100100
+// CHECK:       0x00000000
+// CHECK:       0x001A0610
+// CHECK:       0x00000000
+// CHECK:       0x00000001
+// CHECK:       0x00000018
+// CHECK:       0x00000101
+// CHECK:       0x00000000
+// CHECK:       0x001A0000
+// CHECK:       0x00000030
+// CHECK:       0x00000400
+// CHECK:       0x00024000
+// CHECK:       0x00400000
+// CHECK:       0x0040001F
+// CHECK:       0x00000000
+// CHECK:       0x00000000
+// CHECK:       0x00000000
+// CHECK:       0x8142FF43
+// CHECK:       0x00340100
+// CHECK:       0x00000000
+// CHECK:       0x001A0634
+// CHECK:       0x00000000
+// CHECK:       0x00000000
+// CHECK:       0x00000018
+// CHECK:       0x00300100
+// CHECK:       0x00000000
+// CHECK:       0x001A0630
+// CHECK:       0x00000000
+// CHECK:       0x00000001
+// CHECK:       0x00000018
+// CHECK-LABE:  @dma_start
+// CHECK:       npu_instructions = dense_resource<npu_instructions> : tensor<64xui32>
+#executable_target_amdaie_pdi_fb = #hal.executable.target<"amd-aie", "amdaie-pdi-fb", {num_cols = 1 : i32, num_rows = 1 : i32, target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_pdi_fb} {
+  func.func @dma_start() {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    amdaie.workgroup {
+      %tile_0_1 = amdaie.tile(%c0, %c1)
+      %buffer = amdaie.buffer(%tile_0_1) {address = 65536 : i32, mem_bank = 1 : ui32, sym_name = "_anonymous1"} : memref<1024xi32, 1 : i32>
+      %lock = amdaie.lock(%tile_0_1(2), 1)
+      %lock_0 = amdaie.lock(%tile_0_1(3), 0)
+      amdaie.controlcode {
+        %0 = amdaie.dma_start(%tile_0_1, S2MM, 2) {
+          amdaie.use_lock(%lock, AcquireGreaterOrEqual(1))
+          amdaie.dma_bd(%buffer : memref<1024xi32, 1 : i32>) {bd_id = 0 : i32, dimensions = #amdaie<bd_dim_layout_array[<size = 32, stride = 32>, <size = 32, stride = 1>]>, len = 1024 : i32}
+          amdaie.use_lock(%lock_0, Release(1))
+          amdaie.next_bd ^bb1
+        ^bb1:  // pred: ^bb0
+          amdaie.end
+        }
+        %1 = amdaie.dma_start(%tile_0_1, MM2S, 0) {
+          amdaie.use_lock(%lock_0, AcquireGreaterOrEqual(1))
+          amdaie.dma_bd(%buffer : memref<1024xi32, 1 : i32>) {bd_id = 0 : i32, dimensions = #amdaie<bd_dim_layout_array[<size = 32, stride = 32>, <size = 32, stride = 1>]>, len = 1024 : i32}
+          amdaie.use_lock(%lock, Release(1))
+          amdaie.next_bd ^bb1
+        ^bb1:  // pred: ^bb0
+          amdaie.end
+        }
+        amdaie.end
+      }
+    }
+    return
+  }
+}

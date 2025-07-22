@@ -58,8 +58,8 @@ LogicalResult configureDMABD(
     std::optional<uint8_t> packetType, std::optional<uint8_t> packetId,
     uint64_t baseAddr, uint64_t lenInBytes, uint64_t offsetInBytes,
     uint32_t bufferElementTypeWidthInBytes,
-    const std::optional<std::vector<BDDimLayout>> &maybeDims,
-    const std::optional<std::vector<BDPadLayout>> &maybePadDims,
+    const std::optional<SmallVector<BDDimLayout>> &maybeDims,
+    const std::optional<SmallVector<BDPadLayout>> &maybePadDims,
     const std::optional<BDIterLayout> &maybeIter) {
   assert(dmaDesc.IsReady == XAIE_COMPONENT_IS_READY &&
          "XAie_DmaDescs need to be created using initDMADesc");
@@ -98,8 +98,8 @@ LogicalResult configureDMABD(
       // Pass down dimensions in reverse order; in the MLIR, this allows
       // us to specify step sizes/strides in the same order as we would for
       // RankedTensorType/MemRefType.
-      uint16_t size = dims->at(i).size;
-      uint32_t stride = dims->at(i).stride;
+      uint16_t size = (*dims)[i].size;
+      uint32_t stride = (*dims)[i].stride;
       size_t j = dims->size() - i - 1;
       if (j > 0) {
         if (stride * bufferElementTypeWidthInBytes % 4 != 0) {
@@ -139,8 +139,8 @@ LogicalResult configureDMABD(
     dmaPadTensor.NumDim = padDims->size();
     dmaPadTensor.PadDesc = new XAie_PadDesc[dmaPadTensor.NumDim];
     for (size_t i = 0; i < padDims->size(); i++) {
-      uint8_t before = padDims->at(i).const_pad_before;
-      uint8_t after = padDims->at(i).const_pad_after;
+      uint8_t before = (*padDims)[i].const_pad_before;
+      uint8_t after = (*padDims)[i].const_pad_after;
       size_t j = padDims->size() - i - 1;
       if (j == 0) {
         if (before * bufferElementTypeWidthInBytes % 4 != 0) {
