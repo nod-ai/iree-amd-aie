@@ -20,7 +20,8 @@ namespace mlir::iree_compiler::AMDAIE {
 namespace {
 
 /// Utility to retrieve a TileOp from a vector of tile values, while doing
-/// appropriate verifications.
+/// appropriate verifications. It's expected to return failure for non-shim
+/// tiles.
 template <CopyOpOperateOn OperateOn>
 FailureOr<AMDAIE::TileOp> getGeneratorTileOp(
     AMDAIE::NpuDmaCpyNdOp npuDmaOp,
@@ -52,9 +53,9 @@ FailureOr<AMDAIE::TileOp> getGeneratorTileOp(
            << tiles.size();
   }
   Value tile = tiles[0];
-  if (!shimTileToGeneratorMap.contains(tile))
-    return npuDmaOp.emitOpError()
-           << "no channel BD ID generator found for tile: " << tile;
+  // Since we can have non-Shim DMA ops as npu.dma_cpy_nd when reprogramming
+  // DMAs, we can simply return failure instead of emitting an error.
+  if (!shimTileToGeneratorMap.contains(tile)) return failure();
 
   auto tileOp = dyn_cast_if_present<AMDAIE::TileOp>(tile.getDefiningOp());
   if (!tileOp) return npuDmaOp.emitOpError() << "no tile op found";
@@ -244,7 +245,7 @@ class BdIdAssignmentUtil {
   DenseMap<AMDAIE::BdIdOp, SmallVector<uint32_t>> bdIdOpToBdIdsMap;
   // A mapping from DMAOp to its corresponding source/target BD IDs.
   DenseMap<AMDAIE::NpuDmaCpyNdOp, SmallVector<AMDAIE::BdIdOp, 2>>
-      dmaOpToBdIdMap;
+      shimDmaOpToBdIdMap;
 
  public:
   BdIdAssignmentUtil(
@@ -252,8 +253,8 @@ class BdIdAssignmentUtil {
       : shimTileToGeneratorMap(std::move(shimTileToGeneratorMap)) {}
 
   DenseMap<AMDAIE::NpuDmaCpyNdOp, SmallVector<AMDAIE::BdIdOp, 2>> &
-  getDmaOpToBdIdMap() {
-    return dmaOpToBdIdMap;
+  getShimDmaOpToBdIdMap() {
+    return shimDmaOpToBdIdMap;
   }
 
   /// Assign Bd Ids to each DmaBatch belonging to a particular Tile in the
@@ -347,9 +348,10 @@ class BdIdAssignmentUtil {
   }
 
   /// Assign required Bd Ids to the DmaOps of the current DmaBatch. This
-  /// assignment is tracked by maintaining `dmaOpToBdIdMap`, which essentially
-  /// maps a DmaOp to its source/target Bd Ids. Also, the API splits the
-  /// available BD IDs equally amongst all DmaOps in the DmaBatch when assigning
+  /// assignment is tracked by maintaining `shimDmaOpToBdIdMap`, which
+  /// essentially maps a DmaOp to its source/target Bd Ids. Also, the API splits
+  /// the available BD IDs equally amongst all DmaOps in the DmaBatch when
+  /// assigning
   LogicalResult assignRequiredBdIdsInCurrentBatch(
       IRRewriter &rewriter, AMDAIE::TileOp tileOp,
       std::unique_ptr<DmaBatch> &dmaBatch) {
@@ -410,12 +412,12 @@ class BdIdAssignmentUtil {
         AMDAIE::BdIdOp bdIdOp = rewriter.create<AMDAIE::BdIdOp>(
             rewriter.getUnknownLoc(), tileOp, affineApply.getResult());
         bdIdOpToBdIdsMap[bdIdOp] = bdIds;
-        if (!dmaOpToBdIdMap.contains(dmaOp)) {
+        if (!shimDmaOpToBdIdMap.contains(dmaOp)) {
           SmallVector<AMDAIE::BdIdOp, 2> bdIdOps = {nullptr, nullptr};
-          dmaOpToBdIdMap[dmaOp] = bdIdOps;
+          shimDmaOpToBdIdMap[dmaOp] = bdIdOps;
         }
 
-        dmaOpToBdIdMap[dmaOp][dmaTileData.bdIdMapIndex] = bdIdOp;
+        shimDmaOpToBdIdMap[dmaOp][dmaTileData.bdIdMapIndex] = bdIdOp;
       } else {
         // Assign a constant BD ID.
         std::optional<uint32_t> bdId = generator.getAndAssignBdId(
@@ -425,11 +427,11 @@ class BdIdAssignmentUtil {
             rewriter.getUnknownLoc(), rewriter.getIndexAttr(bdId.value()));
         AMDAIE::BdIdOp bdIdOp = rewriter.create<AMDAIE::BdIdOp>(
             rewriter.getUnknownLoc(), tileOp, constant.getResult());
-        if (!dmaOpToBdIdMap.contains(dmaOp)) {
+        if (!shimDmaOpToBdIdMap.contains(dmaOp)) {
           SmallVector<AMDAIE::BdIdOp, 2> bdIdOps = {nullptr, nullptr};
-          dmaOpToBdIdMap[dmaOp] = bdIdOps;
+          shimDmaOpToBdIdMap[dmaOp] = bdIdOps;
         }
-        dmaOpToBdIdMap[dmaOp][dmaTileData.bdIdMapIndex] = bdIdOp;
+        shimDmaOpToBdIdMap[dmaOp][dmaTileData.bdIdMapIndex] = bdIdOp;
       }
       // Reset to fetch next DmaOps' DmaTileData.
       dmaTileData.bdIdMapIndex = -1;
@@ -471,17 +473,17 @@ class BdIdAssignmentUtil {
   }
 
   /// DmaOps are assigned Bd Ids prior to invoking this function and a map
-  /// `dmaOpToBdIdMap` is maintained that maps a DmaOp to its source/target Bd
-  /// Ids. For each DmaOp in the list `dmaOps`, this API will check the
-  /// `dmaOpToBdIdMap` and release Bd Ids if assigned.
+  /// `shimDmaOpToBdIdMap` is maintained that maps a DmaOp to its source/target
+  /// Bd Ids. For each DmaOp in the list `dmaOps`, this API will check the
+  /// `shimDmaOpToBdIdMap` and release Bd Ids if assigned.
   LogicalResult releaseAssignedBdIdsInDmaOps(
       SmallVectorImpl<AMDAIE::NpuDmaCpyNdOp> &dmaOps) {
     // Release BD ID used by input DMA op.
     for (AMDAIE::NpuDmaCpyNdOp npuDmaOp : dmaOps) {
-      if (AMDAIE::BdIdOp bdIdOp = dmaOpToBdIdMap[npuDmaOp][0]; bdIdOp) {
+      if (AMDAIE::BdIdOp bdIdOp = shimDmaOpToBdIdMap[npuDmaOp][0]; bdIdOp) {
         if (failed(releaseBdId(bdIdOp))) return failure();
       }
-      if (AMDAIE::BdIdOp bdIdOp = dmaOpToBdIdMap[npuDmaOp][1]; bdIdOp) {
+      if (AMDAIE::BdIdOp bdIdOp = shimDmaOpToBdIdMap[npuDmaOp][1]; bdIdOp) {
         if (failed(releaseBdId(bdIdOp))) return failure();
       }
     }
@@ -490,20 +492,22 @@ class BdIdAssignmentUtil {
 };
 
 /// Traverse each DmaOp inside ControlCode and replace it with new new DmaOp
-/// that has Bd Ids assigned using `dmaOpToBdIdMap`.
+/// that has Bd Ids assigned using `shimDmaOpToBdIdMap`.
 static LogicalResult replaceDmaOps(
     IRRewriter &rewriter, AMDAIE::ControlCodeOp controlCodeOp,
     DenseMap<AMDAIE::NpuDmaCpyNdOp, SmallVector<AMDAIE::BdIdOp, 2>>
-        &dmaOpToBdIdMap) {
+        &shimDmaOpToBdIdMap) {
   WalkResult res = controlCodeOp->walk([&](AMDAIE::NpuDmaCpyNdOp npuDmaOp) {
-    assert(dmaOpToBdIdMap.contains(npuDmaOp) && "No BD ID mapping found");
+    if (!shimDmaOpToBdIdMap.contains(npuDmaOp)) return WalkResult::advance();
     Value sourceBdId = nullptr;
     Value targetBdId = nullptr;
-    if (AMDAIE::BdIdOp bdIdOp = dmaOpToBdIdMap[npuDmaOp][/*sourceBdIdIndex=*/0];
+    if (AMDAIE::BdIdOp bdIdOp =
+            shimDmaOpToBdIdMap[npuDmaOp][/*sourceBdIdIndex=*/0];
         bdIdOp) {
       sourceBdId = bdIdOp.getResult();
     }
-    if (AMDAIE::BdIdOp bdIdOp = dmaOpToBdIdMap[npuDmaOp][/*targetBdIdIndex=*/1];
+    if (AMDAIE::BdIdOp bdIdOp =
+            shimDmaOpToBdIdMap[npuDmaOp][/*targetBdIdIndex=*/1];
         bdIdOp) {
       targetBdId = bdIdOp.getResult();
     }
@@ -554,19 +558,26 @@ static TileDmaBatchGraph createTileDmaBatchGraph(
   };
 
   auto processNpuDmaCpyNdOp = [&](AMDAIE::NpuDmaCpyNdOp dmaOp) {
+    bool isShimDmaOp = false;
     if (dmaOp.getSource()) {
       FailureOr<AMDAIE::TileOp> tile =
           getGeneratorTileOp<CopyOpOperateOn::Source>(dmaOp,
                                                       shimTileToGeneratorMap);
-      if (succeeded(tile)) tileDmaBatchGraph.addDmaToBatch(*tile, dmaOp);
+      if (succeeded(tile)) {
+        tileDmaBatchGraph.addDmaToBatch(*tile, dmaOp);
+        isShimDmaOp = true;
+      }
     }
     if (dmaOp.getTarget()) {
       FailureOr<AMDAIE::TileOp> tile =
           getGeneratorTileOp<CopyOpOperateOn::Target>(dmaOp,
                                                       shimTileToGeneratorMap);
-      if (succeeded(tile)) tileDmaBatchGraph.addDmaToBatch(*tile, dmaOp);
+      if (succeeded(tile)) {
+        tileDmaBatchGraph.addDmaToBatch(*tile, dmaOp);
+        isShimDmaOp = true;
+      }
     }
-    if (!currDmaOp) currDmaOp = dmaOp;
+    if (!currDmaOp && isShimDmaOp) currDmaOp = dmaOp;
   };
 
   auto processNpuDmaWaitOp = [&](AMDAIE::NpuDmaWaitOp npuWaitOp) {
@@ -627,7 +638,8 @@ LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
   AMDAIE::ControlCodeOp controlCodeOp = workgroupOp.getControlCode();
   // Since a DMA op can have source and target, therefore we can have two BD IDs
   // for any DMA op. Hence we maintain a map from DMA op to a vector of BD IDs.
-  DenseMap<AMDAIE::NpuDmaCpyNdOp, SmallVector<AMDAIE::BdIdOp>> dmaOpToBdIdMap;
+  DenseMap<AMDAIE::NpuDmaCpyNdOp, SmallVector<AMDAIE::BdIdOp>>
+      shimDmaOpToBdIdMap;
   TileDmaBatchGraph tileDmaBatchGraph = createTileDmaBatchGraph(
       workgroupOp, controlCodeOp, shimTileToGeneratorMap);
   tileDmaBatchGraph.inferRequiredBdIds();
@@ -636,7 +648,7 @@ LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
     return failure();
   }
   if (failed(replaceDmaOps(rewriter, controlCodeOp,
-                           bdIdAssignmentUtil.getDmaOpToBdIdMap())))
+                           bdIdAssignmentUtil.getShimDmaOpToBdIdMap())))
     return failure();
   // At this step we have all the information to traverse and perform the
   // replacements of the DMA Ops.

@@ -273,32 +273,23 @@ void Router::addFlow(TileLoc srcCoords, Port srcPort, TileLoc dstCoords,
     }
   }
 
-  // Assign a group ID for packet flows
-  // any overlapping in source/destination will lead to the same group ID
-  // channel sharing will happen within the same group ID
-  // for circuit flows, group ID is always -1, and no channel sharing
-  int packetGroupId = -1;
-  if (isPacketFlow) {
-    bool found = false;
+  // Assign a group ID to packet flows:
+  // - If the source or any destination overlaps with an existing flow, reuse
+  // its group ID.
+  // - Flows sharing the same group ID can share channels.
+  // - For circuit flows, always assign group ID -1 (no channel sharing).
+  int32_t packetGroupId = [&]() -> int32_t {
+    if (!isPacketFlow) return -1;
     for (auto &[existingId, src, dsts] : impl->flows) {
-      if (src.tileLoc == srcCoords && src.port == srcPort) {
-        packetGroupId = existingId;
-        found = true;
-        break;
+      if (src.tileLoc == srcCoords && src.port == srcPort) return existingId;
+      if (llvm::any_of(dsts, [&](const auto &dst) {
+            return dst.tileLoc == dstCoords && dst.port == dstPort;
+          })) {
+        return existingId;
       }
-      for (auto &dst : dsts) {
-        if (dst.tileLoc == dstCoords && dst.port == dstPort) {
-          packetGroupId = existingId;
-          found = true;
-          break;
-        }
-      }
-      packetGroupId = std::max(packetGroupId, existingId);
     }
-    if (!found) {
-      packetGroupId++;
-    }
-  }
+    return nextAvailablePacketGroupId++;
+  }();
 
   // If no existing flow was found with this source, create a new flow.
   PhysPort srcPhysPort{srcCoords, srcPort, PhysPort::Direction::SRC};
