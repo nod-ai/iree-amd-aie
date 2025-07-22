@@ -347,7 +347,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_pdi_fb} {
     %c1 = arith.constant 1 : index
     amdaie.workgroup {
       %tile_0_1 = amdaie.tile(%c0, %c1)
-      %buffer = amdaie.buffer(%tile_0_1) {address = 65536 : ui32, mem_bank = 1 : ui32, sym_name = "_anonymous1"} : memref<1024xi32, 1 : i32>
+      %buffer = amdaie.buffer(%tile_0_1) {address = 65536 : i32, mem_bank = 1 : ui32, sym_name = "_anonymous1"} : memref<1024xi32, 1 : i32>
       %lock = amdaie.lock(%tile_0_1(2), 1)
       %lock_0 = amdaie.lock(%tile_0_1(3), 0)
       amdaie.controlcode {
