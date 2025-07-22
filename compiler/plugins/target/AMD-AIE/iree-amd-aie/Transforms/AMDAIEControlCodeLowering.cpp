@@ -510,13 +510,14 @@ LogicalResult createDMABlocks(
   return success();
 }
 
-LogicalResult processSource(IRRewriter &rewriter,
-                            AMDAIE::ConnectionOp connectionOp,
-                            std::optional<uint8_t> packetId, Value source,
-                            AMDAIE::AMDAIEDeviceModel &deviceModel,
-                            size_t sourceOffset, uint8_t sourceMemSpace,
-                            SmallVector<OpFoldResult> sourceMixedSizes,
-                            SmallVector<OpFoldResult> sourceMixedStrides) {
+/// Form DmaStartOp block for the connection op's source using the access
+/// patterns of the half dma op.
+static LogicalResult processConnectionSourceForDmaStart(
+    IRRewriter &rewriter, AMDAIE::ConnectionOp connectionOp,
+    std::optional<uint8_t> packetId, Value source,
+    AMDAIE::AMDAIEDeviceModel &deviceModel, size_t sourceOffset,
+    uint8_t sourceMemSpace, SmallVector<OpFoldResult> sourceMixedSizes,
+    SmallVector<OpFoldResult> sourceMixedStrides) {
   SmallVector<AMDAIE::ChannelOp> producerChannels;
   for (Value producerChannel : connectionOp.getSourceChannels()) {
     auto channelOp =
@@ -550,7 +551,9 @@ LogicalResult processSource(IRRewriter &rewriter,
   // of producers/consumers.
   int acqNum{1};
   if (objFifoConsumers.size() < objFifoProducers.size()) {
-    assert(objFifoProducers.size() % objFifoConsumers.size() == 0);
+    assert(objFifoProducers.size() % objFifoConsumers.size() == 0 &&
+           "expected total no. of producers of objFifo to be divisible by the "
+           "total no. of consumers");
     acqNum = objFifoProducers.size() / objFifoConsumers.size();
   }
   for (AMDAIE::ChannelOp channel : producerChannels) {
@@ -590,13 +593,14 @@ LogicalResult processSource(IRRewriter &rewriter,
   return success();
 }
 
-LogicalResult processTarget(IRRewriter &rewriter,
-                            AMDAIE::ConnectionOp connectionOp,
-                            std::optional<uint8_t> packetId, Value target,
-                            AMDAIE::AMDAIEDeviceModel &deviceModel,
-                            size_t targetOffset, uint8_t targetMemSpace,
-                            SmallVector<OpFoldResult> targetMixedSizes,
-                            SmallVector<OpFoldResult> targetMixedStrides) {
+/// Form DmaStartOp block for the connection op's target using the access
+/// patterns of the half dma op.
+static LogicalResult processConnectionTargetForDmaStart(
+    IRRewriter &rewriter, AMDAIE::ConnectionOp connectionOp,
+    std::optional<uint8_t> packetId, Value target,
+    AMDAIE::AMDAIEDeviceModel &deviceModel, size_t targetOffset,
+    uint8_t targetMemSpace, SmallVector<OpFoldResult> targetMixedSizes,
+    SmallVector<OpFoldResult> targetMixedStrides) {
   SmallVector<AMDAIE::ChannelOp> consumerChannels;
   for (Value consumerChannel : connectionOp.getTargetChannels()) {
     auto channelOp =
@@ -630,7 +634,9 @@ LogicalResult processTarget(IRRewriter &rewriter,
   // of producers/consumers.
   int acqNum = 1;
   if (objFifoProducers.size() < objFifoConsumers.size()) {
-    assert(objFifoConsumers.size() % objFifoProducers.size() == 0);
+    assert(objFifoConsumers.size() % objFifoProducers.size() == 0 &&
+           "expected total no. of consumers of objFifo to be divisible by the "
+           "total no. of producers");
     acqNum = objFifoConsumers.size() / objFifoProducers.size();
   }
   for (AMDAIE::ChannelOp channel : consumerChannels) {
@@ -673,8 +679,8 @@ LogicalResult processTarget(IRRewriter &rewriter,
 /// Convert the `amdaie.connection` operation into DMA operations.
 LogicalResult halfDmaToDmaStartBlocks(
     IRRewriter &rewriter, AMDAIE::AMDAIEDeviceModel &deviceModel,
-    AMDAIE::NpuHalfDmaCpyNdOp dmaOp, Operation *deviceBlock,
-    uint8_t &connectionIndex, DenseMap<Value, Operation *> &tileToMemOpMap) {
+    AMDAIE::NpuHalfDmaCpyNdOp dmaOp, uint8_t &connectionIndex,
+    DenseMap<Value, Operation *> &tileToMemOpMap) {
   LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::ConnectionOp]\n");
   std::optional<AMDAIE::ConnectionOp> maybeConnectionOp =
       dmaOp.getConnectionOp();
@@ -722,15 +728,15 @@ LogicalResult halfDmaToDmaStartBlocks(
     return dmaOp->emitOpError() << "expected to have a memory space in input";
   }
   if (dmaOp.getInput() == source) {
-    if (failed(processSource(rewriter, connectionOp, packetId, source,
-                             deviceModel, *maybeOffset, *maybeMemSpace,
-                             dmaOp.getMixedSizes(), dmaOp.getMixedStrides()))) {
+    if (failed(processConnectionSourceForDmaStart(
+            rewriter, connectionOp, packetId, source, deviceModel, *maybeOffset,
+            *maybeMemSpace, dmaOp.getMixedSizes(), dmaOp.getMixedStrides()))) {
       return failure();
     }
   } else if (dmaOp.getInput() == target) {
-    if (failed(processTarget(rewriter, connectionOp, packetId, target,
-                             deviceModel, *maybeOffset, *maybeMemSpace,
-                             dmaOp.getMixedSizes(), dmaOp.getMixedStrides()))) {
+    if (failed(processConnectionTargetForDmaStart(
+            rewriter, connectionOp, packetId, target, deviceModel, *maybeOffset,
+            *maybeMemSpace, dmaOp.getMixedSizes(), dmaOp.getMixedStrides()))) {
       return failure();
     }
   } else {
@@ -751,22 +757,19 @@ LogicalResult lowerDmasForReprogramming(
   DenseMap<Value, Operation *> tileToMemOpMap;
   uint8_t connectionIndex{0};
   llvm::SmallSetVector<Operation *, 16> toBeErased;
-  auto eraseCandidate = [&](Operation *op) {
-    for (Operation *userOp : op->getUsers()) {
-      toBeErased.insert(userOp);
-    }
-    toBeErased.insert(op);
-  };
-  WalkResult res = moduleOp->walk<WalkOrder::PreOrder>(
+  WalkResult res = controlCodeOp->walk<WalkOrder::PreOrder>(
       [&](AMDAIE::NpuHalfDmaCpyNdOp halfDmaOp) {
         std::optional<AMDAIE::BdIdOp> bdIdOp = halfDmaOp.getBdIdOp();
         if (bdIdOp) return WalkResult::advance();
         if (failed(halfDmaToDmaStartBlocks(rewriter, deviceModel, halfDmaOp,
-                                           controlCodeOp, connectionIndex,
-                                           tileToMemOpMap))) {
+                                           connectionIndex, tileToMemOpMap))) {
           return WalkResult::interrupt();
         }
-        eraseCandidate(halfDmaOp);
+        // Add the op and it's users as candidates to be erased later.
+        for (Operation *userOp : halfDmaOp->getUsers()) {
+          toBeErased.insert(userOp);
+        }
+        toBeErased.insert(halfDmaOp);
         return WalkResult::advance();
       });
   if (res.wasInterrupted()) return failure();
