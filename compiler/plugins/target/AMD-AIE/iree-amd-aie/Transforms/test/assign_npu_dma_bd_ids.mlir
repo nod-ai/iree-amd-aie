@@ -842,3 +842,53 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
     return
   }
 }
+
+// -----
+
+// CHECK-LABEL: @non_shim_dma_op
+#executable_target_amdaie_pdi_fb = #hal.executable.target<"amd-aie", "amdaie-pdi-fb", {num_cols = 1 : i32, num_rows = 1 : i32, target_device = "npu1_4col", ukernels = "none"}>
+#pipeline_layout = #hal.pipeline.layout<bindings = [#hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, "ReadOnly|Indirect">, #hal.pipeline.binding<storage_buffer, Indirect>], flags = Indirect>
+module attributes {hal.executable.target = #executable_target_amdaie_pdi_fb} {
+  func.func @non_shim_dma_op() {
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    %c1 = arith.constant 1 : index
+    amdaie.workgroup {
+      %alloc = memref.alloc() : memref<1x1x8x4x8x4xi32, 2 : i32>
+      %tile_0_1 = amdaie.tile(%c0, %c1)
+      %alloc_0 = memref.alloc() : memref<1x1x32x32xi32, 1 : i32>
+      %lof_0_1 = amdaie.logicalobjectfifo.from_memref %alloc_0, {%tile_0_1} : memref<1x1x32x32xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<1024xi32, 1 : i32>, 2>
+      %alloc_1 = memref.alloc() : memref<1x1x32x32xi32, 1 : i32>
+      %lof_0_1_2 = amdaie.logicalobjectfifo.from_memref %alloc_1, {%tile_0_1} : memref<1x1x32x32xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<1024xi32, 1 : i32>, 2>
+      %0 = hal.interface.binding.subspan layout(#pipeline_layout) binding(0) alignment(64) offset(%c0) flags("ReadOnly|Indirect") : memref<32x32xi32>
+      %assume_align = memref.assume_alignment %0, 64 : memref<32x32xi32>
+      %tile_0_0 = amdaie.tile(%c0, %c0)
+      %lof_0_0 = amdaie.logicalobjectfifo.from_memref %assume_align, {%tile_0_0} : memref<32x32xi32> -> !amdaie.logicalobjectfifo<memref<1024xi32>>
+      %channel = amdaie.channel(%tile_0_0, 1, port_type = DMA, direction = MM2S)
+      %channel_3 = amdaie.channel(%tile_0_1, 1, port_type = DMA, direction = S2MM)
+      //      CHECK: %[[SHIM_CONNECTION:.*]] = amdaie.connection
+      // CHECK-SAME:                            memref<1024xi32>
+      %1 = amdaie.connection(%lof_0_1_2 {%channel_3}, %lof_0_0 {%channel}) {connection_type = #amdaie<connection_type Packet>} : (!amdaie.logicalobjectfifo<memref<1024xi32, 1 : i32>, 2>, !amdaie.logicalobjectfifo<memref<1024xi32>>)
+      %tile_0_2 = amdaie.tile(%c0, %c2)
+      %lof_0_2 = amdaie.logicalobjectfifo.from_memref %alloc, {%tile_0_2} : memref<1x1x8x4x8x4xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<1024xi32, 2 : i32>, 2>
+      %channel_4 = amdaie.channel(%tile_0_1, 0, port_type = DMA, direction = MM2S)
+      %channel_5 = amdaie.channel(%tile_0_2, 0, port_type = DMA, direction = S2MM)
+      //      CHECK: %[[NON_SHIM_CONNECTION:.*]] = amdaie.connection
+      %2 = amdaie.connection(%lof_0_2 {%channel_5}, %lof_0_1 {%channel_4}) {connection_type = #amdaie<connection_type Circuit>} : (!amdaie.logicalobjectfifo<memref<1024xi32, 2 : i32>, 2>, !amdaie.logicalobjectfifo<memref<1024xi32, 1 : i32>, 2>)
+      // CHECK: amdaie.controlcode {
+      amdaie.controlcode {
+        //      CHECK: %[[BD_ID:.*]] = amdaie.bd_id
+        //      CHECK: amdaie.npu.dma_cpy_nd async_source %[[SHIM_CONNECTION]]
+        // CHECK-SAME:                       bd_id = %[[BD_ID]]
+        %3 = amdaie.npu.dma_cpy_nd async_source %1(%lof_0_1_2[0, 0] [32, 32] [32, 1], %lof_0_0[0, 0] [32, 32] [32, 1]) : target_type = !amdaie.logicalobjectfifo<memref<1024xi32, 1 : i32>, 2> source_type = !amdaie.logicalobjectfifo<memref<1024xi32>>
+        amdaie.npu.dma_wait(%3 : !amdaie.async_source_token)
+        //  CHECK-NOT: amdaie.bd_id
+        //      CHECK: amdaie.npu.dma_cpy_nd async_source %[[NON_SHIM_CONNECTION]]
+        //  CHECK-NOT:                       bd_id =
+        %4 = amdaie.npu.dma_cpy_nd async_source %2(%lof_0_2[0, 0, 0] [32, 8, 4] [4, 128, 1], %lof_0_1[0, 0] [32, 32] [32, 1]) : target_type = !amdaie.logicalobjectfifo<memref<1024xi32, 2 : i32>, 2> source_type = !amdaie.logicalobjectfifo<memref<1024xi32, 1 : i32>, 2>
+        amdaie.end
+      }
+    }
+    return
+  }
+}
