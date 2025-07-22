@@ -101,8 +101,6 @@ LogicalResult TransactionBuilder::appendDmaStartOp(
   if (std::distance(dmaBdOps.begin(), dmaBdOps.end()) != 1) return failure();
   // Configure DMA BD ops within DMA Start op.
   AMDAIE::DMABDOp dmaBdOp = *dmaBdOps.begin();
-  // WalkResult res = dmaStartOp->walk([&](AMDAIE::DMABDOp dmaBdOp) ->
-  // WalkResult {
   Block *parentBlock = dmaBdOp->getBlock();
   std::optional<int> acqValue, relValue, acqLockId, relLockId;
   for (AMDAIE::UseLockOp useLockOp : parentBlock->getOps<AMDAIE::UseLockOp>()) {
@@ -172,7 +170,8 @@ LogicalResult TransactionBuilder::appendDmaStartOp(
   }
 
   // Configure push to BD queue.
-  // This is currently hardcoded to only shim side for now.
+  // TODO: Generalize it as this is currently hardcoded to only shim side for
+  // now.
   int chNum = dmaStartOp.getChannelIndex();
   auto channelDir = static_cast<DMAChannelDir>(dmaStartOp.getChannelDir());
   bool issueToken = tileLoc.Row == 0 && channelDir == DMAChannelDir::MM2S;
