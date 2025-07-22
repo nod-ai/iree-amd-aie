@@ -278,7 +278,7 @@ void Router::addFlow(TileLoc srcCoords, Port srcPort, TileLoc dstCoords,
   // its group ID.
   // - Flows sharing the same group ID can share channels.
   // - For circuit flows, always assign group ID -1 (no channel sharing).
-  int8_t packetGroupId = [&]() -> int8_t {
+  int32_t packetGroupId = [&]() -> int32_t {
     if (!isPacketFlow) return -1;
     for (auto &[existingId, src, dsts] : impl->flows) {
       if (src.tileLoc == srcCoords && src.port == srcPort) return existingId;
