@@ -272,7 +272,7 @@ std::unique_ptr<OperationPass<ModuleOp>> createAMDAIELoweringStrategyPass(
 std::unique_ptr<Pass> createAMDAIELowerFuncArgsPass();
 
 /// Create pass to lower from the AMDAIE dialect to the AIE/AIEX dialects.
-void addAMDAIEToAIEPasses(OpPassManager &, bool);
+void addAMDAIEToAIEPasses(OpPassManager &pm, bool reprogramDmas);
 std::unique_ptr<Pass> createAMDAIELowerToAIEPass(
     AMDAIELowerToAIEOptions options = {});
 

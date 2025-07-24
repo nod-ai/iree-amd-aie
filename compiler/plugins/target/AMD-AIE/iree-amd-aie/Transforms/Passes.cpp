@@ -798,7 +798,9 @@ void addAMDAIEObjectFifoLoweringPasses(
   {
     AMDAIEAssignLogicalObjectFifoDepthOptions options;
     // TODO(avarma): In case reprogramming Dmas, we currently disable double
-    // buffering. Relax the constraint later.
+    // buffering. Relax the constraint later after modifying
+    // controlcode-lowering and controlcode-to-transaction-binary pass to work
+    // with double buffering.
     if (reprogramDmas) {
       options.l2BufferDepth = 1;
       options.l1BufferDepth = 1;
@@ -811,6 +813,7 @@ void addAMDAIEObjectFifoLoweringPasses(
   passManager.addPass(createCanonicalizerPass());
 
   if (!reprogramDmas) passManager.addPass(createAMDAIEDmaToCircularDmaPass());
+
   {
     AMDAIECreateAIEWorkgroupOptions options;
     options.reprogramDmas = reprogramDmas;
@@ -880,7 +883,11 @@ void addAMDAIEObjectFifoLoweringPasses(
 
   passManager.addPass(createAMDAIENpuDmaToHalfDmaCpyNdPass());
   passManager.addPass(createAMDAIEInsertDmaBdChainPass());
+  // TODO(avarma): Currently with fold dma wait pass, in case of DMA
+  // reprogramming we get ALL zeroes. To be triaged/fixed later in order to
+  // relax this constraint and optimize the wait ops.
   if (!reprogramDmas) passManager.addPass(createAMDAIEFoldDmaWaitsPass());
+
   {
     AMDAIEControlCodeLoweringOptions options;
     options.reprogramDmas = reprogramDmas;
