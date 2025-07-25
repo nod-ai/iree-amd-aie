@@ -16,6 +16,20 @@ npu1_4col_matmul_tests = [
             "--iree-amdaie-num-cols=1",
         ],
     },
+    {
+        "M": 32,
+        "N": 32,
+        "K": 32,
+        "input_type": "i32",
+        "acc_type": "i32",
+        "name_suffix": "reprogram_dma",
+        "additional_labels": ["ReprogramDmas"],
+        "aie_compilation_flags": [
+            "--iree-amdaie-num-rows=1",
+            "--iree-amdaie-num-cols=1",
+            "--iree-amdaie-reprogram-dmas",
+        ],
+    },
     # 2x2 core tests.
     {
         "M": 32,

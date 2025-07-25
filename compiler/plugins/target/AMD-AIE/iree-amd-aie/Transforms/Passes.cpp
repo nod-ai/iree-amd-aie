@@ -107,7 +107,7 @@ static void addAMDAIEBufferizePasses(OpPassManager &pm,
 }
 
 void addAMDAIEToAIEPasses(OpPassManager &passManager,
-                          bool insertLoopAroundCoreBlock) {
+                          bool insertLoopAroundCoreBlock, bool reprogramDmas) {
   // The infinite loop insertion transformation needs to be called before the
   // `AcquireReleaseToUseLock` pass as the latter will perform loop unrolling
   // based on the objFifo depths.
@@ -123,9 +123,7 @@ void addAMDAIEToAIEPasses(OpPassManager &passManager,
   passManager.addPass(createAMDAIEAddNoAliasFunctionArgumentsPass());
   {
     AMDAIELowerToAIEOptions options;
-    // TODO(avarma): In follow-up PRs this will be replaced by a global flag.
-    // Currently setting as `false`.
-    options.reprogramDmas = /*reprogramDmas=*/false;
+    options.reprogramDmas = reprogramDmas;
     passManager.addPass(createAMDAIELowerToAIEPass(options));
   }
   passManager.addPass(createAMDAIERemoveMemorySpacePass());
@@ -672,7 +670,7 @@ void buildAMDAIETransformPassPipeline(
     PacketFlowStrategy packetFlowStrategy, bool enableCoalescingLoops,
     bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
     int callReplication, bool insertLoopAroundCoreBlock, bool enableCtrlPkt,
-    uint32_t coreStackSize) {
+    uint32_t coreStackSize, bool reprogramDmas) {
   OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
   {
     FunctionLikeNest funcPassManager(modulePassManager);
@@ -707,7 +705,8 @@ void buildAMDAIETransformPassPipeline(
         modulePassManager, packetFlowStrategy, useTilePipeline,
         enableVectorizationPasses, enableCoalescingLoops,
         enableCollapsingUnitDims, enableFunctionOutlining, callReplication,
-        insertLoopAroundCoreBlock, numCols, enableCtrlPkt, coreStackSize);
+        insertLoopAroundCoreBlock, numCols, enableCtrlPkt, coreStackSize,
+        reprogramDmas);
   } else if (useLowerToAIEPipeline == LowerToAIEPassPipeline::AIR) {
     addMLIRAIRLoweringPasses(modulePassManager, device, useTilePipeline,
                              matmulElementwiseFusion,
@@ -733,7 +732,7 @@ void addAMDAIEObjectFifoLoweringPasses(
     bool enableCoalescingLoops, bool enableCollapsingUnitDims,
     OutliningStrategy enableFunctionOutlining, int callReplication,
     bool insertLoopAroundCoreBlock, uint32_t numCols, bool enableCtrlPkt,
-    uint32_t coreStackSize) {
+    uint32_t coreStackSize, bool reprogramDmas) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
 
@@ -796,18 +795,28 @@ void addAMDAIEObjectFifoLoweringPasses(
 
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
-  passManager.addPass(createAMDAIEAssignLogicalObjectFifoDepthPass());
+  {
+    AMDAIEAssignLogicalObjectFifoDepthOptions options;
+    // TODO(avarma): In case reprogramming Dmas, we currently disable double
+    // buffering. Relax the constraint later after modifying
+    // controlcode-lowering and controlcode-to-transaction-binary pass to work
+    // with double buffering.
+    if (reprogramDmas) {
+      options.l2BufferDepth = 1;
+      options.l1BufferDepth = 1;
+    }
+    passManager.addPass(createAMDAIEAssignLogicalObjectFifoDepthPass(options));
+  }
 
   passManager.addPass(createAMDAIEAssignTilesPass());
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
 
-  passManager.addPass(createAMDAIEDmaToCircularDmaPass());
+  if (!reprogramDmas) passManager.addPass(createAMDAIEDmaToCircularDmaPass());
+
   {
     AMDAIECreateAIEWorkgroupOptions options;
-    // TODO(avarma): In follow-up PRs this will be replaced by a global flag.
-    // Currently setting as `false`.
-    options.reprogramDmas = /*reprogramDmas=*/false;
+    options.reprogramDmas = reprogramDmas;
     passManager.addNestedPass<func::FuncOp>(
         createAMDAIECreateAIEWorkgroupPass(options));
   }
@@ -874,11 +883,30 @@ void addAMDAIEObjectFifoLoweringPasses(
 
   passManager.addPass(createAMDAIENpuDmaToHalfDmaCpyNdPass());
   passManager.addPass(createAMDAIEInsertDmaBdChainPass());
-  passManager.addPass(createAMDAIEFoldDmaWaitsPass());
-  passManager.addPass(createAMDAIEControlCodeLoweringPass());
+  // TODO(avarma): Currently with fold dma wait pass, in case of DMA
+  // reprogramming we get ALL zeroes. To be triaged/fixed later in order to
+  // relax this constraint and optimize the wait ops.
+  if (!reprogramDmas) passManager.addPass(createAMDAIEFoldDmaWaitsPass());
+
+  {
+    AMDAIEControlCodeLoweringOptions options;
+    options.reprogramDmas = reprogramDmas;
+    passManager.addPass(createAMDAIEControlCodeLoweringPass(options));
+  }
+  if (reprogramDmas) {
+    passManager.addPass(createAMDAIEAssignBDIDsPass());
+    {
+      // For Conv ops use basic sequential scheme to avoid numerical error.
+      // TODO: Find a better working scheme for Conv ops
+      AMDAIEAssignBufferAddressOptions options;
+      if (useTilePipeline == TilePassPipeline::ConvDecomposePipeline)
+        options.allocScheme = AllocScheme::Sequential;
+      passManager.addPass(createAMDAIEAssignBufferAddressPass(options));
+    }
+  }
   passManager.addPass(createAMDAIEControlCodeToTransactionPass());
 
-  addAMDAIEToAIEPasses(passManager, insertLoopAroundCoreBlock);
+  addAMDAIEToAIEPasses(passManager, insertLoopAroundCoreBlock, reprogramDmas);
 
   // Now lower using the AIE passes from MLIR-AIE.
   addMLIRAIELoweringPasses(passManager, useTilePipeline);
