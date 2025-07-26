@@ -52,7 +52,7 @@ LogicalResult convertOp(AMDAIE::NpuWriteBdOp op, TransactionBuilder &builder) {
   if (failed(builder.appendWriteBdOp(
           op.getCol(), op.getRow(), op.getBdId(), op.getBufferLength(),
           op.getBufferOffset(), op.getEnablePacket(), op.getPacketId(),
-          op.getPacketType(), op.getSizes(),
+          op.getPacketType(), op.getOutOfOrderId(), op.getSizes(),
           SmallVector<int32_t>(op.getStrides()), op.getIterationCurrent(),
           op.getIterationSize(), op.getIterationStride(), op.getNextBd(),
           op.getUseNextBd(), op.getValidBd(), op.getLockRelVal(),

@@ -47,21 +47,30 @@ LogicalResult assignBdIds(Operation *deviceOp) {
       deviceModel.getChannelToValidBdIds(AMDAIETileType::SHIMNOC));
   ChannelBdIdGenerator memTileChannelBdIdGenerator(
       deviceModel.getChannelToValidBdIds(AMDAIETileType::MEMTILE));
+  DenseMap<AMDAIE::ChannelOp, ChannelBdIdGenerator> channelOpToBdIdGenerator;
 
   SmallVector<AMDAIE::DMAStartOp> memOps;
   deviceOp->walk(
       [&](AMDAIE::DMAStartOp dmaStartOp) { memOps.push_back(dmaStartOp); });
   for (AMDAIE::DMAStartOp dmaStartOp : memOps) {
-    auto tile = dmaStartOp.getTile().getDefiningOp<AMDAIE::TileOp>();
+    auto channelOp = dmaStartOp.getChannel().getDefiningOp<AMDAIE::ChannelOp>();
+    AMDAIE::TileOp tile = channelOp.getTileOp();
     std::optional<int64_t> col = getConstantIntValue(tile.getCol());
     std::optional<int64_t> row = getConstantIntValue(tile.getRow());
     if (!col || !row) {
       return tile->emitOpError()
              << "expected column and row integer value/constant";
     }
-    ChannelBdIdGenerator gen = deviceModel.isMemTile(*col, *row)
-                                   ? memTileChannelBdIdGenerator
-                                   : shimChannelBdIdGenerator;
+
+    // There could be multiple DMA start ops for the same channel op (when
+    // out-of-order DMA is enabled). So, we need to keep track of the channel
+    // op to channel bd id generator mapping.
+    if (!channelOpToBdIdGenerator.contains(channelOp)) {
+      channelOpToBdIdGenerator[channelOp] = deviceModel.isMemTile(*col, *row)
+                                                ? memTileChannelBdIdGenerator
+                                                : shimChannelBdIdGenerator;
+    }
+    ChannelBdIdGenerator &gen = channelOpToBdIdGenerator[channelOp];
 
     dmaStartOp->walk<WalkOrder::PreOrder>([&](AMDAIE::DMABDOp bd) {
       if (bd.getBdId().has_value()) gen.assignBdId(bd.getBdId().value());
@@ -69,8 +78,8 @@ LogicalResult assignBdIds(Operation *deviceOp) {
 
     DenseMap<Block *, int> blockChannelMap;
     // Associate with each block the channel index specified by the
-    // dma_start
-    int chNum = dmaStartOp.getChannelIndex();
+    // dma_start.
+    int chNum = channelOp.getValue();
     dmaStartOp->walk<WalkOrder::PreOrder>([&](AMDAIE::DMABDOp bd) {
       if (bd.getBdId().has_value()) {
         assert(gen.isBdIdAssigned(bd.getBdId().value()) &&

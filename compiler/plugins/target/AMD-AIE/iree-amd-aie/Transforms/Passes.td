@@ -461,6 +461,11 @@ def AMDAIEInsertDmaBdChain :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEInsertDmaBdChainPass()";
 }
 
+def AMDAIEInsertDmaOutOfOrderBlock :
+    Pass<"iree-amdaie-insert-dma-out-of-order-block"> {
+  let summary = "Generate out-of-order blocks for DMA S2MM channels";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEInsertDmaOutOfOrderBlockPass()";
+}
 
 def AMDAIEInsertInfiniteLoopAroundCoreBlock :
     Pass<"iree-amdaie-insert-infinite-loop-around-core-block", ""> {

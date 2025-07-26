@@ -140,7 +140,8 @@ def AMDAIE_FlowOp: AMDAIE_Op<"flow", [AttrSizedOperandSegments]>,
     ins Variadic<Index>:$sources,
         Variadic<Index>:$targets,
         BoolAttr:$is_packet_flow,
-        OptionalAttr<UI8Attr>:$packet_id
+        OptionalAttr<UI8Attr>:$packet_id,
+        OptionalAttr<BoolAttr>:$keep_pkt_header
   );
 
   let assemblyFormat = [{ `(` `{` $sources `}` `->` `{` $targets `}` `)` attr-dict }];
@@ -1041,7 +1042,7 @@ def AMDAIE_NpuWriteBdOp: AMDAIE_Op<"npu.write_bd"> {
     Example:
 
     ```mlir
-    amdaie.npu.write_bd {bd_id = 0 : ui32, buffer_length = 0 : ui32,
+    amdaie.npu.write_bd (%0) {bd_id = 0 : ui32, buffer_length = 0 : ui32,
       buffer_offset = 0 : ui32, col = 0 : ui32, enable_packet = false,
       iteration_current = 0 : ui32, iteration_size = 0 : ui32,
       iteration_stride = 0 : ui32, lock_acq_enable = false,
@@ -1053,7 +1054,8 @@ def AMDAIE_NpuWriteBdOp: AMDAIE_Op<"npu.write_bd"> {
     ```
   }];
   let arguments = (
-    ins UI32Attr:$col,
+    ins Optional<Index>:$connection,
+        UI32Attr:$col,
         UI32Attr:$row,
         UI32Attr:$bd_id,
         UI32Attr:$buffer_length,
@@ -1078,7 +1080,7 @@ def AMDAIE_NpuWriteBdOp: AMDAIE_Op<"npu.write_bd"> {
         I32Attr:$lock_acq_val,
         UI32Attr:$lock_acq_id
   );
-  let assemblyFormat = [{ attr-dict }];
+  let assemblyFormat = [{ ( `(` $connection^ `)` ) ? attr-dict }];
 }
 
 def AMDAIE_NpuTctSyncOp: AMDAIE_Op<"npu.tct_sync"> {
@@ -1749,16 +1751,32 @@ def AMDAIE_DMAStartOp: AMDAIE_Op<"dma_start", [
 
   let summary = "An op to start DMA";
   let arguments = (
-    ins Index:$tile,
-        DMAChannelDir:$channel_dir,
-        ConfinedAttr<I8Attr, [IntMinValue<0>]>:$channel_index,
+    ins Index:$channel,
+        Variadic<Index>:$connections,
         // `repeat_count==1` means "do it once".
-        DefaultValuedAttr<I8Attr, "1">:$repeat_count
+        DefaultValuedAttr<I8Attr, "1">:$repeat_count,
+        OptionalAttr<BoolAttr>:$en_out_of_order
   );
   let regions = (region AnyRegion:$body);
   let assemblyFormat = [{
-    `(` $tile `,` $channel_dir `,` $channel_index (`,` `repeat_count` `=` $repeat_count^)? `)` regions attr-dict
+    `(`
+    $channel
+    ( `,` `{` $connections^ `}` )?
+    `)`
+    regions attr-dict
   }];
+}
+
+
+def AMDAIE_DmaBdPacketOp: AMDAIE_Op<"dma_bd_packet"> {
+  let summary = "Enable packet headers for a dma block descriptor";
+  let arguments = (
+    ins I32Attr:$packet_type,
+        I32Attr:$packet_id,
+        OptionalAttr<I32Attr>:$out_of_order_bd_id
+  );
+
+  let assemblyFormat = [{ attr-dict }];
 }
 
 def AMDAIE_DMABDOp: AMDAIE_Op<"dma_bd", [

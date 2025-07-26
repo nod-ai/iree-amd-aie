@@ -247,6 +247,13 @@ static LogicalResult checkWhetherSplitIsPossible(
       }
     }
   }
+
+  if (splitDimsForL2.empty()) {
+    LLVM_DEBUG(llvm::dbgs() << "cannot split L2 logicalobjectfifo because of "
+                               "no split dimensions available\n");
+    return failure();
+  }
+
   std::sort(splitDimsForL2.begin(), splitDimsForL2.end());
 
   if (failed(checkIsRangeFromZero(splitDimsForL2))) {
