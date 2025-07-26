@@ -158,6 +158,7 @@ func.func @dma_cpy_nd_mixed(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32
 // CHECK:       %[[CHANNEL_1:.*]] = amdaie.channel(%[[TILE_0_1]], 0, port_type = DMA, direction = S2MM)
 // CHECK:       amdaie.flow({%[[CHANNEL]]} -> {%[[CHANNEL_1]]}) {is_packet_flow = false}
 // CHECK:       amdaie.flow({%[[CHANNEL]]} -> {%[[CHANNEL_1]]}) {is_packet_flow = true, packet_id = 1 : ui8}
+// CHECK:       amdaie.flow({%[[CHANNEL]]} -> {%[[CHANNEL_1]]}) {is_packet_flow = true, keep_pkt_header = true, packet_id = 2 : ui8}
 func.func @flow() {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -167,6 +168,7 @@ func.func @flow() {
   %channel_1 = amdaie.channel(%tile_0_1, 0, port_type = DMA, direction = S2MM)
   %0 = amdaie.flow({%channel} -> {%channel_1}) {is_packet_flow = false}
   %1 = amdaie.flow({%channel} -> {%channel_1}) {is_packet_flow = true, packet_id = 1 : ui8}
+  %2 = amdaie.flow({%channel} -> {%channel_1}) {is_packet_flow = true, keep_pkt_header = true, packet_id = 2 : ui8}
   return
 }
 

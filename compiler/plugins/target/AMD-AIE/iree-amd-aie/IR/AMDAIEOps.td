@@ -132,7 +132,7 @@ def AMDAIE_FlowOp: AMDAIE_Op<"flow", [AttrSizedOperandSegments]>,
     %channel_1 = amdaie.channel(%tile_0_1, 0, port_type = DMA)
     %channel_2 = amdaie.channel(%tile_1_1, 0, port_type = DMA)
     %0 = amdaie.flow({%channel} -> {%channel_1, %channel_2})
-      {is_packet_flow = true, packet_id = 0 : ui8}
+      {is_packet_flow = true, keep_pkt_header = true, packet_id = 0 : ui8}
     ```
   }];
 
@@ -140,7 +140,8 @@ def AMDAIE_FlowOp: AMDAIE_Op<"flow", [AttrSizedOperandSegments]>,
     ins Variadic<Index>:$sources,
         Variadic<Index>:$targets,
         BoolAttr:$is_packet_flow,
-        OptionalAttr<UI8Attr>:$packet_id
+        OptionalAttr<UI8Attr>:$packet_id,
+        OptionalAttr<BoolAttr>:$keep_pkt_header
   );
 
   let assemblyFormat = [{ `(` `{` $sources `}` `->` `{` $targets `}` `)` attr-dict }];
