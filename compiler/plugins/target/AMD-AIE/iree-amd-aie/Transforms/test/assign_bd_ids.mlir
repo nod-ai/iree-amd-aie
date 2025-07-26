@@ -6,7 +6,8 @@
 // CHECK:           %[[IN:.*]] = amdaie.buffer(%[[TILE_2_1]])
 // CHECK:           %[[LOCK_2_1:.*]] = amdaie.lock(%[[TILE_2_1]](1), 0)
 // CHECK:           %[[LOCK_2_1_0:.*]] = amdaie.lock(%[[TILE_2_1]](0), 1)
-// CHECK:           amdaie.dma_start(%[[TILE_2_1]], MM2S, 0) {
+// CHECK:           %[[CHANNEL:.*]] = amdaie.channel(%[[TILE_2_1]], 0, port_type = DMA, direction = MM2S)
+// CHECK:           amdaie.dma_start(%[[CHANNEL]]) {
 // CHECK:             amdaie.use_lock(%[[LOCK_2_1]], AcquireGreaterOrEqual
 // CHECK:             amdaie.dma_bd(%[[IN]] : memref<16xi32>) {bd_id = 0 : i32
 // CHECK:             amdaie.next_bd ^bb1
@@ -34,7 +35,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
     %buf01_0 = amdaie.buffer(%t01) { address = 8192 : i32, sym_name = "in" } : memref<16xi32>
     %l01_0 = amdaie.lock(%t01(1), 0)
     %l01_1 = amdaie.lock(%t01(0), 1)
-    %dstDma = amdaie.dma_start(%t01, MM2S, 0) {
+    %channel = amdaie.channel(%t01, 0, port_type = DMA, direction = MM2S)
+    %dstDma = amdaie.dma_start(%channel) {
         amdaie.use_lock(%l01_0, AcquireGreaterOrEqual(1))
         amdaie.dma_bd(%buf01_0 : memref<16xi32>) {len = 16 : i32, dimensions = #amdaie<bd_dim_layout_array[<size = 2, stride = 1>, <size = 3, stride = 2>, <size = 2, stride = 4>, <size = 1, stride = 1>]>}
         amdaie.next_bd ^bb1

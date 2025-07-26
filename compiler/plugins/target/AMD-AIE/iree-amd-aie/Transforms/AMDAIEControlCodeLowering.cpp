@@ -35,11 +35,11 @@ struct HalfDmaCpyNdToNpuConverter final
   /// is specific to Shim BDs for now.
   FailureOr<AMDAIE::NpuPushToQueueOp> insertWriteBdOps(
       AMDAIE::NpuHalfDmaCpyNdOp op, ConversionPatternRewriter &rewriter,
-      AMDAIE::AMDAIETileType tileType, AMDAIE::BdIdOp bdIdOp,
-      AMDAIE::ChannelOp channelOp, int64_t bufferLength, int64_t bufferOffset,
-      int32_t enablePacket, int32_t packetId, int32_t packetType,
-      SmallVector<OpFoldResult> sizes, SmallVector<OpFoldResult> strides,
-      bool loweringCtrlpktDma) const {
+      AMDAIE::AMDAIETileType tileType, AMDAIE::ConnectionOp connectionOp,
+      AMDAIE::BdIdOp bdIdOp, AMDAIE::ChannelOp channelOp, int64_t bufferLength,
+      int64_t bufferOffset, int32_t enablePacket, int32_t packetId,
+      int32_t packetType, SmallVector<OpFoldResult> sizes,
+      SmallVector<OpFoldResult> strides, bool loweringCtrlpktDma) const {
     FailureOr<uint8_t> maybeNumIntraAddrDim = deviceModel.getDmaProp<uint8_t>(
         tileType, AMDAIE::AMDAIEDmaProp::NumAddrDim);
     if (failed(maybeNumIntraAddrDim)) return failure();
@@ -190,11 +190,11 @@ struct HalfDmaCpyNdToNpuConverter final
     // Offset set to zero for shim as the offset is embedded in the address
     // patch.
     rewriter.create<AMDAIE::NpuWriteBdOp>(
-        op.getLoc(), col, row, bdId, innerBufferLength, 0, staticSizes,
-        staticStrides, paddingsBefore, paddingsAfter, iterationCurrent,
-        iterationSize, iterationStride, enablePacket, packetId, packetType,
-        outOfOrderId, useNextBd, nextBd, validBd, lockAcqEnable, lockRelVal,
-        lockRelId, lockAcqVal, lockAcqId);
+        op.getLoc(), connectionOp, col, row, bdId, innerBufferLength, 0,
+        staticSizes, staticStrides, paddingsBefore, paddingsAfter,
+        iterationCurrent, iterationSize, iterationStride, enablePacket,
+        packetId, packetType, outOfOrderId, useNextBd, nextBd, validBd,
+        lockAcqEnable, lockRelVal, lockRelId, lockAcqVal, lockAcqId);
     rewriter.create<AMDAIE::NpuAddressPatchOp>(op.getLoc(), col, bdId, argIdx,
                                                bufferOffsetInBytes);
     SmallVector<Type> resultTypes = {
@@ -267,10 +267,10 @@ struct HalfDmaCpyNdToNpuConverter final
     SmallVector<OpFoldResult> sizes = op.getMixedSizes();
     SmallVector<OpFoldResult> strides = op.getMixedStrides();
     FailureOr<AMDAIE::NpuPushToQueueOp> npuPushToQueueOp = insertWriteBdOps(
-        op, rewriter, AMDAIE::AMDAIETileType::SHIMNOC, maybeBdIdOp.value(),
-        maybeChannelOp.value(), maybeSize.value(), maybeOffset.value(),
-        enablePacket, packetId, packetType, sizes, strides,
-        *maybeIsControlFlow);
+        op, rewriter, AMDAIE::AMDAIETileType::SHIMNOC,
+        maybeConnectionOp.value(), maybeBdIdOp.value(), maybeChannelOp.value(),
+        maybeSize.value(), maybeOffset.value(), enablePacket, packetId,
+        packetType, sizes, strides, *maybeIsControlFlow);
     if (failed(npuPushToQueueOp)) return failure();
     rewriter.replaceOp(op, *npuPushToQueueOp);
 
@@ -411,9 +411,9 @@ BDDimLayoutAndLength convertSizeStrideToBDDimLayoutArrayAttr(
 ///       amdaie.end
 ///  }
 LogicalResult createDMABlocks(
-    IRRewriter &rewriter, Operation *tileOp, AMDAIE::DMAChannelDir channelDir,
-    int channelIndex, ArrayRef<int64_t> sizes, ArrayRef<int64_t> strides,
-    size_t acqNum, size_t relNum, int64_t offset,
+    IRRewriter &rewriter, AMDAIE::ChannelOp channelOp,
+    AMDAIE::ConnectionOp connectionOp, ArrayRef<int64_t> sizes,
+    ArrayRef<int64_t> strides, size_t acqNum, size_t relNum, int64_t offset,
     const SmallVector<AMDAIE::BufferOp> &bufferOps,
     const std::pair<AMDAIE::LockOp, AMDAIE::LockOp> &locks,
     std::optional<uint8_t> pktId) {
@@ -421,7 +421,7 @@ LogicalResult createDMABlocks(
 
   // Create DMA start on channel.
   auto dmaStartOp = rewriter.create<AMDAIE::DMAStartOp>(
-      rewriter.getUnknownLoc(), tileOp->getResult(0), channelDir, channelIndex,
+      rewriter.getUnknownLoc(), channelOp, ValueRange{connectionOp},
       /*repeatCount=*/1);
   rewriter.setInsertionPointToStart(&dmaStartOp.getRegion().emplaceBlock());
   rewriter.create<AMDAIE::EndOp>(rewriter.getUnknownLoc());
@@ -583,10 +583,10 @@ static LogicalResult processConnectionSourceForDmaStart(
             sourceMemSpace, [&]() { return connectionOp->emitOpError(); }))) {
       return failure();
     };
-    if (failed(createDMABlocks(rewriter, tileOp, AMDAIE::DMAChannelDir::MM2S,
-                               channel.getValue(), canonicalizedSizes,
-                               canonicalizedStrides, acqNum, acqNum,
-                               sourceOffset, buffers, lockPair, packetId))) {
+    if (failed(createDMABlocks(rewriter, channel, connectionOp,
+                               canonicalizedSizes, canonicalizedStrides, acqNum,
+                               acqNum, sourceOffset, buffers, lockPair,
+                               packetId))) {
       return sourceObjFifo.emitOpError() << "could not create DMA operations";
     }
   }
@@ -666,10 +666,10 @@ static LogicalResult processConnectionTargetForDmaStart(
             targetMemSpace, [&]() { return connectionOp->emitOpError(); }))) {
       return failure();
     };
-    if (failed(createDMABlocks(rewriter, tileOp, AMDAIE::DMAChannelDir::S2MM,
-                               channel.getValue(), canonicalizedSizes,
-                               canonicalizedStrides, acqNum, acqNum,
-                               targetOffset, buffers, lockPair, packetId))) {
+    if (failed(createDMABlocks(rewriter, channel, connectionOp,
+                               canonicalizedSizes, canonicalizedStrides, acqNum,
+                               acqNum, targetOffset, buffers, lockPair,
+                               packetId))) {
       return targetObjFifo.emitOpError() << "could not create DMA operations";
     }
   }

@@ -84,8 +84,9 @@ LogicalResult TransactionBuilder::appendLockOp(AMDAIE::LockOp lockOp) {
 
 LogicalResult TransactionBuilder::appendDmaStartOp(
     AMDAIE::DMAStartOp dmaStartOp) {
-  // Configure DMA Locks.
-  auto tile = dmaStartOp.getTile().getDefiningOp<AMDAIE::TileOp>();
+  // Get tile location.
+  auto channelOp = dmaStartOp.getChannel().getDefiningOp<AMDAIE::ChannelOp>();
+  AMDAIE::TileOp tile = channelOp.getTileOp();
   std::optional<int64_t> maybeCol = getConstantIntValue(tile.getCol());
   std::optional<int64_t> maybeRow = getConstantIntValue(tile.getRow());
   if (!maybeCol || !maybeRow) {
@@ -93,6 +94,10 @@ LogicalResult TransactionBuilder::appendDmaStartOp(
            << "expected column and row integer value/constant";
   }
   XAie_LocType tileLoc = XAie_TileLoc(*maybeCol, *maybeRow);
+  // Get channel op.
+  int chNum = channelOp.getValue();
+  auto channelDir = static_cast<DMAChannelDir>(channelOp.getDirection());
+  // Initialize the DMA descriptor.
   FailureOr<XAie_DmaDesc> dmaDesc = initDMADesc(deviceModel, tileLoc);
   if (failed(dmaDesc)) return failure();
 
@@ -172,8 +177,6 @@ LogicalResult TransactionBuilder::appendDmaStartOp(
   // Configure push to BD queue.
   // TODO: Generalize it as this is currently hardcoded to only shim side for
   // now.
-  int chNum = dmaStartOp.getChannelIndex();
-  auto channelDir = static_cast<DMAChannelDir>(dmaStartOp.getChannelDir());
   bool issueToken = tileLoc.Row == 0 && channelDir == DMAChannelDir::MM2S;
   bool setChannelEnable = true;
   if (failed(configurePushToBdQueue(

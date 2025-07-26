@@ -350,8 +350,10 @@ module attributes {hal.executable.target = #executable_target_amdaie_pdi_fb} {
       %buffer = amdaie.buffer(%tile_0_1) {address = 65536 : i32, mem_bank = 1 : ui32, sym_name = "_anonymous1"} : memref<1024xi32, 1 : i32>
       %lock = amdaie.lock(%tile_0_1(2), 1)
       %lock_0 = amdaie.lock(%tile_0_1(3), 0)
+      %channel_1 = amdaie.channel(%tile_0_1, 2, port_type = DMA, direction = S2MM)
+      %channel_2 = amdaie.channel(%tile_0_1, 0, port_type = DMA, direction = MM2S)
       amdaie.controlcode {
-        %0 = amdaie.dma_start(%tile_0_1, S2MM, 2) {
+        %0 = amdaie.dma_start(%channel_1) {
           amdaie.use_lock(%lock, AcquireGreaterOrEqual(1))
           amdaie.dma_bd(%buffer : memref<1024xi32, 1 : i32>) {bd_id = 0 : i32, dimensions = #amdaie<bd_dim_layout_array[<size = 32, stride = 32>, <size = 32, stride = 1>]>, len = 1024 : i32}
           amdaie.use_lock(%lock_0, Release(1))
@@ -359,7 +361,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_pdi_fb} {
         ^bb1:  // pred: ^bb0
           amdaie.end
         }
-        %1 = amdaie.dma_start(%tile_0_1, MM2S, 0) {
+        %1 = amdaie.dma_start(%channel_2) {
           amdaie.use_lock(%lock_0, AcquireGreaterOrEqual(1))
           amdaie.dma_bd(%buffer : memref<1024xi32, 1 : i32>) {bd_id = 0 : i32, dimensions = #amdaie<bd_dim_layout_array[<size = 32, stride = 32>, <size = 32, stride = 1>]>, len = 1024 : i32}
           amdaie.use_lock(%lock, Release(1))

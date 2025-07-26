@@ -52,7 +52,8 @@ LogicalResult assignBdIds(Operation *deviceOp) {
   deviceOp->walk(
       [&](AMDAIE::DMAStartOp dmaStartOp) { memOps.push_back(dmaStartOp); });
   for (AMDAIE::DMAStartOp dmaStartOp : memOps) {
-    auto tile = dmaStartOp.getTile().getDefiningOp<AMDAIE::TileOp>();
+    auto channelOp = dmaStartOp.getChannel().getDefiningOp<AMDAIE::ChannelOp>();
+    AMDAIE::TileOp tile = channelOp.getTileOp();
     std::optional<int64_t> col = getConstantIntValue(tile.getCol());
     std::optional<int64_t> row = getConstantIntValue(tile.getRow());
     if (!col || !row) {
@@ -69,8 +70,8 @@ LogicalResult assignBdIds(Operation *deviceOp) {
 
     DenseMap<Block *, int> blockChannelMap;
     // Associate with each block the channel index specified by the
-    // dma_start
-    int chNum = dmaStartOp.getChannelIndex();
+    // dma_start.
+    int chNum = channelOp.getValue();
     dmaStartOp->walk<WalkOrder::PreOrder>([&](AMDAIE::DMABDOp bd) {
       if (bd.getBdId().has_value()) {
         assert(gen.isBdIdAssigned(bd.getBdId().value()) &&
