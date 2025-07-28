@@ -37,7 +37,8 @@ void AMDAIEConnectionToFlowPass::runOnOperation() {
                                               AMDAIE::ConnectionType::Packet;
     auto flowOp = rewriter.create<AMDAIE::FlowOp>(
         rewriter.getUnknownLoc(), connectionOp.getSourceChannels(),
-        connectionOp.getTargetChannels(), isPacketFlow, /*packetId*/ nullptr);
+        connectionOp.getTargetChannels(), isPacketFlow, /*packetId=*/nullptr,
+        /*keepPktHeader=*/nullptr);
     rewriter.replaceOpWithNewOp<AMDAIE::ConnectionOp>(
         connectionOp, connectionOp.getTarget(),
         connectionOp.getTargetChannels(), connectionOp.getSource(),

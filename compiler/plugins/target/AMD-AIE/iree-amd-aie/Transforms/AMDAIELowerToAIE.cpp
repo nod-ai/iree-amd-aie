@@ -206,7 +206,8 @@ SmallVector<Operation *> AIEDeviceBuilder::createFlowOps(
     if (pktId) {
       OpBuilder::InsertionGuard gg(rewriter);
       AIE::PacketFlowOp pktFlow = rewriter.create<AIE::PacketFlowOp>(
-          rewriter.getUnknownLoc(), pktId.value(), nullptr, nullptr);
+          rewriter.getUnknownLoc(), pktId.value(),
+          flowOp.getKeepPktHeaderAttr(), /*priority_route=*/nullptr);
       Region &r_pktFlow = pktFlow.getPorts();
       Block *b_pktFlow = rewriter.createBlock(&r_pktFlow);
       rewriter.setInsertionPointToStart(b_pktFlow);
