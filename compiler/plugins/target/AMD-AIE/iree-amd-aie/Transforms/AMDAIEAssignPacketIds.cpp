@@ -83,7 +83,7 @@ void AMDAIEAssignPacketIdsPass::runOnOperation() {
     rewriter.setInsertionPoint(flowOp);
     rewriter.replaceOpWithNewOp<AMDAIE::FlowOp>(
         flowOp, flowOp.getSources(), flowOp.getTargets(),
-        flowOp.getIsPacketFlow(), pktIdAttr);
+        flowOp.getIsPacketFlow(), pktIdAttr, /*keepPktHeader=*/nullptr);
     channelToPktFlowIndex[sourceChannelOp]++;
   }
 }
