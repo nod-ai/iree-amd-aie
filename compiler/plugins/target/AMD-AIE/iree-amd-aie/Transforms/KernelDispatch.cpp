@@ -883,7 +883,7 @@ static LogicalResult setRootConfigForReductionCopyPipeline(
 
   SmallVector<int64_t> tileSizeLevel0 = {m0Tile, 0};
   SmallVector<int64_t> tileSizeLevel1 = {m1Tile, 0};
-  SmallVector<int64_t> tileSizeLevel2 = {0, 0};
+  SmallVector<int64_t> tileSizeLevel2 = {0, 16};
   if (failed(setOpConfigAndEntryPointFnTranslation(
           entryPointFn, linalgOp,
           TileSizesListType{tileSizeLevel0, tileSizeLevel1, tileSizeLevel2},

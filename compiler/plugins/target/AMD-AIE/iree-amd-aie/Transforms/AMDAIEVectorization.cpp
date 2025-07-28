@@ -32,6 +32,33 @@ namespace {
 // GenericVectorization will be extended in the future to support more
 // AIE-specific vectorization patterns.
 
+static std::optional<SmallVector<int64_t>> getDynamicVectorShape(
+    Operation *op) {
+  auto vectorOp = dyn_cast<VectorUnrollOpInterface>(op);
+  if (!vectorOp) return std::nullopt;
+  auto shape = vectorOp.getShapeForUnroll();
+  if (!shape) return std::nullopt;
+
+  // For 2D vectors, unroll to 1D
+  if (shape->size() == 2) {
+    // Return {1, shape[1]} to unroll the first dimension
+    return SmallVector<int64_t>{1, (*shape)[1]};
+  }
+
+  // // For 1D vectors, unroll to scalar
+  // if (shape->size() == 1) {
+  //   return SmallVector<int64_t>{1};
+  // }
+  return std::nullopt;
+}
+
+void populateVectorUnrollPatterns(RewritePatternSet &vectorizationPatterns) {
+  vector::UnrollVectorOptions options;
+  // options.setNativeShape(ArrayRef<int64_t>{1, 16});
+  options.setNativeShapeFn(getDynamicVectorShape);
+  vector::populateVectorUnrollPatterns(vectorizationPatterns, options);
+}
+
 class AMDAIEVectorizationPass
     : public impl::AMDAIEVectorizationBase<AMDAIEVectorizationPass> {
  public:
@@ -118,6 +145,15 @@ void AMDAIEVectorizationPass::runOnOperation() {
   vector::populateVectorMultiReductionLoweringPatterns(
       vectorizationPatterns,
       vector::VectorMultiReductionLowering::InnerReduction);
+  //////////////////////////////
+  // vector::TransferReadOp::getCanonicalizationPatterns(vectorizationPatterns,context);
+  // vector::TransferWriteOp::getCanonicalizationPatterns(vectorizationPatterns,context);
+  populateVectorUnrollPatterns(vectorizationPatterns);
+  // vector::TransferReadOp::getCanonicalizationPatterns(vectorizationPatterns,context);
+  // vector::TransferWriteOp::getCanonicalizationPatterns(vectorizationPatterns,context);
+  //////////////////////////////
+  vector::populateVectorTransferLoweringPatterns(vectorizationPatterns, 1);
+
   (void)applyPatternsGreedily(funcOp, std::move(vectorizationPatterns));
 }
 }  // namespace
