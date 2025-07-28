@@ -1037,7 +1037,9 @@ def AMDAIE_NpuWriteBdOp: AMDAIE_Op<"npu.write_bd"> {
   let summary = "Initialize the buffer descriptor with specified ID";
   let description = [{
     This NPU controller operation to initialize the `bd_id` buffer descriptor on
-    the (`col`, `row`) tile with the provided configurations.
+    the (`col`, `row`) tile with the provided configurations. The connection field
+    is required for the out-of-order DMA mode, to pass to the corresponding BD IDs
+    between paired write_bd/dma_start ops.
 
     Example:
 
@@ -1750,6 +1752,12 @@ def AMDAIE_DMAStartOp: AMDAIE_Op<"dma_start", [
   ]>, Results<(outs I1:$valid)> {
 
   let summary = "An op to start DMA";
+  let description = [{
+    This opertion specifies a list of DMA tasks (BDs) to be exectuted on the given channel.
+    The connection field is required for the out-of-order DMA mode, to pass to the corresponding
+    BD IDs between paired write_bd/dma_start ops.
+  }];
+
   let arguments = (
     ins Index:$channel,
         Variadic<Index>:$connections,
