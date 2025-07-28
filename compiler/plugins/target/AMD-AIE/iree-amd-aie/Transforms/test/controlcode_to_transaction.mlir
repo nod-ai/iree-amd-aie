@@ -276,8 +276,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // CHECK:       0x06030100
 // CHECK:       0x00000104
-// CHECK:       0x00000008
-// CHECK:       0x00000100
+// CHECK:       0x00000006
+// CHECK:       0x000000D0
 // CHECK:       0x00200100
 // CHECK:       0x00000000
 // CHECK:       0x001C0020
@@ -308,12 +308,6 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:       0x00000000
 // CHECK:       0x00000000
 // CHECK:       0x00000018
-// CHECK:       0x00100100
-// CHECK:       0x00000000
-// CHECK:       0x001A0610
-// CHECK:       0x00000000
-// CHECK:       0x00000001
-// CHECK:       0x00000018
 // CHECK:       0x00000101
 // CHECK:       0x00000000
 // CHECK:       0x001A0000
@@ -332,14 +326,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:       0x00000000
 // CHECK:       0x00000000
 // CHECK:       0x00000018
-// CHECK:       0x00300100
-// CHECK:       0x00000000
-// CHECK:       0x001A0630
-// CHECK:       0x00000000
-// CHECK:       0x00000001
-// CHECK:       0x00000018
 // CHECK-LABE:  @dma_start
-// CHECK:       npu_instructions = dense_resource<npu_instructions> : tensor<64xui32>
+// CHECK:       npu_instructions = dense_resource<npu_instructions> : tensor<52xui32>
 #executable_target_amdaie_pdi_fb = #hal.executable.target<"amd-aie", "amdaie-pdi-fb", {num_cols = 1 : i32, num_rows = 1 : i32, target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_pdi_fb} {
   func.func @dma_start() {

@@ -177,16 +177,11 @@ LogicalResult configureDMALocks(const AMDAIEDeviceModel &deviceModel,
 
 /// DMAs operate on "task queues" of bds. "Enqueueing" a bd is what actually
 /// instructs/makes the DMA execute the reading/writing represented by the bd.
-/// **Note**, in english (and in iree-amd-aie) repeat_count==0 means "do it
-/// once".
-/// TODO(max): revisit this and change it back to being like how most people
-/// understand.
 LogicalResult configurePushToBdQueue(const AMDAIEDeviceModel &deviceModel,
                                      const TileLoc &tileLoc, uint8_t chNum,
                                      const DMAChannelDir &channelDir,
                                      uint8_t bdId, uint32_t repeatCount,
-                                     bool issueToken,
-                                     bool configureChannelEnable);
+                                     bool issueToken);
 
 LogicalResult configureCustomTxnOp(const AMDAIEDeviceModel &deviceModel,
                                    uint8_t opCode, uint32_t *data,

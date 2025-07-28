@@ -208,13 +208,15 @@ LogicalResult configurePushToBdQueue(const AMDAIEDeviceModel &deviceModel,
                                      const TileLoc &tileLoc, uint8_t chNum,
                                      const DMAChannelDir &channelDir,
                                      uint8_t bdId, uint32_t repeatCount,
-                                     bool enTokenIssue, bool setChannelEnable) {
+                                     bool enTokenIssue) {
   XAie_DmaDirection direction = static_cast<XAie_DmaDirection>(channelDir);
   auto devInst = const_cast<XAie_DevInst *>(&deviceModel.devInst);
   TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelSetStartQueue, devInst, tileLoc,
                               chNum, direction, bdId, repeatCount,
                               enTokenIssue);
-  if (setChannelEnable) {
+  // Channel enable is required only for AIE1. Using it on later generations may
+  // unintentionally overwrite the channel control register.
+  if (deviceModel.configPtr.AieGen == XAIE_DEV_GEN_AIE) {
     TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelEnable, devInst, tileLoc, chNum,
                                 direction);
   }

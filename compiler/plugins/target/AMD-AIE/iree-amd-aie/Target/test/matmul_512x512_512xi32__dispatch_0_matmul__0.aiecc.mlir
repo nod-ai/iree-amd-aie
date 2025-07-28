@@ -1633,11 +1633,8 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 3, row: 5), bdId=4
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 5), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 5), chNum=0, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 5), chNum=1, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 5), chNum=1, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 5), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 5), chNum=0, direction=1
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 2, row: 5)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 3, LockVal: -1), relLock=XAie_Lock(LockId: 2, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=13312, lenInBytes=4096
@@ -1670,11 +1667,8 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 2, row: 5), bdId=4
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 5), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 5), chNum=0, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 5), chNum=1, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 5), chNum=1, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 5), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 5), chNum=0, direction=1
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 1, row: 5)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 3, LockVal: -1), relLock=XAie_Lock(LockId: 2, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=13312, lenInBytes=4096
@@ -1707,11 +1701,8 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 1, row: 5), bdId=4
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 5), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 5), chNum=0, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 5), chNum=1, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 5), chNum=1, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 5), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 5), chNum=0, direction=1
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 0, row: 5)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 3, LockVal: -1), relLock=XAie_Lock(LockId: 2, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=13312, lenInBytes=4096
@@ -1744,11 +1735,8 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 0, row: 5), bdId=4
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 5), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 5), chNum=0, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 5), chNum=1, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 5), chNum=1, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 5), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 5), chNum=0, direction=1
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 3, row: 4)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 3, LockVal: -1), relLock=XAie_Lock(LockId: 2, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=13312, lenInBytes=4096
@@ -1781,11 +1769,8 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 3, row: 4), bdId=4
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 4), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 4), chNum=0, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 4), chNum=1, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 4), chNum=1, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 4), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 4), chNum=0, direction=1
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 2, row: 4)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 3, LockVal: -1), relLock=XAie_Lock(LockId: 2, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=13312, lenInBytes=4096
@@ -1818,11 +1803,8 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 2, row: 4), bdId=4
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 4), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 4), chNum=0, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 4), chNum=1, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 4), chNum=1, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 4), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 4), chNum=0, direction=1
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 1, row: 4)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 3, LockVal: -1), relLock=XAie_Lock(LockId: 2, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=13312, lenInBytes=4096
@@ -1855,11 +1837,8 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 1, row: 4), bdId=4
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 4), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 4), chNum=0, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 4), chNum=1, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 4), chNum=1, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 4), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 4), chNum=0, direction=1
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 0, row: 4)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 3, LockVal: -1), relLock=XAie_Lock(LockId: 2, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=13312, lenInBytes=4096
@@ -1892,11 +1871,8 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 0, row: 4), bdId=4
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 4), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 4), chNum=0, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 4), chNum=1, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 4), chNum=1, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 4), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 4), chNum=0, direction=1
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 3, row: 3)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 3, LockVal: -1), relLock=XAie_Lock(LockId: 2, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=13312, lenInBytes=4096
@@ -1929,11 +1905,8 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 3, row: 3), bdId=4
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 3), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 3), chNum=0, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 3), chNum=1, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 3), chNum=1, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 3), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 3), chNum=0, direction=1
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 2, row: 3)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 3, LockVal: -1), relLock=XAie_Lock(LockId: 2, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=13312, lenInBytes=4096
@@ -1966,11 +1939,8 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 2, row: 3), bdId=4
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 3), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 3), chNum=0, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 3), chNum=1, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 3), chNum=1, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 3), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 3), chNum=0, direction=1
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 1, row: 3)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 3, LockVal: -1), relLock=XAie_Lock(LockId: 2, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=13312, lenInBytes=4096
@@ -2003,11 +1973,8 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 1, row: 3), bdId=4
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 3), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 3), chNum=0, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 3), chNum=1, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 3), chNum=1, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 3), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 3), chNum=0, direction=1
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 0, row: 3)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 3, LockVal: -1), relLock=XAie_Lock(LockId: 2, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=13312, lenInBytes=4096
@@ -2040,11 +2007,8 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 0, row: 3), bdId=4
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 3), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 3), chNum=0, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 3), chNum=1, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 3), chNum=1, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 3), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 3), chNum=0, direction=1
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 3, row: 2)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 3, LockVal: -1), relLock=XAie_Lock(LockId: 2, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=13312, lenInBytes=4096
@@ -2077,11 +2041,8 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 3, row: 2), bdId=4
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 2), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 2), chNum=0, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 2), chNum=1, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 2), chNum=1, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 2), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 2), chNum=0, direction=1
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 2, row: 2)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 3, LockVal: -1), relLock=XAie_Lock(LockId: 2, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=13312, lenInBytes=4096
@@ -2114,11 +2075,8 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 2, row: 2), bdId=4
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 2), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 2), chNum=0, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 2), chNum=1, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 2), chNum=1, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 2), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 2), chNum=0, direction=1
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 1, row: 2)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 3, LockVal: -1), relLock=XAie_Lock(LockId: 2, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=13312, lenInBytes=4096
@@ -2151,11 +2109,8 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 1, row: 2), bdId=4
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 2), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 2), chNum=0, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 2), chNum=1, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 2), chNum=1, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 2), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 2), chNum=0, direction=1
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 0, row: 2)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 3, LockVal: -1), relLock=XAie_Lock(LockId: 2, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=13312, lenInBytes=4096
@@ -2188,11 +2143,8 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 0, row: 2), bdId=4
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 2), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 2), chNum=0, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 2), chNum=1, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 2), chNum=1, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 2), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 2), chNum=0, direction=1
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 0, row: 1)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 65, LockVal: -1), relLock=XAie_Lock(LockId: 64, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=524288, lenInBytes=32768
@@ -2280,23 +2232,14 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 0, row: 1), bdId=6
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=0, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=1, direction=0, bdId=24, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=1, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=2, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=2, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=3, direction=0, bdId=26, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=3, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=4, direction=0, bdId=3, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=4, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=5, direction=0, bdId=27, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=5, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=0, direction=1
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=1, direction=1, bdId=28, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=1, direction=1
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=2, direction=1, bdId=5, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=2, direction=1
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 1, row: 1)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 65, LockVal: -1), relLock=XAie_Lock(LockId: 64, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=524288, lenInBytes=32768
@@ -2384,23 +2327,14 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 1, row: 1), bdId=6
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=0, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=1, direction=0, bdId=24, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=1, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=2, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=2, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=3, direction=0, bdId=26, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=3, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=4, direction=0, bdId=3, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=4, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=5, direction=0, bdId=27, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=5, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=0, direction=1
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=1, direction=1, bdId=28, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=1, direction=1
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=2, direction=1, bdId=5, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=2, direction=1
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 2, row: 1)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 65, LockVal: -1), relLock=XAie_Lock(LockId: 64, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=524288, lenInBytes=32768
@@ -2488,23 +2422,14 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 2, row: 1), bdId=6
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=0, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=1, direction=0, bdId=24, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=1, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=2, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=2, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=3, direction=0, bdId=26, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=3, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=4, direction=0, bdId=3, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=4, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=5, direction=0, bdId=27, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=5, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=0, direction=1
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=1, direction=1, bdId=28, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=1, direction=1
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=2, direction=1, bdId=5, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=2, direction=1
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 3, row: 1)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 65, LockVal: -1), relLock=XAie_Lock(LockId: 64, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=524288, lenInBytes=32768
@@ -2592,23 +2517,14 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 3, row: 1), bdId=6
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=0, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=1, direction=0, bdId=24, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=1, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=2, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=2, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=3, direction=0, bdId=26, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=3, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=4, direction=0, bdId=3, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=4, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=5, direction=0, bdId=27, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=5, direction=0
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=0, direction=1
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=1, direction=1, bdId=28, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=1, direction=1
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=2, direction=1, bdId=5, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=2, direction=1
 // CHECK: XAIE API: XAie_StrmConnCctEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 0), CTRL=StrmSwPortType::CTRL, slvPortNum=0, SOUTH=StrmSwPortType::SOUTH, mstrPortNum=0
 // CHECK: XAIE API: XAie_StrmConnCctEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 0), strmTtoStrmT(connect.src.bundle)=StrmSwPortType::SOUTH, connect.src.channel=3, strmTtoStrmT(connect.dst.bundle)=StrmSwPortType::NORTH, connect.dst.channel=0
 // CHECK: XAIE API: XAie_StrmConnCctEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 0), strmTtoStrmT(connect.src.bundle)=StrmSwPortType::SOUTH, connect.src.channel=7, strmTtoStrmT(connect.dst.bundle)=StrmSwPortType::EAST, connect.dst.channel=0
@@ -2983,11 +2899,8 @@ aie.device(npu1_4col) {
 // CHECK: cdo-driver:     Address: 0x000000000651D094  Data is: 0x26043FE0
 
 // CHECK: cdo-driver: (Write64): Address:  0x000000000651DE04 Data:  0x00000000
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000651DE00  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000651DE0C Data:  0x00000002
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000651DE08  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000651DE14 Data:  0x00000004
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000651DE10  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000451D000  Size: 6
 // CHECK: cdo-driver:     Address: 0x000000000451D000  Data is: 0x03400400
 // CHECK: cdo-driver:     Address: 0x000000000451D004  Data is: 0x00000000
@@ -3033,11 +2946,8 @@ aie.device(npu1_4col) {
 // CHECK: cdo-driver:     Address: 0x000000000451D094  Data is: 0x26043FE0
 
 // CHECK: cdo-driver: (Write64): Address:  0x000000000451DE04 Data:  0x00000000
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000451DE00  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000451DE0C Data:  0x00000002
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000451DE08  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000451DE14 Data:  0x00000004
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000451DE10  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000251D000  Size: 6
 // CHECK: cdo-driver:     Address: 0x000000000251D000  Data is: 0x03400400
 // CHECK: cdo-driver:     Address: 0x000000000251D004  Data is: 0x00000000
@@ -3083,11 +2993,8 @@ aie.device(npu1_4col) {
 // CHECK: cdo-driver:     Address: 0x000000000251D094  Data is: 0x26043FE0
 
 // CHECK: cdo-driver: (Write64): Address:  0x000000000251DE04 Data:  0x00000000
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000251DE00  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000251DE0C Data:  0x00000002
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000251DE08  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000251DE14 Data:  0x00000004
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000251DE10  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000051D000  Size: 6
 // CHECK: cdo-driver:     Address: 0x000000000051D000  Data is: 0x03400400
 // CHECK: cdo-driver:     Address: 0x000000000051D004  Data is: 0x00000000
@@ -3133,11 +3040,8 @@ aie.device(npu1_4col) {
 // CHECK: cdo-driver:     Address: 0x000000000051D094  Data is: 0x26043FE0
 
 // CHECK: cdo-driver: (Write64): Address:  0x000000000051DE04 Data:  0x00000000
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000051DE00  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000051DE0C Data:  0x00000002
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000051DE08  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000051DE14 Data:  0x00000004
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000051DE10  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000641D000  Size: 6
 // CHECK: cdo-driver:     Address: 0x000000000641D000  Data is: 0x03400400
 // CHECK: cdo-driver:     Address: 0x000000000641D004  Data is: 0x00000000
@@ -3183,11 +3087,8 @@ aie.device(npu1_4col) {
 // CHECK: cdo-driver:     Address: 0x000000000641D094  Data is: 0x26043FE0
 
 // CHECK: cdo-driver: (Write64): Address:  0x000000000641DE04 Data:  0x00000000
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000641DE00  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000641DE0C Data:  0x00000002
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000641DE08  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000641DE14 Data:  0x00000004
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000641DE10  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000441D000  Size: 6
 // CHECK: cdo-driver:     Address: 0x000000000441D000  Data is: 0x03400400
 // CHECK: cdo-driver:     Address: 0x000000000441D004  Data is: 0x00000000
@@ -3233,11 +3134,8 @@ aie.device(npu1_4col) {
 // CHECK: cdo-driver:     Address: 0x000000000441D094  Data is: 0x26043FE0
 
 // CHECK: cdo-driver: (Write64): Address:  0x000000000441DE04 Data:  0x00000000
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000441DE00  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000441DE0C Data:  0x00000002
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000441DE08  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000441DE14 Data:  0x00000004
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000441DE10  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000241D000  Size: 6
 // CHECK: cdo-driver:     Address: 0x000000000241D000  Data is: 0x03400400
 // CHECK: cdo-driver:     Address: 0x000000000241D004  Data is: 0x00000000
@@ -3283,11 +3181,8 @@ aie.device(npu1_4col) {
 // CHECK: cdo-driver:     Address: 0x000000000241D094  Data is: 0x26043FE0
 
 // CHECK: cdo-driver: (Write64): Address:  0x000000000241DE04 Data:  0x00000000
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000241DE00  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000241DE0C Data:  0x00000002
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000241DE08  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000241DE14 Data:  0x00000004
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000241DE10  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000041D000  Size: 6
 // CHECK: cdo-driver:     Address: 0x000000000041D000  Data is: 0x03400400
 // CHECK: cdo-driver:     Address: 0x000000000041D004  Data is: 0x00000000
@@ -3333,11 +3228,8 @@ aie.device(npu1_4col) {
 // CHECK: cdo-driver:     Address: 0x000000000041D094  Data is: 0x26043FE0
 
 // CHECK: cdo-driver: (Write64): Address:  0x000000000041DE04 Data:  0x00000000
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000041DE00  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000041DE0C Data:  0x00000002
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000041DE08  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000041DE14 Data:  0x00000004
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000041DE10  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000631D000  Size: 6
 // CHECK: cdo-driver:     Address: 0x000000000631D000  Data is: 0x03400400
 // CHECK: cdo-driver:     Address: 0x000000000631D004  Data is: 0x00000000
@@ -3383,11 +3275,8 @@ aie.device(npu1_4col) {
 // CHECK: cdo-driver:     Address: 0x000000000631D094  Data is: 0x26043FE0
 
 // CHECK: cdo-driver: (Write64): Address:  0x000000000631DE04 Data:  0x00000000
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000631DE00  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000631DE0C Data:  0x00000002
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000631DE08  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000631DE14 Data:  0x00000004
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000631DE10  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000431D000  Size: 6
 // CHECK: cdo-driver:     Address: 0x000000000431D000  Data is: 0x03400400
 // CHECK: cdo-driver:     Address: 0x000000000431D004  Data is: 0x00000000
@@ -3433,11 +3322,8 @@ aie.device(npu1_4col) {
 // CHECK: cdo-driver:     Address: 0x000000000431D094  Data is: 0x26043FE0
 
 // CHECK: cdo-driver: (Write64): Address:  0x000000000431DE04 Data:  0x00000000
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000431DE00  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000431DE0C Data:  0x00000002
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000431DE08  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000431DE14 Data:  0x00000004
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000431DE10  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000231D000  Size: 6
 // CHECK: cdo-driver:     Address: 0x000000000231D000  Data is: 0x03400400
 // CHECK: cdo-driver:     Address: 0x000000000231D004  Data is: 0x00000000
@@ -3483,11 +3369,8 @@ aie.device(npu1_4col) {
 // CHECK: cdo-driver:     Address: 0x000000000231D094  Data is: 0x26043FE0
 
 // CHECK: cdo-driver: (Write64): Address:  0x000000000231DE04 Data:  0x00000000
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000231DE00  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000231DE0C Data:  0x00000002
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000231DE08  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000231DE14 Data:  0x00000004
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000231DE10  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000031D000  Size: 6
 // CHECK: cdo-driver:     Address: 0x000000000031D000  Data is: 0x03400400
 // CHECK: cdo-driver:     Address: 0x000000000031D004  Data is: 0x00000000
@@ -3533,11 +3416,8 @@ aie.device(npu1_4col) {
 // CHECK: cdo-driver:     Address: 0x000000000031D094  Data is: 0x26043FE0
 
 // CHECK: cdo-driver: (Write64): Address:  0x000000000031DE04 Data:  0x00000000
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000031DE00  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000031DE0C Data:  0x00000002
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000031DE08  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000031DE14 Data:  0x00000004
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000031DE10  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000621D000  Size: 6
 // CHECK: cdo-driver:     Address: 0x000000000621D000  Data is: 0x03400400
 // CHECK: cdo-driver:     Address: 0x000000000621D004  Data is: 0x00000000
@@ -3583,11 +3463,8 @@ aie.device(npu1_4col) {
 // CHECK: cdo-driver:     Address: 0x000000000621D094  Data is: 0x26043FE0
 
 // CHECK: cdo-driver: (Write64): Address:  0x000000000621DE04 Data:  0x00000000
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000621DE00  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000621DE0C Data:  0x00000002
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000621DE08  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000621DE14 Data:  0x00000004
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000621DE10  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000421D000  Size: 6
 // CHECK: cdo-driver:     Address: 0x000000000421D000  Data is: 0x03400400
 // CHECK: cdo-driver:     Address: 0x000000000421D004  Data is: 0x00000000
@@ -3633,11 +3510,8 @@ aie.device(npu1_4col) {
 // CHECK: cdo-driver:     Address: 0x000000000421D094  Data is: 0x26043FE0
 
 // CHECK: cdo-driver: (Write64): Address:  0x000000000421DE04 Data:  0x00000000
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000421DE00  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000421DE0C Data:  0x00000002
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000421DE08  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000421DE14 Data:  0x00000004
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000421DE10  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000221D000  Size: 6
 // CHECK: cdo-driver:     Address: 0x000000000221D000  Data is: 0x03400400
 // CHECK: cdo-driver:     Address: 0x000000000221D004  Data is: 0x00000000
@@ -3683,11 +3557,8 @@ aie.device(npu1_4col) {
 // CHECK: cdo-driver:     Address: 0x000000000221D094  Data is: 0x26043FE0
 
 // CHECK: cdo-driver: (Write64): Address:  0x000000000221DE04 Data:  0x00000000
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000221DE00  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000221DE0C Data:  0x00000002
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000221DE08  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000221DE14 Data:  0x00000004
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000221DE10  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000021D000  Size: 6
 // CHECK: cdo-driver:     Address: 0x000000000021D000  Data is: 0x03400400
 // CHECK: cdo-driver:     Address: 0x000000000021D004  Data is: 0x00000000
@@ -3733,11 +3604,8 @@ aie.device(npu1_4col) {
 // CHECK: cdo-driver:     Address: 0x000000000021D094  Data is: 0x26043FE0
 
 // CHECK: cdo-driver: (Write64): Address:  0x000000000021DE04 Data:  0x00000000
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000021DE00  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000021DE0C Data:  0x00000002
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000021DE08  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000021DE14 Data:  0x00000004
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x000000000021DE10  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x00000000001A0000  Size: 8
 // CHECK: cdo-driver:     Address: 0x00000000001A0000  Data is: 0x00002000
 // CHECK: cdo-driver:     Address: 0x00000000001A0004  Data is: 0x001A0000
@@ -3881,23 +3749,14 @@ aie.device(npu1_4col) {
 // CHECK: cdo-driver:     Address: 0x00000000001A00DC  Data is: 0x8147FF46
 
 // CHECK: cdo-driver: (Write64): Address:  0x00000000001A0604 Data:  0x00000000
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000001A0600  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x00000000001A060C Data:  0x00000018
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000001A0608  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x00000000001A0614 Data:  0x00000002
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000001A0610  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x00000000001A061C Data:  0x0000001A
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000001A0618  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x00000000001A0624 Data:  0x00000003
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000001A0620  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x00000000001A062C Data:  0x0000001B
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000001A0628  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x00000000001A0634 Data:  0x00000004
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000001A0630  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x00000000001A063C Data:  0x0000001C
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000001A0638  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x00000000001A0644 Data:  0x00000005
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000001A0640  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x00000000021A0000  Size: 8
 // CHECK: cdo-driver:     Address: 0x00000000021A0000  Data is: 0x00002000
 // CHECK: cdo-driver:     Address: 0x00000000021A0004  Data is: 0x001A0000
@@ -4041,23 +3900,14 @@ aie.device(npu1_4col) {
 // CHECK: cdo-driver:     Address: 0x00000000021A00DC  Data is: 0x8147FF46
 
 // CHECK: cdo-driver: (Write64): Address:  0x00000000021A0604 Data:  0x00000000
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000021A0600  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x00000000021A060C Data:  0x00000018
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000021A0608  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x00000000021A0614 Data:  0x00000002
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000021A0610  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x00000000021A061C Data:  0x0000001A
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000021A0618  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x00000000021A0624 Data:  0x00000003
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000021A0620  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x00000000021A062C Data:  0x0000001B
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000021A0628  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x00000000021A0634 Data:  0x00000004
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000021A0630  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x00000000021A063C Data:  0x0000001C
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000021A0638  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x00000000021A0644 Data:  0x00000005
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000021A0640  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x00000000041A0000  Size: 8
 // CHECK: cdo-driver:     Address: 0x00000000041A0000  Data is: 0x00002000
 // CHECK: cdo-driver:     Address: 0x00000000041A0004  Data is: 0x001A0000
@@ -4201,23 +4051,14 @@ aie.device(npu1_4col) {
 // CHECK: cdo-driver:     Address: 0x00000000041A00DC  Data is: 0x8147FF46
 
 // CHECK: cdo-driver: (Write64): Address:  0x00000000041A0604 Data:  0x00000000
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000041A0600  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x00000000041A060C Data:  0x00000018
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000041A0608  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x00000000041A0614 Data:  0x00000002
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000041A0610  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x00000000041A061C Data:  0x0000001A
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000041A0618  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x00000000041A0624 Data:  0x00000003
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000041A0620  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x00000000041A062C Data:  0x0000001B
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000041A0628  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x00000000041A0634 Data:  0x00000004
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000041A0630  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x00000000041A063C Data:  0x0000001C
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000041A0638  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x00000000041A0644 Data:  0x00000005
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000041A0640  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x00000000061A0000  Size: 8
 // CHECK: cdo-driver:     Address: 0x00000000061A0000  Data is: 0x00002000
 // CHECK: cdo-driver:     Address: 0x00000000061A0004  Data is: 0x001A0000
@@ -4361,23 +4202,14 @@ aie.device(npu1_4col) {
 // CHECK: cdo-driver:     Address: 0x00000000061A00DC  Data is: 0x8147FF46
 
 // CHECK: cdo-driver: (Write64): Address:  0x00000000061A0604 Data:  0x00000000
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000061A0600  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x00000000061A060C Data:  0x00000018
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000061A0608  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x00000000061A0614 Data:  0x00000002
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000061A0610  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x00000000061A061C Data:  0x0000001A
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000061A0618  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x00000000061A0624 Data:  0x00000003
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000061A0620  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x00000000061A062C Data:  0x0000001B
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000061A0628  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x00000000061A0634 Data:  0x00000004
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000061A0630  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x00000000061A063C Data:  0x0000001C
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000061A0638  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x00000000061A0644 Data:  0x00000005
-// CHECK: cdo-driver: (MaskWrite64): Address: 0x00000000061A0640  Mask: 0x00000000  Data: 0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000003F008 Data:  0x80000000
 // CHECK: cdo-driver: (Write64): Address:  0x000000000003F100 Data:  0x80000000
 // CHECK: cdo-driver: (Write64): Address:  0x000000000003F030 Data:  0x80000005

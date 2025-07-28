@@ -298,10 +298,9 @@ LogicalResult addInitConfig(const AMDAIEDeviceModel &deviceModel,
         int chNum = op.getChannelIndex();
         auto channelDir = static_cast<DMAChannelDir>(op.getChannelDir());
         bool issueToken = tileLoc.row == 0 && channelDir == DMAChannelDir::MM2S;
-        bool setChannelEnable = true;
-        if (failed(configurePushToBdQueue(
-                deviceModel, tileLoc, chNum, channelDir, bd.getBdId().value(),
-                op.getRepeatCount(), issueToken, setChannelEnable)))
+        if (failed(configurePushToBdQueue(deviceModel, tileLoc, chNum,
+                                          channelDir, bd.getBdId().value(),
+                                          op.getRepeatCount(), issueToken)))
           return failure();
       }
     }
