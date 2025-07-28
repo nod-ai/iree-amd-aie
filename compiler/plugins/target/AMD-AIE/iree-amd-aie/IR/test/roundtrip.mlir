@@ -468,9 +468,11 @@ func.func @npu_push_to_queue() {
 // -----
 
 // CHECK-LABEL: func.func @npu_write_bd
-// CHECK:       amdaie.npu.write_bd {bd_id = 2 : ui32, buffer_length = 1024 : ui32, buffer_offset = 32 : ui32, col = 1 : ui32, enable_packet = true, iteration_current = 0 : ui32, iteration_size = 0 : ui32, iteration_stride = 0 : ui32, lock_acq_enable = false, lock_acq_id = 0 : ui32, lock_acq_val = 0 : i32, lock_rel_id = 0 : ui32, lock_rel_val = 0 : i32, next_bd = 0 : ui32, out_of_order_id = 0 : ui32, packet_id = 1 : ui32, packet_type = 0 : ui32, paddings_after = array<i32>, paddings_before = array<i32>, row = 0 : ui32, sizes = array<i32: 4, 16, 16>, strides = array<i32: 64, 8, 1>, use_next_bd = false, valid_bd = true}
-func.func @npu_write_bd() {
-  amdaie.npu.write_bd {bd_id = 2 : ui32, buffer_length = 1024 : ui32, buffer_offset = 32 : ui32, col = 1 : ui32, enable_packet = true, iteration_current = 0 : ui32, iteration_size = 0 : ui32, iteration_stride = 0 : ui32, lock_acq_enable = false, lock_acq_id = 0 : ui32, lock_acq_val = 0 : i32, lock_rel_id = 0 : ui32, lock_rel_val = 0 : i32, next_bd = 0 : ui32, out_of_order_id = 0 : ui32, packet_id = 1 : ui32, packet_type = 0 : ui32, paddings_after = array<i32>, paddings_before = array<i32>, row = 0 : ui32, sizes = array<i32: 4, 16, 16>, strides = array<i32: 64, 8, 1>, use_next_bd = false, valid_bd = true}
+// CHECK:         %[[CONNECTION_0:.+]] = amdaie.connection
+// CHECK:         amdaie.npu.write_bd(%[[CONNECTION_0]]) {bd_id = 2 : ui32, buffer_length = 1024 : ui32, buffer_offset = 32 : ui32, col = 1 : ui32, enable_packet = true, iteration_current = 0 : ui32, iteration_size = 0 : ui32, iteration_stride = 0 : ui32, lock_acq_enable = false, lock_acq_id = 0 : ui32, lock_acq_val = 0 : i32, lock_rel_id = 0 : ui32, lock_rel_val = 0 : i32, next_bd = 0 : ui32, out_of_order_id = 0 : ui32, packet_id = 1 : ui32, packet_type = 0 : ui32, paddings_after = array<i32>, paddings_before = array<i32>, row = 0 : ui32, sizes = array<i32: 4, 16, 16>, strides = array<i32: 64, 8, 1>, use_next_bd = false, valid_bd = true}
+func.func @npu_write_bd(%arg0: !amdaie.logicalobjectfifo<memref<32xi32>>, %arg1: !amdaie.logicalobjectfifo<memref<32xi32, 1 : i32>>) {
+  %0 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<32xi32>>, !amdaie.logicalobjectfifo<memref<32xi32, 1 : i32>>)
+  amdaie.npu.write_bd(%0) {bd_id = 2 : ui32, buffer_length = 1024 : ui32, buffer_offset = 32 : ui32, col = 1 : ui32, enable_packet = true, iteration_current = 0 : ui32, iteration_size = 0 : ui32, iteration_stride = 0 : ui32, lock_acq_enable = false, lock_acq_id = 0 : ui32, lock_acq_val = 0 : i32, lock_rel_id = 0 : ui32, lock_rel_val = 0 : i32, next_bd = 0 : ui32, out_of_order_id = 0 : ui32, packet_id = 1 : ui32, packet_type = 0 : ui32, paddings_after = array<i32>, paddings_before = array<i32>, row = 0 : ui32, sizes = array<i32: 4, 16, 16>, strides = array<i32: 64, 8, 1>, use_next_bd = false, valid_bd = true}
   return
 }
 
@@ -678,7 +680,9 @@ func.func @from_memref_unknown_row_column(%arg0 : memref<8xi32>, %t0 : index) {
 //       CHECK: %[[LOCK_0:.*]] = amdaie.lock
 //       CHECK: %[[LOCK_1:.*]] = amdaie.lock
 //       CHECK: %[[BUFFER:.*]] = amdaie.buffer
-//       CHECK: amdaie.dma_start(%[[TILE]], S2MM, 1) {
+//       CHECK: %[[CHANNEL:.*]] = amdaie.channel
+//       CHECK: %[[CONNECTION:.*]] = amdaie.connection
+//       CHECK: amdaie.dma_start(%[[CHANNEL]], {%[[CONNECTION]]}) {
 //       CHECK:   amdaie.use_lock(%[[LOCK_0]], AcquireGreaterOrEqual(1))
 //       CHECK:   amdaie.dma_bd(%[[BUFFER]] : memref<1024xi32, 2 : i32>)
 //  CHECK-SAME:     {dimensions = #amdaie<bd_dim_layout_array[<size = 32, stride = 8>, <size = 4, stride = 256>, <size = 8, stride = 1>]>, len = 1024 : i32}
@@ -687,14 +691,16 @@ func.func @from_memref_unknown_row_column(%arg0 : memref<8xi32>, %t0 : index) {
 //       CHECK:  ^bb1:
 //       CHECK:   amdaie.end
 //       CHECK: }
-func.func @dma_start_block_ops() {
+func.func @dma_start_block_ops(%arg0: !amdaie.logicalobjectfifo<memref<1024xi32, 1 : i32>>, %arg1: !amdaie.logicalobjectfifo<memref<1024xi32, 2 : i32>>) {
   %c0 = arith.constant 0 : index
   %c2 = arith.constant 2 : index
   %tile_0_2 = amdaie.tile(%c0, %c2)
   %lock = amdaie.lock(%tile_0_2(0), 1)
   %lock_0 = amdaie.lock(%tile_0_2(1), 0)
   %buffer = amdaie.buffer(%tile_0_2) : memref<1024xi32, 2 : i32>
-  %0 = amdaie.dma_start(%tile_0_2, S2MM, 1) {
+  %channel = amdaie.channel(%tile_0_2, 0, port_type = DMA, direction = MM2S)
+  %connection = amdaie.connection(%arg0, %arg1 {%channel}) : (!amdaie.logicalobjectfifo<memref<1024xi32, 1 : i32>>, !amdaie.logicalobjectfifo<memref<1024xi32, 2 : i32>>)
+  amdaie.dma_start(%channel, {%connection}) {
     amdaie.use_lock(%lock, AcquireGreaterOrEqual(1))
     amdaie.dma_bd(%buffer : memref<1024xi32, 2 : i32>) {dimensions = #amdaie<bd_dim_layout_array[<size = 32, stride = 8>, <size = 4, stride = 256>, <size = 8, stride = 1>]>, len = 1024 : i32}
     amdaie.use_lock(%lock_0, Release(1))

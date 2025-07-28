@@ -1037,12 +1037,14 @@ def AMDAIE_NpuWriteBdOp: AMDAIE_Op<"npu.write_bd"> {
   let summary = "Initialize the buffer descriptor with specified ID";
   let description = [{
     This NPU controller operation to initialize the `bd_id` buffer descriptor on
-    the (`col`, `row`) tile with the provided configurations.
+    the (`col`, `row`) tile with the provided configurations. The connection field
+    is required for the out-of-order DMA mode, to pass to the corresponding BD IDs
+    between paired write_bd/dma_start ops.
 
     Example:
 
     ```mlir
-    amdaie.npu.write_bd {bd_id = 0 : ui32, buffer_length = 0 : ui32,
+    amdaie.npu.write_bd(%0) {bd_id = 0 : ui32, buffer_length = 0 : ui32,
       buffer_offset = 0 : ui32, col = 0 : ui32, enable_packet = false,
       iteration_current = 0 : ui32, iteration_size = 0 : ui32,
       iteration_stride = 0 : ui32, lock_acq_enable = false,
@@ -1054,7 +1056,8 @@ def AMDAIE_NpuWriteBdOp: AMDAIE_Op<"npu.write_bd"> {
     ```
   }];
   let arguments = (
-    ins UI32Attr:$col,
+    ins Optional<Index>:$connection,
+        UI32Attr:$col,
         UI32Attr:$row,
         UI32Attr:$bd_id,
         UI32Attr:$buffer_length,
@@ -1079,7 +1082,7 @@ def AMDAIE_NpuWriteBdOp: AMDAIE_Op<"npu.write_bd"> {
         I32Attr:$lock_acq_val,
         UI32Attr:$lock_acq_id
   );
-  let assemblyFormat = [{ attr-dict }];
+  let assemblyFormat = [{ ( `(` $connection^ `)` ) ? attr-dict }];
 }
 
 def AMDAIE_NpuTctSyncOp: AMDAIE_Op<"npu.tct_sync"> {
@@ -1749,16 +1752,25 @@ def AMDAIE_DMAStartOp: AMDAIE_Op<"dma_start", [
   ]>, Results<(outs I1:$valid)> {
 
   let summary = "An op to start DMA";
+  let description = [{
+    This opertion specifies a list of DMA tasks (BDs) to be exectuted on the given channel.
+    The connection field is required for the out-of-order DMA mode, to pass to the corresponding
+    BD IDs between paired write_bd/dma_start ops.
+  }];
+
   let arguments = (
-    ins Index:$tile,
-        DMAChannelDir:$channel_dir,
-        ConfinedAttr<I8Attr, [IntMinValue<0>]>:$channel_index,
+    ins Index:$channel,
+        Variadic<Index>:$connections,
         // `repeat_count==1` means "do it once".
         DefaultValuedAttr<I8Attr, "1">:$repeat_count
   );
   let regions = (region AnyRegion:$body);
   let assemblyFormat = [{
-    `(` $tile `,` $channel_dir `,` $channel_index (`,` `repeat_count` `=` $repeat_count^)? `)` regions attr-dict
+    `(`
+    $channel
+    ( `,` `{` $connections^ `}` )?
+    `)`
+    regions attr-dict
   }];
 }
 
