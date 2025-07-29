@@ -86,6 +86,7 @@ iree_cc_library(
     "AMDAIEInsertCopyOps.cpp"
     "AMDAIEInsertCores.cpp"
     "AMDAIEInsertDmaBdChain.cpp"
+    "AMDAIEInsertDmaOutOfOrderBlock.cpp"
     "AMDAIEInsertInfiniteLoopAroundCoreBlock.cpp"
     "AMDAIEInsertLoopsForVectorization.cpp"
     "AMDAIELinkExecutables.cpp"

@@ -684,13 +684,14 @@ func.func @from_memref_unknown_row_column(%arg0 : memref<8xi32>, %t0 : index) {
 //       CHECK: %[[CONNECTION:.*]] = amdaie.connection
 //       CHECK: amdaie.dma_start(%[[CHANNEL]], {%[[CONNECTION]]}) {
 //       CHECK:   amdaie.use_lock(%[[LOCK_0]], AcquireGreaterOrEqual(1))
+//       CHECK:   amdaie.dma_bd_packet {out_of_order_bd_id = 0 : i32, packet_id = 1 : i32, packet_type = 2 : i32}
 //       CHECK:   amdaie.dma_bd(%[[BUFFER]] : memref<1024xi32, 2 : i32>)
 //  CHECK-SAME:     {dimensions = #amdaie<bd_dim_layout_array[<size = 32, stride = 8>, <size = 4, stride = 256>, <size = 8, stride = 1>]>, len = 1024 : i32}
 //       CHECK:   amdaie.use_lock(%[[LOCK_1]], Release(1))
 //       CHECK:   amdaie.next_bd ^bb1
-//       CHECK:  ^bb1:
+//       CHECK: ^bb1:
 //       CHECK:   amdaie.end
-//       CHECK: }
+//       CHECK: } {en_out_of_order = true, repeat_count = 2 : i8}
 func.func @dma_start_block_ops(%arg0: !amdaie.logicalobjectfifo<memref<1024xi32, 1 : i32>>, %arg1: !amdaie.logicalobjectfifo<memref<1024xi32, 2 : i32>>) {
   %c0 = arith.constant 0 : index
   %c2 = arith.constant 2 : index
@@ -702,11 +703,12 @@ func.func @dma_start_block_ops(%arg0: !amdaie.logicalobjectfifo<memref<1024xi32,
   %connection = amdaie.connection(%arg0, %arg1 {%channel}) : (!amdaie.logicalobjectfifo<memref<1024xi32, 1 : i32>>, !amdaie.logicalobjectfifo<memref<1024xi32, 2 : i32>>)
   amdaie.dma_start(%channel, {%connection}) {
     amdaie.use_lock(%lock, AcquireGreaterOrEqual(1))
+    amdaie.dma_bd_packet {out_of_order_bd_id = 0 : i32, packet_id = 1 : i32, packet_type = 2 : i32}
     amdaie.dma_bd(%buffer : memref<1024xi32, 2 : i32>) {dimensions = #amdaie<bd_dim_layout_array[<size = 32, stride = 8>, <size = 4, stride = 256>, <size = 8, stride = 1>]>, len = 1024 : i32}
     amdaie.use_lock(%lock_0, Release(1))
     amdaie.next_bd ^bb1
   ^bb1:  // pred: ^bb0
     amdaie.end
-  }
+  } {en_out_of_order = true, repeat_count = 2 : i8}
   return
 }

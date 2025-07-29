@@ -422,7 +422,7 @@ LogicalResult createDMABlocks(
   // Create DMA start on channel.
   auto dmaStartOp = rewriter.create<AMDAIE::DMAStartOp>(
       rewriter.getUnknownLoc(), channelOp, ValueRange{connectionOp},
-      /*repeatCount=*/1);
+      /*repeatCount=*/1, /*enOutOfOrder=*/nullptr);
   rewriter.setInsertionPointToStart(&dmaStartOp.getRegion().emplaceBlock());
   rewriter.create<AMDAIE::EndOp>(rewriter.getUnknownLoc());
   Block &endBlock = dmaStartOp->getRegion(0).getBlocks().back();
@@ -439,6 +439,13 @@ LogicalResult createDMABlocks(
       rewriter.create<AMDAIE::UseLockOp>(
           rewriter.getUnknownLoc(), acqLock,
           AMDAIE::LockAction::AcquireGreaterOrEqual, acqNum);
+    }
+    if (channelOp.getDirection() == AMDAIE::DMAChannelDir::MM2S &&
+        pktId.has_value()) {
+      rewriter.create<AMDAIE::DmaBdPacketOp>(rewriter.getUnknownLoc(),
+                                             /*pkt_type=*/0,
+                                             /*pkt_id=*/pktId.value(),
+                                             /*out_of_order_bd_id=*/nullptr);
     }
     if (!dims.getValue().empty()) {
       rewriter.create<AMDAIE::DMABDOp>(rewriter.getUnknownLoc(), buff, offset,

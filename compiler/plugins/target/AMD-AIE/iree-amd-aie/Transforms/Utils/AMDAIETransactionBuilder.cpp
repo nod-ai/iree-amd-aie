@@ -97,90 +97,112 @@ LogicalResult TransactionBuilder::appendDmaStartOp(
   // Get channel op.
   int chNum = channelOp.getValue();
   auto channelDir = static_cast<DMAChannelDir>(channelOp.getDirection());
+  bool enOutOfOrder = dmaStartOp.getEnOutOfOrder().value_or(false);
+  // Configure the DMA as in-order or out-of-order mode.
+  if (failed(configureOutofOrderMode(deviceModel, tileLoc, chNum, channelDir,
+                                     enOutOfOrder))) {
+    return failure();
+  }
   // Initialize the DMA descriptor.
   FailureOr<XAie_DmaDesc> dmaDesc = initDMADesc(deviceModel, tileLoc);
   if (failed(dmaDesc)) return failure();
-
-  auto dmaBdOps = dmaStartOp.getOps<AMDAIE::DMABDOp>();
-  // We currently expect only one DMABDOp within DMAStartOp.
-  if (std::distance(dmaBdOps.begin(), dmaBdOps.end()) != 1) return failure();
   // Configure DMA BD ops within DMA Start op.
-  AMDAIE::DMABDOp dmaBdOp = *dmaBdOps.begin();
-  Block *parentBlock = dmaBdOp->getBlock();
-  std::optional<int> acqValue, relValue, acqLockId, relLockId;
-  for (AMDAIE::UseLockOp useLockOp : parentBlock->getOps<AMDAIE::UseLockOp>()) {
-    auto lockOp = useLockOp.getLock().getDefiningOp<AMDAIE::LockOp>();
-    if (useLockOp.getAction() == AMDAIE::LockAction::AcquireGreaterOrEqual ||
-        useLockOp.getAction() == AMDAIE::LockAction::Acquire) {
-      acqValue = useLockOp.getValue();
-      if (useLockOp.getAction() == AMDAIE::LockAction::AcquireGreaterOrEqual)
-        acqValue.value() = -acqValue.value();
-      acqLockId = lockOp.getValue();
-    } else if (useLockOp.getAction() == AMDAIE::LockAction::Release) {
-      relValue = useLockOp.getValue();
-      relLockId = lockOp.getValue();
+  WalkResult res = dmaStartOp->walk([&](AMDAIE::DMABDOp dmaBdOp) {
+    Block *parentBlock = dmaBdOp->getBlock();
+    // Configure DMA Locks.
+    std::optional<int> acqValue, relValue, acqLockId, relLockId;
+    for (AMDAIE::UseLockOp useLockOp :
+         parentBlock->getOps<AMDAIE::UseLockOp>()) {
+      auto lockOp = useLockOp.getLock().getDefiningOp<AMDAIE::LockOp>();
+      if (useLockOp.getAction() == AMDAIE::LockAction::AcquireGreaterOrEqual ||
+          useLockOp.getAction() == AMDAIE::LockAction::Acquire) {
+        acqValue = useLockOp.getValue();
+        if (useLockOp.getAction() == AMDAIE::LockAction::AcquireGreaterOrEqual)
+          acqValue.value() = -acqValue.value();
+        acqLockId = lockOp.getValue();
+      } else if (useLockOp.getAction() == AMDAIE::LockAction::Release) {
+        relValue = useLockOp.getValue();
+        relLockId = lockOp.getValue();
+      }
     }
-  }
-  // Disable acquire and release locks if not set.
-  if (!acqLockId) {
-    acqLockId = 0;
-    acqValue = 0;
-  }
-  if (!relLockId) {
-    relLockId = 0;
-    relValue = 0;
-  }
-  assert(acqValue && relValue && acqLockId && relLockId &&
-         "expected both use_lock(acquire) and use_lock(release) with bd");
-  if (failed(configureDMALocks(deviceModel, dmaDesc.value(), tileLoc, *acqValue,
-                               *relValue, *acqLockId, *relLockId,
-                               /*acqEn=*/true))) {
-    return failure();
-  }
-  // Pull metadata related to packet routing, bdId, buffer length, size,
-  // stride to pass to aie-rt.
-  std::optional<uint32_t> bdId = dmaBdOp.getBdId();
-  if (!bdId) return failure();
-  bool validBd = true;
-  std::optional<uint8_t> packetType;
-  std::optional<uint8_t> packetID;
-  bool enablePacket = false;
-
-  auto bufferOp = dmaBdOp.getBuffer().getDefiningOp<AMDAIE::BufferOp>();
-  if (!bufferOp) return failure();
-  std::optional<uint32_t> baseAddr = bufferOp.getAddress();
-  if (!baseAddr) return failure();
-
-  std::optional<llvm::ArrayRef<BDDimLayoutAttr>> dims = dmaBdOp.getDimensions();
-  if (!dims) return failure();
-  std::optional<SmallVector<BDDimLayout>> maybeDims;
-  maybeDims = llvm::map_to_vector(*dims, [](BDDimLayoutAttr attr) {
-    return BDDimLayout{attr.getSize(), attr.getStride()};
+    // Disable acquire and release locks if not set.
+    if (!acqLockId) {
+      acqLockId = 0;
+      acqValue = 0;
+    }
+    if (!relLockId) {
+      relLockId = 0;
+      relValue = 0;
+    }
+    assert(acqValue && relValue && acqLockId && relLockId &&
+           "expected both use_lock(acquire) and use_lock(release) with bd");
+    if (failed(configureDMALocks(deviceModel, dmaDesc.value(), tileLoc,
+                                 *acqValue, *relValue, *acqLockId, *relLockId,
+                                 /*acqEn=*/true))) {
+      return WalkResult::interrupt();
+    }
+    // Get BD ID.
+    std::optional<uint32_t> maybeBdId = dmaBdOp.getBdId();
+    if (!maybeBdId) return WalkResult::interrupt();
+    bool validBd = true;
+    // Get packet metadata.
+    std::optional<uint8_t> maybePacketType;
+    std::optional<uint8_t> maybePacketID;
+    std::optional<uint8_t> maybeOutOfOrderBdId;
+    bool enablePacket = false;
+    auto maybePacketOps = parentBlock->getOps<AMDAIE::DmaBdPacketOp>();
+    if (!maybePacketOps.empty()) {
+      assert(llvm::range_size(maybePacketOps) == 1 &&
+             "expected only one dma_bd_packet");
+      AMDAIE::DmaBdPacketOp packetOp = *maybePacketOps.begin();
+      maybePacketType = packetOp.getPacketType();
+      maybePacketID = packetOp.getPacketId();
+      maybeOutOfOrderBdId = packetOp.getOutOfOrderBdId();
+      enablePacket = true;
+    }
+    // Get base address.
+    auto bufferOp = dmaBdOp.getBuffer().getDefiningOp<AMDAIE::BufferOp>();
+    if (!bufferOp) return WalkResult::interrupt();
+    std::optional<uint32_t> baseAddr = bufferOp.getAddress();
+    if (!baseAddr) return WalkResult::interrupt();
+    // Get dimensions.
+    std::optional<SmallVector<BDDimLayout>> maybeDims;
+    if (auto maybeDimsAttr = dmaBdOp.getDimensions()) {
+      maybeDims =
+          llvm::map_to_vector(*maybeDimsAttr, [](const BDDimLayoutAttr &attr) {
+            return BDDimLayout{attr.getSize(), attr.getStride()};
+          });
+    }
+    std::optional<SmallVector<BDPadLayout>> maybePadDims;
+    std::optional<BDIterLayout> maybeIter = std::nullopt;
+    // Get next BD ID.
+    bool enableNextBd = dmaBdOp.getNextBdId().has_value();
+    std::optional<uint8_t> nextBdId =
+        enableNextBd ? std::optional<uint8_t>{static_cast<uint8_t>(
+                           *dmaBdOp.getNextBdId())}
+                     : std::nullopt;
+    if (failed(configureDMABD(
+            deviceModel, dmaDesc.value(), tileLoc, validBd,
+            static_cast<uint8_t>(*maybeBdId), enableNextBd, nextBdId,
+            enablePacket, maybePacketType, maybePacketID, maybeOutOfOrderBdId,
+            *baseAddr, dmaBdOp.getLenInBytes(), dmaBdOp.getOffsetInBytes(),
+            dmaBdOp.getBufferElementTypeWidthInBytes(), maybeDims, maybePadDims,
+            maybeIter))) {
+      return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
   });
-  std::optional<SmallVector<BDPadLayout>> maybePadDims;
-
-  bool enableNextBd = dmaBdOp.getNextBdId().has_value();
-  std::optional<uint8_t> nextBdId =
-      enableNextBd
-          ? std::optional<uint8_t>{static_cast<uint8_t>(*dmaBdOp.getNextBdId())}
-          : std::nullopt;
-  std::optional<BDIterLayout> maybeIter = std::nullopt;
-  if (failed(configureDMABD(deviceModel, dmaDesc.value(), tileLoc, validBd,
-                            static_cast<uint8_t>(*bdId), enableNextBd, nextBdId,
-                            enablePacket, packetType, packetID, *baseAddr,
-                            dmaBdOp.getLenInBytes(), dmaBdOp.getOffsetInBytes(),
-                            dmaBdOp.getBufferElementTypeWidthInBytes(),
-                            maybeDims, maybePadDims, maybeIter))) {
-    return failure();
-  }
+  if (res.wasInterrupted()) return failure();
 
   // Configure push to BD queue.
   // TODO: Generalize it as this is currently hardcoded to only shim side for
   // now.
+  AMDAIE::DMABDOp dmaBdOp =
+      *dmaStartOp.getBody().getOps<AMDAIE::DMABDOp>().begin();
   bool issueToken = tileLoc.Row == 0 && channelDir == DMAChannelDir::MM2S;
-  if (failed(configurePushToBdQueue(deviceModel, tileLoc, chNum, channelDir,
-                                    dmaBdOp.getBdId().value(),
-                                    dmaStartOp.getRepeatCount(), issueToken))) {
+  if (failed(configurePushToBdQueue(
+          deviceModel, tileLoc, chNum, channelDir, dmaBdOp.getBdId().value(),
+          dmaStartOp.getRepeatCount(), issueToken, enOutOfOrder))) {
     return failure();
   }
   return success();
@@ -211,18 +233,20 @@ LogicalResult TransactionBuilder::appendPushToQueueOp(
     uint32_t col, uint32_t row, AMDAIE::DMAChannelDir direction,
     uint32_t channel, uint32_t bdId, uint32_t repeatCount, bool issueToken) {
   auto tileLoc = XAie_TileLoc(col, row);
+  // Npu push to queue is always in-order.
   return configurePushToBdQueue(deviceModel, tileLoc, channel, direction, bdId,
-                                repeatCount, issueToken);
+                                repeatCount, issueToken,
+                                /*enOutofOrder=*/false);
 }
 
 LogicalResult TransactionBuilder::appendWriteBdOp(
     uint32_t col, uint32_t row, uint32_t bdId, uint32_t bufferLength,
     uint32_t bufferOffset, bool enablePacket, uint32_t packetId,
-    uint32_t packetType, ArrayRef<int32_t> sizes, SmallVector<int32_t> strides,
-    uint32_t iterationCurrent, uint32_t iterationSize, uint32_t iterationStride,
-    uint32_t nextBd, bool useNextBd, bool validBd, int32_t lockRelVal,
-    uint32_t lockRelId, bool lockAcqEnable, int32_t lockAcqVal,
-    uint32_t lockAcqId) {
+    uint32_t packetType, uint32_t outOfOrderBdId, ArrayRef<int32_t> sizes,
+    SmallVector<int32_t> strides, uint32_t iterationCurrent,
+    uint32_t iterationSize, uint32_t iterationStride, uint32_t nextBd,
+    bool useNextBd, bool validBd, int32_t lockRelVal, uint32_t lockRelId,
+    bool lockAcqEnable, int32_t lockAcqVal, uint32_t lockAcqId) {
   // Configure DMA Locks.
   auto tileLoc = XAie_TileLoc(col, row);
   FailureOr<XAie_DmaDesc> dmaTileBd = initDMADesc(deviceModel, tileLoc);
@@ -252,9 +276,9 @@ LogicalResult TransactionBuilder::appendWriteBdOp(
                        static_cast<uint8_t>(iterationCurrent)};
   return configureDMABD(deviceModel, dmaTileBd.value(), tileLoc, validBd, bdId,
                         useNextBd, nextBd, enablePacket, packetType, packetId,
-                        deviceModel.devInst.BaseAddr, bufferLengthInBytes,
-                        bufferOffset, bufferElementTypeWidthInBytes, dims, pads,
-                        iter);
+                        outOfOrderBdId, deviceModel.devInst.BaseAddr,
+                        bufferLengthInBytes, bufferOffset,
+                        bufferElementTypeWidthInBytes, dims, pads, iter);
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE

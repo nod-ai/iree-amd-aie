@@ -1762,7 +1762,8 @@ def AMDAIE_DMAStartOp: AMDAIE_Op<"dma_start", [
     ins Index:$channel,
         Variadic<Index>:$connections,
         // `repeat_count==1` means "do it once".
-        DefaultValuedAttr<I8Attr, "1">:$repeat_count
+        DefaultValuedAttr<I8Attr, "1">:$repeat_count,
+        OptionalAttr<BoolAttr>:$en_out_of_order
   );
   let regions = (region AnyRegion:$body);
   let assemblyFormat = [{
@@ -1772,6 +1773,18 @@ def AMDAIE_DMAStartOp: AMDAIE_Op<"dma_start", [
     `)`
     regions attr-dict
   }];
+}
+
+
+def AMDAIE_DmaBdPacketOp: AMDAIE_Op<"dma_bd_packet"> {
+  let summary = "Enable packet headers for a dma block descriptor";
+  let arguments = (
+    ins I32Attr:$packet_type,
+        I32Attr:$packet_id,
+        OptionalAttr<I32Attr>:$out_of_order_bd_id
+  );
+
+  let assemblyFormat = [{ attr-dict }];
 }
 
 def AMDAIE_DMABDOp: AMDAIE_Op<"dma_bd", [

@@ -234,6 +234,7 @@ LogicalResult configureLocksAndBd(Block &block, const TileLoc &tileLoc,
   if (failed(configureDMABD(deviceModel, dmaTileBd.value(), tileLoc, validBd,
                             static_cast<uint8_t>(*bdOp.getBdId()), enableNextBd,
                             nextBdId, enablePacket, packetType, packetID,
+                            /*outOfOrderBdId=*/std::nullopt,
                             *bufferOp.getAddress(), getLenInBytes(bdOp),
                             getOffsetInBytes(bdOp),
                             getBufferElementTypeWidthInBytes(bdOp), maybeDims,
@@ -298,9 +299,12 @@ LogicalResult addInitConfig(const AMDAIEDeviceModel &deviceModel,
         int chNum = op.getChannelIndex();
         auto channelDir = static_cast<DMAChannelDir>(op.getChannelDir());
         bool issueToken = tileLoc.row == 0 && channelDir == DMAChannelDir::MM2S;
-        if (failed(configurePushToBdQueue(deviceModel, tileLoc, chNum,
-                                          channelDir, bd.getBdId().value(),
-                                          op.getRepeatCount(), issueToken)))
+        // TODO(zhewen): Currently, out-of-order mode can only be configured via
+        // the AMDAIE dialect. Support through the AIE dialect needs to be
+        // implemented.
+        if (failed(configurePushToBdQueue(
+                deviceModel, tileLoc, chNum, channelDir, bd.getBdId().value(),
+                op.getRepeatCount(), issueToken, /*enOutOfOrder=*/false)))
           return failure();
       }
     }
