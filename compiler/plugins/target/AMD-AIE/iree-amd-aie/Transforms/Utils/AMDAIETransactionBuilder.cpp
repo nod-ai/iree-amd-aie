@@ -178,10 +178,9 @@ LogicalResult TransactionBuilder::appendDmaStartOp(
   // TODO: Generalize it as this is currently hardcoded to only shim side for
   // now.
   bool issueToken = tileLoc.Row == 0 && channelDir == DMAChannelDir::MM2S;
-  bool setChannelEnable = true;
-  if (failed(configurePushToBdQueue(
-          deviceModel, tileLoc, chNum, channelDir, dmaBdOp.getBdId().value(),
-          dmaStartOp.getRepeatCount(), issueToken, setChannelEnable))) {
+  if (failed(configurePushToBdQueue(deviceModel, tileLoc, chNum, channelDir,
+                                    dmaBdOp.getBdId().value(),
+                                    dmaStartOp.getRepeatCount(), issueToken))) {
     return failure();
   }
   return success();
@@ -211,11 +210,9 @@ LogicalResult TransactionBuilder::appendTCTSync(uint32_t col, uint32_t row,
 LogicalResult TransactionBuilder::appendPushToQueueOp(
     uint32_t col, uint32_t row, AMDAIE::DMAChannelDir direction,
     uint32_t channel, uint32_t bdId, uint32_t repeatCount, bool issueToken) {
-  // Assume channel is enabled by default.
-  bool setChannelEnable = false;
   auto tileLoc = XAie_TileLoc(col, row);
   return configurePushToBdQueue(deviceModel, tileLoc, channel, direction, bdId,
-                                repeatCount, issueToken, setChannelEnable);
+                                repeatCount, issueToken);
 }
 
 LogicalResult TransactionBuilder::appendWriteBdOp(
