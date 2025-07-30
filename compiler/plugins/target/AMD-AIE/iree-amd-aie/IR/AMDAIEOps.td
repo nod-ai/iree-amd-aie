@@ -1414,9 +1414,7 @@ def AMDAIE_LogicalObjectFifoFromMemrefOp
     $memref  `,``{` $tiles `}` attr-dict `:` type($memref) `->` type($output)
   }];
 
-  // Build a LogicalObjectFifoFromMemrefOp with just a memref value.
   let builders = [
-    OpBuilder<(ins "mlir::Value":$memref)>,
     // Build `LogicalObjectFifoFromMemrefOp` with an array of static tile
     // locations.
     OpBuilder<
