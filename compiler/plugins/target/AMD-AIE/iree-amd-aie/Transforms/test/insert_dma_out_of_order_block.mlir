@@ -1,4 +1,18 @@
-// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-insert-dma-out-of-order-block)" %s | FileCheck %s
+// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-insert-dma-out-of-order-block)" --split-input-file --verify-diagnostics %s | FileCheck %s
+
+// expected-error @+1 {{op has no AMDAIEDevice in the target attribute configuration}}
+module {
+  func.func @no_amdaie_device() {
+    amdaie.workgroup {
+      amdaie.controlcode {
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
 
 // CHECK-LABEL: @out_of_order_l2_to_l1
 // CHECK:       %[[C0:.+]] = arith.constant 0 : index
@@ -19,11 +33,12 @@
 // CHECK:           %[[DMA_START_1:.+]] = amdaie.dma_start(%[[CHANNEL_2]], {%{{.+}}}) {
 // CHECK-COUNT-2:     amdaie.dma_bd(
 // CHECK-NOT:         amdaie.dma_bd(
-// CHECK:           } {en_out_of_order = true, repeat_count = 2 : i8}
+// CHECK:           } {enable_out_of_order = true, repeat_count = 2 : i8}
 // CHECK:           %[[DMA_START_2:.+]] = amdaie.dma_start(%[[CHANNEL_1]], {%{{.+}}}) {
 // CHECK:             amdaie.dma_bd_packet {out_of_order_bd_id = 1 : i32, packet_id = 1 : i32, packet_type = 0 : i32}
 // CHECK:           }
-module {
+#executable_target_amdaie_pdi_fb = #hal.executable.target<"amd-aie", "amdaie-pdi-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_pdi_fb} {
   func.func @out_of_order_l2_to_l1() {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index

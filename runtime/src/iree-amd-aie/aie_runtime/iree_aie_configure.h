@@ -178,9 +178,9 @@ LogicalResult configureDMALocks(const AMDAIEDeviceModel &deviceModel,
 
 /// Configures the DMA channel as in-order or out-of-order mode.
 LogicalResult configureOutofOrderMode(const AMDAIEDeviceModel &deviceModel,
-                                      const TileLoc &tileLoc, uint8_t chNum,
+                                      const TileLoc &tileLoc, uint32_t chNum,
                                       const DMAChannelDir &channelDir,
-                                      bool enOutofOrder);
+                                      bool enableOutOfOrder);
 
 /// DMAs operate on "task queues" of bds. "Enqueueing" a bd is what actually
 /// instructs/makes the DMA execute the reading/writing represented by the bd.
@@ -188,7 +188,8 @@ LogicalResult configurePushToBdQueue(const AMDAIEDeviceModel &deviceModel,
                                      const TileLoc &tileLoc, uint8_t chNum,
                                      const DMAChannelDir &channelDir,
                                      uint8_t bdId, uint32_t repeatCount,
-                                     bool enTokenIssue, bool enOutofOrder);
+                                     bool enableTokenIssue,
+                                     bool enableOutOfOrder);
 
 LogicalResult configureCustomTxnOp(const AMDAIEDeviceModel &deviceModel,
                                    uint8_t opCode, uint32_t *data,

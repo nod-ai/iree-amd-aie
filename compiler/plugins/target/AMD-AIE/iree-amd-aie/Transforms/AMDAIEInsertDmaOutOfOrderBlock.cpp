@@ -7,6 +7,8 @@
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
+#include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
+
 #define DEBUG_TYPE "iree-amdaie-insert-dma-out-of-order-block"
 
 namespace mlir::iree_compiler::AMDAIE {
@@ -37,15 +39,19 @@ FailureOr<AMDAIE::DMAStartOp> getMm2sDmaStart(
   return mm2sChannelToDmaStarts[channelOp][0];
 }
 
+/// For the given S2MM channel, merge all the corresponding MM2S DMA start ops
+/// into a single out-of-order block.
 LogicalResult insertDmaOutOfOrder(
-    IRRewriter &rewriter, AMDAIE::ChannelOp s2mmChannelOp,
-    SmallVector<AMDAIE::DMAStartOp> &s2mmDmaStartOps,
+    const AMDAIE::AMDAIEDeviceModel &deviceModel, IRRewriter &rewriter,
+    AMDAIE::ChannelOp s2mmChannelOp,
+    SmallVectorImpl<AMDAIE::DMAStartOp> &s2mmDmaStartOps,
     DenseMap<AMDAIE::ChannelOp, SmallVector<AMDAIE::DMAStartOp>>
         &mm2sChannelToDmaStarts) {
+  IRRewriter::InsertionGuard insertGuard(rewriter);
   // If there is only one DMA start op, do nothing.
   if (s2mmDmaStartOps.size() <= 1) return success();
   // Merge the given DMA start ops into a single out-of-order block.
-  int8_t newRepeatCount = 0;
+  uint32_t newRepeatCount = 0;
   SmallVector<Value> newConnections;
   SmallVector<SmallVector<Operation *>> lockAndBdOps;
   for (AMDAIE::DMAStartOp s2mmDmaStartOp : s2mmDmaStartOps) {
@@ -79,11 +85,18 @@ LogicalResult insertDmaOutOfOrder(
     SmallVector<Block *> mm2sBlocks = llvm::to_vector(
         llvm::map_range(maybeMm2sDmaStartOp.value().getBody().getBlocks(),
                         [](Block &b) { return &b; }));
-    int8_t numBDs = 0;
-    for (size_t i = 0; i < s2mmBlocks.size(); i++) {
+    if (s2mmBlocks.size() != mm2sBlocks.size()) {
+      return s2mmDmaStartOp.emitOpError()
+             << "expected the same number of blocks in S2MM and MM2S DMA start "
+                "ops";
+    }
+    // Pass the S2MM BD ID to the corresponding MM2S, and configure it in MM2S
+    // packet header.
+    uint32_t numBDs = 0;
+    for (auto &&[s2mmBlock, mm2sBlock] : llvm::zip(s2mmBlocks, mm2sBlocks)) {
       lockAndBdOps.push_back({});
       std::optional<uint32_t> maybeS2mmBdId;
-      for (Operation &op : *s2mmBlocks[i]) {
+      for (Operation &op : *s2mmBlock) {
         // Find the DMA BDs and locks in the S2MM block.
         if (isa<AMDAIE::DMABDOp, AMDAIE::UseLockOp>(op))
           lockAndBdOps.back().push_back(&op);
@@ -92,6 +105,7 @@ LogicalResult insertDmaOutOfOrder(
           maybeS2mmBdId = bdOp.getBdId();
         }
       }
+      // No DMABDOps are found, continue to the next block.
       if (lockAndBdOps.back().size() == 0) {
         lockAndBdOps.pop_back();
         continue;
@@ -101,8 +115,7 @@ LogicalResult insertDmaOutOfOrder(
                << "BD ID is not assigned in S2MM block";
       }
       // Embed the S2MM BD ID in the corresponding MM2S packer header.
-      auto maybeMm2sDmaBdPacketOps =
-          mm2sBlocks[i]->getOps<AMDAIE::DmaBdPacketOp>();
+      auto maybeMm2sDmaBdPacketOps = mm2sBlock->getOps<AMDAIE::DmaBdPacketOp>();
       if (llvm::range_size(maybeMm2sDmaBdPacketOps) != 1) {
         return maybeMm2sDmaStartOp.value().emitOpError()
                << "expected exactly one `amdaie.dma_bd_packet` op in each MM2S "
@@ -116,18 +129,30 @@ LogicalResult insertDmaOutOfOrder(
     // of transmissions across all BDs.
     newRepeatCount += s2mmDmaStartOp.getRepeatCount() * numBDs;
   }
+  // Check the new repeat count is within the max repeat count.
+  AMDAIE::TileOp tileOp = s2mmChannelOp.getTileOp();
+  uint32_t col = getConstantIndexOrAssert(tileOp.getCol());
+  uint32_t row = getConstantIndexOrAssert(tileOp.getRow());
+  AMDAIE::AMDAIETileType tileType = deviceModel.getTileType(col, row);
+  uint32_t maxRepeatCount = deviceModel.getMaxRepeatCount(tileType);
+  if (newRepeatCount > maxRepeatCount) {
+    return s2mmDmaStartOps[0]->emitOpError()
+           << "The maximum repeat count is " << maxRepeatCount << ", but got "
+           << newRepeatCount;
+  }
   // Create a new DMA start op with the merged connections and BDs.
   rewriter.setInsertionPoint(s2mmDmaStartOps[0]);
   auto newS2mmDmaStartOp = rewriter.create<AMDAIE::DMAStartOp>(
       rewriter.getUnknownLoc(), s2mmChannelOp, newConnections, newRepeatCount,
-      /*enOutOfOrder=*/rewriter.getBoolAttr(true));
+      /*enableOutOfOrder=*/rewriter.getBoolAttr(true));
   IRMapping mapper;
   for (SmallVector<Operation *> ops : lockAndBdOps) {
     rewriter.setInsertionPointToStart(
         &newS2mmDmaStartOp.getRegion().emplaceBlock());
     for (Operation *op : ops) {
       rewriter.clone(*op, mapper);
-      // Break the existing chain.
+      // If it is a DMABD op, set the next_bd_id to nullopt to clear any
+      // existing BD chain.
       if (auto bdOp = dyn_cast<AMDAIE::DMABDOp>(op))
         bdOp.setNextBdId(std::nullopt);
     }
@@ -166,6 +191,18 @@ class AMDAIEInsertDmaOutOfOrderBlockPass
 
 void AMDAIEInsertDmaOutOfOrderBlockPass::runOnOperation() {
   Operation *parentOp = getOperation();
+
+  // Get the device model.
+  auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(parentOp);
+  std::optional<AMDAIEDevice> maybeDevice = getConfigAMDAIEDevice(targetAttr);
+  if (!maybeDevice) {
+    parentOp->emitOpError()
+        << "has no AMDAIEDevice in the target attribute configuration.";
+    return signalPassFailure();
+  }
+  AMDAIE::AMDAIEDeviceModel deviceModel =
+      AMDAIE::getDeviceModel(maybeDevice.value());
+
   // Group all DMA start ops based on their corresponding channel.
   DenseMap<AMDAIE::ChannelOp, SmallVector<AMDAIE::DMAStartOp>>
       s2mmChannelToDmaStarts, mm2sChannelToDmaStarts;
@@ -186,8 +223,8 @@ void AMDAIEInsertDmaOutOfOrderBlockPass::runOnOperation() {
   // single out-of-order block.
   IRRewriter rewriter(parentOp->getContext());
   for (auto &[s2mmChannelOp, s2mmDmaStartOps] : s2mmChannelToDmaStarts) {
-    if (failed(insertDmaOutOfOrder(rewriter, s2mmChannelOp, s2mmDmaStartOps,
-                                   mm2sChannelToDmaStarts))) {
+    if (failed(insertDmaOutOfOrder(deviceModel, rewriter, s2mmChannelOp,
+                                   s2mmDmaStartOps, mm2sChannelToDmaStarts))) {
       return signalPassFailure();
     }
   }

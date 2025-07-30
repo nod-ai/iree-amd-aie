@@ -304,7 +304,7 @@ LogicalResult addInitConfig(const AMDAIEDeviceModel &deviceModel,
         // implemented.
         if (failed(configurePushToBdQueue(
                 deviceModel, tileLoc, chNum, channelDir, bd.getBdId().value(),
-                op.getRepeatCount(), issueToken, /*enOutOfOrder=*/false)))
+                op.getRepeatCount(), issueToken, /*enableOutOfOrder=*/false)))
           return failure();
       }
     }

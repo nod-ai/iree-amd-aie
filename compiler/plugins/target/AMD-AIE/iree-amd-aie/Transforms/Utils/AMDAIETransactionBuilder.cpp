@@ -97,17 +97,20 @@ LogicalResult TransactionBuilder::appendDmaStartOp(
   // Get channel op.
   int chNum = channelOp.getValue();
   auto channelDir = static_cast<DMAChannelDir>(channelOp.getDirection());
-  bool enOutOfOrder = dmaStartOp.getEnOutOfOrder().value_or(false);
+  bool enableOutOfOrder = dmaStartOp.getEnableOutOfOrder().value_or(false);
   // Configure the DMA as in-order or out-of-order mode.
   if (failed(configureOutofOrderMode(deviceModel, tileLoc, chNum, channelDir,
-                                     enOutOfOrder))) {
+                                     enableOutOfOrder))) {
     return failure();
   }
   // Initialize the DMA descriptor.
   FailureOr<XAie_DmaDesc> dmaDesc = initDMADesc(deviceModel, tileLoc);
   if (failed(dmaDesc)) return failure();
   // Configure DMA BD ops within DMA Start op.
-  WalkResult res = dmaStartOp->walk([&](AMDAIE::DMABDOp dmaBdOp) {
+  SmallVector<AMDAIE::DMABDOp> dmaBdOps;
+  dmaStartOp.walk(
+      [&](AMDAIE::DMABDOp dmaBdOp) { dmaBdOps.push_back(dmaBdOp); });
+  for (AMDAIE::DMABDOp dmaBdOp : dmaBdOps) {
     Block *parentBlock = dmaBdOp->getBlock();
     // Configure DMA Locks.
     std::optional<int> acqValue, relValue, acqLockId, relLockId;
@@ -139,11 +142,11 @@ LogicalResult TransactionBuilder::appendDmaStartOp(
     if (failed(configureDMALocks(deviceModel, dmaDesc.value(), tileLoc,
                                  *acqValue, *relValue, *acqLockId, *relLockId,
                                  /*acqEn=*/true))) {
-      return WalkResult::interrupt();
+      return failure();
     }
     // Get BD ID.
     std::optional<uint32_t> maybeBdId = dmaBdOp.getBdId();
-    if (!maybeBdId) return WalkResult::interrupt();
+    if (!maybeBdId) return failure();
     bool validBd = true;
     // Get packet metadata.
     std::optional<uint8_t> maybePacketType;
@@ -162,9 +165,9 @@ LogicalResult TransactionBuilder::appendDmaStartOp(
     }
     // Get base address.
     auto bufferOp = dmaBdOp.getBuffer().getDefiningOp<AMDAIE::BufferOp>();
-    if (!bufferOp) return WalkResult::interrupt();
+    if (!bufferOp) return dmaBdOp.emitError("buffer op not found");
     std::optional<uint32_t> baseAddr = bufferOp.getAddress();
-    if (!baseAddr) return WalkResult::interrupt();
+    if (!baseAddr) return bufferOp.emitError("buffer address not found");
     // Get dimensions.
     std::optional<SmallVector<BDDimLayout>> maybeDims;
     if (auto maybeDimsAttr = dmaBdOp.getDimensions()) {
@@ -188,11 +191,9 @@ LogicalResult TransactionBuilder::appendDmaStartOp(
             *baseAddr, dmaBdOp.getLenInBytes(), dmaBdOp.getOffsetInBytes(),
             dmaBdOp.getBufferElementTypeWidthInBytes(), maybeDims, maybePadDims,
             maybeIter))) {
-      return WalkResult::interrupt();
+      return failure();
     }
-    return WalkResult::advance();
-  });
-  if (res.wasInterrupted()) return failure();
+  }
 
   // Configure push to BD queue.
   // TODO: Generalize it as this is currently hardcoded to only shim side for
@@ -202,7 +203,7 @@ LogicalResult TransactionBuilder::appendDmaStartOp(
   bool issueToken = tileLoc.Row == 0 && channelDir == DMAChannelDir::MM2S;
   if (failed(configurePushToBdQueue(
           deviceModel, tileLoc, chNum, channelDir, dmaBdOp.getBdId().value(),
-          dmaStartOp.getRepeatCount(), issueToken, enOutOfOrder))) {
+          dmaStartOp.getRepeatCount(), issueToken, enableOutOfOrder))) {
     return failure();
   }
   return success();
@@ -236,7 +237,7 @@ LogicalResult TransactionBuilder::appendPushToQueueOp(
   // Npu push to queue is always in-order.
   return configurePushToBdQueue(deviceModel, tileLoc, channel, direction, bdId,
                                 repeatCount, issueToken,
-                                /*enOutofOrder=*/false);
+                                /*enableOutofOrder=*/false);
 }
 
 LogicalResult TransactionBuilder::appendWriteBdOp(

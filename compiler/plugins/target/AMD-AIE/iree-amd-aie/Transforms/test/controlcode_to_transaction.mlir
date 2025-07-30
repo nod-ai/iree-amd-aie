@@ -360,7 +360,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_pdi_fb} {
           amdaie.next_bd ^bb1
         ^bb1:  // pred: ^bb0
           amdaie.end
-        } {en_out_of_order = true, repeat_count = 2 : i8}
+        } {enable_out_of_order = true, repeat_count = 2 : i8}
         %1 = amdaie.dma_start(%channel_2) {
           amdaie.use_lock(%lock_0, AcquireGreaterOrEqual(1))
           amdaie.dma_bd_packet {out_of_order_bd_id = 1 : i32, packet_id = 2 : i32, packet_type = 0 : i32}

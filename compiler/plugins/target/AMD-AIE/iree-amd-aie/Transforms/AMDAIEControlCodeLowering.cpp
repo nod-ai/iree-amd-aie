@@ -422,7 +422,7 @@ LogicalResult createDMABlocks(
   // Create DMA start on channel.
   auto dmaStartOp = rewriter.create<AMDAIE::DMAStartOp>(
       rewriter.getUnknownLoc(), channelOp, ValueRange{connectionOp},
-      /*repeatCount=*/1, /*enOutOfOrder=*/nullptr);
+      /*repeatCount=*/1, /*enableOutOfOrder=*/nullptr);
   rewriter.setInsertionPointToStart(&dmaStartOp.getRegion().emplaceBlock());
   rewriter.create<AMDAIE::EndOp>(rewriter.getUnknownLoc());
   Block &endBlock = dmaStartOp->getRegion(0).getBlocks().back();
