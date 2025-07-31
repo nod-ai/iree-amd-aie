@@ -32,7 +32,8 @@ namespace {
 // GenericVectorization will be extended in the future to support more
 // AIE-specific vectorization patterns.
 
-static std::optional<SmallVector<int64_t>> getDynamicVectorShape(
+// converts {x, y} -> {1, y}
+static std::optional<SmallVector<int64_t>> vectorLeadingOneDimShape(
     Operation *op) {
   auto vectorOp = dyn_cast<VectorUnrollOpInterface>(op);
   if (!vectorOp) return std::nullopt;
@@ -44,18 +45,12 @@ static std::optional<SmallVector<int64_t>> getDynamicVectorShape(
     // Return {1, shape[1]} to unroll the first dimension
     return SmallVector<int64_t>{1, (*shape)[1]};
   }
-
-  // // For 1D vectors, unroll to scalar
-  // if (shape->size() == 1) {
-  //   return SmallVector<int64_t>{1};
-  // }
   return std::nullopt;
 }
 
 void populateVectorUnrollPatterns(RewritePatternSet &vectorizationPatterns) {
   vector::UnrollVectorOptions options;
-  // options.setNativeShape(ArrayRef<int64_t>{1, 16});
-  options.setNativeShapeFn(getDynamicVectorShape);
+  options.setNativeShapeFn(vectorLeadingOneDimShape);
   vector::populateVectorUnrollPatterns(vectorizationPatterns, options);
 }
 
@@ -145,14 +140,34 @@ void AMDAIEVectorizationPass::runOnOperation() {
   vector::populateVectorMultiReductionLoweringPatterns(
       vectorizationPatterns,
       vector::VectorMultiReductionLowering::InnerReduction);
+  vector::populateVectorTransferLoweringPatterns(
+      vectorizationPatterns, 1);  // converts transfer.read -> vector.loads
+  populateVectorUnrollPatterns(
+      vectorizationPatterns);  // converts 2D vector.transfer_read -> 1D
+                               // vector.transfer_read
+  vector::populateVectorToVectorCanonicalizationPatterns(vectorizationPatterns);
+  vector::populateCastAwayVectorLeadingOneDimPatterns(
+      vectorizationPatterns);  // vector<1x10xbf16> -> vector<10xbf16>
+  vector::populateFlattenVectorTransferPatterns(vectorizationPatterns, 128);
+
+  // using castAway generates
+  // vector<1x10xbf16> -> vector<10xbf16>
+  // not using it generates 2 instructions.
+  // vector.transfer_read vector<1x16xbf16> from strided_memref
+  // vector.extract vector<16xbf16> from vector<1x16xbf16>
+
+  // it's supposed to convert vector.extract(vector.transfer_read) ->
+  // memref.load failing
+  vector::populateScalarVectorTransferLoweringPatterns(vectorizationPatterns, 1,
+                                                       false);
+
+  // EXTRAS
+  // vector::populateVectorTransferDropUnitDimsPatterns(vectorizationPatterns);
+  // vector::populateDropUnitDimWithShapeCastPatterns(vectorizationPatterns);
+
+  // populateBreakDownVectorReductionPatterns(vectorizationPatterns,
+  //                                            /*maxNumElementsToExtract=*/2);
   //////////////////////////////
-  // vector::TransferReadOp::getCanonicalizationPatterns(vectorizationPatterns,context);
-  // vector::TransferWriteOp::getCanonicalizationPatterns(vectorizationPatterns,context);
-  populateVectorUnrollPatterns(vectorizationPatterns);
-  // vector::TransferReadOp::getCanonicalizationPatterns(vectorizationPatterns,context);
-  // vector::TransferWriteOp::getCanonicalizationPatterns(vectorizationPatterns,context);
-  //////////////////////////////
-  vector::populateVectorTransferLoweringPatterns(vectorizationPatterns, 1);
 
   (void)applyPatternsGreedily(funcOp, std::move(vectorizationPatterns));
 }
