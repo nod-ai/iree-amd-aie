@@ -47,6 +47,7 @@ LogicalResult assignBdIds(Operation *deviceOp) {
       deviceModel.getChannelToValidBdIds(AMDAIETileType::SHIMNOC));
   ChannelBdIdGenerator memTileChannelBdIdGenerator(
       deviceModel.getChannelToValidBdIds(AMDAIETileType::MEMTILE));
+  DenseMap<AMDAIE::ChannelOp, ChannelBdIdGenerator> channelOpToBdIdGenerator;
 
   SmallVector<AMDAIE::DMAStartOp> memOps;
   deviceOp->walk(
@@ -60,9 +61,16 @@ LogicalResult assignBdIds(Operation *deviceOp) {
       return tile->emitOpError()
              << "expected column and row integer value/constant";
     }
-    ChannelBdIdGenerator gen = deviceModel.isMemTile(*col, *row)
-                                   ? memTileChannelBdIdGenerator
-                                   : shimChannelBdIdGenerator;
+
+    // There could be multiple DMA start ops for the same channel op (when
+    // out-of-order DMA is enabled). So, we need to keep track of the channel
+    // op to channel bd id generator mapping.
+    if (!channelOpToBdIdGenerator.contains(channelOp)) {
+      channelOpToBdIdGenerator[channelOp] = deviceModel.isMemTile(*col, *row)
+                                                ? memTileChannelBdIdGenerator
+                                                : shimChannelBdIdGenerator;
+    }
+    ChannelBdIdGenerator &gen = channelOpToBdIdGenerator[channelOp];
 
     dmaStartOp->walk<WalkOrder::PreOrder>([&](AMDAIE::DMABDOp bd) {
       if (bd.getBdId().has_value()) gen.assignBdId(bd.getBdId().value());

@@ -276,8 +276,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // CHECK:       0x06030100
 // CHECK:       0x00000104
-// CHECK:       0x00000006
-// CHECK:       0x000000D0
+// CHECK:       0x00000008
+// CHECK:       0x00000100
 // CHECK:       0x00200100
 // CHECK:       0x00000000
 // CHECK:       0x001C0020
@@ -289,6 +289,12 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:       0x001C0030
 // CHECK:       0x00000000
 // CHECK:       0x00000000
+// CHECK:       0x00000018
+// CHECK:       0x00100100
+// CHECK:       0x00000000
+// CHECK:       0x001A0610
+// CHECK:       0x00000000
+// CHECK:       0x00000008
 // CHECK:       0x00000018
 // CHECK:       0x00000101
 // CHECK:       0x00000000
@@ -306,13 +312,19 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:       0x00000000
 // CHECK:       0x001A0614
 // CHECK:       0x00000000
+// CHECK:       0x00010000
+// CHECK:       0x00000018
+// CHECK:       0x00300100
+// CHECK:       0x00000000
+// CHECK:       0x001A0630
+// CHECK:       0x00000000
 // CHECK:       0x00000000
 // CHECK:       0x00000018
-// CHECK:       0x00000101
+// CHECK:       0x00600101
 // CHECK:       0x00000000
-// CHECK:       0x001A0000
+// CHECK:       0x001A0060
 // CHECK:       0x00000030
-// CHECK:       0x00000400
+// CHECK:       0x81020400
 // CHECK:       0x00024000
 // CHECK:       0x00400000
 // CHECK:       0x0040001F
@@ -324,10 +336,10 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:       0x00000000
 // CHECK:       0x001A0634
 // CHECK:       0x00000000
-// CHECK:       0x00000000
+// CHECK:       0x00000003
 // CHECK:       0x00000018
 // CHECK-LABE:  @dma_start
-// CHECK:       npu_instructions = dense_resource<npu_instructions> : tensor<52xui32>
+// CHECK:       npu_instructions = dense_resource<npu_instructions> : tensor<64xui32>
 #executable_target_amdaie_pdi_fb = #hal.executable.target<"amd-aie", "amdaie-pdi-fb", {num_cols = 1 : i32, num_rows = 1 : i32, target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_pdi_fb} {
   func.func @dma_start() {
@@ -348,10 +360,11 @@ module attributes {hal.executable.target = #executable_target_amdaie_pdi_fb} {
           amdaie.next_bd ^bb1
         ^bb1:  // pred: ^bb0
           amdaie.end
-        }
+        } {enable_out_of_order = true, repeat_count = 2 : i8}
         %1 = amdaie.dma_start(%channel_2) {
           amdaie.use_lock(%lock_0, AcquireGreaterOrEqual(1))
-          amdaie.dma_bd(%buffer : memref<1024xi32, 1 : i32>) {bd_id = 0 : i32, dimensions = #amdaie<bd_dim_layout_array[<size = 32, stride = 32>, <size = 32, stride = 1>]>, len = 1024 : i32}
+          amdaie.dma_bd_packet {out_of_order_bd_id = 1 : i32, packet_id = 2 : i32, packet_type = 0 : i32}
+          amdaie.dma_bd(%buffer : memref<1024xi32, 1 : i32>) {bd_id = 3 : i32, dimensions = #amdaie<bd_dim_layout_array[<size = 32, stride = 32>, <size = 32, stride = 1>]>, len = 1024 : i32}
           amdaie.use_lock(%lock, Release(1))
           amdaie.next_bd ^bb1
         ^bb1:  // pred: ^bb0

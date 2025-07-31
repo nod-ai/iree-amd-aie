@@ -538,11 +538,7 @@ class MatmulThinBias(BaseMatmul):
         super().__init__(
             name=f"matmul_thin_bias_{M}_{N}_{K}_{input_type}_{acc_type}",
             function_name="matmul_bias",
-            test_params=(
-                test_params
-                if test_params is not None
-                else TestParams(lower_to_aie_pipeline="air", enable_ctrlpkt=False)
-            ),
+            test_params=test_params,
             M=M,
             N=N,
             K=K,
@@ -551,13 +547,7 @@ class MatmulThinBias(BaseMatmul):
         )
         self.labels.append("MatmulThinBias")
 
-        self.add_aie_compilation_flags(
-            [
-                "--iree-amdaie-matmul-elementwise-fusion",
-                "--iree-amdaie-num-rows=2",
-                "--iree-amdaie-num-cols=2",
-            ]
-        )
+        self.add_aie_compilation_flags(["--iree-amdaie-matmul-elementwise-fusion"])
 
     def generate(self, config):
         template_name = (
@@ -583,11 +573,7 @@ class MatmulFullBias(BaseMatmul):
         super().__init__(
             name=f"matmul_full_bias_{M}_{N}_{K}_{input_type}_{acc_type}",
             function_name="matmul_bias",
-            test_params=(
-                test_params
-                if test_params is not None
-                else TestParams(lower_to_aie_pipeline="air", enable_ctrlpkt=False)
-            ),
+            test_params=test_params,
             M=M,
             N=N,
             K=K,
@@ -596,13 +582,7 @@ class MatmulFullBias(BaseMatmul):
         )
         self.labels.append("MatmulFullBias")
 
-        self.add_aie_compilation_flags(
-            [
-                "--iree-amdaie-matmul-elementwise-fusion",
-                "--iree-amdaie-num-rows=2",
-                "--iree-amdaie-num-cols=2",
-            ]
-        )
+        self.add_aie_compilation_flags(["--iree-amdaie-matmul-elementwise-fusion"])
 
     def generate(self, config):
         template_name = (
@@ -1829,10 +1809,61 @@ class Tests:
         )
 
         # MatmulThinBias test(s):
-        self.register(MatmulThinBias(1024, 1024, 512, "bf16", "f32"))
+        self.register(
+            MatmulThinBias(
+                1024,
+                1024,
+                512,
+                "bf16",
+                "f32",
+                test_params=TestParams(
+                    lower_to_aie_pipeline="air",
+                    enable_ctrlpkt=False,
+                    aie_compilation_flags=[
+                        "--iree-amdaie-num-rows=2",
+                        "--iree-amdaie-num-cols=2",
+                    ],
+                ),
+            )
+        )
+        # Use objfifo lowering with out-of-order DMA mode.
+        self.register(
+            MatmulThinBias(
+                32,
+                32,
+                32,
+                "bf16",
+                "f32",
+                test_params=TestParams(
+                    enable_ctrlpkt=False,
+                    aie_compilation_flags=[
+                        "--iree-amdaie-num-rows=1",
+                        "--iree-amdaie-num-cols=1",
+                        "--iree-amdaie-reprogram-dmas=true",
+                        "--iree-amdaie-packet-flow-strategy=inputs",
+                    ],
+                ),
+            )
+        )
 
         # MatmulFullBias test:
-        self.register(MatmulFullBias(128, 128, 256, "bf16", "f32"))
+        self.register(
+            MatmulFullBias(
+                128,
+                128,
+                256,
+                "bf16",
+                "f32",
+                test_params=TestParams(
+                    lower_to_aie_pipeline="air",
+                    enable_ctrlpkt=False,
+                    aie_compilation_flags=[
+                        "--iree-amdaie-num-rows=2",
+                        "--iree-amdaie-num-cols=2",
+                    ],
+                ),
+            )
+        )
 
         # MatmulTransposeB test(s):
         for input_type, acc_type in zip(["i8", "bf16"], ["i32", "f32"]):

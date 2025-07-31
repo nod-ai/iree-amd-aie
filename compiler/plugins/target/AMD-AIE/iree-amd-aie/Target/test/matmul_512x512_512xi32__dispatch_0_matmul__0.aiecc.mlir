@@ -1632,9 +1632,9 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaDesc=ptr, nextBdId.value()=4, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 3, row: 5), bdId=4
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 5), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 5), chNum=1, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 5), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 5), chNum=0, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 5), chNum=1, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 5), chNum=0, direction=1, &dmaQueueDesc=ptr
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 2, row: 5)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 3, LockVal: -1), relLock=XAie_Lock(LockId: 2, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=13312, lenInBytes=4096
@@ -1666,9 +1666,9 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaDesc=ptr, nextBdId.value()=4, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 2, row: 5), bdId=4
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 5), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 5), chNum=1, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 5), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 5), chNum=0, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 5), chNum=1, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 5), chNum=0, direction=1, &dmaQueueDesc=ptr
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 1, row: 5)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 3, LockVal: -1), relLock=XAie_Lock(LockId: 2, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=13312, lenInBytes=4096
@@ -1700,9 +1700,9 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaDesc=ptr, nextBdId.value()=4, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 1, row: 5), bdId=4
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 5), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 5), chNum=1, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 5), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 5), chNum=0, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 5), chNum=1, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 5), chNum=0, direction=1, &dmaQueueDesc=ptr
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 0, row: 5)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 3, LockVal: -1), relLock=XAie_Lock(LockId: 2, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=13312, lenInBytes=4096
@@ -1734,9 +1734,9 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaDesc=ptr, nextBdId.value()=4, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 0, row: 5), bdId=4
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 5), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 5), chNum=1, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 5), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 5), chNum=0, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 5), chNum=1, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 5), chNum=0, direction=1, &dmaQueueDesc=ptr
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 3, row: 4)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 3, LockVal: -1), relLock=XAie_Lock(LockId: 2, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=13312, lenInBytes=4096
@@ -1768,9 +1768,9 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaDesc=ptr, nextBdId.value()=4, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 3, row: 4), bdId=4
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 4), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 4), chNum=1, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 4), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 4), chNum=0, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 4), chNum=1, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 4), chNum=0, direction=1, &dmaQueueDesc=ptr
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 2, row: 4)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 3, LockVal: -1), relLock=XAie_Lock(LockId: 2, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=13312, lenInBytes=4096
@@ -1802,9 +1802,9 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaDesc=ptr, nextBdId.value()=4, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 2, row: 4), bdId=4
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 4), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 4), chNum=1, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 4), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 4), chNum=0, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 4), chNum=1, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 4), chNum=0, direction=1, &dmaQueueDesc=ptr
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 1, row: 4)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 3, LockVal: -1), relLock=XAie_Lock(LockId: 2, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=13312, lenInBytes=4096
@@ -1836,9 +1836,9 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaDesc=ptr, nextBdId.value()=4, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 1, row: 4), bdId=4
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 4), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 4), chNum=1, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 4), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 4), chNum=0, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 4), chNum=1, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 4), chNum=0, direction=1, &dmaQueueDesc=ptr
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 0, row: 4)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 3, LockVal: -1), relLock=XAie_Lock(LockId: 2, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=13312, lenInBytes=4096
@@ -1870,9 +1870,9 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaDesc=ptr, nextBdId.value()=4, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 0, row: 4), bdId=4
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 4), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 4), chNum=1, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 4), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 4), chNum=0, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 4), chNum=1, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 4), chNum=0, direction=1, &dmaQueueDesc=ptr
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 3, row: 3)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 3, LockVal: -1), relLock=XAie_Lock(LockId: 2, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=13312, lenInBytes=4096
@@ -1904,9 +1904,9 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaDesc=ptr, nextBdId.value()=4, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 3, row: 3), bdId=4
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 3), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 3), chNum=1, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 3), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 3), chNum=0, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 3), chNum=1, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 3), chNum=0, direction=1, &dmaQueueDesc=ptr
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 2, row: 3)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 3, LockVal: -1), relLock=XAie_Lock(LockId: 2, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=13312, lenInBytes=4096
@@ -1938,9 +1938,9 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaDesc=ptr, nextBdId.value()=4, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 2, row: 3), bdId=4
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 3), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 3), chNum=1, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 3), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 3), chNum=0, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 3), chNum=1, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 3), chNum=0, direction=1, &dmaQueueDesc=ptr
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 1, row: 3)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 3, LockVal: -1), relLock=XAie_Lock(LockId: 2, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=13312, lenInBytes=4096
@@ -1972,9 +1972,9 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaDesc=ptr, nextBdId.value()=4, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 1, row: 3), bdId=4
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 3), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 3), chNum=1, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 3), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 3), chNum=0, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 3), chNum=1, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 3), chNum=0, direction=1, &dmaQueueDesc=ptr
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 0, row: 3)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 3, LockVal: -1), relLock=XAie_Lock(LockId: 2, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=13312, lenInBytes=4096
@@ -2006,9 +2006,9 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaDesc=ptr, nextBdId.value()=4, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 0, row: 3), bdId=4
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 3), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 3), chNum=1, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 3), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 3), chNum=0, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 3), chNum=1, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 3), chNum=0, direction=1, &dmaQueueDesc=ptr
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 3, row: 2)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 3, LockVal: -1), relLock=XAie_Lock(LockId: 2, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=13312, lenInBytes=4096
@@ -2040,9 +2040,9 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaDesc=ptr, nextBdId.value()=4, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 3, row: 2), bdId=4
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 2), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 2), chNum=1, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 2), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 2), chNum=0, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 2), chNum=1, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 2), chNum=0, direction=1, &dmaQueueDesc=ptr
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 2, row: 2)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 3, LockVal: -1), relLock=XAie_Lock(LockId: 2, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=13312, lenInBytes=4096
@@ -2074,9 +2074,9 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaDesc=ptr, nextBdId.value()=4, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 2, row: 2), bdId=4
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 2), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 2), chNum=1, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 2), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 2), chNum=0, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 2), chNum=1, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 2), chNum=0, direction=1, &dmaQueueDesc=ptr
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 1, row: 2)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 3, LockVal: -1), relLock=XAie_Lock(LockId: 2, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=13312, lenInBytes=4096
@@ -2108,9 +2108,9 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaDesc=ptr, nextBdId.value()=4, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 1, row: 2), bdId=4
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 2), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 2), chNum=1, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 2), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 2), chNum=0, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 2), chNum=1, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 2), chNum=0, direction=1, &dmaQueueDesc=ptr
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 0, row: 2)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 3, LockVal: -1), relLock=XAie_Lock(LockId: 2, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=13312, lenInBytes=4096
@@ -2142,9 +2142,9 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaDesc=ptr, nextBdId.value()=4, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 0, row: 2), bdId=4
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 2), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 2), chNum=1, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 2), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 2), chNum=0, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 2), chNum=1, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 2), chNum=0, direction=1, &dmaQueueDesc=ptr
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 0, row: 1)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 65, LockVal: -1), relLock=XAie_Lock(LockId: 64, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=524288, lenInBytes=32768
@@ -2231,15 +2231,15 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaDesc=ptr, nextBdId.value()=5, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 0, row: 1), bdId=6
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=1, direction=0, bdId=24, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=2, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=3, direction=0, bdId=26, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=4, direction=0, bdId=3, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=5, direction=0, bdId=27, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=1, direction=1, bdId=28, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=2, direction=1, bdId=5, repeatCount=1, enTokenIssue=0
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=0, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=1, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=2, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=3, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=4, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=5, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=0, direction=1, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=1, direction=1, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=2, direction=1, &dmaQueueDesc=ptr
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 1, row: 1)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 65, LockVal: -1), relLock=XAie_Lock(LockId: 64, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=524288, lenInBytes=32768
@@ -2326,15 +2326,15 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaDesc=ptr, nextBdId.value()=5, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 1, row: 1), bdId=6
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=1, direction=0, bdId=24, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=2, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=3, direction=0, bdId=26, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=4, direction=0, bdId=3, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=5, direction=0, bdId=27, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=1, direction=1, bdId=28, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=2, direction=1, bdId=5, repeatCount=1, enTokenIssue=0
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=0, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=1, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=2, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=3, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=4, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=5, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=0, direction=1, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=1, direction=1, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 1, row: 1), chNum=2, direction=1, &dmaQueueDesc=ptr
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 2, row: 1)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 65, LockVal: -1), relLock=XAie_Lock(LockId: 64, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=524288, lenInBytes=32768
@@ -2421,15 +2421,15 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaDesc=ptr, nextBdId.value()=5, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 2, row: 1), bdId=6
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=1, direction=0, bdId=24, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=2, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=3, direction=0, bdId=26, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=4, direction=0, bdId=3, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=5, direction=0, bdId=27, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=1, direction=1, bdId=28, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=2, direction=1, bdId=5, repeatCount=1, enTokenIssue=0
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=0, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=1, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=2, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=3, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=4, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=5, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=0, direction=1, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=1, direction=1, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=2, direction=1, &dmaQueueDesc=ptr
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 3, row: 1)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 65, LockVal: -1), relLock=XAie_Lock(LockId: 64, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=524288, lenInBytes=32768
@@ -2516,15 +2516,15 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaDesc=ptr, nextBdId.value()=5, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 3, row: 1), bdId=6
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=1, direction=0, bdId=24, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=2, direction=0, bdId=2, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=3, direction=0, bdId=26, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=4, direction=0, bdId=3, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=5, direction=0, bdId=27, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=0, direction=1, bdId=4, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=1, direction=1, bdId=28, repeatCount=1, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=2, direction=1, bdId=5, repeatCount=1, enTokenIssue=0
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=0, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=1, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=2, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=3, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=4, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=5, direction=0, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=0, direction=1, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=1, direction=1, &dmaQueueDesc=ptr
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 3, row: 1), chNum=2, direction=1, &dmaQueueDesc=ptr
 // CHECK: XAIE API: XAie_StrmConnCctEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 0), CTRL=StrmSwPortType::CTRL, slvPortNum=0, SOUTH=StrmSwPortType::SOUTH, mstrPortNum=0
 // CHECK: XAIE API: XAie_StrmConnCctEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 0), strmTtoStrmT(connect.src.bundle)=StrmSwPortType::SOUTH, connect.src.channel=3, strmTtoStrmT(connect.dst.bundle)=StrmSwPortType::NORTH, connect.dst.channel=0
 // CHECK: XAIE API: XAie_StrmConnCctEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 0), strmTtoStrmT(connect.src.bundle)=StrmSwPortType::SOUTH, connect.src.channel=7, strmTtoStrmT(connect.dst.bundle)=StrmSwPortType::EAST, connect.dst.channel=0

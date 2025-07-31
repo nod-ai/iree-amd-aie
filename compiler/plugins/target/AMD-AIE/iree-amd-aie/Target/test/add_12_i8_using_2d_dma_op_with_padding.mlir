@@ -38,7 +38,7 @@ module {
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaDesc=ptr, nextBdId.value()=0, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 0, row: 1), bdId=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=0, direction=0, bdId=0, repeatCount=1, enTokenIssue=0
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=0, direction=0, &dmaQueueDesc=ptr
 
 // CHECK: cdo-driver: (NOP Command): Payload Length: 0
 

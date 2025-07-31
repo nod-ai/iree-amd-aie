@@ -57,6 +57,7 @@ iree_lit_test_suite(
     "insert_copy_ops.mlir"
     "insert_cores.mlir"
     "insert_dma_bd_chain.mlir"
+    "insert_dma_out_of_order_block.mlir"
     "insert_infinite_loop_around_core_block.mlir"
     "insert_loops_for_vectorization.mlir"
     "load_store_alignment_reset.mlir"

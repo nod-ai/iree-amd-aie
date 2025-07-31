@@ -56,7 +56,8 @@ LogicalResult configureDMABD(
     const TileLoc &tileLoc, bool validBd, uint8_t bdId, bool enableNextBd,
     std::optional<uint8_t> nextBdId, bool enablePacket,
     std::optional<uint8_t> packetType, std::optional<uint8_t> packetId,
-    uint64_t baseAddr, uint64_t lenInBytes, uint64_t offsetInBytes,
+    std::optional<uint8_t> outOfOrderBdId, uint64_t baseAddr,
+    uint64_t lenInBytes, uint64_t offsetInBytes,
     uint32_t bufferElementTypeWidthInBytes,
     const std::optional<SmallVector<BDDimLayout>> &maybeDims,
     const std::optional<SmallVector<BDPadLayout>> &maybePadDims,
@@ -198,9 +199,44 @@ LogicalResult configureDMABD(
     TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaDisableBd, &dmaDesc);
   }
 
+  if (outOfOrderBdId.has_value()) {
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaSetOutofOrderBdId, &dmaDesc,
+                                outOfOrderBdId.value());
+  }
+
   auto devInst = const_cast<XAie_DevInst *>(&deviceModel.devInst);
   TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaWriteBd, devInst, &dmaDesc, tileLoc,
                               bdId);
+  return success();
+}
+
+LogicalResult configureOutofOrderMode(const AMDAIEDeviceModel &deviceModel,
+                                      const TileLoc &tileLoc, uint32_t chNum,
+                                      const DMAChannelDir &channelDir,
+                                      bool enableOutOfOrder) {
+  AMDAIETileType tileType = deviceModel.getTileType(tileLoc.col, tileLoc.row);
+  FailureOr<uint8_t> maybeNumDmaChannels =
+      deviceModel.getDmaProp<uint8_t>(tileType, AMDAIEDmaProp::NumChannels);
+
+  if (failed(maybeNumDmaChannels)) {
+    llvm::errs() << "could not retrieve number of DMA channels\n";
+    return failure();
+  }
+
+  if (chNum >= *maybeNumDmaChannels) {
+    llvm::errs() << "channel number out of range\n";
+    return failure();
+  }
+
+  XAie_DmaDirection direction = static_cast<XAie_DmaDirection>(channelDir);
+  auto devInst = const_cast<XAie_DevInst *>(&deviceModel.devInst);
+  XAie_DmaChannelDesc dmaChannelDesc;
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelDescInit, devInst, &dmaChannelDesc,
+                              tileLoc);
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelEnOutofOrder, &dmaChannelDesc,
+                              enableOutOfOrder);
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaWriteChannel, devInst, &dmaChannelDesc,
+                              tileLoc, chNum, direction);
   return success();
 }
 
@@ -208,12 +244,14 @@ LogicalResult configurePushToBdQueue(const AMDAIEDeviceModel &deviceModel,
                                      const TileLoc &tileLoc, uint8_t chNum,
                                      const DMAChannelDir &channelDir,
                                      uint8_t bdId, uint32_t repeatCount,
-                                     bool enTokenIssue) {
+                                     bool enableTokenIssue,
+                                     bool enableOutOfOrder) {
   XAie_DmaDirection direction = static_cast<XAie_DmaDirection>(channelDir);
   auto devInst = const_cast<XAie_DevInst *>(&deviceModel.devInst);
-  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelSetStartQueue, devInst, tileLoc,
-                              chNum, direction, bdId, repeatCount,
-                              enTokenIssue);
+  XAie_DmaQueueDesc dmaQueueDesc = {repeatCount, bdId, enableTokenIssue,
+                                    enableOutOfOrder};
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelSetStartQueueGeneric, devInst,
+                              tileLoc, chNum, direction, &dmaQueueDesc);
   // Channel enable is required only for AIE1. Using it on later generations may
   // unintentionally overwrite the channel control register.
   if (deviceModel.configPtr.AieGen == XAIE_DEV_GEN_AIE) {
