@@ -198,8 +198,8 @@ LogicalResult TransactionBuilder::appendDmaStartOp(
   // Configure push to BD queue.
   // TODO: Generalize it as this is currently hardcoded to only shim side for
   // now.
-  AMDAIE::DMABDOp dmaBdOp =
-      *dmaStartOp.getBody().getOps<AMDAIE::DMABDOp>().begin();
+  if (dmaBdOps.empty()) return dmaStartOp.emitError("has no DMA BD ops");
+  AMDAIE::DMABDOp dmaBdOp = *dmaBdOps.begin();
   bool issueToken = tileLoc.Row == 0 && channelDir == DMAChannelDir::MM2S;
   if (failed(configurePushToBdQueue(
           deviceModel, tileLoc, chNum, channelDir, dmaBdOp.getBdId().value(),
