@@ -129,10 +129,10 @@ void AMDAIEVectorizationPass::runOnOperation() {
   }
 
   RewritePatternSet vectorizationPatterns(funcOp.getContext());
-
   vector::populateVectorReductionToContractPatterns(vectorizationPatterns);
   vector::populateSinkVectorOpsPatterns(vectorizationPatterns);
 
+  // TODO: Do we really need belowpattern?
   // Including this pattern prevents broadcasting in vector.transfer_read ops
   vector::populateVectorTransferPermutationMapLoweringPatterns(
       vectorizationPatterns);
@@ -140,34 +140,22 @@ void AMDAIEVectorizationPass::runOnOperation() {
   vector::populateVectorMultiReductionLoweringPatterns(
       vectorizationPatterns,
       vector::VectorMultiReductionLowering::InnerReduction);
-  vector::populateVectorTransferLoweringPatterns(
-      vectorizationPatterns, 1);  // converts transfer.read -> vector.loads
-  populateVectorUnrollPatterns(
-      vectorizationPatterns);  // converts 2D vector.transfer_read -> 1D
-                               // vector.transfer_read
-  vector::populateVectorToVectorCanonicalizationPatterns(vectorizationPatterns);
-  vector::populateCastAwayVectorLeadingOneDimPatterns(
-      vectorizationPatterns);  // vector<1x10xbf16> -> vector<10xbf16>
-  vector::populateFlattenVectorTransferPatterns(vectorizationPatterns, 128);
-
-  // using castAway generates
-  // vector<1x10xbf16> -> vector<10xbf16>
-  // not using it generates 2 instructions.
-  // vector.transfer_read vector<1x16xbf16> from strided_memref
-  // vector.extract vector<16xbf16> from vector<1x16xbf16>
-
-  // it's supposed to convert vector.extract(vector.transfer_read) ->
-  // memref.load failing
-  vector::populateScalarVectorTransferLoweringPatterns(vectorizationPatterns, 1,
-                                                       false);
-
-  // EXTRAS
-  // vector::populateVectorTransferDropUnitDimsPatterns(vectorizationPatterns);
-  // vector::populateDropUnitDimWithShapeCastPatterns(vectorizationPatterns);
-
-  // populateBreakDownVectorReductionPatterns(vectorizationPatterns,
-  //                                            /*maxNumElementsToExtract=*/2);
-  //////////////////////////////
+  // Converting transfer_read/writes -> vector.loads/stores
+  {
+    vector::populateVectorToVectorCanonicalizationPatterns(
+        vectorizationPatterns);
+    // 1. unroll
+    populateVectorUnrollPatterns(vectorizationPatterns);
+    // 2. Fully convert 2D->1D
+    // vector<1x10xbf16> -> vector<10xbf16>
+    vector::populateCastAwayVectorLeadingOneDimPatterns(vectorizationPatterns,
+                                                        /*benefit=*/1);
+    // 3. Convert to vector.load/store
+    vector::populateVectorTransferLoweringPatterns(
+        vectorizationPatterns);  // converts transfer.read -> vector.loads
+    vector::populateVectorToVectorCanonicalizationPatterns(
+        vectorizationPatterns);
+  }
 
   (void)applyPatternsGreedily(funcOp, std::move(vectorizationPatterns));
 }

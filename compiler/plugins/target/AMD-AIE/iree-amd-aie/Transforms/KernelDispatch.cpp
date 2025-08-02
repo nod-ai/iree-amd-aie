@@ -878,12 +878,17 @@ static LogicalResult setRootConfigForReductionCopyPipeline(
       llvm::cast<ShapedType>(linalgOp.getDpsInputOperand(0)->get().getType())
           .getShape();
   assert(inputShape.size() == 2 && "expected the input as 2D");
-  int64_t m1Tile = std::min<int64_t>(inputShape[0], 32);
+  int64_t m1Tile = std::min<int64_t>(inputShape[0], 16);
   int64_t m0Tile = std::min<int64_t>(inputShape[0], numRows * numCols * m1Tile);
 
+  // '0' here refers to the python way of saying all values in the respective
+  // dimension Example: {D0xD1} -----> <m0TilexD1}
   SmallVector<int64_t> tileSizeLevel0 = {m0Tile, 0};
   SmallVector<int64_t> tileSizeLevel1 = {m1Tile, 0};
-  SmallVector<int64_t> tileSizeLevel2 = {0, 16};
+  // Peano legalizer vectorizes <32xbf16>, split reduction dimension into 32
+  // chunks otherwise Peano generates scalarized code causing out of program
+  // memory errors
+  SmallVector<int64_t> tileSizeLevel2 = {0, 32};
   if (failed(setOpConfigAndEntryPointFnTranslation(
           entryPointFn, linalgOp,
           TileSizesListType{tileSizeLevel0, tileSizeLevel1, tileSizeLevel2},
