@@ -2,8 +2,11 @@
 // input 1024x128xf32
 // output 1024xf32
 
-!in_ty = tensor<1024x128xf32>
-!out_ty = tensor<1024xf32>
+// Constraints:<D0xD1>
+// D0 = [2, no-limit]
+// D1 = [2, 256]
+!in_ty = tensor<65536x256xf32>
+!out_ty = tensor<65536xf32>
 
 func.func @reduction_sum(%arg0: !in_ty) -> !out_ty {
   %cst = arith.constant 0.0 : f32
