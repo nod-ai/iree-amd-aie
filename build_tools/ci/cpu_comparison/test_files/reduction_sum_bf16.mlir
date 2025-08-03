@@ -1,6 +1,6 @@
 // These lines are required for e2e numerical testing:
-// input 1024x128xbf16
-// output 1024xbf16
+// input 8x1024xbf16
+// output 8xbf16
 
 // Constraints:<D0xD1>
 // D0 = [8, no-limit]

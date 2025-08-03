@@ -196,6 +196,7 @@ class BaseTest(ABC):
     def get_filename(self, config):
         return self.get_dir(config) / f"{self.name}.mlir"
 
+    # Correctness
     def vs_cpu(self, config):
         filename = self.get_filename(config)
 
@@ -1038,6 +1039,9 @@ def generate_aie_output(config, aie_vmfb, input_args, function_name, name, outpu
         shell_out(config.reset_npu_script, verbose=config.verbose)
 
     start = time.monotonic_ns()
+    print(f"Run command iree_run_exe: {run_args}")
+    print(f"Run command iree_run_exe: {test_dir}")
+    print(f"Run command iree_run_exe: {config.verbose}")
     shell_out(run_args, test_dir, config.verbose)
     run_time = time.monotonic_ns() - start
 
@@ -1474,7 +1478,7 @@ def aie_vs_baseline(
             name,
             output_type,
         )
-
+        print(f"SAM: {aie_output}")
         summary_string = compare(baseline_value, aie_output, rtol, atol)
         if summary_string:
             print(summary_string)
@@ -2485,16 +2489,31 @@ class Tests:
                 )
 
         # Reduction op tests:
-        self.register(
-            Reduction(
-                file_base_name="reduction_sum",
-                function_name="reduction_sum",
-                test_params=TestParams(
-                    name_suffix="sum",
-                    tile_pipeline="general-copy",
-                ),
+        for data_type in ["bf16", "f32"]:
+            self.register(
+                Reduction(
+                    file_base_name=f"reduction_sum_{data_type}",
+                    function_name=f"reduction_sum",
+                    test_params=TestParams(
+                        name_suffix=data_type,  # used in final test name
+                        tile_pipeline="general-copy",
+                        run_on_target=["npu4"],
+                        use_chess=False,
+                        use_chess_for_ukernel=False,
+                        use_ukernel=False,
+                        enable_ctrlpkt=False,
+                        run_benchmark=False,  # Correctness
+                        stack_size=2048,
+                        lower_to_aie_pipeline="objectFifo",
+                        n_repeats=1,
+                        n_kernel_runs=1,
+                        aie_compilation_flags=[
+                            "--iree-amdaie-num-rows=4",
+                            "--iree-amdaie-num-cols=4",
+                        ],
+                    ),
+                )
             )
-        )
 
         # Soak testing.
         # See https://github.com/nod-ai/iree-amd-aie/issues/1264
