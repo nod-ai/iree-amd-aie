@@ -927,7 +927,7 @@ void addMLIRAIELoweringPasses(OpPassManager &pm,
   {
     ConvertVectorToLLVMPassOptions opts{};
     opts.reassociateFPReductions = true;
-    pm.addPass(createConvertVectorToLLVMPass(opt));
+    pm.addPass(createConvertVectorToLLVMPass(opts));
   }
   pm.addPass(memref::createExpandStridedMetadataPass());
   pm.addPass(createLowerAffinePass());
