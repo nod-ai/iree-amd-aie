@@ -1,12 +1,12 @@
 // These lines are required for e2e numerical testing:
-// input 8x1024xbf16
+// input 8x512xbf16
 // output 8xbf16
 
 // Constraints:<D0xD1>
 // D0 = [8, no-limit]
 // D1 = [16, 1024]
 
-!in_ty = tensor<8x1024xbf16>
+!in_ty = tensor<8x512xbf16>
 !out_ty = tensor<8xbf16>
 
 func.func @reduction_sum(%arg0: !in_ty) -> !out_ty {

@@ -1,12 +1,13 @@
 // These lines are required for e2e numerical testing:
-// input 1024x256xf32
-// output 1024xf32
+// input 8x512xf32
+// output 8xf32
 
 // Constraints:<D0xD1>
+// Format: [Min, Max]
 // D0 = [2, no-limit]
 // D1 = [2, 256]
-!in_ty = tensor<1024x256xf32>
-!out_ty = tensor<1024xf32>
+!in_ty = tensor<8x512xf32>
+!out_ty = tensor<8xf32>
 
 func.func @reduction_sum(%arg0: !in_ty) -> !out_ty {
   %cst = arith.constant 0.0 : f32

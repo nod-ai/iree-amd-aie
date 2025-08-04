@@ -924,7 +924,11 @@ void addMLIRAIELoweringPasses(OpPassManager &pm,
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
   pm.addPass(aievec::createConvertAIEVecToLLVMPass());
-  pm.addPass(createConvertVectorToLLVMPass());
+  {
+    ConvertVectorToLLVMPassOptions opts{};
+    opts.reassociateFPReductions = true;
+    pm.addPass(createConvertVectorToLLVMPass(opt));
+  }
   pm.addPass(memref::createExpandStridedMetadataPass());
   pm.addPass(createLowerAffinePass());
   pm.addPass(createConvertMathToLLVMPass());
