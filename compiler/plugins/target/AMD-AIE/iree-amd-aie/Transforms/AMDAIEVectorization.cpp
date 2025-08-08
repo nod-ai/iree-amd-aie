@@ -104,7 +104,7 @@ void AMDAIEVectorizationPass::runOnOperation() {
     if (auto genericOp = dyn_cast<linalg::GenericOp>(op)) {
       if (isElementwise(genericOp)) {
         for (Operation &innerOps : genericOp.getBody()->getOperations()) {
-          if (!isa<arith::TruncFOp, arith::TruncIOp, linalg::YieldOp>(
+          if (!isa<arith::TruncFOp, arith::TruncIOp, linalg::YieldOp, arith::AddFOp>(
                   innerOps)) {
             return WalkResult::advance();
           }
@@ -112,9 +112,8 @@ void AMDAIEVectorizationPass::runOnOperation() {
       }
     }
 
-    // AIE architecture has no vector instructions for 32/64-bit types.
-    if (!isa<linalg::FillOp>(op) && !hasOperandWithSmallElementType(op))
-      return WalkResult::advance();
+    // if (!isa<linalg::FillOp>(op) && !hasOperandWithSmallElementType(op))
+    //   return WalkResult::advance();
 
     candidates.push_back(op);
     return WalkResult::advance();
