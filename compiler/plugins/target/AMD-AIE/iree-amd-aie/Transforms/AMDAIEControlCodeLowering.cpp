@@ -35,11 +35,11 @@ struct HalfDmaCpyNdToNpuConverter final
   /// is specific to Shim BDs for now.
   FailureOr<AMDAIE::NpuPushToQueueOp> insertWriteBdOps(
       AMDAIE::NpuHalfDmaCpyNdOp op, ConversionPatternRewriter &rewriter,
-      AMDAIE::AMDAIETileType tileType, AMDAIE::BdIdOp bdIdOp,
-      AMDAIE::ChannelOp channelOp, int64_t bufferLength, int64_t bufferOffset,
-      int32_t enablePacket, int32_t packetId, int32_t packetType,
-      SmallVector<OpFoldResult> sizes, SmallVector<OpFoldResult> strides,
-      bool loweringCtrlpktDma) const {
+      AMDAIE::AMDAIETileType tileType, AMDAIE::ConnectionOp connectionOp,
+      AMDAIE::BdIdOp bdIdOp, AMDAIE::ChannelOp channelOp, int64_t bufferLength,
+      int64_t bufferOffset, int32_t enablePacket, int32_t packetId,
+      int32_t packetType, SmallVector<OpFoldResult> sizes,
+      SmallVector<OpFoldResult> strides, bool loweringCtrlpktDma) const {
     FailureOr<uint8_t> maybeNumIntraAddrDim = deviceModel.getDmaProp<uint8_t>(
         tileType, AMDAIE::AMDAIEDmaProp::NumAddrDim);
     if (failed(maybeNumIntraAddrDim)) return failure();
@@ -190,11 +190,11 @@ struct HalfDmaCpyNdToNpuConverter final
     // Offset set to zero for shim as the offset is embedded in the address
     // patch.
     rewriter.create<AMDAIE::NpuWriteBdOp>(
-        op.getLoc(), col, row, bdId, innerBufferLength, 0, staticSizes,
-        staticStrides, paddingsBefore, paddingsAfter, iterationCurrent,
-        iterationSize, iterationStride, enablePacket, packetId, packetType,
-        outOfOrderId, useNextBd, nextBd, validBd, lockAcqEnable, lockRelVal,
-        lockRelId, lockAcqVal, lockAcqId);
+        op.getLoc(), connectionOp, col, row, bdId, innerBufferLength, 0,
+        staticSizes, staticStrides, paddingsBefore, paddingsAfter,
+        iterationCurrent, iterationSize, iterationStride, enablePacket,
+        packetId, packetType, outOfOrderId, useNextBd, nextBd, validBd,
+        lockAcqEnable, lockRelVal, lockRelId, lockAcqVal, lockAcqId);
     rewriter.create<AMDAIE::NpuAddressPatchOp>(op.getLoc(), col, bdId, argIdx,
                                                bufferOffsetInBytes);
     SmallVector<Type> resultTypes = {
@@ -267,10 +267,10 @@ struct HalfDmaCpyNdToNpuConverter final
     SmallVector<OpFoldResult> sizes = op.getMixedSizes();
     SmallVector<OpFoldResult> strides = op.getMixedStrides();
     FailureOr<AMDAIE::NpuPushToQueueOp> npuPushToQueueOp = insertWriteBdOps(
-        op, rewriter, AMDAIE::AMDAIETileType::SHIMNOC, maybeBdIdOp.value(),
-        maybeChannelOp.value(), maybeSize.value(), maybeOffset.value(),
-        enablePacket, packetId, packetType, sizes, strides,
-        *maybeIsControlFlow);
+        op, rewriter, AMDAIE::AMDAIETileType::SHIMNOC,
+        maybeConnectionOp.value(), maybeBdIdOp.value(), maybeChannelOp.value(),
+        maybeSize.value(), maybeOffset.value(), enablePacket, packetId,
+        packetType, sizes, strides, *maybeIsControlFlow);
     if (failed(npuPushToQueueOp)) return failure();
     rewriter.replaceOp(op, *npuPushToQueueOp);
 
@@ -354,6 +354,437 @@ struct DmaWaitToTctSyncConverter final
   }
 };
 
+//===----------------------------------------------------------------------===//
+// AIEDeviceBuilder utilities
+//===----------------------------------------------------------------------===//
+// TODO(avarma): Copied from LowerToAIE. Templatize it later because of a few
+//               nuances:-
+//               1. multiple dialect specific ops' usage within the same
+//               function.
+//               2. In AIE we have concept of memtile_dma which will contain
+//                  sequences of dma_start op, but in case of AMDAIE dma_start
+//                  can be a standalone op.
+using BDDimLayoutAndLength = std::pair<AMDAIE::BDDimLayoutArrayAttr, int64_t>;
+
+BDDimLayoutAndLength convertSizeStrideToBDDimLayoutArrayAttr(
+    IRRewriter &rewriter, ArrayRef<int64_t> sizes, ArrayRef<int64_t> strides) {
+  assert(sizes.size() == strides.size() &&
+         "expected stride and size vectors of same size");
+  SmallVector<AMDAIE::BDDimLayoutAttr, 4> bdDimLayoutAttr;
+  // If the access pattern (strides/sizes) have a single dimension, make it
+  // implicit with an empty `BDDimLayoutAttr` as this is what the AIE dialect
+  // expects.
+  if (strides.size() == 1 && strides[0] == 1) {
+    return std::make_pair(AMDAIE::BDDimLayoutArrayAttr::get(
+                              rewriter.getContext(), ArrayRef(bdDimLayoutAttr)),
+                          sizes[0]);
+  }
+  bdDimLayoutAttr.reserve(sizes.size());
+  // Compute the length of the DMA transfer.
+  int64_t transferLength =
+      sizes.empty()
+          ? 0
+          : std::accumulate(sizes.begin(), sizes.end(), 1, std::multiplies<>());
+  for (auto [size, stride] : llvm::zip(sizes, strides)) {
+    bdDimLayoutAttr.push_back(
+        AMDAIE::BDDimLayoutAttr::get(rewriter.getContext(), size, stride));
+  }
+  return std::make_pair(AMDAIE::BDDimLayoutArrayAttr::get(
+                            rewriter.getContext(), ArrayRef(bdDimLayoutAttr)),
+                        transferLength);
+}
+
+/// Create a new `amdaie.dma_start` op with a sequence of DMA BD blocks.
+///
+/// Example of a S2MM DMA start op being created with two DMA blocks performing
+/// a circular double buffering DMA operation:
+///
+///  %0 = amdaie.dma_start(%tile_0_1, S2MM, 0) {
+///       amdaie.use_lock(%lock_0_1_51, AcquireGreaterOrEqual(2))
+///       amdaie.dma_bd(%buffer_0_1_49 : memref<2048xi32, 1 : i32>) {len = 2048
+///       : i32} amdaie.use_lock(%lock_0_1_52, Release(2)) amdaie.next_bd ^bb1
+///     ^bb1:  // pred: ^bb2
+///       amdaie.use_lock(%lock_0_1_51, AcquireGreaterOrEqual(2))
+///       amdaie.dma_bd(%buffer_0_1_50 : memref<2048xi32, 1 : i32>) {len = 2048
+///       : i32} amdaie.use_lock(%lock_0_1_52, Release(2)) amdaie.next_bd ^bb2
+///     ^bb2:
+///       amdaie.end
+///  }
+LogicalResult createDMABlocks(
+    IRRewriter &rewriter, AMDAIE::ChannelOp channelOp,
+    AMDAIE::ConnectionOp connectionOp, ArrayRef<int64_t> sizes,
+    ArrayRef<int64_t> strides, size_t acqNum, size_t relNum, int64_t offset,
+    const SmallVector<AMDAIE::BufferOp> &bufferOps,
+    const std::pair<AMDAIE::LockOp, AMDAIE::LockOp> &locks,
+    std::optional<uint8_t> pktId) {
+  OpBuilder::InsertionGuard g(rewriter);
+
+  // Create DMA start on channel.
+  auto dmaStartOp = rewriter.create<AMDAIE::DMAStartOp>(
+      rewriter.getUnknownLoc(), channelOp, ValueRange{connectionOp},
+      /*repeatCount=*/1, /*enableOutOfOrder=*/nullptr);
+  rewriter.setInsertionPointToStart(&dmaStartOp.getRegion().emplaceBlock());
+  rewriter.create<AMDAIE::EndOp>(rewriter.getUnknownLoc());
+  Block &endBlock = dmaStartOp->getRegion(0).getBlocks().back();
+  Block *lastDmaBlock = endBlock.getSinglePredecessor();
+  Block *bdBlock = rewriter.createBlock(&endBlock);
+  if (lastDmaBlock) lastDmaBlock->getTerminator()->setSuccessor(bdBlock, 1);
+
+  auto createDMAOps = [&](Block *succ, AMDAIE::BufferOp buff,
+                          AMDAIE::BDDimLayoutArrayAttr dims, bool shouldAcqLock,
+                          bool shouldRelLock, int64_t transferLength,
+                          int64_t offset) {
+    AMDAIE::LockOp acqLock = locks.first, relLock = locks.second;
+    if (shouldAcqLock) {
+      rewriter.create<AMDAIE::UseLockOp>(
+          rewriter.getUnknownLoc(), acqLock,
+          AMDAIE::LockAction::AcquireGreaterOrEqual, acqNum);
+    }
+    if (channelOp.getDirection() == AMDAIE::DMAChannelDir::MM2S &&
+        pktId.has_value()) {
+      rewriter.create<AMDAIE::DmaBdPacketOp>(rewriter.getUnknownLoc(),
+                                             /*pkt_type=*/0,
+                                             /*pkt_id=*/pktId.value(),
+                                             /*out_of_order_bd_id=*/nullptr);
+    }
+    if (!dims.getValue().empty()) {
+      rewriter.create<AMDAIE::DMABDOp>(rewriter.getUnknownLoc(), buff, offset,
+                                       transferLength, dims);
+    } else {
+      rewriter.create<AMDAIE::DMABDOp>(rewriter.getUnknownLoc(), buff, offset,
+                                       transferLength);
+    }
+    if (shouldRelLock) {
+      rewriter.create<AMDAIE::UseLockOp>(rewriter.getUnknownLoc(), relLock,
+                                         AMDAIE::LockAction::Release, relNum);
+    }
+    rewriter.create<AMDAIE::NextBDOp>(rewriter.getUnknownLoc(), succ);
+  };
+
+  // Find the last index with a zero stride. All dimensions before and including
+  // this one will be converted into separate DMA ops, while the dimensions
+  // after this will be included in the access pattern within a DMA op. This is
+  // needed becaused low-level DMA BD configurations currently don't support
+  // zero stride and/or because more dimensions are needed than available.
+  int64_t lastZeroStrideIndex{-1};
+  for (size_t i = 0; i < strides.size(); i++)
+    if (strides[i] == 0) lastZeroStrideIndex = i;
+
+  // Convert all dimensions after the last index with zero stride to a
+  // `BDDimLayoutArrayAttr` as these are the inner/intra DMA dimensions.
+  auto [dims, transferLength] = convertSizeStrideToBDDimLayoutArrayAttr(
+      rewriter, ArrayRef<int64_t>(sizes).drop_front(lastZeroStrideIndex + 1),
+      ArrayRef<int64_t>(strides).drop_front(lastZeroStrideIndex + 1));
+
+  SmallVector<size_t> indexRange(lastZeroStrideIndex + 1);
+  std::iota(indexRange.begin(), indexRange.end(), 0);
+  // Compute the total number of iterations of all dimensions up till
+  // `lastZeroStrideIndex`.
+  int64_t numIters = std::accumulate(
+      sizes.begin(), sizes.begin() + indexRange.size(), 1, std::multiplies<>());
+  // Compute the divisors to be used to get the indices for every dimension from
+  // the total number of iterations (as if all dimensions are coalesced).
+  SmallVector<int64_t> cartesianDivisors(indexRange.size(), 1);
+  for (int64_t i = indexRange.size() - 2; i >= 0; i--)
+    cartesianDivisors[i] = cartesianDivisors[i + 1] * sizes[i + 1];
+
+  // Create blocks with DMA ops.
+  Block *succ = nullptr, *curr = bdBlock;
+  for (size_t blockIndex = 0; blockIndex < bufferOps.size(); ++blockIndex) {
+    // Iterate through the cartesian product of all dimension up to the last
+    // dimension with zero strides to create a DMA chain of `dma_bd` ops.
+    for (int64_t index = 0; index < numIters; index++) {
+      SmallVector<int64_t> indices = llvm::map_to_vector(
+          indexRange,
+          [&](size_t i) { return (index / cartesianDivisors[i]) % sizes[i]; });
+      bool isFirst = llvm::all_of(indices, [](int64_t v) { return v == 0; });
+      bool isLast = llvm::all_of(
+          indexRange, [&](size_t i) { return indices[i] == (sizes[i] - 1); });
+      if (blockIndex == bufferOps.size() - 1 && isLast) {
+        succ = &endBlock;
+      } else {
+        succ = rewriter.createBlock(&endBlock);
+      }
+      rewriter.setInsertionPointToStart(curr);
+      int64_t addOffset = 0;
+      for (size_t i = 0; i < indexRange.size(); i++)
+        addOffset += (indices[i] * strides[i]);
+      createDMAOps(succ, bufferOps[blockIndex], dims, isFirst, isLast,
+                   transferLength, offset + addOffset);
+      curr = succ;
+    }
+  }
+  return success();
+}
+
+/// Form DmaStartOp block for the connection op's source using the access
+/// patterns of the half dma op.
+static LogicalResult processConnectionSourceForDmaStart(
+    IRRewriter &rewriter, AMDAIE::ConnectionOp connectionOp,
+    std::optional<uint8_t> packetId, Value source,
+    AMDAIE::AMDAIEDeviceModel &deviceModel, size_t sourceOffset,
+    uint8_t sourceMemSpace, SmallVector<OpFoldResult> sourceMixedSizes,
+    SmallVector<OpFoldResult> sourceMixedStrides) {
+  SmallVector<AMDAIE::ChannelOp> producerChannels;
+  for (Value producerChannel : connectionOp.getSourceChannels()) {
+    auto channelOp =
+        dyn_cast<AMDAIE::ChannelOp>(producerChannel.getDefiningOp());
+    if (!channelOp) {
+      return connectionOp.emitOpError()
+             << "found non-`amdaie.channel` source channel";
+    }
+    producerChannels.push_back(channelOp);
+  }
+  auto sourceObjFifo =
+      dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromBuffersOp>(
+          source.getDefiningOp());
+  if (!sourceObjFifo) {
+    return connectionOp.emitOpError()
+           << "expected source to be an "
+              "`amdaie.logicalobjectfifo.from_buffers` op";
+  }
+  FailureOr<size_t> repetitionCount = getRepetitionCount(
+      cast<LogicalObjFifoOpInterface>(sourceObjFifo.getOperation()),
+      /*reprogramDmas=*/true);
+  if (failed(repetitionCount)) {
+    return sourceObjFifo->emitOpError()
+           << "could not retrieve the repetition count";
+  }
+  SmallVector<CopyOpInterface> objFifoProducers =
+      sourceObjFifo.getCopyLikeProducers();
+  SmallVector<CopyOpInterface> objFifoConsumers =
+      sourceObjFifo.getCopyLikeConsumers();
+  // Default acquire/release value is 1. Will be adjusted depending on number
+  // of producers/consumers.
+  int acqNum{1};
+  if (objFifoConsumers.size() < objFifoProducers.size()) {
+    assert(objFifoProducers.size() % objFifoConsumers.size() == 0 &&
+           "expected total no. of producers of objFifo to be divisible by the "
+           "total no. of consumers");
+    acqNum = objFifoProducers.size() / objFifoConsumers.size();
+  }
+  for (AMDAIE::ChannelOp channel : producerChannels) {
+    AMDAIE::TileOp tileOp = channel.getTileOp();
+    SmallVector<AMDAIE::BufferOp> buffers =
+        sourceObjFifo.getBuffersOnTile(tileOp);
+    SmallVector<AMDAIE::LockOp> producerLocks =
+        sourceObjFifo.getProducerLocksOnTile(tileOp);
+    SmallVector<AMDAIE::LockOp> consumerLocks =
+        sourceObjFifo.getConsumerLocksOnTile(tileOp);
+    if (producerLocks.size() != 1) {
+      return sourceObjFifo.emitOpError()
+             << "expected a single producer lock for tile: "
+             << channel.getTile() << ", channel: " << channel.getResult();
+    }
+    if (consumerLocks.size() != 1) {
+      return sourceObjFifo.emitOpError()
+             << "expected a single consumer lock for tile: "
+             << channel.getTile() << ", channel: " << channel.getResult();
+    }
+    std::pair<AMDAIE::LockOp, AMDAIE::LockOp> lockPair =
+        std::make_pair(consumerLocks[0], producerLocks[0]);
+    SmallVector<int64_t> canonicalizedSizes, canonicalizedStrides;
+    if (failed(foldDimsAndReturnAsStatic(
+            rewriter, deviceModel, sourceMixedSizes, sourceMixedStrides,
+            canonicalizedSizes, canonicalizedStrides, repetitionCount.value(),
+            sourceMemSpace, [&]() { return connectionOp->emitOpError(); }))) {
+      return failure();
+    };
+    if (failed(createDMABlocks(rewriter, channel, connectionOp,
+                               canonicalizedSizes, canonicalizedStrides, acqNum,
+                               acqNum, sourceOffset, buffers, lockPair,
+                               packetId))) {
+      return sourceObjFifo.emitOpError() << "could not create DMA operations";
+    }
+  }
+  return success();
+}
+
+/// Form DmaStartOp block for the connection op's target using the access
+/// patterns of the half dma op.
+static LogicalResult processConnectionTargetForDmaStart(
+    IRRewriter &rewriter, AMDAIE::ConnectionOp connectionOp,
+    std::optional<uint8_t> packetId, Value target,
+    AMDAIE::AMDAIEDeviceModel &deviceModel, size_t targetOffset,
+    uint8_t targetMemSpace, SmallVector<OpFoldResult> targetMixedSizes,
+    SmallVector<OpFoldResult> targetMixedStrides) {
+  SmallVector<AMDAIE::ChannelOp> consumerChannels;
+  for (Value consumerChannel : connectionOp.getTargetChannels()) {
+    auto channelOp =
+        dyn_cast<AMDAIE::ChannelOp>(consumerChannel.getDefiningOp());
+    if (!channelOp) {
+      return connectionOp.emitOpError()
+             << "found non-`amdaie.channel` target channel";
+    }
+    consumerChannels.push_back(channelOp);
+  }
+  auto targetObjFifo =
+      dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromBuffersOp>(
+          target.getDefiningOp());
+  if (!targetObjFifo) {
+    return connectionOp.emitOpError()
+           << "expected target to be an "
+              "`amdaie.logicalobjectfifo.from_buffers` op";
+  }
+  FailureOr<size_t> repetitionCount = getRepetitionCount(
+      cast<LogicalObjFifoOpInterface>(targetObjFifo.getOperation()),
+      /*reprogramDmas=*/true);
+  if (failed(repetitionCount)) {
+    return targetObjFifo->emitOpError()
+           << "could not retrieve the repetition count";
+  }
+  SmallVector<CopyOpInterface> objFifoProducers =
+      targetObjFifo.getCopyLikeProducers();
+  SmallVector<CopyOpInterface> objFifoConsumers =
+      targetObjFifo.getCopyLikeConsumers();
+  // Default acquire/release value is 1. Will be adjusted depending on number
+  // of producers/consumers.
+  int acqNum = 1;
+  if (objFifoProducers.size() < objFifoConsumers.size()) {
+    assert(objFifoConsumers.size() % objFifoProducers.size() == 0 &&
+           "expected total no. of consumers of objFifo to be divisible by the "
+           "total no. of producers");
+    acqNum = objFifoConsumers.size() / objFifoProducers.size();
+  }
+  for (AMDAIE::ChannelOp channel : consumerChannels) {
+    AMDAIE::TileOp tileOp = channel.getTileOp();
+    SmallVector<AMDAIE::BufferOp> buffers =
+        targetObjFifo.getBuffersOnTile(tileOp);
+    SmallVector<AMDAIE::LockOp> producerLocks =
+        targetObjFifo.getProducerLocksOnTile(tileOp);
+    SmallVector<AMDAIE::LockOp> consumerLocks =
+        targetObjFifo.getConsumerLocksOnTile(tileOp);
+    if (producerLocks.size() != 1) {
+      return targetObjFifo.emitOpError()
+             << "expected a single producer lock for tile: "
+             << channel.getTile();
+    }
+    if (consumerLocks.size() != 1) {
+      return targetObjFifo.emitOpError()
+             << "expected a single consumer lock for tile: "
+             << channel.getTile();
+    }
+    std::pair<AMDAIE::LockOp, AMDAIE::LockOp> lockPair =
+        std::make_pair(producerLocks[0], consumerLocks[0]);
+    SmallVector<int64_t> canonicalizedSizes, canonicalizedStrides;
+    if (failed(foldDimsAndReturnAsStatic(
+            rewriter, deviceModel, targetMixedSizes, targetMixedStrides,
+            canonicalizedSizes, canonicalizedStrides, repetitionCount.value(),
+            targetMemSpace, [&]() { return connectionOp->emitOpError(); }))) {
+      return failure();
+    };
+    if (failed(createDMABlocks(rewriter, channel, connectionOp,
+                               canonicalizedSizes, canonicalizedStrides, acqNum,
+                               acqNum, targetOffset, buffers, lockPair,
+                               packetId))) {
+      return targetObjFifo.emitOpError() << "could not create DMA operations";
+    }
+  }
+  return success();
+}
+
+/// Convert the `amdaie.connection` operation into DMA operations.
+LogicalResult halfDmaToDmaStartBlocks(
+    IRRewriter &rewriter, AMDAIE::AMDAIEDeviceModel &deviceModel,
+    AMDAIE::NpuHalfDmaCpyNdOp dmaOp, uint8_t &connectionIndex,
+    DenseMap<Value, Operation *> &tileToMemOpMap) {
+  LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::ConnectionOp]\n");
+  std::optional<AMDAIE::ConnectionOp> maybeConnectionOp =
+      dmaOp.getConnectionOp();
+  if (!maybeConnectionOp) {
+    return failure();
+  }
+  AMDAIE::ConnectionOp connectionOp = *maybeConnectionOp;
+  Value source = connectionOp.getSource();
+  auto sourceObjFifoLikeOp =
+      dyn_cast_if_present<AMDAIE::LogicalObjFifoOpInterface>(
+          source.getDefiningOp());
+  if (!sourceObjFifoLikeOp) {
+    return connectionOp.emitOpError()
+           << "expected source to be an logical objFifo-like op";
+  }
+  Value target = connectionOp.getTarget();
+  auto targetObjFifoLikeOp =
+      dyn_cast_if_present<AMDAIE::LogicalObjFifoOpInterface>(
+          target.getDefiningOp());
+  if (!targetObjFifoLikeOp) {
+    return connectionOp.emitOpError()
+           << "expected target to be an logical objFifo-like op";
+  }
+  rewriter.setInsertionPoint(dmaOp);
+
+  std::optional<AMDAIE::FlowOp> maybeFlowOp = connectionOp.getFlowOp();
+  if (!maybeFlowOp) return connectionOp.emitOpError() << "has no flow op";
+
+  FailureOr<bool> isCtrlFlow = maybeFlowOp->isControlFlow();
+  if (failed(isCtrlFlow)) {
+    return connectionOp.emitOpError()
+           << "could not determine if flow is control";
+  }
+  // No DMA op needed for control flow.
+  if (isCtrlFlow.value()) return success();
+
+  std::optional<uint8_t> packetId = maybeFlowOp->getPacketId();
+
+  std::optional<size_t> maybeOffset = dmaOp.getStaticBaseOffset();
+  if (!maybeOffset) {
+    return dmaOp->emitOpError() << "could not compute a static base offset";
+  }
+  std::optional<uint8_t> maybeMemSpace = dmaOp.getMemorySpaceAsUInt();
+  if (!maybeMemSpace) {
+    return dmaOp->emitOpError() << "expected to have a memory space in input";
+  }
+  if (dmaOp.getInput() == source) {
+    if (failed(processConnectionSourceForDmaStart(
+            rewriter, connectionOp, packetId, source, deviceModel, *maybeOffset,
+            *maybeMemSpace, dmaOp.getMixedSizes(), dmaOp.getMixedStrides()))) {
+      return failure();
+    }
+  } else if (dmaOp.getInput() == target) {
+    if (failed(processConnectionTargetForDmaStart(
+            rewriter, connectionOp, packetId, target, deviceModel, *maybeOffset,
+            *maybeMemSpace, dmaOp.getMixedSizes(), dmaOp.getMixedStrides()))) {
+      return failure();
+    }
+  } else {
+    return dmaOp->emitOpError()
+           << "expected input of amdaie.npu.half_dma_cpy_nd to be either a "
+              "source or a target of a connection op";
+  }
+  return success();
+}
+
+LogicalResult lowerDmasForReprogramming(
+    Operation *moduleOp, AMDAIE::AMDAIEDeviceModel &deviceModel) {
+  IRRewriter rewriter(moduleOp->getContext());
+  OpBuilder::InsertionGuard guard(rewriter);
+  Operation *controlCodeOp = nullptr;
+  moduleOp->walk(
+      [&](AMDAIE::WorkgroupOp op) { controlCodeOp = op.getControlCode(); });
+  DenseMap<Value, Operation *> tileToMemOpMap;
+  uint8_t connectionIndex{0};
+  llvm::SmallSetVector<Operation *, 16> toBeErased;
+  WalkResult res = controlCodeOp->walk<WalkOrder::PreOrder>(
+      [&](AMDAIE::NpuHalfDmaCpyNdOp halfDmaOp) {
+        std::optional<AMDAIE::BdIdOp> bdIdOp = halfDmaOp.getBdIdOp();
+        if (bdIdOp) return WalkResult::advance();
+        if (failed(halfDmaToDmaStartBlocks(rewriter, deviceModel, halfDmaOp,
+                                           connectionIndex, tileToMemOpMap))) {
+          return WalkResult::interrupt();
+        }
+        // Add the op and it's users as candidates to be erased later.
+        for (Operation *userOp : halfDmaOp->getUsers()) {
+          toBeErased.insert(userOp);
+        }
+        toBeErased.insert(halfDmaOp);
+        return WalkResult::advance();
+      });
+  if (res.wasInterrupted()) return failure();
+
+  for (Operation *op : toBeErased) rewriter.eraseOp(op);
+  return success();
+}
+
 namespace {
 class AMDAIEControlCodeLoweringPass
     : public impl::AMDAIEControlCodeLoweringBase<
@@ -379,6 +810,16 @@ void AMDAIEControlCodeLoweringPass::runOnOperation() {
         << "has no AMDAIEDevice in the target attribute configuration. This "
            "device-specific information is required to lower control code "
            "ops.";
+    return signalPassFailure();
+  }
+
+  AMDAIE::AMDAIEDeviceModel deviceModel =
+      AMDAIE::getDeviceModel(maybeDevice.value());
+
+  // In case of DMA reprogramming we will be converting all npu.half_dma_cpy_nd
+  // ops to dma_start blocks.
+  if (reprogramDmas &&
+      failed(lowerDmasForReprogramming(parentOp, deviceModel))) {
     return signalPassFailure();
   }
 

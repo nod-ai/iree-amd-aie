@@ -563,6 +563,13 @@ LogicalResult FlowOp::verify() {
     return emitOpError()
            << "multiple source and multiple targets is unsupported";
   }
+
+  if (!getIsPacketFlow() && getPacketId().has_value())
+    return emitOpError() << "packet ID can only be set for packet flows";
+
+  if (!getIsPacketFlow() && getKeepPktHeader().value_or(false))
+    return emitOpError() << "keep_pkt_header can only be set for packet flows";
+
   return success();
 }
 

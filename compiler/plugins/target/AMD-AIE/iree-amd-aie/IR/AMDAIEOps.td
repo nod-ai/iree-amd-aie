@@ -132,7 +132,7 @@ def AMDAIE_FlowOp: AMDAIE_Op<"flow", [AttrSizedOperandSegments]>,
     %channel_1 = amdaie.channel(%tile_0_1, 0, port_type = DMA)
     %channel_2 = amdaie.channel(%tile_1_1, 0, port_type = DMA)
     %0 = amdaie.flow({%channel} -> {%channel_1, %channel_2})
-      {is_packet_flow = true, packet_id = 0 : ui8}
+      {is_packet_flow = true, keep_pkt_header = true, packet_id = 0 : ui8}
     ```
   }];
 
@@ -140,7 +140,8 @@ def AMDAIE_FlowOp: AMDAIE_Op<"flow", [AttrSizedOperandSegments]>,
     ins Variadic<Index>:$sources,
         Variadic<Index>:$targets,
         BoolAttr:$is_packet_flow,
-        OptionalAttr<UI8Attr>:$packet_id
+        OptionalAttr<UI8Attr>:$packet_id,
+        OptionalAttr<BoolAttr>:$keep_pkt_header
   );
 
   let assemblyFormat = [{ `(` `{` $sources `}` `->` `{` $targets `}` `)` attr-dict }];
@@ -1036,12 +1037,14 @@ def AMDAIE_NpuWriteBdOp: AMDAIE_Op<"npu.write_bd"> {
   let summary = "Initialize the buffer descriptor with specified ID";
   let description = [{
     This NPU controller operation to initialize the `bd_id` buffer descriptor on
-    the (`col`, `row`) tile with the provided configurations.
+    the (`col`, `row`) tile with the provided configurations. The connection field
+    is required for the out-of-order DMA mode, to pass to the corresponding BD IDs
+    between paired write_bd/dma_start ops.
 
     Example:
 
     ```mlir
-    amdaie.npu.write_bd {bd_id = 0 : ui32, buffer_length = 0 : ui32,
+    amdaie.npu.write_bd(%0) {bd_id = 0 : ui32, buffer_length = 0 : ui32,
       buffer_offset = 0 : ui32, col = 0 : ui32, enable_packet = false,
       iteration_current = 0 : ui32, iteration_size = 0 : ui32,
       iteration_stride = 0 : ui32, lock_acq_enable = false,
@@ -1053,7 +1056,8 @@ def AMDAIE_NpuWriteBdOp: AMDAIE_Op<"npu.write_bd"> {
     ```
   }];
   let arguments = (
-    ins UI32Attr:$col,
+    ins Optional<Index>:$connection,
+        UI32Attr:$col,
         UI32Attr:$row,
         UI32Attr:$bd_id,
         UI32Attr:$buffer_length,
@@ -1078,7 +1082,7 @@ def AMDAIE_NpuWriteBdOp: AMDAIE_Op<"npu.write_bd"> {
         I32Attr:$lock_acq_val,
         UI32Attr:$lock_acq_id
   );
-  let assemblyFormat = [{ attr-dict }];
+  let assemblyFormat = [{ ( `(` $connection^ `)` ) ? attr-dict }];
 }
 
 def AMDAIE_NpuTctSyncOp: AMDAIE_Op<"npu.tct_sync"> {
@@ -1410,9 +1414,7 @@ def AMDAIE_LogicalObjectFifoFromMemrefOp
     $memref  `,``{` $tiles `}` attr-dict `:` type($memref) `->` type($output)
   }];
 
-  // Build a LogicalObjectFifoFromMemrefOp with just a memref value.
   let builders = [
-    OpBuilder<(ins "mlir::Value":$memref)>,
     // Build `LogicalObjectFifoFromMemrefOp` with an array of static tile
     // locations.
     OpBuilder<
@@ -1748,17 +1750,44 @@ def AMDAIE_DMAStartOp: AMDAIE_Op<"dma_start", [
   ]>, Results<(outs I1:$valid)> {
 
   let summary = "An op to start DMA";
+  let description = [{
+    This opertion specifies a list of DMA tasks (BDs) to be exectuted on the given channel.
+    The connection field is required for the out-of-order DMA mode, to pass to the corresponding
+    BD IDs between paired write_bd/dma_start ops.
+  }];
+
   let arguments = (
-    ins Index:$tile,
-        DMAChannelDir:$channel_dir,
-        ConfinedAttr<I8Attr, [IntMinValue<0>]>:$channel_index,
+    ins Index:$channel,
+        Variadic<Index>:$connections,
         // `repeat_count==1` means "do it once".
-        DefaultValuedAttr<I8Attr, "1">:$repeat_count
+        DefaultValuedAttr<I8Attr, "1">:$repeat_count,
+        OptionalAttr<BoolAttr>:$enable_out_of_order
   );
   let regions = (region AnyRegion:$body);
   let assemblyFormat = [{
-    `(` $tile `,` $channel_dir `,` $channel_index (`,` `repeat_count` `=` $repeat_count^)? `)` regions attr-dict
+    `(`
+    $channel
+    ( `,` `{` $connections^ `}` )?
+    `)`
+    regions attr-dict
   }];
+}
+
+
+def AMDAIE_DmaBdPacketOp: AMDAIE_Op<"dma_bd_packet"> {
+  let summary = "Enable packet headers for a dma block descriptor";
+  let description = [{
+    This operation defines the packet metadata, including `packet_type`, `packet_id`,
+    and `out_of_order_bd_id`, which will be inserted into the packet header associated
+    with this DMA BD.
+  }];
+  let arguments = (
+    ins I32Attr:$packet_type,
+        I32Attr:$packet_id,
+        OptionalAttr<I32Attr>:$out_of_order_bd_id
+  );
+
+  let assemblyFormat = [{ attr-dict }];
 }
 
 def AMDAIE_DMABDOp: AMDAIE_Op<"dma_bd", [

@@ -92,7 +92,7 @@ struct PhysPortType {
 };
 
 struct PhysPort {
-  enum Direction { SRC, DST };
+  enum Direction : uint8_t { SRC, DST };
   TileLoc tileLoc;
   Port port;
   Direction direction;

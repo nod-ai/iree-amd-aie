@@ -64,6 +64,9 @@ struct AMDAIEOptions {
   bool matmulElementwiseFusion{false};
   AMDAIEDevice AMDAIETargetDevice{AMDAIEDevice::npu1_4col};
 
+  // Enable/Disable reprogramming of DMAs.
+  bool reprogramDmas{false};
+
   // The number of rows for the compiler to target. '0' denotes 'all'.
  private:
   unsigned AMDAIENumRows{0};
@@ -256,6 +259,13 @@ struct AMDAIEOptions {
             "This option enables/disables special passes in MLIR-AIR "
             "for matmul-elementwise fusion. It is currently added for "
             "development purpose and should be removed in the future."));
+
+    binder.opt<bool>(
+        "iree-amdaie-reprogram-dmas", reprogramDmas, llvm::cl::cat(category),
+        llvm::cl::desc(
+            "Flag used to enable/disable reprogramming of DMAs. "
+            "By default it'll be disabled, so we would have circular "
+            "DMAs for L2/L1 cache."));
 
     /// Command line option for selecting the target AIE device.
     binder.opt<AMDAIEDevice>(

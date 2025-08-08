@@ -581,6 +581,18 @@ LogicalResult DMABDOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// CascadeFlowOp
+//===----------------------------------------------------------------------===//
+
+TileOp CascadeFlowOp::getSourceTileOp() {
+  return cast<TileOp>(getSourceTile().getDefiningOp());
+}
+
+TileOp CascadeFlowOp::getDestTileOp() {
+  return cast<TileOp>(getDestTile().getDefiningOp());
+}
+
+//===----------------------------------------------------------------------===//
 // AIE_FlowOp
 //===----------------------------------------------------------------------===//
 

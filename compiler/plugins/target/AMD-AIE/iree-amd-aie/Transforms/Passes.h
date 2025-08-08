@@ -20,7 +20,7 @@ void addAMDAIEObjectFifoLoweringPasses(
     bool enableCoalescingLoops, bool enableCollapsingUnitDims,
     OutliningStrategy enableFunctionOutlining, int outliningLoopInCallCount,
     bool insertLoopAroundCoreBlock, uint32_t numCols, bool emitCtrlPkt,
-    uint32_t coreStackSize);
+    uint32_t coreStackSize, bool reprogramDmas);
 
 /// Add passes to lower from MLIR-AIR through AIE. This is
 /// currently the default passes used for lowering after IREEs tiling.
@@ -45,7 +45,7 @@ void buildAMDAIETransformPassPipeline(
     PacketFlowStrategy packetFlowStrategy, bool enableCoalescingLoops,
     bool enableCollapsingUnitDims, OutliningStrategy enableFunctionOutlining,
     int outliningLoopInCallCount, bool insertLoopAroundCoreBlock,
-    bool emitCtrlPkt, uint32_t coreStackSize);
+    bool emitCtrlPkt, uint32_t coreStackSize, bool reprogramDmas);
 
 /// Populates passes needed to lower the IR via a Pack-Peel based approach.
 void addPackPeelBasedPassPipeline(OpPassManager &passManager,
@@ -231,6 +231,9 @@ std::unique_ptr<Pass> createAMDAIEHoistLogicalObjFifoPass();
 /// Create pass to chain DMA BD IDs by updating next_bd operands.
 std::unique_ptr<Pass> createAMDAIEInsertDmaBdChainPass();
 
+/// Create a pass to generate out-of-order blocks for DMA S2MM channels.
+std::unique_ptr<Pass> createAMDAIEInsertDmaOutOfOrderBlockPass();
+
 /// Create a pass to transform linalg.generics into a form which benefits later
 /// vectorization passes (to vector and aievec dialects).
 std::unique_ptr<Pass> createAMDAIEInsertLoopsForVectorizationPass(
@@ -272,8 +275,9 @@ std::unique_ptr<OperationPass<ModuleOp>> createAMDAIELoweringStrategyPass(
 std::unique_ptr<Pass> createAMDAIELowerFuncArgsPass();
 
 /// Create pass to lower from the AMDAIE dialect to the AIE/AIEX dialects.
-void addAMDAIEToAIEPasses(OpPassManager &);
-std::unique_ptr<Pass> createAMDAIELowerToAIEPass();
+void addAMDAIEToAIEPasses(OpPassManager &pm, bool reprogramDmas);
+std::unique_ptr<Pass> createAMDAIELowerToAIEPass(
+    AMDAIELowerToAIEOptions options = {});
 
 /// Create pass to lower a sequence of operation(s) to a iree_codegen.ukernel.*
 /// operation.

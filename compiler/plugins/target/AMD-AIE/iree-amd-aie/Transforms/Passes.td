@@ -215,6 +215,8 @@ def AMDAIEControlCodeLowering :
   let options = [
     Option<"argIdxOffset", "arg-idx-offset", "int32_t", /*default=*/"0",
       "The offset to be added to the argument index.">,
+    Option<"reprogramDmas", "reprogram-dmas", "bool", /*default=*/"false",
+           "Flag to reprogram DMAs. When enabled, no circular DMAs will be produced">,
   ];
 }
 
@@ -459,6 +461,11 @@ def AMDAIEInsertDmaBdChain :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEInsertDmaBdChainPass()";
 }
 
+def AMDAIEInsertDmaOutOfOrderBlock :
+    Pass<"iree-amdaie-insert-dma-out-of-order-block"> {
+  let summary = "Generate out-of-order blocks for DMA S2MM channels";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEInsertDmaOutOfOrderBlockPass()";
+}
 
 def AMDAIEInsertInfiniteLoopAroundCoreBlock :
     Pass<"iree-amdaie-insert-infinite-loop-around-core-block", ""> {
@@ -639,6 +646,10 @@ def AMDAIELowerToAIE :
     Pass<"iree-amdaie-lower-to-aie", "ModuleOp"> {
   let summary = "Lower from the AMDAIE dialect to the AIE/AIEX dialects";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELowerToAIEPass()";
+  let options = [
+    Option<"reprogramDmas", "reprogram-dmas", "bool", /*default=*/"false",
+           "Flag to reprogram DMAs. When enabled, no circular DMAs will be produced">,
+  ];
 }
 
 def AMDAIELowerToUKernels :
