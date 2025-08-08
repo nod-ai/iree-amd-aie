@@ -117,7 +117,7 @@ class AMDAIEInsertLoopsForVectorizationPass
     } else {
       rewriter.eraseOp(genericOp);
     }
-    genericOp = result->resultOp;
+    genericOp = cast<linalg::GenericOp>(result->resultOp);
     return;
   }
 

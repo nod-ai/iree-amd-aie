@@ -639,10 +639,6 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectfifo.subview.access"> {
   let assemblyFormat = [{
     $subview `[` $index `]` attr-dict `:` type($subview) `->` type($output)
   }];
-
-  let builders = [
-    OpBuilder<(ins "mlir::Value":$subview, "size_t":$index)>
-  ];
 }
 
 // mlir-air legacy
@@ -672,6 +668,55 @@ def AIE_ShimDMAOp: AIE_Op<"shim_dma", [
     int rowIndex();
     TileOp getTileOp();
   }];
+}
+
+def AIE_CascadeFlowOp: AIE_Op<"cascade_flow", []> {
+  let arguments = (
+    ins Index:$source_tile,
+        Index:$dest_tile
+  );
+  let summary = "A cascade connection between tiles";
+  let description = [{
+    The `aie.cascade_flow` operation represents a cascade connection between two `aie.tile` operations.
+    During lowering, this is replaced by `aie.configure_cascade` operations for each `aie.tile` based on
+    their relative placement to one another.
+
+    Example:
+    ```
+      %tile03 = aie.tile(0, 3)
+      %tile13 = aie.tile(1, 3)
+      aie.cascade_flow(%tile03, %tile13)
+    ```
+  }];
+  let assemblyFormat = [{
+    `(` $source_tile `,` $dest_tile `)` attr-dict
+  }];
+  let extraClassDeclaration = [{
+    TileOp getSourceTileOp();
+    TileOp getDestTileOp();
+  }];
+}
+
+def AIE_GetCascadeOp: AIE_Op<"get_cascade", []>, Results<(outs AnyType:$cascade_value)> {
+  let summary = "An op to read from a cascading stream from a neighboring core";
+  let description = [{
+    An op to read from a cascading stream from a neighboring core.
+    The result type of this operation must have a size that matches the cascade size,
+    which is architecture-dependent. e.g. AIE1: i384 or vector<8xi48>  AIE2: i512 or vector<16xi32>
+  }];
+  let assemblyFormat = [{ `(` `)` attr-dict `:` type($cascade_value) }];
+}
+
+def AIE_PutCascadeOp: AIE_Op<"put_cascade", []> {
+  let summary = "An op to write to a cascading stream from a neighboring core";
+  let description = [{
+    An op to write to a cascading stream from a neighboring core.
+    The argument type of this operation must have a size that matches the cascade size,
+    which is architecture-dependent. e.g. AIE1: i384 or vector<8xi48>  AIE2: i512 or vector<16xi32>
+  }];
+
+  let arguments = (ins AnyType:$cascade_value);
+  let assemblyFormat = [{ `(` $cascade_value `:` type($cascade_value) `)` attr-dict }];
 }
 
 // legacy to support tests
