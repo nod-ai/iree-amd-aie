@@ -2494,7 +2494,7 @@ class Tests:
         # npu1_4col uses a lookup table to compute exponentials,
         # whereas npu4 uses a native exp2 instruction, which is less accurate.
         # TODO: Disable till iree-org/iree issue https://github.com/iree-org/iree/issues/21633
-        #       doesn't get fixed.
+        #       gets fixed.
         # for target, rtol in [["npu1_4col", 4e-2], ["npu4", 8e-2]]:
         #     for run_benchmark in [False, True]:
         #         self.register(
