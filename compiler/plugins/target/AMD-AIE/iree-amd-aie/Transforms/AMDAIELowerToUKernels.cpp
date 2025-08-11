@@ -307,7 +307,8 @@ struct LowerToUKernelPattern : OpRewritePattern<OpType> {
           op, "the target attribute fails the predicate");
     }
     auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(op);
-    if (!hasUkernel(targetAttr, ukernelName)) {
+    if (!targetAttr ||
+        !hasUkernel(targetAttr.getConfiguration(), ukernelName)) {
       return rewriter.notifyMatchFailure(
           op, "no ukernel found with name: " + ukernelName);
     }
