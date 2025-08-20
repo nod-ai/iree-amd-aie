@@ -34,6 +34,11 @@ func.func @matmul_transpose_b_dispatch_0_matmul_transpose_b_256x1024x512_i32(%ar
   // CHECK:       linalg.pack %{{.*}} inner_dims_pos = [0, 1] inner_tiles = [64, 64] into %{{.*}} : tensor<256x1024xi32> -> tensor<4x16x64x64xi32>
   // CHECK:       linalg.generic
   // CHECK-SAME:  attrs =  {lowering_config = #config, packing_config = #packingConfig}
-  %2 = linalg.matmul_transpose_b {lowering_config = #config, packing_config = #packingConfig} ins(%arg0, %arg1 : tensor<256x512xi32>, tensor<1024x512xi32>) outs(%1 : tensor<256x1024xi32>) -> tensor<256x1024xi32>
+  %2 = linalg.matmul
+    indexing_maps = [
+      affine_map<(d0, d1, d2) -> (d0, d2)>,
+      affine_map<(d0, d1, d2) -> (d1, d2)>,
+      affine_map<(d0, d1, d2) -> (d0, d1)>
+    ] {lowering_config = #config, packing_config = #packingConfig} ins(%arg0, %arg1 : tensor<256x512xi32>, tensor<1024x512xi32>) outs(%1 : tensor<256x1024xi32>) -> tensor<256x1024xi32>
   return %2 : tensor<256x1024xi32>
 }

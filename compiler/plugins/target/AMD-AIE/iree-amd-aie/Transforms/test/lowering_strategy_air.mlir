@@ -71,8 +71,15 @@ builtin.module {
     %4 = iree_tensor_ext.dispatch.tensor.load %1, offsets = [0, 0], sizes = [1024, 512], strides = [1, 1] : !iree_tensor_ext.dispatch.tensor<readonly:tensor<1024x512xi32>> -> tensor<1024x512xi32>
     %5 = tensor.empty() : tensor<256x1024xi32>
     %6 = linalg.fill ins(%c0_i32 : i32) outs(%5 : tensor<256x1024xi32>) -> tensor<256x1024xi32>
-    // CHECK:  linalg.matmul_transpose_b {lowering_config = #config, packing_config = #packingConfig}
-    %7 = linalg.matmul_transpose_b ins(%3, %4 : tensor<256x512xi32>, tensor<1024x512xi32>) outs(%6 : tensor<256x1024xi32>) -> tensor<256x1024xi32>
+    // CHECK:  linalg.matmul {lowering_config = #config, packing_config = #packingConfig}
+    %7 = linalg.matmul
+      indexing_maps = [
+        affine_map<(d0, d1, d2) -> (d0, d2)>,
+        affine_map<(d0, d1, d2) -> (d1, d2)>,
+        affine_map<(d0, d1, d2) -> (d0, d1)>
+      ]
+      ins(%3, %4 : tensor<256x512xi32>, tensor<1024x512xi32>)
+      outs(%6 : tensor<256x1024xi32>) -> tensor<256x1024xi32>
     iree_tensor_ext.dispatch.tensor.store %7, %2, offsets = [0, 0], sizes = [256, 1024], strides = [1, 1] : tensor<256x1024xi32> -> !iree_tensor_ext.dispatch.tensor<writeonly:tensor<256x1024xi32>>
     return
   }
