@@ -253,7 +253,7 @@ bool isMatmul(linalg::LinalgOp linalgOp) {
 bool isMatmulTransposeA(linalg::LinalgOp linalgOp) {
   // Step 0. Test if the op itself is a linalg.matmul_transpose_a op.
   if (isa<linalg::MatmulTransposeAOp, linalg::BatchMatmulTransposeAOp>(
-          linalgOp))
+          linalgOp.getOperation()))
     return true;
   if (!isa<linalg::GenericOp>(linalgOp)) return false;
 
@@ -282,7 +282,7 @@ bool isMatmulTransposeA(linalg::LinalgOp linalgOp) {
 bool isMatmulTransposeB(linalg::LinalgOp linalgOp) {
   // Step 0. Test if the op itself is a linalg.matmul_transpose_b op.
   if (isa<linalg::MatmulTransposeBOp, linalg::BatchMatmulTransposeBOp>(
-          linalgOp))
+          linalgOp.getOperation()))
     return true;
   if (!isa<linalg::GenericOp>(linalgOp)) return false;
 

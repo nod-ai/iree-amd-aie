@@ -420,7 +420,7 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_reconfigure(
 static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
     iree_hal_command_buffer_t* base_command_buffer,
     iree_hal_executable_t* executable, int32_t entry_point,
-    const uint32_t workgroup_count[3], iree_const_byte_span_t constants,
+    const iree_hal_dispatch_config_t config, iree_const_byte_span_t constants,
     iree_hal_buffer_ref_list_t bindings, iree_hal_dispatch_flags_t flags) {
   iree_hal_xrt_direct_command_buffer_t* command_buffer =
       iree_hal_xrt_direct_command_buffer_cast(base_command_buffer);
@@ -463,15 +463,6 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
   return iree_ok_status();
 }
 
-static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch_indirect(
-    iree_hal_command_buffer_t* base_command_buffer,
-    iree_hal_executable_t* executable, int32_t entry_point,
-    iree_hal_buffer_ref_t workgroups_ref, iree_const_byte_span_t constants,
-    iree_hal_buffer_ref_list_t bindings, iree_hal_dispatch_flags_t flags) {
-  return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                          "need xrt implementation of dispatch indirect");
-}
-
 namespace {
 const iree_hal_command_buffer_vtable_t
     iree_hal_xrt_direct_command_buffer_vtable = {
@@ -495,7 +486,5 @@ const iree_hal_command_buffer_vtable_t
         /*.collective = */
         iree_hal_xrt_direct_command_buffer_collective,
         /*.dispatch = */ iree_hal_xrt_direct_command_buffer_dispatch,
-        /*.dispatch_indirect = */
-        iree_hal_xrt_direct_command_buffer_dispatch_indirect,
 };
 }  // namespace
