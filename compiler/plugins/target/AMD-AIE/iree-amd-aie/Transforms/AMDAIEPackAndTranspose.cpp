@@ -6,6 +6,7 @@
 
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
 #include "iree-amd-aie/Transforms/Passes.h"
+#include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenAttrs.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
@@ -62,7 +63,7 @@ void AMDAIEPackAndTransposePass::runOnOperation() {
   linalg::LinalgOp linalgOp;
   funcOp->walk([&](linalg::LinalgOp op) {
     if (linalg::isaContractionOpInterface(op) ||
-        isa<linalg::ConvolutionOpInterface>(op.getOperation())) {
+        isConvOp(dyn_cast<linalg::GenericOp>(op.getOperation()))) {
       linalgOp = op;
       return WalkResult::interrupt();
     }

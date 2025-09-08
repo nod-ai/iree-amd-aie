@@ -358,6 +358,52 @@ bool isMatmulWithElementwiseConsumer(linalg::LinalgOp linalgOp) {
   return false;
 }
 
+static bool isIteratorTypesOfConvSame(
+    linalg::GenericOp linalgOp,
+    SmallVector<utils::IteratorType> expectedIteratorTypes) {
+  if (!linalgOp) return false;
+  SmallVector<utils::IteratorType> iteratorTypes =
+      linalgOp.getIteratorTypesArray();
+  if (iteratorTypes.size() != expectedIteratorTypes.size()) return false;
+  for (unsigned i = 0, n = expectedIteratorTypes.size(); i < n; i++) {
+    if (iteratorTypes[i] != expectedIteratorTypes[i]) return false;
+  }
+  return true;
+}
+
+bool isConv2DNhwcHwcfOp(Operation *linalgOp) {
+  if (isa<linalg::Conv2DNhwcHwcfOp>(linalgOp)) return true;
+  SmallVector<utils::IteratorType> expectedIteratorTypes = {
+      utils::IteratorType::parallel,  utils::IteratorType::parallel,
+      utils::IteratorType::parallel,  utils::IteratorType::parallel,
+      utils::IteratorType::reduction, utils::IteratorType::reduction,
+      utils::IteratorType::reduction};
+  return isIteratorTypesOfConvSame(dyn_cast<linalg::GenericOp>(linalgOp),
+                                   expectedIteratorTypes);
+}
+
+bool isDepthwiseConv2DNhwcHwcOp(Operation *linalgOp) {
+  if (isa<linalg::DepthwiseConv2DNhwcHwcOp>(linalgOp)) return true;
+  SmallVector<utils::IteratorType> expectedIteratorTypes = {
+      utils::IteratorType::parallel,  utils::IteratorType::parallel,
+      utils::IteratorType::parallel,  utils::IteratorType::parallel,
+      utils::IteratorType::reduction, utils::IteratorType::reduction};
+  return isIteratorTypesOfConvSame(dyn_cast<linalg::GenericOp>(linalgOp),
+                                   expectedIteratorTypes);
+}
+
+/// Utility to identify whether a linalg op is a broad concept conv op.
+bool isConvOp(linalg::GenericOp linalgOp) {
+  if (!linalgOp) return false;
+  // Test the body of the generic to indeed be what we expect for a matmul.
+  Block *body = linalgOp.getBlock();
+  auto yieldOp = cast<linalg::YieldOp>(body->getTerminator());
+  Value yieldVal = yieldOp.getOperand(0);
+  if (!bodyMatcherForMatmulLikeOps(yieldVal, body)) return false;
+
+  return isConv2DNhwcHwcfOp(linalgOp) || isDepthwiseConv2DNhwcHwcOp(linalgOp);
+}
+
 /// Utility to identify if `linalgOp` is a supported reduction op. Currently,
 /// we are using strict conditions for reduction op matching.
 bool isReductionOp(linalg::LinalgOp linalgOp) {
