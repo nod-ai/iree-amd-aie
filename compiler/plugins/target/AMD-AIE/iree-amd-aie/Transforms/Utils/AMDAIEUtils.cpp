@@ -384,10 +384,11 @@ bool isConv2DNhwcHwcfOp(Operation *linalgOp) {
 
 bool isDepthwiseConv2DNhwcHwcOp(Operation *linalgOp) {
   if (isa<linalg::DepthwiseConv2DNhwcHwcOp>(linalgOp)) return true;
-  SmallVector<utils::IteratorType> expectedIteratorTypes = {
-      utils::IteratorType::parallel,  utils::IteratorType::parallel,
-      utils::IteratorType::parallel,  utils::IteratorType::parallel,
-      utils::IteratorType::reduction, utils::IteratorType::reduction};
+  SmallVector<utils::IteratorType> expectedIteratorTypes(
+      cast<ShapedType>(linalgOp->getResult(0).getType()).getRank(),
+      utils::IteratorType::parallel);
+  expectedIteratorTypes.push_back(utils::IteratorType::reduction);
+  expectedIteratorTypes.push_back(utils::IteratorType::reduction);
   return isIteratorTypesOfConvSame(dyn_cast<linalg::GenericOp>(linalgOp),
                                    expectedIteratorTypes);
 }
