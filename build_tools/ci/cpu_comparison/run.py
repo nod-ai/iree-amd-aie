@@ -2495,27 +2495,29 @@ class Tests:
         # Note: The error tolerance for npu4 is higher than that for npu1_4col.
         # npu1_4col uses a lookup table to compute exponentials,
         # whereas npu4 uses a native exp2 instruction, which is less accurate.
-        for target, rtol in [["npu1_4col", 4e-2], ["npu4", 8e-2]]:
-            for run_benchmark in [False, True]:
-                self.register(
-                    Softmax(
-                        8192,
-                        1024,
-                        "bf16",
-                        test_params=TestParams(
-                            run_on_target=target,
-                            name_suffix=target,
-                            use_chess=True,
-                            use_chess_for_ukernel=True,
-                            use_ukernel=True,
-                            tile_pipeline="general-copy",
-                            run_benchmark=run_benchmark,
-                            n_repeats=2,
-                            n_kernel_runs=100,
-                            rtol=rtol,
-                        ),
-                    )
-                )
+        # TODO: Disable till iree-org/iree issue https://github.com/iree-org/iree/issues/21633
+        #       gets fixed.
+        # for target, rtol in [["npu1_4col", 4e-2], ["npu4", 8e-2]]:
+        #     for run_benchmark in [False, True]:
+        #         self.register(
+        #             Softmax(
+        #                 8192,
+        #                 1024,
+        #                 "bf16",
+        #                 test_params=TestParams(
+        #                     run_on_target=target,
+        #                     name_suffix=target,
+        #                     use_chess=True,
+        #                     use_chess_for_ukernel=True,
+        #                     use_ukernel=True,
+        #                     tile_pipeline="general-copy",
+        #                     run_benchmark=run_benchmark,
+        #                     n_repeats=2,
+        #                     n_kernel_runs=100,
+        #                     rtol=rtol,
+        #                 ),
+        #             )
+        #         )
 
         # Reduction op tests:
         self.register(
