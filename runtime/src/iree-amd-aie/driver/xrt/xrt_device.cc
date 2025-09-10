@@ -17,6 +17,7 @@
 #include "iree/hal/utils/deferred_command_buffer.h"
 #include "iree/hal/utils/file_registry.h"
 #include "iree/hal/utils/file_transfer.h"
+#include "iree/hal/utils/queue_emulation.h"
 
 typedef struct iree_hal_xrt_device_t {
   // Abstract resource used for injecting reference counting and vtable; must be

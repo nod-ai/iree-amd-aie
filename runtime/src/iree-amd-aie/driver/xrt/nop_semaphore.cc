@@ -93,7 +93,7 @@ static void iree_hal_xrt_semaphore_fail(iree_hal_semaphore_t* base_semaphore,
 
 static iree_status_t iree_hal_xrt_semaphore_wait(
     iree_hal_semaphore_t* base_semaphore, uint64_t value,
-    iree_timeout_t timeout) {
+    iree_timeout_t timeout, iree_hal_wait_flags_t flags) {
   iree_hal_xrt_semaphore_t* semaphore =
       iree_hal_xrt_semaphore_cast(base_semaphore);
   // TODO: Support semaphores completely. Return OK currently as everything is
