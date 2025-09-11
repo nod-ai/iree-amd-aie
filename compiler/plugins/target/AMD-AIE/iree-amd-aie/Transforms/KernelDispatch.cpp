@@ -703,7 +703,7 @@ static LogicalResult setRootConfigForConvDecomposePipeline(
   SmallVector<int64_t> packingSizes;
 
   // [N, OH, OW, OC, KH, KW, IC].
-  if (isa<linalg::Conv2DNhwcHwcfOp>(linalgOp)) {
+  if (isConv2DNhwcHwcfOp(linalgOp.getOperation())) {
     // The goal is to pack the input image and kernel as follows, when moving
     // from L2 to L1 (example where there are 32 input channels):
     // Image: memref<1x3x6x32xbf16> ->  memref<1x3x4x6x8xbf16>
@@ -720,25 +720,32 @@ static LogicalResult setRootConfigForConvDecomposePipeline(
     tileSizeLevel2 = {0, 0, 0, 0, 1, 1, 1, 0, 0};
   }
 
-  // [N, OC, OH, OW, IC, KH, KW]
-  else if (isa<linalg::Conv2DNchwFchwOp>(linalgOp)) {
-    // The matmul reduction dimension is the input channel (IC) dimension.
-    // For Conv2DNhwcHwcfOp, this dimension is already the inner-most dimension
-    // of the input image, and the penultimate dimension of the kernel --
-    // exactly what we want. For Conv2DNchwFchwOp, can the tensor dimensions be
-    // permuted in DMA to get them in the correct positions? For the image
-    // tensor, only if H*W is a nice power of 2 (DMA constraint). For kernels,
-    // it requires h*w is a nice power of 2 -- unlikely, we typically have
-    // h=w=3. The dimension permutations will therefore often therefore need to
-    // be done on the core. We leave this for future work, the expectation for
-    // now is that models have been transformed at a high level to avoid
-    // channel-first convolutions.
-    return linalgOp.emitError(
-        "Only channel-last convolution supported currently.");
-  }
+  // // [N, OC, OH, OW, IC, KH, KW]
+  // TODO(avarma): Currently since we anyway don't support Conv2DNchwFchwOp, the
+  // following check has been disabled. else if
+  // (isa<linalg::Conv2DNchwFchwOp>(linalgOp)) {
+  //   // The matmul reduction dimension is the input channel (IC) dimension.
+  //   // For Conv2DNhwcHwcfOp, this dimension is already the inner-most
+  //   dimension
+  //   // of the input image, and the penultimate dimension of the kernel --
+  //   // exactly what we want. For Conv2DNchwFchwOp, can the tensor dimensions
+  //   be
+  //   // permuted in DMA to get them in the correct positions? For the image
+  //   // tensor, only if H*W is a nice power of 2 (DMA constraint). For
+  //   kernels,
+  //   // it requires h*w is a nice power of 2 -- unlikely, we typically have
+  //   // h=w=3. The dimension permutations will therefore often therefore need
+  //   to
+  //   // be done on the core. We leave this for future work, the expectation
+  //   for
+  //   // now is that models have been transformed at a high level to avoid
+  //   // channel-first convolutions.
+  //   return linalgOp.emitError(
+  //       "Only channel-last convolution supported currently.");
+  // }
 
-  // [N, OH, OW, C, KW, HW]
-  else if (isa<linalg::DepthwiseConv2DNhwcHwcOp>(linalgOp)) {
+  // // [N, OH, OW, C, KW, HW]
+  else if (isDepthwiseConv2DNhwcHwcOp(linalgOp.getOperation())) {
     // Notes
     // =====
     // A property of depthwise convolution is that it can't be expressed in
@@ -943,6 +950,12 @@ static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
           entryPointFn, genericOp, useLowerToAIEPipeline, targetDevice, numRows,
           numCols, enableAMDAIEUkernels);
     }
+  } else if (isConvOp(genericOp)) {
+    // Current tiling strategy is based on llvm-cpu ConvTileAndDecomposeExpert.
+    if (passPipeline == TilePassPipeline::ConvDecomposePipeline)
+      return setRootConfigForConvDecomposePipeline(
+          entryPointFn, cast<linalg::LinalgOp>(genericOp.getOperation()),
+          targetDevice);
   } else if (isReductionOp(genericOp)) {
     if (passPipeline == TilePassPipeline::GeneralCopyPipeline) {
       return setRootConfigForReductionCopyPipeline(

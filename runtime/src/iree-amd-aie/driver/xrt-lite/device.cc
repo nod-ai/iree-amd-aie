@@ -15,6 +15,7 @@
 #include "iree-amd-aie/driver/xrt-lite/util.h"
 #include "iree/hal/utils/deferred_command_buffer.h"
 #include "iree/hal/utils/deferred_work_queue.h"
+#include "iree/hal/utils/queue_emulation.h"
 
 #define ARENA_BLOCK_SIZE (32 * 1024)
 
@@ -98,8 +99,9 @@ static iree_status_t iree_hal_xrt_lite_device_create_command_buffer(
 }
 
 static iree_status_t iree_hal_xrt_lite_device_create_semaphore(
-    iree_hal_device_t* base_device, uint64_t initial_value,
-    iree_hal_semaphore_flags_t flags, iree_hal_semaphore_t** out_semaphore) {
+    iree_hal_device_t* base_device, iree_hal_queue_affinity_t queue_affinity,
+    uint64_t initial_value, iree_hal_semaphore_flags_t flags,
+    iree_hal_semaphore_t** out_semaphore) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_hal_xrt_lite_device* device = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
@@ -190,8 +192,9 @@ static iree_status_t iree_hal_xrt_lite_device_queue_alloca(
   iree_hal_xrt_lite_device* device = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
       base_device, iree_hal_xrt_lite_device_vtable, iree_hal_xrt_lite_device);
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
-      z0, iree_hal_semaphore_list_wait(wait_semaphore_list,
-                                       iree_infinite_timeout()));
+      z0,
+      iree_hal_semaphore_list_wait(wait_semaphore_list, iree_infinite_timeout(),
+                                   IREE_HAL_WAIT_FLAG_DEFAULT));
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_hal_allocator_allocate_buffer(device->device_allocator, params,
                                              allocation_size, out_buffer));
@@ -207,8 +210,9 @@ static iree_status_t iree_hal_xrt_lite_device_queue_dealloca(
     const iree_hal_semaphore_list_t wait_semaphore_list,
     const iree_hal_semaphore_list_t signal_semaphore_list,
     iree_hal_buffer_t* buffer, iree_hal_alloca_flags_t flags) {
-  IREE_RETURN_IF_ERROR(iree_hal_semaphore_list_wait(wait_semaphore_list,
-                                                    iree_infinite_timeout()));
+  IREE_RETURN_IF_ERROR(
+      iree_hal_semaphore_list_wait(wait_semaphore_list, iree_infinite_timeout(),
+                                   IREE_HAL_WAIT_FLAG_DEFAULT));
   iree_status_t status = iree_hal_semaphore_list_signal(signal_semaphore_list);
   return status;
 }

@@ -40,6 +40,7 @@ iree_cc_library(
     iree::base
     iree::base::core_headers
     iree::hal::utils::deferred_command_buffer
+    iree::hal::utils::queue_emulation
     iree::hal::utils::semaphore_base
     iree::base::internal::flatcc::parsing
     iree-amd-aie::schemas::pdi_executable_def_c_fbs

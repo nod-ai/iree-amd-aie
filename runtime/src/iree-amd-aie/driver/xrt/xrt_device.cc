@@ -17,6 +17,7 @@
 #include "iree/hal/utils/deferred_command_buffer.h"
 #include "iree/hal/utils/file_registry.h"
 #include "iree/hal/utils/file_transfer.h"
+#include "iree/hal/utils/queue_emulation.h"
 
 typedef struct iree_hal_xrt_device_t {
   // Abstract resource used for injecting reference counting and vtable; must be
@@ -230,8 +231,9 @@ static iree_status_t iree_hal_xrt_device_import_file(
 }
 
 static iree_status_t iree_hal_xrt_device_create_semaphore(
-    iree_hal_device_t* base_device, uint64_t initial_value,
-    iree_hal_semaphore_flags_t flags, iree_hal_semaphore_t** out_semaphore) {
+    iree_hal_device_t* base_device, iree_hal_queue_affinity_t queue_affinity,
+    uint64_t initial_value, iree_hal_semaphore_flags_t flags,
+    iree_hal_semaphore_t** out_semaphore) {
   iree_hal_xrt_device_t* device = iree_hal_xrt_device_cast(base_device);
   return iree_hal_xrt_semaphore_create(device->host_allocator, initial_value,
                                        out_semaphore);
@@ -251,8 +253,9 @@ static iree_status_t iree_hal_xrt_device_queue_alloca(
     iree_device_size_t allocation_size, iree_hal_execute_flags_t flags,
     iree_hal_buffer_t** IREE_RESTRICT out_buffer) {
   // TODO: queue-ordered allocations.
-  IREE_RETURN_IF_ERROR(iree_hal_semaphore_list_wait(wait_semaphore_list,
-                                                    iree_infinite_timeout()));
+  IREE_RETURN_IF_ERROR(
+      iree_hal_semaphore_list_wait(wait_semaphore_list, iree_infinite_timeout(),
+                                   IREE_HAL_WAIT_FLAG_DEFAULT));
   IREE_RETURN_IF_ERROR(
       iree_hal_allocator_allocate_buffer(iree_hal_device_allocator(base_device),
                                          params, allocation_size, out_buffer));
@@ -265,8 +268,9 @@ static iree_status_t iree_hal_xrt_device_queue_dealloca(
     const iree_hal_semaphore_list_t wait_semaphore_list,
     const iree_hal_semaphore_list_t signal_semaphore_list,
     iree_hal_buffer_t* buffer, iree_hal_alloca_flags_t flags) {
-  IREE_RETURN_IF_ERROR(iree_hal_semaphore_list_wait(wait_semaphore_list,
-                                                    iree_infinite_timeout()));
+  IREE_RETURN_IF_ERROR(
+      iree_hal_semaphore_list_wait(wait_semaphore_list, iree_infinite_timeout(),
+                                   IREE_HAL_WAIT_FLAG_DEFAULT));
   iree_status_t status = iree_hal_semaphore_list_signal(signal_semaphore_list);
   return status;
 }
@@ -352,7 +356,8 @@ static iree_status_t iree_hal_xrt_device_queue_flush(
 
 static iree_status_t iree_hal_xrt_device_wait_semaphores(
     iree_hal_device_t* base_device, iree_hal_wait_mode_t wait_mode,
-    const iree_hal_semaphore_list_t semaphore_list, iree_timeout_t timeout) {
+    const iree_hal_semaphore_list_t semaphore_list, iree_timeout_t timeout,
+    iree_hal_wait_flags_t flags) {
   return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
                           "Unimplemented semaphore wait");
 }
@@ -372,34 +377,34 @@ static iree_status_t iree_hal_xrt_device_profiling_end(
 
 namespace {
 const iree_hal_device_vtable_t iree_hal_xrt_device_vtable = {
-    /*.destroy = */ iree_hal_xrt_device_destroy,
-    /*.id = */ iree_hal_xrt_device_id,
-    /*.host_allocator = */ iree_hal_xrt_device_host_allocator,
-    /*.device_allocator = */ iree_hal_xrt_device_allocator,
-    /*.replace_device_allocator = */ iree_hal_xrt_replace_device_allocator,
-    /*.replace_channel_provider = */ iree_hal_xrt_replace_channel_provider,
-    /*.trim = */ iree_hal_xrt_device_trim,
-    /*.query_i64 = */ iree_hal_xrt_device_query_i64,
-    /*.create_channel = */ iree_hal_xrt_device_create_channel,
-    /*.create_command_buffer = */ iree_hal_xrt_device_create_command_buffer,
-    /*.create_event = */ iree_hal_xrt_device_create_event,
-    /*.create_executable_cache = */ iree_hal_xrt_device_create_executable_cache,
-    /*.import_file = */ iree_hal_xrt_device_import_file,
-    /*.create_semaphore = */ iree_hal_xrt_device_create_semaphore,
-    /*.query_semaphore_compatibility = */
-    iree_hal_xrt_device_query_semaphore_compatibility,
-    /*.queue_alloca = */ iree_hal_xrt_device_queue_alloca,
-    /*.queue_dealloca = */ iree_hal_xrt_device_queue_dealloca,
-    /*.queue_fill=*/iree_hal_device_queue_emulated_fill,
-    /*.queue_update=*/iree_hal_device_queue_emulated_update,
-    /*.queue_copy=*/iree_hal_device_queue_emulated_copy,
-    /*.queue_read=*/iree_hal_xrt_device_queue_read,
-    /*.queue_write = */ iree_hal_xrt_device_queue_write,
-    /*.queue_dispatch=*/iree_hal_device_queue_emulated_dispatch,
-    /*.queue_execute = */ iree_hal_xrt_device_queue_execute,
-    /*.queue_flush = */ iree_hal_xrt_device_queue_flush,
-    /*.wait_semaphores = */ iree_hal_xrt_device_wait_semaphores,
-    /*.profiling_begin = */ iree_hal_xrt_device_profiling_begin,
-    /*.profiling_end = */ iree_hal_xrt_device_profiling_end,
+    .destroy = iree_hal_xrt_device_destroy,
+    .id = iree_hal_xrt_device_id,
+    .host_allocator = iree_hal_xrt_device_host_allocator,
+    .device_allocator = iree_hal_xrt_device_allocator,
+    .replace_device_allocator = iree_hal_xrt_replace_device_allocator,
+    .replace_channel_provider = iree_hal_xrt_replace_channel_provider,
+    .trim = iree_hal_xrt_device_trim,
+    .query_i64 = iree_hal_xrt_device_query_i64,
+    .create_channel = iree_hal_xrt_device_create_channel,
+    .create_command_buffer = iree_hal_xrt_device_create_command_buffer,
+    .create_event = iree_hal_xrt_device_create_event,
+    .create_executable_cache = iree_hal_xrt_device_create_executable_cache,
+    .import_file = iree_hal_xrt_device_import_file,
+    .create_semaphore = iree_hal_xrt_device_create_semaphore,
+    .query_semaphore_compatibility =
+        iree_hal_xrt_device_query_semaphore_compatibility,
+    .queue_alloca = iree_hal_xrt_device_queue_alloca,
+    .queue_dealloca = iree_hal_xrt_device_queue_dealloca,
+    .queue_fill = iree_hal_device_queue_emulated_fill,
+    .queue_update = iree_hal_device_queue_emulated_update,
+    .queue_copy = iree_hal_device_queue_emulated_copy,
+    .queue_read = iree_hal_xrt_device_queue_read,
+    .queue_write = iree_hal_xrt_device_queue_write,
+    .queue_dispatch = iree_hal_device_queue_emulated_dispatch,
+    .queue_execute = iree_hal_xrt_device_queue_execute,
+    .queue_flush = iree_hal_xrt_device_queue_flush,
+    .wait_semaphores = iree_hal_xrt_device_wait_semaphores,
+    .profiling_begin = iree_hal_xrt_device_profiling_begin,
+    .profiling_end = iree_hal_xrt_device_profiling_end,
 };
 }  // namespace

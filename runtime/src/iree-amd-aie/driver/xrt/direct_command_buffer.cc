@@ -82,8 +82,11 @@ iree_status_t iree_hal_xrt_direct_command_buffer_create(
       &iree_hal_xrt_direct_command_buffer_vtable, &command_buffer->base);
   command_buffer->host_allocator = host_allocator;
   iree_arena_initialize(block_pool, &command_buffer->arena);
-  iree_status_t status =
-      iree_hal_resource_set_allocate(block_pool, &command_buffer->resource_set);
+  iree_status_t status = iree_ok_status();
+  if (!iree_all_bits_set(mode, IREE_HAL_COMMAND_BUFFER_MODE_UNRETAINED)) {
+    status = iree_hal_resource_set_allocate(block_pool,
+                                            &command_buffer->resource_set);
+  }
   if (iree_status_is_ok(status)) {
     *out_command_buffer = &command_buffer->base;
   } else {
