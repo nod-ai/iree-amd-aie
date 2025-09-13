@@ -16,7 +16,6 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/Interfaces/CopyOpInterface.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
 
 // clang-format off

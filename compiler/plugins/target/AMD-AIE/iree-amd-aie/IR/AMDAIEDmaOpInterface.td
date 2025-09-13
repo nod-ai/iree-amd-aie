@@ -8,11 +8,30 @@
 #define IREE_AMDAIE_DIALECT_DMAOPINTERFACE
 
 include "mlir/IR/OpBase.td"
-include "mlir/Interfaces/CopyOpInterface.td"
 
 //===----------------------------------------------------------------------===//
 // Defines the interface for dma-like operations.
 //===----------------------------------------------------------------------===//
+
+def CopyOpInterface : OpInterface<"CopyOpInterface"> {
+  let description = [{
+    A copy-like operation is one that copies from source value to target value.
+  }];
+  let cppNamespace = "mlir::iree_compiler::AMDAIE";
+
+  let methods = [
+    InterfaceMethod<
+      /*desc=*/"Returns the source value for this copy operation",
+      /*retTy=*/"::mlir::Value",
+      /*methodName=*/"getSource"
+    >,
+    InterfaceMethod<
+      /*desc=*/"Returns the target value for this copy operation",
+      /*retTy=*/"::mlir::Value",
+      /*methodName=*/"getTarget"
+    >
+  ];
+}
 
 def DoublyStridedOpInterface : OpInterface<"DoublyStridedOpInterface"> {
   let description = [{

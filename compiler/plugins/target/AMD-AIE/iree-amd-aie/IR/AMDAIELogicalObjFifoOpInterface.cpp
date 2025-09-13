@@ -13,9 +13,9 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace detail {
 
-SmallVector<mlir::CopyOpInterface> getCopyLikeConsumers(
+SmallVector<CopyOpInterface> getCopyLikeConsumers(
     LogicalObjFifoOpInterface op) {
-  SmallVector<mlir::CopyOpInterface> copyLikOps;
+  SmallVector<CopyOpInterface> copyLikOps;
   for (Operation *userOp : op->getUsers()) {
     if (auto copyOp = dyn_cast<CopyOpInterface>(userOp);
         copyOp && dyn_cast_if_present<LogicalObjFifoOpInterface>(
@@ -26,9 +26,9 @@ SmallVector<mlir::CopyOpInterface> getCopyLikeConsumers(
   return copyLikOps;
 }
 
-SmallVector<mlir::CopyOpInterface> getCopyLikeProducers(
+SmallVector<CopyOpInterface> getCopyLikeProducers(
     LogicalObjFifoOpInterface op) {
-  SmallVector<mlir::CopyOpInterface> copyLikOps;
+  SmallVector<CopyOpInterface> copyLikOps;
   for (Operation *userOp : op->getUsers()) {
     if (auto copyOp = dyn_cast<CopyOpInterface>(userOp);
         copyOp && dyn_cast_if_present<LogicalObjFifoOpInterface>(

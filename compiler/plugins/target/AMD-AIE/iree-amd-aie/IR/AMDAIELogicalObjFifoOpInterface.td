@@ -8,7 +8,7 @@
 #define IREE_AMDAIE_DIALECT_LOGICALOBJFIFOOPINTERFACE
 
 include "mlir/IR/OpBase.td"
-include "mlir/Interfaces/CopyOpInterface.td"
+include "iree-amd-aie/IR/AMDAIEDmaOpInterface.td"
 
 //===----------------------------------------------------------------------===//
 // Defines the interface for logical objectFifo operations.
@@ -41,7 +41,7 @@ def LogicalObjFifoOpInterface : OpInterface<"LogicalObjFifoOpInterface"> {
       /*desc=*/[{
         Return the consumer copy-like operations of the logical objFifo.
       }],
-      /*retTy=*/"::llvm::SmallVector<::mlir::CopyOpInterface>",
+      /*retTy=*/"::llvm::SmallVector<::mlir::iree_compiler::AMDAIE::CopyOpInterface>",
       /*methodName=*/"getCopyLikeConsumers",
       /*args=*/(ins),
       /*methodBody=*/"",
@@ -54,7 +54,7 @@ def LogicalObjFifoOpInterface : OpInterface<"LogicalObjFifoOpInterface"> {
       /*desc=*/[{
         Return the producer copy-like operations of the logical objFifo.
       }],
-      /*retTy=*/"::llvm::SmallVector<::mlir::CopyOpInterface>",
+      /*retTy=*/"::llvm::SmallVector<::mlir::iree_compiler::AMDAIE::CopyOpInterface>",
       /*methodName=*/"getCopyLikeProducers",
       /*args=*/(ins),
       /*methodBody=*/"",
