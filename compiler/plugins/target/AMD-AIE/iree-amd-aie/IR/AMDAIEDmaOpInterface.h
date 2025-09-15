@@ -12,7 +12,6 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/Interfaces/CopyOpInterface.h"
 
 namespace mlir::iree_compiler::AMDAIE {
 

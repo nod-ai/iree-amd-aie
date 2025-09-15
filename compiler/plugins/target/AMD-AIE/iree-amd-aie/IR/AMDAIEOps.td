@@ -7,7 +7,6 @@
 #ifndef IREE_AMDAIE_DIALECT_IREEAMDAIE_OPS
 #define IREE_AMDAIE_DIALECT_IREEAMDAIE_OPS
 
-include "mlir/Interfaces/CopyOpInterface.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/Interfaces/ViewLikeInterface.td"
