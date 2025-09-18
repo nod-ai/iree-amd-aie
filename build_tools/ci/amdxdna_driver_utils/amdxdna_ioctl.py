@@ -96,7 +96,7 @@ def ioctls_from_header():
         .read_text()
         .replace("\\\n", "")
     )
-    pattern = "DRM_IOCTL_AMDXDNA_([A-Z0-9_]+) = DRM_IOWR \( DRM_COMMAND_BASE \+ DRM_AMDXDNA_([A-Z0-9_]+) , struct_amdxdna_drm_([a-z0-9_]+) \)"
+    pattern = r"DRM_IOCTL_AMDXDNA_([A-Z0-9_]+) = DRM_IOWR \( DRM_COMMAND_BASE \+ DRM_AMDXDNA_([A-Z0-9_]+) , struct_amdxdna_drm_([a-z0-9_]+) \)"
     matches = re.findall(pattern, hdr, re.MULTILINE)
     ioctls = Namespace()
     for name, offset, sname in matches:
