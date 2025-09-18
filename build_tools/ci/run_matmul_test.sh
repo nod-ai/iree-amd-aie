@@ -18,7 +18,7 @@
 #      `iree-e2e-matmul-test` to include support for the runtime HAL
 #      driver/device you wish to test.
 #   2. Update the paths in this script or specify them via environment variables
-#   3. Run: `./run_matmul_tests.sh <output_dir_path> <iree_install_path> [<peano_install_path>] [<xrt_path>]`
+#   3. Run: `./run_matmul_tests.sh <output_dir_path> <iree_install_path> [<peano_install_path>]`
 #      The directories above in square brackets are optional, the first 2 directories are required.
 
 set -euo pipefail
@@ -29,17 +29,15 @@ if [ "$#" -lt 2 ] || [ "$#" -gt 4 ]; then
    #    1) <output-dir>            (required)
    #    2) <iree-install-dir>      (required)
    #    3) <peano-install-dir>     (optional)
-   #    4) <xrt-dir>               (optional)
-    echo -e "Illegal number of parameters: $#, expected 2-5 parameters." \
+    echo -e "Illegal number of parameters: $#, expected 2-3 parameters." \
             "\n The parameters are as follows:" \
             "\n     1) <output-dir>               (required)" \
             "\n     2) <iree-install-dir>         (required)" \
             "\n     3) <peano-install-dir>        (optional)" \
-            "\n     4) <xrt-dir>                  (optional)" \
             "\n Example, dependent on environment variables:" \
             "\n     ./run_matmul_test.sh  " \
             "results_dir_tmp  \$IREE_INSTALL_DIR " \
-            "\$PEANO_INSTALL_DIR  /opt/xilinx/xrt "
+            "\$PEANO_INSTALL_DIR"
     exit 1
 fi
 
@@ -100,18 +98,6 @@ if [ ! -d "${PEANO}" ]; then
   exit 1
 fi
 
-
-# Parameter 4) <xrt-dir>
-if [ -z "${5-}" ]; then
-  XRT_DIR=/opt/xilinx/xrt
-else
-  XRT_DIR=`realpath "$4"`
-fi
-if [ -f "$XRT_DIR/setup.sh" ]; then
-  source $XRT_DIR/setup.sh
-fi
-
-
 THIS_DIR="$(cd $(dirname $0) && pwd)"
 ROOT_DIR="$(cd $THIS_DIR/../.. && pwd)"
 
@@ -131,9 +117,6 @@ else
 fi
 
 GITHUB_ACTIONS="${GITHUB_ACTIONS:-false}"
-
-# Circumvent xclbin security (no longer needed as of April 2024 XDNA driver)
-export XRT_HACK_UNSECURE_LOADING_XCLBIN=1
 
 cd ${OUTPUT_DIR}
 
