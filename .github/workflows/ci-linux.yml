@@ -304,6 +304,7 @@ jobs:
 
       - name : E2E comparison of AIE to llvm-cpu
         run: |
+          sudo prlimit -lunlimited --pid $$
           source .venv/bin/activate
           python build_tools/ci/cpu_comparison/run.py \
             test_aie_vs_cpu \
@@ -320,6 +321,7 @@ jobs:
       # just measure the time to run some workloads.
       - name : Performance benchmarks
         run: |
+          sudo prlimit -lunlimited --pid $$
           source .venv/bin/activate
           python build_tools/ci/cpu_comparison/run.py \
             test_aie_vs_cpu \
