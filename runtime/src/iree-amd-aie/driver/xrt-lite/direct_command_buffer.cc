@@ -243,7 +243,7 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_reconfigure(
 
 static iree_status_t iree_hal_xrt_lite_direct_command_buffer_dispatch(
     iree_hal_command_buffer_t* base_command_buffer,
-    iree_hal_executable_t* base_executable, int32_t entry_point,
+    iree_hal_executable_t* base_executable, unsigned entry_point,
     const iree_hal_dispatch_config_t config, iree_const_byte_span_t constants,
     iree_hal_buffer_ref_list_t bindings, iree_hal_dispatch_flags_t flags) {
   IREE_TRACE_ZONE_BEGIN(z0);
