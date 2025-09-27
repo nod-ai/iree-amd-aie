@@ -167,9 +167,24 @@ def find_npu_device():
 
 def read_vbnv(npu_device_path):
     f = open(npu_device_path / "vbnv")
-    vbnv = f.read()
-    assert vbnv.startswith("NPU ")
-    return vbnv.split(" ")[-1].strip()
+    vbnv = f.read().strip().lower()
+
+    # Accept multiple formats:
+    # - "NPU Phoenix", "NPU Strix"
+    # - "RyzenAI-npu5", "RyzenAI-npu6", etc.
+    if vbnv.startswith("npu "):
+        tokens = vbnv.split()
+        assert len(tokens) == 2
+        return tokens[1]
+
+    # RyzenAI formats like "RyzenAI-npu5"
+    if vbnv.startswith("ryzenai-npu"):
+        # Map known RyzenAI-npu generations to canonical names
+        # Adjust mapping as needed for new generations.
+        if vbnv == "ryzenai-npu5":
+            return "Strix"
+
+    assert False, f"unrecognized vbnv format: {vbnv}"
 
 
 def get_core_n_cols(drv_fd, npu_device):
