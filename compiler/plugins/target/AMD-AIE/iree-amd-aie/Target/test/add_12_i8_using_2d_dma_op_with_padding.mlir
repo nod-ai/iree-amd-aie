@@ -1,4 +1,5 @@
-// RUN: (aie_cdo_gen_test %s %T) 2>&1 | FileCheck %s
+// RUN: mkdir -p %t.dir
+// RUN: (aie_cdo_gen_test %s %t.dir) 2>&1 | FileCheck %s
 
 module {
   aie.device(npu1_1col) {

@@ -1,4 +1,5 @@
-// RUN: aie_elf_files_gen_test %s %T
+// RUN: mkdir -p %t.dir
+// RUN: aie_elf_files_gen_test %s %t.dir
 // RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-convert-device-to-control-packets{path-to-elfs=%T broadcast-core-config=false})" %s | FileCheck %s
 // RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-convert-device-to-control-packets{path-to-elfs=%T broadcast-core-config=true})" %s | FileCheck %s --check-prefix=BROADCAST
 
