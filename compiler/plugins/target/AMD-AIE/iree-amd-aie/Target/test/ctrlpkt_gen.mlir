@@ -1,3 +1,4 @@
+// UNSUPPORTED: windows
 // RUN: rm -rf %t.dir && mkdir %t.dir
 // RUN: aie_elf_files_gen_test %s %t.dir true
 // RUN: FileCheck %s --check-prefix=CTRLPKT-SEQUENCE < %t.dir/ctrlpkt_seq.txt

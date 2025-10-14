@@ -1,3 +1,4 @@
+// UNSUPPORTED: windows
 // RUN: rm -rf %t.dir && mkdir %t.dir
 // RUN: aie_elf_files_gen_test %s %t.dir
 // RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-convert-device-to-control-packets{path-to-elfs=%t.dir broadcast-core-config=false})" %s | FileCheck %s
