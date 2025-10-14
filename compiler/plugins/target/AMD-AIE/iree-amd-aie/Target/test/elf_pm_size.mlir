@@ -1,3 +1,4 @@
+// UNSUPPORTED: windows
 // RUN: rm -rf %t.dir && mkdir %t.dir
 // RUN: (aie_elf_files_gen_test %s %t.dir) 2>&1 | FileCheck %s
 
