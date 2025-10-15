@@ -1,6 +1,6 @@
-// UNSUPPORTED: windows
 // RUN: rm -rf %t.dir && mkdir %t.dir
 // RUN: (aie_elf_files_gen_test %s %t.dir) 2>&1 | FileCheck %s
+// XFAIL: windows
 
 // The program memory size on Linux is 128 while on Windows it is 192.
 // CHECK:       Program memory size of ELF
