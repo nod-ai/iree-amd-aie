@@ -1,4 +1,6 @@
-// RUN: (aie_cdo_gen_test %s %T) 2>&1 | FileCheck %s
+// RUN: rm -rf %t.dir && mkdir %t.dir
+// RUN: (aie_cdo_gen_test %s %t.dir) 2>&1 | FileCheck %s
+// XFAIL: target={{.*windows.*}}
 
 module {
 aie.device(npu1_4col) {
