@@ -11,6 +11,8 @@
 #include "aie/AIEXDialect.h"
 #include "iree-amd-aie/Target/AMDAIETargets.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Path.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Parser/Parser.h"
 
@@ -32,6 +34,13 @@ void registerDialects(DialectRegistry &registry) {
 int main(int argc, char **argv) {
   llvm::StringRef mlirAbsPath(argv[1]);
   llvm::StringRef workDir(argv[2]);
+  llvm::SmallString<128> workDirSmallString(argv[2]);
+  if (std::error_code ecode =
+          llvm::sys::fs::create_directories(workDirSmallString)) {
+    llvm::errs() << "Error: failed to create working directory: "
+                 << ecode.message() << "\n";
+    return 1;
+  }
 
   DialectRegistry registry;
   registerDialects(registry);
