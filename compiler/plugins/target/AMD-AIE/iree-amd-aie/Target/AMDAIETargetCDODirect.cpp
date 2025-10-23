@@ -28,6 +28,9 @@ namespace mlir::iree_compiler::AMDAIE {
 LogicalResult generateCDOBinariesSeparately(
     const AMDAIEDeviceModel &deviceModel, const Path &workDirPath,
     DeviceOp &device, bool aieSim, bool enableCtrlPkt) {
+  llvm::outs() << "workDirPath = " << workDirPath << "\n";
+  llvm::outs() << "workDirPath / xyz.bin = " << (workDirPath / "xyz.bin")
+               << "\n";
   if (enableCtrlPkt) {
     // When control packets are enabled, only the switch configuration
     // binary is needed and all other binaries are skipped
