@@ -17,6 +17,17 @@ iree_cc_binary(
 
 iree_cc_binary(
   NAME
+    aie2xclbin_test
+  SRCS
+    aie2xclbin_test.cpp
+  DEPS
+    iree::target::amd-aie::aie::AIEDialectIR
+    iree::target::amd-aie::Target::AIETargets
+  TESTONLY
+)
+
+iree_cc_binary(
+  NAME
     aie_elf_files_gen_test
   SRCS
     aie_elf_files_gen_test.cpp
@@ -24,6 +35,16 @@ iree_cc_binary(
     iree::target::amd-aie::aie::AIEDialectIR
     iree::target::amd-aie::Target::Target
   TESTONLY
+)
+
+iree_cc_test(
+  NAME
+    AMDAIEXCLBinGenTest
+  SRCS
+    AMDAIEXCLBinGenTest.cpp
+  DEPS
+    gtest
+    iree::target::amd-aie::Target::AIETargets
 )
 
 file(GLOB _mlir_files *.mlir)
@@ -37,6 +58,7 @@ iree_lit_test_suite(
     ${IREE_LLD_TARGET}
     ::aie_cdo_gen_test
     ::aie_elf_files_gen_test
+    ::aie2xclbin_test
     FileCheck
     iree-compile
   LABELS
