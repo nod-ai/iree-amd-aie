@@ -98,7 +98,8 @@ LogicalResult addAllAieElfs(const AMDAIEDeviceModel &deviceModel,
       // for debugging purposes.
       SmallString<128> elfPathString(workDirPath.string());
       llvm::sys::path::append(elfPathString, fileName);
-      Path elfPath(elfPathString.str().str());
+      std::string filePath = llvm::sys::path::convert_to_slash(elfPathString);
+      Path elfPath(filePath);
       FailureOr<uint64_t> maybePmSize = getProgramSize(
           elfPath, deviceModel, [&]() { return deviceOp.emitOpError(); });
       if (failed(maybePmSize)) return failure();

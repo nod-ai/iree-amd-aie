@@ -34,49 +34,54 @@ LogicalResult generateCDOBinariesSeparately(
   llvm::errs() << "workDirPath = " << workDirPathString << "\n";
   llvm::sys::path::append(workDirPathString, "xyz.bin");
   llvm::errs() << "workDirPath / xyz.bin = " << workDirPathString << "\n";
+  std::string newFilePath =
+      llvm::sys::path::convert_to_slash(workDirPathString);
+  llvm::errs() << "workDirPath / xyz.bin after convert_to_slash = "
+               << newFilePath << "\n";
   if (enableCtrlPkt) {
     SmallString<128> aieCdoSwitchesPath(workDirPath.string());
     llvm::sys::path::append(aieCdoSwitchesPath, "aie_cdo_switches.bin");
+    std::string filePath =
+        llvm::sys::path::convert_to_slash(aieCdoSwitchesPath);
     // When control packets are enabled, only the switch configuration
     // binary is needed and all other binaries are skipped
-    if (failed(generateCDOBinary(Path{aieCdoSwitchesPath.str().str()},
-                                 [&deviceModel, &device] {
-                                   return addSwitchConfig(deviceModel, device);
-                                 })))
+    if (failed(generateCDOBinary(Path{filePath}, [&deviceModel, &device] {
+          return addSwitchConfig(deviceModel, device);
+        })))
       return failure();
 
   } else {
     SmallString<128> aieCdoElfsPath(workDirPath.string());
     llvm::sys::path::append(aieCdoElfsPath, "aie_cdo_elfs.bin");
+    std::string filePath = llvm::sys::path::convert_to_slash(aieCdoElfsPath);
     if (failed(generateCDOBinary(
-            Path{aieCdoElfsPath.str().str()},
-            [&deviceModel, &device, &workDirPath, &aieSim] {
+            Path{filePath}, [&deviceModel, &device, &workDirPath, &aieSim] {
               return addAllAieElfs(deviceModel, device, workDirPath, aieSim);
             })))
       return failure();
 
     SmallString<128> aieCdoInitPath(workDirPath.string());
     llvm::sys::path::append(aieCdoInitPath, "aie_cdo_init.bin");
-    if (failed(generateCDOBinary(Path{aieCdoInitPath.str().str()},
-                                 [&deviceModel, &device] {
-                                   return addInitConfig(deviceModel, device);
-                                 })))
+    filePath = llvm::sys::path::convert_to_slash(aieCdoInitPath);
+    if (failed(generateCDOBinary(Path{filePath}, [&deviceModel, &device] {
+          return addInitConfig(deviceModel, device);
+        })))
       return failure();
 
     SmallString<128> aieCdoSwitchesPath(workDirPath.string());
     llvm::sys::path::append(aieCdoSwitchesPath, "aie_cdo_switches.bin");
-    if (failed(generateCDOBinary(Path{aieCdoSwitchesPath.str().str()},
-                                 [&deviceModel, &device] {
-                                   return addSwitchConfig(deviceModel, device);
-                                 })))
+    filePath = llvm::sys::path::convert_to_slash(aieCdoSwitchesPath);
+    if (failed(generateCDOBinary(Path{filePath}, [&deviceModel, &device] {
+          return addSwitchConfig(deviceModel, device);
+        })))
       return failure();
 
     SmallString<128> aieCdoEnablePath(workDirPath.string());
     llvm::sys::path::append(aieCdoEnablePath, "aie_cdo_enable.bin");
-    if (failed(generateCDOBinary(Path{aieCdoEnablePath.str().str()},
-                                 [&deviceModel, &device] {
-                                   return addAllCoreEnable(deviceModel, device);
-                                 })))
+    filePath = llvm::sys::path::convert_to_slash(aieCdoEnablePath);
+    if (failed(generateCDOBinary(Path{filePath}, [&deviceModel, &device] {
+          return addAllCoreEnable(deviceModel, device);
+        })))
       return failure();
   }
   return success();
