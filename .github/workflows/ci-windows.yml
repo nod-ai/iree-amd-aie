@@ -114,7 +114,7 @@ jobs:
           tar cf iree-dist-windows.tar iree-install
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         if: ${{ !cancelled() }}
         with:
           name: windows_x86_64_llvm_packages
@@ -122,7 +122,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         if: ${{ !cancelled() }}
         with:
           name: windows_x86_64_iree_packages
@@ -138,7 +138,7 @@ jobs:
 
       - name: Start tmate session
         if: ${{ (failure() && inputs.debug_with_tmate) || inputs.force_debug_with_tmate }}
-        uses: mxschmitt/action-tmate@7b6a61a73bbb9793cb80ad69b8dd8ac19261834c # v3.22
+        uses: mxschmitt/action-tmate@c0afd6f790e3a5564914980036ebf83216678101 # v3.23
         with:
           limit-access-to-actor: true
 
@@ -155,7 +155,7 @@ jobs:
           submodules: false # not required for testbench
 
       - name: Download artifacts
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
         with:
           name: windows_x86_64_iree_packages
 
