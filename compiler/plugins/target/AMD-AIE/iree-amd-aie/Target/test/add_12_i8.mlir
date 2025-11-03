@@ -1,5 +1,6 @@
-// RUN: rm -rf "%t"dir && mkdir "%t"dir
-// RUN: (aie_cdo_gen_test %s "%t"dir) 2>&1 | FileCheck %s
+// add_12_i8_using_2d_dma_op_with_padding
+// RUN: rm -rf %t.dir && mkdir %t.dir
+// RUN: (aie_cdo_gen_test %s %t.dir) 2>&1 | FileCheck %s
 
 module {
   aie.device(npu1_1col) {

@@ -4,6 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include <filesystem>
 #include <iostream>
 #include <string>
 
@@ -34,14 +35,30 @@ void registerDialects(DialectRegistry &registry) {
 int main(int argc, char **argv) {
   llvm::StringRef mlirAbsPath(argv[1]);
   llvm::StringRef workDir(argv[2]);
-  llvm::SmallString<128> workDirSmallString(argv[2]);
-  if (std::error_code ecode =
-          llvm::sys::fs::create_directories(workDirSmallString)) {
-    llvm::errs() << "Error: failed to create working directory: "
-                 << ecode.message() << "\n";
-    return 1;
+  std::filesystem::path workDirPath(workDir.str());
+  // Remove components from the end until we find the folder ending with
+  // ".mlir.test_test_tmpdir"
+  std::string suffix = ".mlir.test_test_tmpdir";
+  while (!workDirPath.empty()) {
+    std::string filename = workDirPath.filename().string();
+    // Check if filename ends with the suffix and break if it does.
+    if (filename.size() >= suffix.size() &&
+        filename.compare(filename.size() - suffix.size(), suffix.size(),
+                         suffix) == 0) {
+      break;
+    }
+    workDirPath = workDirPath.parent_path();
   }
 
+  if (!workDirPath.empty()) {
+    llvm::errs() << "Trimmed path: " << workDirPath.string() << "\n";
+    static std::string shortenedPath;
+    shortenedPath = workDirPath.string();
+    workDir = llvm::StringRef(shortenedPath);
+  } else {
+    llvm::errs()
+        << "No folder ending with '.mlir.test_test_tmpdir' found in path.\n";
+  }
   DialectRegistry registry;
   registerDialects(registry);
   MLIRContext context(registry);
