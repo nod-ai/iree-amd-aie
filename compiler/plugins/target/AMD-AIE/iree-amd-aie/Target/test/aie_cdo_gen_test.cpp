@@ -51,13 +51,9 @@ int main(int argc, char **argv) {
   }
 
   if (!workDirPath.empty()) {
-    llvm::errs() << "Trimmed path: " << workDirPath.string() << "\n";
     static std::string shortenedPath;
     shortenedPath = workDirPath.string();
     workDir = llvm::StringRef(shortenedPath);
-  } else {
-    llvm::errs()
-        << "No folder ending with '.mlir.test_test_tmpdir' found in path.\n";
   }
   DialectRegistry registry;
   registerDialects(registry);
