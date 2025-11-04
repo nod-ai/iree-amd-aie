@@ -1,7 +1,7 @@
 // RUN: rm -rf %t.dir && mkdir %t.dir
 // RUN: aie_elf_files_gen_test %s %t.dir true
-// RUN: FileCheck %s --check-prefix=CTRLPKT-SEQUENCE < %t.dir/ctrlpkt_seq.txt
-// RUN: FileCheck %s --check-prefix=CTRLPKT-INSTRUCTIONS < %t.dir/ctrlpkt_inst.txt
+// RUN: FileCheck %s --check-prefix=CTRLPKT-SEQUENCE < %t.dir/../../../../../../../../../ctrlpkt_seq.txt
+// RUN: FileCheck %s --check-prefix=CTRLPKT-INSTRUCTIONS < %t.dir/../../../../../../../../../ctrlpkt_inst.txt
 
 // To check that both files are not empty
 // CTRLPKT-SEQUENCE: {{[0-9]+}}

@@ -12,8 +12,6 @@
 #include "aie/AIEXDialect.h"
 #include "iree-amd-aie/Target/AMDAIETargets.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Path.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Parser/Parser.h"
 
