@@ -9,8 +9,6 @@
 #include <fstream>
 
 #include "iree-amd-aie/aie_runtime/iree_aie_configure.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Path.h"
 
 #define DEBUG_TYPE "iree-amdaie-ert"
 
@@ -96,10 +94,7 @@ LogicalResult addAllAieElfs(const AMDAIEDeviceModel &deviceModel,
       }
       // Check the ELF, add it to the tile and possibly print the program size
       // for debugging purposes.
-      SmallString<128> elfPathString(workDirPath.string());
-      llvm::sys::path::append(elfPathString, fileName);
-      std::string filePath = llvm::sys::path::convert_to_slash(elfPathString);
-      Path elfPath(filePath);
+      Path elfPath = workDirPath / fileName;
       FailureOr<uint64_t> maybePmSize = getProgramSize(
           elfPath, deviceModel, [&]() { return deviceOp.emitOpError(); });
       if (failed(maybePmSize)) return failure();
