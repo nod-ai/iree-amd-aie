@@ -1,4 +1,3 @@
-// add_21_i8_using_dma_op_with_padding
 // RUN: rm -rf %t.dir && mkdir %t.dir
 // RUN: (aie_cdo_gen_test %s %t.dir) 2>&1 | FileCheck %s
 

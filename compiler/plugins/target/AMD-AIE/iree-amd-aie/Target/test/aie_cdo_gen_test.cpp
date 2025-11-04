@@ -37,7 +37,8 @@ int main(int argc, char **argv) {
   llvm::StringRef workDir(argv[2]);
   std::filesystem::path workDirPath(workDir.str());
   // Remove components from the end until we find the folder ending with
-  // ".mlir.test_test_tmpdir"
+  // ".mlir.test_test_tmpdir". This is being done because Windows doesn't allow
+  // file path beyond certain max limit.
   std::string suffix = ".mlir.test_test_tmpdir";
   while (!workDirPath.empty()) {
     std::string filename = workDirPath.filename().string();

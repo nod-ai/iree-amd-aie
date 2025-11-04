@@ -1,4 +1,3 @@
-// matmul_512x512_512xi32__dispatch_0_matmul__0.aiecc
 // RUN: rm -rf %t.dir && mkdir %t.dir
 // RUN: (aie_cdo_gen_test %s %t.dir) 2>&1 | FileCheck %s
 

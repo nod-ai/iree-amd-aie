@@ -247,8 +247,30 @@ void AMDAIEConvertDeviceToControlPacketsPass::runOnOperation() {
     return signalPassFailure();
   }
 
+  std::string workDir = pathToElfs;
+  std::filesystem::path workDirPath(workDir);
+  // Remove components from the end until we find the folder ending with
+  // ".mlir.test_test_tmpdir". This is being done because Windows doesn't allow
+  // file path beyond certain max limit.
+  std::string suffix = ".mlir.test_test_tmpdir";
+  while (!workDirPath.empty()) {
+    std::string filename = workDirPath.filename().string();
+    // Check if filename ends with the suffix and break if it does.
+    if (filename.size() >= suffix.size() &&
+        filename.compare(filename.size() - suffix.size(), suffix.size(),
+                         suffix) == 0) {
+      break;
+    }
+    workDirPath = workDirPath.parent_path();
+  }
+
+  if (!workDirPath.empty()) {
+    static std::string shortenedPath;
+    shortenedPath = workDirPath.string();
+    workDir = shortenedPath;
+  }
   // Start the conversion.
-  if (failed(convertDeviceToControlPacket(rewriter, deviceOps[0], pathToElfs,
+  if (failed(convertDeviceToControlPacket(rewriter, deviceOps[0], workDir,
                                           broadcastCoreConfig)))
     return signalPassFailure();
 }

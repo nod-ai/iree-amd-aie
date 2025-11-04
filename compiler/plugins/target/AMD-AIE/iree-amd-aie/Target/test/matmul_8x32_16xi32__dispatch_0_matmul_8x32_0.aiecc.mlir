@@ -1,4 +1,3 @@
-// matmul_64x64_64xbf16__dispatch_0_matmul_64_0.aiecc
 // RUN: rm -rf %t.dir && mkdir %t.dir
 // RUN: (aie_cdo_gen_test %s %t.dir) 2>&1 | FileCheck %s
 
@@ -21,17 +20,17 @@ aie.device(npu1_4col) {
   %lock_0_2_5 = aie.lock(%tile_0_2, 2) {init = 0 : i8}
   %lock_0_2_6 = aie.lock(%tile_0_2, 1) {init = 1 : i8}
   %lock_0_2_7 = aie.lock(%tile_0_2, 0) {init = 0 : i8}
-  %buf5 = aie.buffer(%tile_0_1) {address = 0 : i32, mem_bank = 0 : i32, sym_name = "buf5"} : memref<64x64xbf16>
-  %buf4 = aie.buffer(%tile_1_1) {address = 0 : i32, mem_bank = 0 : i32, sym_name = "buf4"} : memref<64x64xbf16>
-  %buf3 = aie.buffer(%tile_2_1) {address = 0 : i32, mem_bank = 0 : i32, sym_name = "buf3"} : memref<64x64xf32>
-  %buf2 = aie.buffer(%tile_0_2) {address = 1024 : i32, mem_bank = 0 : i32, sym_name = "buf2"} : memref<8x16x4x8xbf16>
-  %buf1 = aie.buffer(%tile_0_2) {address = 9216 : i32, mem_bank = 0 : i32, sym_name = "buf1"} : memref<16x8x8x4xbf16>
-  %buf0 = aie.buffer(%tile_0_2) {address = 17408 : i32, mem_bank = 0 : i32, sym_name = "buf0"} : memref<16x16x4x4xf32>
+  %buf5 = aie.buffer(%tile_0_1) {address = 0 : i32, mem_bank = 0 : i32, sym_name = "buf5"} : memref<8x16xi32>
+  %buf4 = aie.buffer(%tile_1_1) {address = 0 : i32, mem_bank = 0 : i32, sym_name = "buf4"} : memref<16x32xi32>
+  %buf3 = aie.buffer(%tile_2_1) {address = 0 : i32, mem_bank = 0 : i32, sym_name = "buf3"} : memref<8x32xi32>
+  %buf2 = aie.buffer(%tile_0_2) {address = 1024 : i32, mem_bank = 0 : i32, sym_name = "buf2"} : memref<2x2x4x8xi32>
+  %buf1 = aie.buffer(%tile_0_2) {address = 1536 : i32, mem_bank = 0 : i32, sym_name = "buf1"} : memref<8x2x8x4xi32>
+  %buf0 = aie.buffer(%tile_0_2) {address = 3584 : i32, mem_bank = 0 : i32, sym_name = "buf0"} : memref<8x2x4x4xi32>
   %mem_0_2 = aie.mem(%tile_0_2) {
     %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb5, repeat_count = 1)
   ^bb1:  // 2 preds: ^bb0, ^bb1
     aie.use_lock(%lock_0_2_4, AcquireGreaterEqual, 1)
-    aie.dma_bd(%buf2 : memref<8x16x4x8xbf16>) {bd_id = 0 : i32, len = 4096 : i32, next_bd_id = 0 : i32}
+    aie.dma_bd(%buf2 : memref<2x2x4x8xi32>) {bd_id = 0 : i32, len = 128 : i32, next_bd_id = 0 : i32}
     aie.use_lock(%lock_0_2_5, Release, 1)
     aie.next_bd ^bb1
   ^bb2:  // pred: ^bb3
@@ -40,14 +39,14 @@ aie.device(npu1_4col) {
     %1 = aie.dma_start(S2MM, 1, ^bb4, ^bb2, repeat_count = 1)
   ^bb4:  // 2 preds: ^bb3, ^bb4
     aie.use_lock(%lock_0_2, AcquireGreaterEqual, 1)
-    aie.dma_bd(%buf1 : memref<16x8x8x4xbf16>) {bd_id = 1 : i32, len = 4096 : i32, next_bd_id = 1 : i32}
+    aie.dma_bd(%buf1 : memref<8x2x8x4xi32>) {bd_id = 1 : i32, len = 512 : i32, next_bd_id = 1 : i32}
     aie.use_lock(%lock_0_2_3, Release, 1)
     aie.next_bd ^bb4
   ^bb5:  // pred: ^bb0
     %2 = aie.dma_start(MM2S, 0, ^bb6, ^bb3, repeat_count = 1)
   ^bb6:  // 2 preds: ^bb5, ^bb6
     aie.use_lock(%lock_0_2_7, AcquireGreaterEqual, 1)
-    aie.dma_bd(%buf0 : memref<16x16x4x4xf32>) {bd_id = 2 : i32, dimensions = #aie<bd_dim_layout_array[<size = 64, stride = 4>, <size = 16, stride = 256>, <size = 4, stride = 1>]>, len = 4096 : i32, next_bd_id = 2 : i32}
+    aie.dma_bd(%buf0 : memref<8x2x4x4xi32>) {bd_id = 2 : i32, dimensions = #aie<bd_dim_layout_array[<size = 8, stride = 4>, <size = 8, stride = 32>, <size = 4, stride = 1>]>, len = 256 : i32, next_bd_id = 2 : i32}
     aie.use_lock(%lock_0_2_6, Release, 1)
     aie.next_bd ^bb6
   }
@@ -100,7 +99,7 @@ aie.device(npu1_4col) {
     %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3, repeat_count = 1)
   ^bb1:  // 2 preds: ^bb0, ^bb1
     aie.use_lock(%lock_2_1, AcquireGreaterEqual, 1)
-    aie.dma_bd(%buf3 : memref<64x64xf32>) {bd_id = 0 : i32, len = 4096 : i32, next_bd_id = 0 : i32}
+    aie.dma_bd(%buf3 : memref<8x32xi32>) {bd_id = 0 : i32, len = 256 : i32, next_bd_id = 0 : i32}
     aie.use_lock(%lock_2_1_2, Release, 1)
     aie.next_bd ^bb1
   ^bb2:  // pred: ^bb3
@@ -109,7 +108,7 @@ aie.device(npu1_4col) {
     %1 = aie.dma_start(MM2S, 0, ^bb4, ^bb2, repeat_count = 1)
   ^bb4:  // 2 preds: ^bb3, ^bb4
     aie.use_lock(%lock_2_1_2, AcquireGreaterEqual, 1)
-    aie.dma_bd(%buf3 : memref<64x64xf32>) {bd_id = 1 : i32, len = 4096 : i32, next_bd_id = 1 : i32}
+    aie.dma_bd(%buf3 : memref<8x32xi32>) {bd_id = 1 : i32, len = 256 : i32, next_bd_id = 1 : i32}
     aie.use_lock(%lock_2_1, Release, 1)
     aie.next_bd ^bb4
   }
@@ -117,7 +116,7 @@ aie.device(npu1_4col) {
     %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3, repeat_count = 1)
   ^bb1:  // 2 preds: ^bb0, ^bb1
     aie.use_lock(%lock_0_1, AcquireGreaterEqual, 1)
-    aie.dma_bd(%buf5 : memref<64x64xbf16>) {bd_id = 0 : i32, len = 4096 : i32, next_bd_id = 0 : i32}
+    aie.dma_bd(%buf5 : memref<8x16xi32>) {bd_id = 0 : i32, len = 128 : i32, next_bd_id = 0 : i32}
     aie.use_lock(%lock_0_1_1, Release, 1)
     aie.next_bd ^bb1
   ^bb2:  // pred: ^bb3
@@ -126,7 +125,7 @@ aie.device(npu1_4col) {
     %1 = aie.dma_start(MM2S, 0, ^bb4, ^bb2, repeat_count = 1)
   ^bb4:  // 2 preds: ^bb3, ^bb4
     aie.use_lock(%lock_0_1_1, AcquireGreaterEqual, 1)
-    aie.dma_bd(%buf5 : memref<64x64xbf16>) {bd_id = 1 : i32, dimensions = #aie<bd_dim_layout_array[<size = 8, stride = 8>, <size = 64, stride = 64>, <size = 8, stride = 1>]>, len = 4096 : i32, next_bd_id = 1 : i32}
+    aie.dma_bd(%buf5 : memref<8x16xi32>) {bd_id = 1 : i32, dimensions = #aie<bd_dim_layout_array[<size = 2, stride = 8>, <size = 8, stride = 16>, <size = 8, stride = 1>]>, len = 128 : i32, next_bd_id = 1 : i32}
     aie.use_lock(%lock_0_1, Release, 1)
     aie.next_bd ^bb4
   }
@@ -134,7 +133,7 @@ aie.device(npu1_4col) {
     %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3, repeat_count = 1)
   ^bb1:  // 2 preds: ^bb0, ^bb1
     aie.use_lock(%lock_1_1, AcquireGreaterEqual, 1)
-    aie.dma_bd(%buf4 : memref<64x64xbf16>) {bd_id = 0 : i32, len = 4096 : i32, next_bd_id = 0 : i32}
+    aie.dma_bd(%buf4 : memref<16x32xi32>) {bd_id = 0 : i32, len = 512 : i32, next_bd_id = 0 : i32}
     aie.use_lock(%lock_1_1_0, Release, 1)
     aie.next_bd ^bb1
   ^bb2:  // pred: ^bb3
@@ -143,35 +142,35 @@ aie.device(npu1_4col) {
     %1 = aie.dma_start(MM2S, 0, ^bb4, ^bb2, repeat_count = 1)
   ^bb4:  // 2 preds: ^bb3, ^bb4
     aie.use_lock(%lock_1_1_0, AcquireGreaterEqual, 1)
-    aie.dma_bd(%buf4 : memref<64x64xbf16>) {bd_id = 1 : i32, dimensions = #aie<bd_dim_layout_array[<size = 16, stride = 4>, <size = 64, stride = 64>, <size = 4, stride = 1>]>, len = 4096 : i32, next_bd_id = 1 : i32}
+    aie.dma_bd(%buf4 : memref<16x32xi32>) {bd_id = 1 : i32, dimensions = #aie<bd_dim_layout_array[<size = 8, stride = 4>, <size = 16, stride = 32>, <size = 4, stride = 1>]>, len = 512 : i32, next_bd_id = 1 : i32}
     aie.use_lock(%lock_1_1, Release, 1)
     aie.next_bd ^bb4
   }
   aie.shim_dma_allocation @airMemcpyId12(S2MM, 0, 0)
-  memref.global "public" @airMemcpyId12 : memref<64x64xf32>
+  memref.global "public" @airMemcpyId12 : memref<8x32xi32>
   aie.shim_dma_allocation @airMemcpyId4(MM2S, 0, 0)
-  memref.global "public" @airMemcpyId4 : memref<64x64xbf16>
+  memref.global "public" @airMemcpyId4 : memref<8x16xi32>
   aie.shim_dma_allocation @airMemcpyId5(MM2S, 1, 0)
-  memref.global "public" @airMemcpyId5 : memref<64x64xbf16>
-  func.func @matmul_64x64_64xbf16__dispatch_0_matmul_64x64x64_bf16xbf16xf32(%arg0: memref<2048xi32>, %arg1: memref<2048xi32>, %arg2: memref<64x64xf32>) {
-    memref.assume_alignment %arg0, 64 : memref<2048xi32>
-    memref.assume_alignment %arg1, 64 : memref<2048xi32>
-    memref.assume_alignment %arg2, 64 : memref<64x64xf32>
-    aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 64, 32][0, 0, 32, 1]) {id = 0 : i64, metadata = @airMemcpyId4} : memref<2048xi32>
-    aiex.npu.dma_memcpy_nd(%arg1[0, 0, 0, 0][1, 1, 64, 32][0, 0, 32, 1]) {id = 1 : i64, metadata = @airMemcpyId5} : memref<2048xi32>
-    aiex.npu.dma_memcpy_nd(%arg2[0, 0, 0, 0][1, 1, 64, 64][0, 0, 64, 1]) {id = 2 : i64, metadata = @airMemcpyId12} : memref<64x64xf32>
+  memref.global "public" @airMemcpyId5 : memref<16x32xi32>
+  func.func @matmul_8x32_16xi32__dispatch_0_matmul_8x32x16_i32(%arg0: memref<8x16xi32>, %arg1: memref<16x32xi32>, %arg2: memref<8x32xi32>) {
+    memref.assume_alignment %arg0, 64 : memref<8x16xi32>
+    memref.assume_alignment %arg1, 64 : memref<16x32xi32>
+    memref.assume_alignment %arg2, 64 : memref<8x32xi32>
+    aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 8, 16][0, 0, 16, 1]) {id = 0 : i64, metadata = @airMemcpyId4} : memref<8x16xi32>
+    aiex.npu.dma_memcpy_nd(%arg1[0, 0, 0, 0][1, 1, 16, 32][0, 0, 32, 1]) {id = 1 : i64, metadata = @airMemcpyId5} : memref<16x32xi32>
+    aiex.npu.dma_memcpy_nd(%arg2[0, 0, 0, 0][1, 1, 8, 32][0, 0, 32, 1]) {id = 2 : i64, metadata = @airMemcpyId12} : memref<8x32xi32>
     aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
     return
   }
-} {sym_name = "matmul_64x64_64xbf16__dispatch_0_matmul_64x64x64_bf16xbf16xf32_0"}
+} {sym_name = "matmul_8x32_16xi32__dispatch_0_matmul_8x32x16_i32_0"}
 }
-
 
 // CHECK: XAIE API: XAie_SetupPartitionConfig with args: &devInst=ptr, partBaseAddr=0, partitionStartCol=1, partitionNumCols=4
 // CHECK: XAIE API: XAie_CfgInitialize with args: &devInst=ptr, &configPtr=ptr
 // CHECK: XAIE API: XAie_SetIOBackend with args: &devInst=ptr, XAIE_IO_BACKEND_CDO=1
 // CHECK: XAIE API: XAie_UpdateNpiAddr with args: &devInst=ptr, npiAddr=0
 // CHECK: XAIE API: XAie_TurnEccOff with args: &devInst=ptr
+
 // CHECK: XAIE API: XAie_LockSetValue with args: devInst=ptr, lock.tileLoc=TileLoc(col: 1, row: 1), locInit=XAie_Lock(LockId: 1, LockVal: 1)
 // CHECK: XAIE API: XAie_LockSetValue with args: devInst=ptr, lock.tileLoc=TileLoc(col: 1, row: 1), locInit=XAie_Lock(LockId: 0, LockVal: 0)
 // CHECK: XAIE API: XAie_LockSetValue with args: devInst=ptr, lock.tileLoc=TileLoc(col: 0, row: 1), locInit=XAie_Lock(LockId: 1, LockVal: 1)
@@ -186,20 +185,20 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_LockSetValue with args: devInst=ptr, lock.tileLoc=TileLoc(col: 0, row: 2), locInit=XAie_Lock(LockId: 0, LockVal: 0)
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 0, row: 2)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 3, LockVal: -1), relLock=XAie_Lock(LockId: 2, LockVal: 1), acqEn=1, relEn=0
-// CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=1024, lenInBytes=8192
+// CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=1024, lenInBytes=512
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaDesc=ptr, nextBdId.value()=0, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 0, row: 2), bdId=0
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 0, row: 2)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 5, LockVal: -1), relLock=XAie_Lock(LockId: 4, LockVal: 1), acqEn=1, relEn=0
-// CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=9216, lenInBytes=8192
+// CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=1536, lenInBytes=2048
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaDesc=ptr, nextBdId.value()=1, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 0, row: 2), bdId=1
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 0, row: 2)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 0, LockVal: -1), relLock=XAie_Lock(LockId: 1, LockVal: 1), acqEn=1, relEn=0
-// CHECK: XAie_DmaTensor(XAie_AieMlDmaDimDesc(StepSize: 1, Wrap: 4), XAie_AieMlDmaDimDesc(StepSize: 256, Wrap: 16), XAie_AieMlDmaDimDesc(StepSize: 4, Wrap: 64))
-// CHECK: XAIE API: XAie_DmaSetMultiDimAddr with args: &dmaDesc=ptr, &dmaTileBdTensor=ptr, basePlusOffsetInBytes=17408, lenInBytes=16384
+// CHECK: XAie_DmaTensor(XAie_AieMlDmaDimDesc(StepSize: 1, Wrap: 4), XAie_AieMlDmaDimDesc(StepSize: 32, Wrap: 8), XAie_AieMlDmaDimDesc(StepSize: 4, Wrap: 8))
+// CHECK: XAIE API: XAie_DmaSetMultiDimAddr with args: &dmaDesc=ptr, &dmaTileBdTensor=ptr, basePlusOffsetInBytes=3584, lenInBytes=1024
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaDesc=ptr, nextBdId.value()=2, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 0, row: 2), bdId=2
@@ -208,13 +207,13 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 2), chNum=0, direction=1, &dmaQueueDesc=ptr
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 2, row: 1)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 65, LockVal: -1), relLock=XAie_Lock(LockId: 64, LockVal: 1), acqEn=1, relEn=0
-// CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=524288, lenInBytes=16384
+// CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=524288, lenInBytes=1024
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaDesc=ptr, nextBdId.value()=0, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 2, row: 1), bdId=0
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 2, row: 1)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 64, LockVal: -1), relLock=XAie_Lock(LockId: 65, LockVal: 1), acqEn=1, relEn=0
-// CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=524288, lenInBytes=16384
+// CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=524288, lenInBytes=1024
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaDesc=ptr, nextBdId.value()=1, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 2, row: 1), bdId=1
@@ -222,14 +221,14 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 2, row: 1), chNum=0, direction=1, &dmaQueueDesc=ptr
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 0, row: 1)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 65, LockVal: -1), relLock=XAie_Lock(LockId: 64, LockVal: 1), acqEn=1, relEn=0
-// CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=524288, lenInBytes=8192
+// CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=524288, lenInBytes=512
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaDesc=ptr, nextBdId.value()=0, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 0, row: 1), bdId=0
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 0, row: 1)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 64, LockVal: -1), relLock=XAie_Lock(LockId: 65, LockVal: 1), acqEn=1, relEn=0
-// CHECK: XAie_DmaTensor(XAie_AieMlDmaDimDesc(StepSize: 1, Wrap: 4), XAie_AieMlDmaDimDesc(StepSize: 32, Wrap: 64), XAie_AieMlDmaDimDesc(StepSize: 4, Wrap: 8))
-// CHECK: XAIE API: XAie_DmaSetMultiDimAddr with args: &dmaDesc=ptr, &dmaTileBdTensor=ptr, basePlusOffsetInBytes=524288, lenInBytes=8192
+// CHECK: XAie_DmaTensor(XAie_AieMlDmaDimDesc(StepSize: 1, Wrap: 8), XAie_AieMlDmaDimDesc(StepSize: 16, Wrap: 8), XAie_AieMlDmaDimDesc(StepSize: 8, Wrap: 2))
+// CHECK: XAIE API: XAie_DmaSetMultiDimAddr with args: &dmaDesc=ptr, &dmaTileBdTensor=ptr, basePlusOffsetInBytes=524288, lenInBytes=512
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaDesc=ptr, nextBdId.value()=1, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 0, row: 1), bdId=1
@@ -237,14 +236,14 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_DmaChannelSetStartQueueGeneric with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=0, direction=1, &dmaQueueDesc=ptr
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 1, row: 1)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 65, LockVal: -1), relLock=XAie_Lock(LockId: 64, LockVal: 1), acqEn=1, relEn=0
-// CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=524288, lenInBytes=8192
+// CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaDesc=ptr, basePlusOffsetInBytes=524288, lenInBytes=2048
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaDesc=ptr, nextBdId.value()=0, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 1, row: 1), bdId=0
 // CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 1, row: 1)
 // CHECK: XAIE API: dmaDesc.DmaMod->SetLock with args: &dmaDesc=ptr, acqLock=XAie_Lock(LockId: 64, LockVal: -1), relLock=XAie_Lock(LockId: 65, LockVal: 1), acqEn=1, relEn=0
-// CHECK: XAie_DmaTensor(XAie_AieMlDmaDimDesc(StepSize: 1, Wrap: 2), XAie_AieMlDmaDimDesc(StepSize: 32, Wrap: 64), XAie_AieMlDmaDimDesc(StepSize: 2, Wrap: 16))
-// CHECK: XAIE API: XAie_DmaSetMultiDimAddr with args: &dmaDesc=ptr, &dmaTileBdTensor=ptr, basePlusOffsetInBytes=524288, lenInBytes=8192
+// CHECK: XAie_DmaTensor(XAie_AieMlDmaDimDesc(StepSize: 1, Wrap: 4), XAie_AieMlDmaDimDesc(StepSize: 32, Wrap: 16), XAie_AieMlDmaDimDesc(StepSize: 4, Wrap: 8))
+// CHECK: XAIE API: XAie_DmaSetMultiDimAddr with args: &dmaDesc=ptr, &dmaTileBdTensor=ptr, basePlusOffsetInBytes=524288, lenInBytes=2048
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaDesc=ptr, nextBdId.value()=1, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaDesc=ptr
 // CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaDesc=ptr, tileLoc=TileLoc(col: 1, row: 1), bdId=1
@@ -276,8 +275,6 @@ aie.device(npu1_4col) {
 // CHECK: XAIE API: XAie_EnableShimDmaToAieStrmPort with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 0), connect.dst.channel=7
 // CHECK: XAIE API: XAie_EnableAieToShimDmaStrmPort with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 0), connect.src.channel=2
 
-
-
 // CHECK: cdo-driver: (NOP Command): Payload Length: 0
 
 // CHECK: cdo-driver: (NOP Command): Payload Length: 0
@@ -295,7 +292,7 @@ aie.device(npu1_4col) {
 // CHECK: cdo-driver: (Write64): Address:  0x000000000021F000 Data:  0x00000000
 // CHECK: cdo-driver: (NOP Command): Payload Length: 2
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000021D000  Size: 6
-// CHECK: cdo-driver:     Address: 0x000000000021D000  Data is: 0x00400800
+// CHECK: cdo-driver:     Address: 0x000000000021D000  Data is: 0x00400080
 // CHECK: cdo-driver:     Address: 0x000000000021D004  Data is: 0x00000000
 // CHECK: cdo-driver:     Address: 0x000000000021D008  Data is: 0x00000000
 // CHECK: cdo-driver:     Address: 0x000000000021D00C  Data is: 0x00000000
@@ -304,7 +301,7 @@ aie.device(npu1_4col) {
 
 // CHECK: cdo-driver: (NOP Command): Payload Length: 2
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000021D020  Size: 6
-// CHECK: cdo-driver:     Address: 0x000000000021D020  Data is: 0x02400800
+// CHECK: cdo-driver:     Address: 0x000000000021D020  Data is: 0x00600200
 // CHECK: cdo-driver:     Address: 0x000000000021D024  Data is: 0x00000000
 // CHECK: cdo-driver:     Address: 0x000000000021D028  Data is: 0x00000000
 // CHECK: cdo-driver:     Address: 0x000000000021D02C  Data is: 0x00000000
@@ -313,10 +310,10 @@ aie.device(npu1_4col) {
 
 // CHECK: cdo-driver: (NOP Command): Payload Length: 2
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000021D040  Size: 6
-// CHECK: cdo-driver:     Address: 0x000000000021D040  Data is: 0x04401000
+// CHECK: cdo-driver:     Address: 0x000000000021D040  Data is: 0x00E00100
 // CHECK: cdo-driver:     Address: 0x000000000021D044  Data is: 0x00000000
-// CHECK: cdo-driver:     Address: 0x000000000021D048  Data is: 0x001FE000
-// CHECK: cdo-driver:     Address: 0x000000000021D04C  Data is: 0x02008003
+// CHECK: cdo-driver:     Address: 0x000000000021D048  Data is: 0x0003E000
+// CHECK: cdo-driver:     Address: 0x000000000021D04C  Data is: 0x01008003
 // CHECK: cdo-driver:     Address: 0x000000000021D050  Data is: 0x00000000
 // CHECK: cdo-driver:     Address: 0x000000000021D054  Data is: 0x16043FE0
 
@@ -324,7 +321,7 @@ aie.device(npu1_4col) {
 // CHECK: cdo-driver: (Write64): Address:  0x000000000021DE0C Data:  0x00000001
 // CHECK: cdo-driver: (Write64): Address:  0x000000000021DE14 Data:  0x00000002
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x00000000041A0000  Size: 8
-// CHECK: cdo-driver:     Address: 0x00000000041A0000  Data is: 0x00001000
+// CHECK: cdo-driver:     Address: 0x00000000041A0000  Data is: 0x00000100
 // CHECK: cdo-driver:     Address: 0x00000000041A0004  Data is: 0x000A0000
 // CHECK: cdo-driver:     Address: 0x00000000041A0008  Data is: 0x00000000
 // CHECK: cdo-driver:     Address: 0x00000000041A000C  Data is: 0x00000000
@@ -335,7 +332,7 @@ aie.device(npu1_4col) {
 
 // CHECK: cdo-driver: (NOP Command): Payload Length: 0
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x00000000041A0020  Size: 8
-// CHECK: cdo-driver:     Address: 0x00000000041A0020  Data is: 0x00001000
+// CHECK: cdo-driver:     Address: 0x00000000041A0020  Data is: 0x00000100
 // CHECK: cdo-driver:     Address: 0x00000000041A0024  Data is: 0x001A0000
 // CHECK: cdo-driver:     Address: 0x00000000041A0028  Data is: 0x00000000
 // CHECK: cdo-driver:     Address: 0x00000000041A002C  Data is: 0x00000000
@@ -348,7 +345,7 @@ aie.device(npu1_4col) {
 // CHECK: cdo-driver: (Write64): Address:  0x00000000041A0634 Data:  0x00000001
 // CHECK: cdo-driver: (NOP Command): Payload Length: 0
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x00000000001A0000  Size: 8
-// CHECK: cdo-driver:     Address: 0x00000000001A0000  Data is: 0x00000800
+// CHECK: cdo-driver:     Address: 0x00000000001A0000  Data is: 0x00000080
 // CHECK: cdo-driver:     Address: 0x00000000001A0004  Data is: 0x000A0000
 // CHECK: cdo-driver:     Address: 0x00000000001A0008  Data is: 0x00000000
 // CHECK: cdo-driver:     Address: 0x00000000001A000C  Data is: 0x00000000
@@ -359,11 +356,11 @@ aie.device(npu1_4col) {
 
 // CHECK: cdo-driver: (NOP Command): Payload Length: 0
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x00000000001A0020  Size: 8
-// CHECK: cdo-driver:     Address: 0x00000000001A0020  Data is: 0x00000800
+// CHECK: cdo-driver:     Address: 0x00000000001A0020  Data is: 0x00000080
 // CHECK: cdo-driver:     Address: 0x00000000001A0024  Data is: 0x001A0000
-// CHECK: cdo-driver:     Address: 0x00000000001A0028  Data is: 0x00080000
-// CHECK: cdo-driver:     Address: 0x00000000001A002C  Data is: 0x0080001F
-// CHECK: cdo-driver:     Address: 0x00000000001A0030  Data is: 0x00100003
+// CHECK: cdo-driver:     Address: 0x00000000001A0028  Data is: 0x00100000
+// CHECK: cdo-driver:     Address: 0x00000000001A002C  Data is: 0x0010000F
+// CHECK: cdo-driver:     Address: 0x00000000001A0030  Data is: 0x00040007
 // CHECK: cdo-driver:     Address: 0x00000000001A0034  Data is: 0x00000000
 // CHECK: cdo-driver:     Address: 0x00000000001A0038  Data is: 0x00000000
 // CHECK: cdo-driver:     Address: 0x00000000001A003C  Data is: 0x8141FF40
@@ -372,7 +369,7 @@ aie.device(npu1_4col) {
 // CHECK: cdo-driver: (Write64): Address:  0x00000000001A0634 Data:  0x00000001
 // CHECK: cdo-driver: (NOP Command): Payload Length: 0
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x00000000021A0000  Size: 8
-// CHECK: cdo-driver:     Address: 0x00000000021A0000  Data is: 0x00000800
+// CHECK: cdo-driver:     Address: 0x00000000021A0000  Data is: 0x00000200
 // CHECK: cdo-driver:     Address: 0x00000000021A0004  Data is: 0x000A0000
 // CHECK: cdo-driver:     Address: 0x00000000021A0008  Data is: 0x00000000
 // CHECK: cdo-driver:     Address: 0x00000000021A000C  Data is: 0x00000000
@@ -383,11 +380,11 @@ aie.device(npu1_4col) {
 
 // CHECK: cdo-driver: (NOP Command): Payload Length: 0
 // CHECK: cdo-driver: (BlockWrite-DMAWriteCmd): Start Address: 0x00000000021A0020  Size: 8
-// CHECK: cdo-driver:     Address: 0x00000000021A0020  Data is: 0x00000800
+// CHECK: cdo-driver:     Address: 0x00000000021A0020  Data is: 0x00000200
 // CHECK: cdo-driver:     Address: 0x00000000021A0024  Data is: 0x001A0000
-// CHECK: cdo-driver:     Address: 0x00000000021A0028  Data is: 0x00040000
-// CHECK: cdo-driver:     Address: 0x00000000021A002C  Data is: 0x0080001F
-// CHECK: cdo-driver:     Address: 0x00000000021A0030  Data is: 0x00200001
+// CHECK: cdo-driver:     Address: 0x00000000021A0028  Data is: 0x00080000
+// CHECK: cdo-driver:     Address: 0x00000000021A002C  Data is: 0x0020001F
+// CHECK: cdo-driver:     Address: 0x00000000021A0030  Data is: 0x00100003
 // CHECK: cdo-driver:     Address: 0x00000000021A0034  Data is: 0x00000000
 // CHECK: cdo-driver:     Address: 0x00000000021A0038  Data is: 0x00000000
 // CHECK: cdo-driver:     Address: 0x00000000021A003C  Data is: 0x8141FF40
