@@ -1,5 +1,6 @@
-// RUN: aie2xclbin_test %s %T
-// RUN: FileCheck --input-file "%T/$(basename %s).npu.txt" %s
+// RUN: mkdir -p %S/Output && rm -rf %S/Output/%{t:stem}.dir && mkdir %S/Output/%{t:stem}.dir
+// RUN: aie2xclbin_test %s %S/Output/%{t:stem}.dir
+// RUN: FileCheck --input-file "%S/Output/%{t:stem}.dir/$(basename %s).npu.txt" %s
 
 module {
   aie.device(npu1_4col) {

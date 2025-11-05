@@ -1,6 +1,7 @@
-// RUN: aie_elf_files_gen_test %s %T
-// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-convert-device-to-control-packets{path-to-elfs=%T broadcast-core-config=false})" %s | FileCheck %s
-// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-convert-device-to-control-packets{path-to-elfs=%T broadcast-core-config=true})" %s | FileCheck %s --check-prefix=BROADCAST
+// RUN: mkdir -p %S/Output && rm -rf %S/Output/%{t:stem}.dir && mkdir %S/Output/%{t:stem}.dir
+// RUN: aie_elf_files_gen_test %s %S/Output/%{t:stem}.dir
+// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-convert-device-to-control-packets{path-to-elfs=%S/Output/%{t:stem}.dir broadcast-core-config=false})" %s | FileCheck %s
+// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-convert-device-to-control-packets{path-to-elfs=%S/Output/%{t:stem}.dir broadcast-core-config=true})" %s | FileCheck %s --check-prefix=BROADCAST
 
 // Make sure the `target` attribute is copied over to the new module.
 // CHECK:      #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
