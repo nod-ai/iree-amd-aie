@@ -32,6 +32,7 @@ void registerDialects(DialectRegistry &registry) {
 int main(int argc, char **argv) {
   llvm::StringRef mlirAbsPath(argv[1]);
   llvm::StringRef workDir(argv[2]);
+
   DialectRegistry registry;
   registerDialects(registry);
   MLIRContext context(registry);

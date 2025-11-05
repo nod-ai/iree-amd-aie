@@ -1,5 +1,5 @@
-// RUN: rm -rf %t.dir && mkdir %t.dir
-// RUN: (aie_cdo_gen_test %s %t.dir/../../../../../../../../../) 2>&1 | FileCheck %s
+// RUN: mkdir -p %S/Output && rm -rf %S/Output/%{t:stem}.dir && mkdir %S/Output/%{t:stem}.dir
+// RUN: (aie_cdo_gen_test %s %S/Output/%{t:stem}.dir) 2>&1 | FileCheck %s
 
 // Checks two BD chains, one of size 2 and one of size 4 with blocks without any `aie.use_lock`.
 module {
