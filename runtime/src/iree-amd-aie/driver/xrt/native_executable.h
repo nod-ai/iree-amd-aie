@@ -46,6 +46,14 @@ iree_status_t iree_hal_xrt_native_executable_entry_point_kernel_params(
     iree_hal_executable_t* executable, int32_t entry_point,
     iree_hal_xrt_kernel_params_t* out_params);
 
+// Infers the format of the executable and calculates its total size.
+// If executable_data.data_length is 0 attempts to infer size from the data.
+// Returns the canonical format string and total size of the executable data.
+iree_status_t iree_hal_xrt_native_executable_infer_format(
+    iree_const_byte_span_t executable_data,
+    iree_host_size_t executable_format_capacity, char* executable_format,
+    iree_host_size_t* out_inferred_size);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

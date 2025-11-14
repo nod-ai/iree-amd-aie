@@ -12,6 +12,7 @@
 #include "iree-amd-aie/schemas/xrt_executable_def_verifier.h"
 #include "iree/base/api.h"
 #include "iree/base/internal/flatcc/parsing.h"
+#include "iree/hal/utils/executable_header.h"
 
 typedef struct iree_hal_xrt_native_executable_t {
   // Abstract resource used for injecting reference counting and vtable; must be
@@ -407,6 +408,26 @@ iree_status_t iree_hal_xrt_native_executable_entry_point_kernel_params(
 
   memcpy(out_params, &executable->entry_points[entry_point],
          sizeof(*out_params));
+  return iree_ok_status();
+}
+
+iree_status_t iree_hal_xrt_native_executable_infer_format(
+    iree_const_byte_span_t executable_data,
+    iree_host_size_t executable_format_capacity, char* executable_format,
+    iree_host_size_t* out_inferred_size) {
+  iree_const_byte_span_t flatbuffer_data = iree_const_byte_span_empty();
+
+  // Write the format string.
+  iree_string_view_t format = IREE_SV("XRT");
+  if (format.size >= executable_format_capacity) {
+    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                            "executable format buffer too small");
+  }
+  memcpy(executable_format, format.data, format.size + /*NUL*/ 1);
+
+  // Return the total size (header + flatbuffer).
+  *out_inferred_size =
+      sizeof(iree_flatbuffer_file_header_t) + flatbuffer_data.data_length;
   return iree_ok_status();
 }
 
