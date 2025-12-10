@@ -44,7 +44,7 @@ static TileOp getOrCreateTile(OpBuilder &builder, DeviceOp device, int col,
     if (tile.getCol() == col && tile.getRow() == row) return tile;
   }
   OpBuilder::InsertionGuard g(builder);
-  return builder.create<TileOp>(builder.getUnknownLoc(), col, row);
+  return TileOp::create(builder, builder.getUnknownLoc(), col, row);
 }
 
 static SwitchboxOp getOrCreateSwitchbox(OpBuilder &builder, DeviceOp device,
@@ -54,7 +54,7 @@ static SwitchboxOp getOrCreateSwitchbox(OpBuilder &builder, DeviceOp device,
     if (llvm::isa<SwitchboxOp>(*i)) return llvm::cast<SwitchboxOp>(*i);
   }
   OpBuilder::InsertionGuard g(builder);
-  auto sbOp = builder.create<SwitchboxOp>(builder.getUnknownLoc(), tile);
+  auto sbOp = SwitchboxOp::create(builder, builder.getUnknownLoc(), tile);
   SwitchboxOp::ensureTerminator(sbOp.getConnections(), builder,
                                 builder.getUnknownLoc());
   return sbOp;
@@ -67,7 +67,7 @@ static ShimMuxOp getOrCreateShimMux(OpBuilder &builder, DeviceOp device,
     if (auto shim = llvm::dyn_cast<ShimMuxOp>(*i)) return shim;
   }
   OpBuilder::InsertionGuard g(builder);
-  auto shimMuxOp = builder.create<ShimMuxOp>(builder.getUnknownLoc(), tile);
+  auto shimMuxOp = ShimMuxOp::create(builder, builder.getUnknownLoc(), tile);
   ShimMuxOp::ensureTerminator(shimMuxOp.getConnections(), builder,
                               builder.getUnknownLoc());
   return shimMuxOp;
@@ -87,8 +87,8 @@ static ConnectOp getOrCreateConnect(OpBuilder &builder, Operation *parentOp,
   }
   OpBuilder::InsertionGuard g(builder);
   builder.setInsertionPoint(b.getTerminator());
-  return builder.create<ConnectOp>(builder.getUnknownLoc(), srcBundle,
-                                   srcChannel, destBundle, destChannel);
+  return ConnectOp::create(builder, builder.getUnknownLoc(), srcBundle,
+                           srcChannel, destBundle, destChannel);
 }
 
 static AMSelOp getOrCreateAMSel(OpBuilder &builder, SwitchboxOp swboxOp,
@@ -101,7 +101,7 @@ static AMSelOp getOrCreateAMSel(OpBuilder &builder, SwitchboxOp swboxOp,
     if (amsel.getArbiterID() == arbiterID && amsel.getMsel() == msel)
       return amsel;
   }
-  return builder.create<AMSelOp>(builder.getUnknownLoc(), arbiterID, msel);
+  return AMSelOp::create(builder, builder.getUnknownLoc(), arbiterID, msel);
 }
 
 static MasterSetOp getOrCreateMasterSet(OpBuilder &builder, SwitchboxOp swboxOp,
@@ -117,9 +117,9 @@ static MasterSetOp getOrCreateMasterSet(OpBuilder &builder, SwitchboxOp swboxOp,
         masterSet.getAmsels() == amselVals)
       return masterSet;
   }
-  return builder.create<MasterSetOp>(builder.getUnknownLoc(),
-                                     builder.getIndexType(), bundle, channel,
-                                     amselVals);
+  return MasterSetOp::create(builder, builder.getUnknownLoc(),
+                             builder.getIndexType(), bundle, channel,
+                             amselVals);
 }
 
 static PacketRulesOp getOrCreatePacketRules(OpBuilder &builder,
@@ -137,7 +137,7 @@ static PacketRulesOp getOrCreatePacketRules(OpBuilder &builder,
     }
   }
   auto packetRules =
-      builder.create<PacketRulesOp>(builder.getUnknownLoc(), bundle, channel);
+      PacketRulesOp::create(builder, builder.getUnknownLoc(), bundle, channel);
   PacketRulesOp::ensureTerminator(packetRules.getRules(), builder,
                                   builder.getUnknownLoc());
   return packetRules;
@@ -515,10 +515,10 @@ LogicalResult runOnPacketFlow(
         }
         Block &rules = packetrules.getRules().front();
         builder.setInsertionPoint(rules.getTerminator());
-        builder.create<PacketRuleOp>(
-            builder.getUnknownLoc(), mask, maskedId, amsel,
-            builder.getDenseI32ArrayAttr(
-                SmallVector<int>(group.begin(), group.end())));
+        PacketRuleOp::create(builder, builder.getUnknownLoc(), mask, maskedId,
+                             amsel,
+                             builder.getDenseI32ArrayAttr(
+                                 SmallVector<int>(group.begin(), group.end())));
       }
     }
   }

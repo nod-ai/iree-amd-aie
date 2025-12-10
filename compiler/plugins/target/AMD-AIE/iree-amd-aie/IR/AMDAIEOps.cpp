@@ -110,10 +110,10 @@ void CoreOp::build(OpBuilder &b, OperationState &result, Value coreCol,
                    ValueRange outputDmas, IntegerAttr stackSize) {
   // The row offset accounts for shim and mem tiles at the bottom of the device.
   auto rowOffsetOp =
-      b.create<arith::ConstantIndexOp>(b.getUnknownLoc(), rowOffset);
+      arith::ConstantIndexOp::create(b, b.getUnknownLoc(), rowOffset);
   auto row =
       b.createOrFold<arith::AddIOp>(b.getUnknownLoc(), rowOffsetOp, coreRow);
-  auto tileOp = b.create<AMDAIE::TileOp>(b.getUnknownLoc(), coreCol, row);
+  auto tileOp = AMDAIE::TileOp::create(b, b.getUnknownLoc(), coreCol, row);
   build(b, result, tileOp, inputDmas, outputDmas, stackSize, nullptr);
 }
 
@@ -319,9 +319,10 @@ DoublyStridedOpInterface DmaCpyNdOp::createDoublyStridedOp(
     SmallVector<OpFoldResult> &newSourceSizes,
     SmallVector<OpFoldResult> &newSourceStrides) {
   Location loc = (*this)->getLoc();
-  auto newOp = rewriter.create<AMDAIE::DmaCpyNdOp>(
-      loc, getTarget(), newTargetOffsets, newTargetSizes, newTargetStrides,
-      getSource(), newSourceOffsets, newSourceSizes, newSourceStrides);
+  auto newOp = AMDAIE::DmaCpyNdOp::create(
+      rewriter, loc, getTarget(), newTargetOffsets, newTargetSizes,
+      newTargetStrides, getSource(), newSourceOffsets, newSourceSizes,
+      newSourceStrides);
   return cast<DoublyStridedOpInterface>(newOp.getOperation());
 }
 
@@ -448,9 +449,10 @@ DoublyStridedOpInterface CircularDmaCpyNdOp::createDoublyStridedOp(
     SmallVector<OpFoldResult> &newSourceSizes,
     SmallVector<OpFoldResult> &newSourceStrides) {
   Location loc = (*this)->getLoc();
-  auto newOp = rewriter.create<AMDAIE::CircularDmaCpyNdOp>(
-      loc, getTarget(), newTargetOffsets, newTargetSizes, newTargetStrides,
-      getSource(), newSourceOffsets, newSourceSizes, newSourceStrides);
+  auto newOp = AMDAIE::CircularDmaCpyNdOp::create(
+      rewriter, loc, getTarget(), newTargetOffsets, newTargetSizes,
+      newTargetStrides, getSource(), newSourceOffsets, newSourceSizes,
+      newSourceStrides);
   return cast<DoublyStridedOpInterface>(newOp.getOperation());
 }
 
@@ -740,9 +742,9 @@ void LogicalObjectFifoFromMemrefOp::build(
   SmallVector<Value> tiles;
   tiles.reserve(tileLocations.size());
   for (auto [column, row] : tileLocations) {
-    auto getCol = b.create<arith::ConstantIndexOp>(b.getUnknownLoc(), column);
-    auto getRow = b.create<arith::ConstantIndexOp>(b.getUnknownLoc(), row);
-    auto tileOp = b.create<AMDAIE::TileOp>(b.getUnknownLoc(), getCol, getRow);
+    auto getCol = arith::ConstantIndexOp::create(b, b.getUnknownLoc(), column);
+    auto getRow = arith::ConstantIndexOp::create(b, b.getUnknownLoc(), row);
+    auto tileOp = AMDAIE::TileOp::create(b, b.getUnknownLoc(), getCol, getRow);
     tiles.push_back(tileOp.getResult());
   }
   // For deterministic order.
@@ -1162,10 +1164,11 @@ DoublyStridedOpInterface NpuDmaCpyNdOp::createDoublyStridedOp(
     ::llvm::SmallVector<OpFoldResult> &newSourceSizes,
     ::llvm::SmallVector<OpFoldResult> &newSourceStrides) {
   Location loc = (*this)->getLoc();
-  auto newOp = rewriter.create<AMDAIE::NpuDmaCpyNdOp>(
-      loc, getResultTypes(), getConnection(), getTarget(), newTargetOffsets,
-      newTargetSizes, newTargetStrides, getTargetBdId(), getSource(),
-      newSourceOffsets, newSourceSizes, newSourceStrides, getSourceBdId());
+  auto newOp = AMDAIE::NpuDmaCpyNdOp::create(
+      rewriter, loc, getResultTypes(), getConnection(), getTarget(),
+      newTargetOffsets, newTargetSizes, newTargetStrides, getTargetBdId(),
+      getSource(), newSourceOffsets, newSourceSizes, newSourceStrides,
+      getSourceBdId());
   return cast<DoublyStridedOpInterface>(newOp.getOperation());
 }
 
@@ -1422,8 +1425,8 @@ DoublyStridedOpInterface NpuCircularDmaCpyNdOp::createDoublyStridedOp(
     ::llvm::SmallVector<OpFoldResult> &newSourceSizes,
     ::llvm::SmallVector<OpFoldResult> &newSourceStrides) {
   Location loc = (*this)->getLoc();
-  auto newOp = rewriter.create<AMDAIE::NpuCircularDmaCpyNdOp>(
-      loc, getConnection(),
+  auto newOp = AMDAIE::NpuCircularDmaCpyNdOp::create(
+      rewriter, loc, getConnection(),
       getValueOrCreateConstantIndexOp(rewriter, loc, newTargetOffsets),
       getValueOrCreateConstantIndexOp(rewriter, loc, newTargetSizes),
       getValueOrCreateConstantIndexOp(rewriter, loc, newTargetStrides),
@@ -1577,7 +1580,7 @@ void WorkgroupOp::ensureTerminator(Region &region, OpBuilder &builder,
   if (terminator.getRegion().empty()) {
     Block *newBlock = builder.createBlock(&terminator.getRegion());
     builder.setInsertionPointToEnd(newBlock);
-    builder.create<AMDAIE::EndOp>(builder.getUnknownLoc());
+    AMDAIE::EndOp::create(builder, builder.getUnknownLoc());
   }
 }
 
