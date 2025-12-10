@@ -550,14 +550,14 @@ scf::ForOp createForOpWithUnrollingDisabled(OpBuilder &builder, Location loc,
   OpBuilder::InsertionGuard guard(builder);
 
   auto getConstant = [&](int64_t v) {
-    return builder.create<arith::ConstantIndexOp>(loc, v);
+    return arith::ConstantIndexOp::create(builder, loc, v);
   };
 
   Value cStart = getConstant(start);
   Value cEnd = getConstant(end);
   Value cStep = getConstant(step);
 
-  scf::ForOp forOp = builder.create<scf::ForOp>(loc, cStart, cEnd, cStep);
+  scf::ForOp forOp = scf::ForOp::create(builder, loc, cStart, cEnd, cStep);
 
   mlir::LLVM::LoopUnrollAttr unrollAttr;
   mlir::LLVM::LoopAnnotationAttr loopAnnotationAttr;

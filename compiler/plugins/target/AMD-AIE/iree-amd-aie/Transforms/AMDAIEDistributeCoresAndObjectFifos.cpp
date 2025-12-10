@@ -235,13 +235,13 @@ class AMDAIEUnrollLocalLoops : public OpRewritePattern<scf::ForOp> {
     if (stepInt == (ubInt - lbInt)) return failure();
     Value forOpIV = forOp.getInductionVar();
     forOp.setUpperBound(
-        rewriter.create<arith::ConstantIndexOp>(rewriter.getUnknownLoc(), 1));
+        arith::ConstantIndexOp::create(rewriter, rewriter.getUnknownLoc(), 1));
 
     // Iterate through the loop and create body
     for (int64_t i = lbInt + stepInt; i < ubInt; i += stepInt) {
       IRMapping operandMap;
       Value ivUnroll =
-          builder.create<arith::ConstantIndexOp>(builder.getUnknownLoc(), i);
+          arith::ConstantIndexOp::create(builder, builder.getUnknownLoc(), i);
       if (!forOpIV.use_empty()) {
         operandMap.map(forOpIV, ivUnroll);
       }
@@ -384,8 +384,9 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
           std::tuple<AMDAIE::LogicalObjectFifoFromMemrefOp,
                      AMDAIE::MemoryAccess>
               value = memrefToLogicalObjectFifo[operand.get()];
-          auto accessOp = rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
-              rewriter.getUnknownLoc(), std::get<0>(value), std::get<1>(value));
+          auto accessOp = AMDAIE::LogicalObjectFifoAccessOp::create(
+              rewriter, rewriter.getUnknownLoc(), std::get<0>(value),
+              std::get<1>(value));
           memrefToLogicalObjectFifoAccess[operand.get()] = accessOp;
           op->setOperand(idx, accessOp);
         } else if (auto type =
@@ -394,9 +395,9 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
           rewriter.setInsertionPoint(coreOp);
 
           auto logicalObjectFifo =
-              rewriter.create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-                  rewriter.getUnknownLoc(), LogicalObjectFifoType::get(type),
-                  memref);
+              AMDAIE::LogicalObjectFifoFromMemrefOp::create(
+                  rewriter, rewriter.getUnknownLoc(),
+                  LogicalObjectFifoType::get(type), memref);
 
           rewriter.setInsertionPoint(opToInsertRewriterPoint);
 
@@ -405,12 +406,12 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
             std::tuple<AMDAIE::LogicalObjectFifoFromMemrefOp,
                        AMDAIE::MemoryAccess>
                 value = memrefToLogicalObjectFifo[memref];
-            accessOp = rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
-                rewriter.getUnknownLoc(), std::get<0>(value),
+            accessOp = AMDAIE::LogicalObjectFifoAccessOp::create(
+                rewriter, rewriter.getUnknownLoc(), std::get<0>(value),
                 std::get<1>(value));
           } else {
-            accessOp = rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
-                rewriter.getUnknownLoc(), logicalObjectFifo,
+            accessOp = AMDAIE::LogicalObjectFifoAccessOp::create(
+                rewriter, rewriter.getUnknownLoc(), logicalObjectFifo,
                 AMDAIE::MemoryAccess::None);
           }
           memrefToLogicalObjectFifoAccess[memref] = accessOp;
@@ -462,19 +463,19 @@ LogicalResult distributeCoresToMultiColumns(
     if (!iv) return WalkResult::advance();
     // Rewrite the tile location to distribute across columns.
     rewriter.setInsertionPointToStart(iv.getOwner());
-    Value numRowsValue = rewriter.create<arith::ConstantIndexOp>(
-        rewriter.getUnknownLoc(), numRows);
-    Value newCol = rewriter.create<arith::DivUIOp>(rewriter.getUnknownLoc(), iv,
-                                                   numRowsValue);
-    Value newRow = rewriter.create<arith::RemUIOp>(rewriter.getUnknownLoc(), iv,
-                                                   numRowsValue);
+    Value numRowsValue = arith::ConstantIndexOp::create(
+        rewriter, rewriter.getUnknownLoc(), numRows);
+    Value newCol = arith::DivUIOp::create(rewriter, rewriter.getUnknownLoc(),
+                                          iv, numRowsValue);
+    Value newRow = arith::RemUIOp::create(rewriter, rewriter.getUnknownLoc(),
+                                          iv, numRowsValue);
     // Reuse the original defOp and its result (rowVal), while only update its
     // input.
     defOp->setOperand(0, newRow);
     rewriter.setInsertionPointAfter(defOp);
     // Use (newCol, rowVal = newRow + offset) to create a new tile op.
     Operation *newTile =
-        rewriter.create<AMDAIE::TileOp>(tileOp.getLoc(), newCol, rowVal);
+        AMDAIE::TileOp::create(rewriter, tileOp.getLoc(), newCol, rowVal);
     tileOp.replaceAllUsesWith(newTile);
     rewriter.eraseOp(tileOp);
     return WalkResult::advance();

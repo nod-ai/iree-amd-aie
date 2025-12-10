@@ -96,7 +96,7 @@ static void addAMDAIEBufferizePasses(OpPassManager &pm,
         MemRefType allocType =
             MemRefType::get(memRefType.getShape(), memRefType.getElementType(),
                             AffineMap(), memorySpaceAttr);
-        return builder.create<memref::AllocOp>(loc, allocType, dynamicSizes)
+        return memref::AllocOp::create(builder, loc, allocType, dynamicSizes)
             .getResult();
       };
 
