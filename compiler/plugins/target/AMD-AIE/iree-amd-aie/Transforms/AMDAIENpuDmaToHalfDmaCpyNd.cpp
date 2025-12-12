@@ -73,25 +73,41 @@ struct NpuDmaToHalfDmaCpyNdConverter final
         dmaOp.getLoc(), targetResultTypes, connectionOp, target,
         dmaOp.getTargetMixedOffsets(), dmaOp.getTargetMixedSizes(),
         dmaOp.getTargetMixedStrides(), dmaOp.getTargetBdId(), targetChannelOp);
-    if (dmaOp.getNumResults() == 1) {
-      if (sourceDma.getNumResults() == 1) {
-        rewriter.replaceUsesWithIf(
-            dmaOp.getResult(0), sourceDma.getResult(0), [&](OpOperand &use) {
-              return isa<AMDAIE::AsyncSourceTokenType>(use.get().getType()) &&
-                     isa<AMDAIE::NpuDmaWaitOp>(use.getOwner());
-            });
+    // Build a one-to-one replacement vector to satisfy the conversion
+    // framework without duplicate replacements.
+    SmallVector<Value> replacements;
+    replacements.reserve(dmaOp.getNumResults());
+    for (auto result : dmaOp.getResults()) {
+      Value replacement;
+      if (isa<AMDAIE::AsyncSourceTokenType>(result.getType())) {
+        if (sourceDma.getNumResults() == 1) {
+          replacement = sourceDma.getResult(0);
+        }
+      } else if (isa<AMDAIE::AsyncTargetTokenType>(result.getType())) {
+        if (targetDma.getNumResults() == 1) {
+          replacement = targetDma.getResult(0);
+        }
       }
-      if (targetDma.getNumResults() == 1) {
-        rewriter.replaceUsesWithIf(
-            dmaOp.getResult(0), targetDma.getResult(0), [&](OpOperand &use) {
-              return isa<AMDAIE::AsyncTargetTokenType>(use.get().getType()) &&
-                     isa<AMDAIE::NpuDmaWaitOp>(use.getOwner());
-            });
+      if (!replacement) {
+        return dmaOp.emitOpError() << "could not find replacement for result";
       }
-      if (!dmaOp.getResult(0).use_empty())
-        return dmaOp.emitOpError() << "should not have any uses anymore";
+      replacements.push_back(replacement);
     }
-    rewriter.eraseOp(dmaOp);
+    rewriter.replaceOp(dmaOp, replacements);
+    return success();
+  }
+};
+
+struct NpuDmaWaitOpConverter final : OpConversionPattern<AMDAIE::NpuDmaWaitOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      AMDAIE::NpuDmaWaitOp waitOp, OpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    // Rebuild the wait op with converted async tokens to drop any
+    // source/target-specific token types in favor of the unified async token.
+    rewriter.replaceOpWithNewOp<AMDAIE::NpuDmaWaitOp>(waitOp,
+                                                      adaptor.getAsyncTokens());
     return success();
   }
 };
@@ -112,9 +128,27 @@ void AMDAIENpuDmaToHalfDmaCpyNdPass::runOnOperation() {
   MLIRContext *context = &getContext();
   RewritePatternSet patterns(context);
   ConversionTarget conversionTarget(*context);
+
+  TypeConverter typeConverter;
+  typeConverter.addConversion([](Type type) { return type; });
+  // Specific mapping: source/target token -> generic async token.
+  typeConverter.addConversion([](AMDAIE::AsyncSourceTokenType type) {
+    return AMDAIE::AsyncTokenType::get(type.getContext());
+  });
+  typeConverter.addConversion([](AMDAIE::AsyncTargetTokenType type) {
+    return AMDAIE::AsyncTokenType::get(type.getContext());
+  });
+
   conversionTarget.addLegalDialect<AMDAIEDialect>();
   conversionTarget.addIllegalOp<AMDAIE::NpuDmaCpyNdOp>();
-  patterns.insert<NpuDmaToHalfDmaCpyNdConverter>(context);
+  conversionTarget.addDynamicallyLegalOp<AMDAIE::NpuDmaWaitOp>(
+      [&](AMDAIE::NpuDmaWaitOp op) {
+        return typeConverter.isLegal(op.getAsyncTokens().getTypes());
+      });
+
+  patterns.insert<NpuDmaToHalfDmaCpyNdConverter>(typeConverter, context);
+  patterns.insert<NpuDmaWaitOpConverter>(typeConverter, context);
+
   if (failed(applyPartialConversion(parentOp, conversionTarget,
                                     std::move(patterns)))) {
     return signalPassFailure();

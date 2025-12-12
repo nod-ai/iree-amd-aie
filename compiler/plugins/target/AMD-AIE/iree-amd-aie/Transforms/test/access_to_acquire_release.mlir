@@ -333,6 +333,7 @@ func.func @loop_without_epilogue(%arg0: !amdaie.logicalobjectfifo<memref<32xi32,
 func.func @nested_for_loops(%arg0: !amdaie.logicalobjectfifo<memref<32xi32, 2>>,
                             %arg1: !amdaie.logicalobjectfifo<memref<32xi32, 1>>) {
   %c0 = arith.constant 0 : index
+  %c0_i32 = arith.constant 0 : i32
   %c1 = arith.constant 1 : index
   %c4 = arith.constant 4 : index
   %c8 = arith.constant 8 : index
@@ -341,10 +342,10 @@ func.func @nested_for_loops(%arg0: !amdaie.logicalobjectfifo<memref<32xi32, 2>>,
   %core = amdaie.core(%tile, in : [%connection], out : []) {
     scf.for %arg_0 = %c0 to %c4 step %c1 {
       %access2 = amdaie.logicalobjectfifo.access(%arg0, Read) : !amdaie.logicalobjectfifo<memref<32xi32, 2>> -> memref<32xi32, 2>
-      linalg.fill ins(%c0 : index) outs(%access2 : memref<32xi32, 2>)
+      linalg.fill ins(%c0_i32 : i32) outs(%access2 : memref<32xi32, 2>)
       scf.for %arg_1 = %c0 to %c8 step %c1 {
         %access3 = amdaie.logicalobjectfifo.access(%arg0, Read) : !amdaie.logicalobjectfifo<memref<32xi32, 2>> -> memref<32xi32, 2>
-        linalg.fill ins(%c0 : index) outs(%access3 : memref<32xi32, 2>)
+        linalg.fill ins(%c0_i32 : i32) outs(%access3 : memref<32xi32, 2>)
       }
     }
     amdaie.end
