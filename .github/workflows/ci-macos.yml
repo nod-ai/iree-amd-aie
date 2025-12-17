@@ -81,7 +81,7 @@ jobs:
           pip install pytest pybind11==2.13.6 nanobind==2.9.0
 
       - name: Enable cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/restore@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1
         with:
           path: ${{ env.CACHE_DIR }}
           key: ${{ env.CACHE_KEY }}
@@ -104,7 +104,7 @@ jobs:
           tar cf iree-dist-${{ matrix.runs-on }}.tar iree-install
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: ${{ !cancelled() }}
         with:
           name: ${{ matrix.runs-on }}_llvm_packages
@@ -112,7 +112,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: ${{ !cancelled() }}
         with:
           name: ${{ matrix.runs-on }}_iree_packages
@@ -120,7 +120,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Save cache
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/save@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1
         if: ${{ !cancelled() && github.event_name == 'push' && github.ref_name == 'main' }}
         with:
           path: ${{ env.CACHE_DIR }}

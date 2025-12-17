@@ -84,7 +84,7 @@ jobs:
           pip install pyyaml pybind11==2.13.6 nanobind==2.9.0
 
       - name: Enable cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/restore@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1
         with:
           path: ${{ env.CACHE_DIR }}
           key: ${{ env.CACHE_KEY }}
@@ -114,7 +114,7 @@ jobs:
           tar cf iree-dist-windows.tar iree-install
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: ${{ !cancelled() }}
         with:
           name: windows_x86_64_llvm_packages
@@ -122,7 +122,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: ${{ !cancelled() }}
         with:
           name: windows_x86_64_iree_packages
@@ -130,7 +130,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Save cache
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/save@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1
         if: ${{ !cancelled() && (inputs.force_ccache || github.event_name == 'push' && github.ref_name == 'main') }}
         with:
           path: ${{ env.CACHE_DIR }}
@@ -155,7 +155,7 @@ jobs:
           submodules: false # not required for testbench
 
       - name: Download artifacts
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: windows_x86_64_iree_packages
 
