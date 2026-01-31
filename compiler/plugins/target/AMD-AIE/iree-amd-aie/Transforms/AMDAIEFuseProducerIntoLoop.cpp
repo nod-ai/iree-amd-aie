@@ -158,8 +158,7 @@ void AMDAIEFuseProducerIntoLoopPass::runOnOperation() {
             scf::tileAndFuseProducerOfSlice(rewriter, sliceOp,
                                             MutableArrayRef(&loops, 1));
         if (!fusedProducer) {
-          funcOp->emitOpError("Failed to fuse pack ops into for loop.");
-          return signalPassFailure();
+          continue;
         }
       }
     }
