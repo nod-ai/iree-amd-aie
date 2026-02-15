@@ -196,6 +196,7 @@ class BaseTest(ABC):
     def get_filename(self, config):
         return self.get_dir(config) / f"{self.name}.mlir"
 
+    # Correctness
     def vs_cpu(self, config):
         filename = self.get_filename(config)
 
@@ -2520,16 +2521,44 @@ class Tests:
         #         )
 
         # Reduction op tests:
-        self.register(
-            Reduction(
-                file_base_name="reduction_sum",
-                function_name="reduction_sum",
-                test_params=TestParams(
-                    name_suffix="sum",
-                    tile_pipeline="general-copy",
-                ),
+        for data_type in ["bf16"]:
+            # for shapes in [
+            #     "2x128",
+            # #     "16x128",
+            # #     # "32x128",
+            # #     # "64x128",
+            # #     # "128x128",
+            # #     # "256x128",
+            # #     # "512x128",
+            # #     # "1024x128",
+            # #     # "2048x128",
+            # #     # "4096x128",
+            # ]:
+            # custom_input = 1.0 * np.ones((2, 16), dtype=np.float16)  # f32
+            # print(custom_input)
+            self.register(
+                Reduction(
+                    file_base_name=f"reduction_sum_{data_type}",
+                    function_name=f"reduction_sum",
+                    test_params=TestParams(
+                        tile_pipeline="general-copy",
+                        run_on_target=["npu4"],
+                        use_chess=False,
+                        use_chess_for_ukernel=False,
+                        use_ukernel=False,
+                        enable_ctrlpkt=False,
+                        run_benchmark=False,  # Correctness
+                        stack_size=2048,
+                        lower_to_aie_pipeline="objectFifo",
+                        n_repeats=2,
+                        n_kernel_runs=10,   # This converts to 10xn_kernel_runs, how?
+                        n_reconfigure_runs=0,
+                        # preset_inputs={1: custom_input},
+                        aie_compilation_flags=["--iree-hal-target-backends=amd-aie"
+                        ]
+                    ),
+                )
             )
-        )
 
         # Soak testing.
         # See https://github.com/nod-ai/iree-amd-aie/issues/1264
