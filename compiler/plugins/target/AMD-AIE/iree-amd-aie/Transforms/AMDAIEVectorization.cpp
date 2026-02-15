@@ -32,6 +32,28 @@ namespace {
 // GenericVectorization will be extended in the future to support more
 // AIE-specific vectorization patterns.
 
+// converts {x, y} -> {1, y}
+static std::optional<SmallVector<int64_t>> vectorLeadingOneDimShape(
+    Operation *op) {
+  auto vectorOp = dyn_cast<VectorUnrollOpInterface>(op);
+  if (!vectorOp) return std::nullopt;
+  auto shape = vectorOp.getShapeForUnroll();
+  if (!shape) return std::nullopt;
+
+  // For 2D vectors, unroll to 1D
+  if (shape->size() == 2) {
+    // Return {1, shape[1]} to unroll the first dimension
+    return SmallVector<int64_t>{1, (*shape)[1]};
+  }
+  return std::nullopt;
+}
+
+void populateVectorUnrollPatterns(RewritePatternSet &vectorizationPatterns) {
+  vector::UnrollVectorOptions options;
+  options.setNativeShapeFn(vectorLeadingOneDimShape);
+  vector::populateVectorUnrollPatterns(vectorizationPatterns, options);
+}
+
 class AMDAIEVectorizationPass
     : public impl::AMDAIEVectorizationBase<AMDAIEVectorizationPass> {
  public:
@@ -107,10 +129,10 @@ void AMDAIEVectorizationPass::runOnOperation() {
   }
 
   RewritePatternSet vectorizationPatterns(funcOp.getContext());
-
   vector::populateVectorReductionToContractPatterns(vectorizationPatterns);
   vector::populateSinkVectorOpsPatterns(vectorizationPatterns);
 
+  // TODO: Do we really need belowpattern?
   // Including this pattern prevents broadcasting in vector.transfer_read ops
   vector::populateVectorTransferPermutationMapLoweringPatterns(
       vectorizationPatterns);
@@ -118,6 +140,23 @@ void AMDAIEVectorizationPass::runOnOperation() {
   vector::populateVectorMultiReductionLoweringPatterns(
       vectorizationPatterns,
       vector::VectorMultiReductionLowering::InnerReduction);
+  // Converting transfer_read/writes -> vector.loads/stores
+  {
+    vector::populateVectorToVectorCanonicalizationPatterns(
+        vectorizationPatterns);
+    // 1. unroll
+    populateVectorUnrollPatterns(vectorizationPatterns);
+    // 2. Fully convert 2D->1D
+    // vector<1x10xbf16> -> vector<10xbf16>
+    vector::populateCastAwayVectorLeadingOneDimPatterns(vectorizationPatterns,
+                                                        /*benefit=*/1);
+    // 3. Convert to vector.load/store
+    vector::populateVectorTransferLoweringPatterns(
+        vectorizationPatterns);  // converts transfer.read -> vector.loads
+    vector::populateVectorToVectorCanonicalizationPatterns(
+        vectorizationPatterns);
+  }
+
   (void)applyPatternsGreedily(funcOp, std::move(vectorizationPatterns));
 }
 }  // namespace
