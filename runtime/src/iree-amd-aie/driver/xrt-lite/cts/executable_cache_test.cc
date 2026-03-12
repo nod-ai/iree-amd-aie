@@ -8,29 +8,49 @@
 #include "iree/base/api.h"
 #include "iree/base/string_view.h"
 #include "iree/hal/api.h"
-#include "iree/hal/cts/cts_test_base.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
 #include "xrt_lite_executables_c.h"
 
 namespace iree::hal::cts {
 
-const char* get_test_driver_name() { return "xrt-lite"; }
+static const char* get_test_executable_format() { return "amdaie-pdi-fb"; }
 
-iree_status_t register_test_driver(iree_hal_driver_registry_t* registry) {
-  return iree_hal_xrt_lite_driver_module_register(registry);
-}
-
-const char* get_test_executable_format() { return "amdaie-pdi-fb"; }
-
-iree_const_byte_span_t get_test_executable_data(iree_string_view_t file_name) {
+static iree_const_byte_span_t get_test_executable_data(
+    iree_string_view_t /*file_name*/) {
   const struct iree_file_toc_t* toc =
       iree_cts_testdata_executables_aie_xrt_lite_create();
   const auto& file = toc[0];
   return iree_make_const_byte_span(file.data, file.size);
 }
 
-class ExecutableCacheTest : public CTSTestBase<> {};
+class ExecutableCacheTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    iree_status_t status = iree_hal_xrt_lite_driver_module_register(
+        iree_hal_driver_registry_default());
+    if (iree_status_is_already_exists(status)) {
+      iree_status_ignore(status);
+      status = iree_ok_status();
+    }
+    IREE_ASSERT_OK(status);
+    IREE_ASSERT_OK(iree_hal_driver_registry_try_create(
+        iree_hal_driver_registry_default(), iree_make_cstring_view("xrt-lite"),
+        iree_allocator_system(), &driver_));
+    IREE_ASSERT_OK(iree_hal_driver_create_default_device(
+        driver_, iree_allocator_system(), &device_));
+  }
+
+  void TearDown() override {
+    iree_hal_device_release(device_);
+    device_ = nullptr;
+    iree_hal_driver_release(driver_);
+    driver_ = nullptr;
+  }
+
+  iree_hal_driver_t* driver_ = nullptr;
+  iree_hal_device_t* device_ = nullptr;
+};
 
 TEST_F(ExecutableCacheTest, Create) {
   iree_status_t loop_status = iree_ok_status();

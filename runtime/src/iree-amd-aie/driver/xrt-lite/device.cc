@@ -157,6 +157,19 @@ static void iree_hal_xrt_lite_device_replace_device_allocator(
   IREE_TRACE_ZONE_END(z0);
 }
 
+static iree_status_t iree_hal_xrt_lite_device_query_capabilities(
+    iree_hal_device_t* base_device,
+    iree_hal_device_capabilities_t* out_capabilities) {
+  memset(out_capabilities, 0, sizeof(*out_capabilities));
+  return iree_ok_status();
+}
+
+static iree_status_t iree_hal_xrt_lite_device_assign_topology_info(
+    iree_hal_device_t* base_device,
+    const iree_hal_device_topology_info_t* topology_info) {
+  return iree_ok_status();
+}
+
 static iree_status_t iree_hal_xrt_lite_device_query_i64(
     iree_hal_device_t* base_device, iree_string_view_t category,
     iree_string_view_t key, int64_t* out_value) {
@@ -310,6 +323,8 @@ const iree_hal_device_vtable_t iree_hal_xrt_lite_device_vtable = {
     .replace_device_allocator =
         iree_hal_xrt_lite_device_replace_device_allocator,
     .query_i64 = iree_hal_xrt_lite_device_query_i64,
+    .query_capabilities = iree_hal_xrt_lite_device_query_capabilities,
+    .assign_topology_info = iree_hal_xrt_lite_device_assign_topology_info,
     .create_command_buffer = iree_hal_xrt_lite_device_create_command_buffer,
     .create_executable_cache = iree_hal_xrt_lite_device_create_executable_cache,
     .create_semaphore = iree_hal_xrt_lite_device_create_semaphore,

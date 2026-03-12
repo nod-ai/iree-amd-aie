@@ -8,7 +8,7 @@
 
 #include "iree-amd-aie/driver/xrt-lite/api.h"
 #include "iree/base/api.h"
-#include "iree/base/internal/flags.h"
+#include "iree/base/tooling/flags.h"
 
 IREE_FLAG(int32_t, xrt_lite_n_core_rows, 0,
           "Number of core rows to use on NPU.");

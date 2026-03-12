@@ -21,7 +21,7 @@
 func.func @basic_unitdim_pack() {
   %alloc = memref.alloc() : memref<1x1x8x16xi32, 1>
   %alloc_0 = memref.alloc() : memref<8x16xi32, 1>
-  iree_linalg_ext.pack %alloc_0 inner_dims_pos = [0, 1] inner_tiles = [8, 16] into %alloc : (memref<8x16xi32, 1> memref<1x1x8x16xi32, 1>)
+  linalg.pack %alloc_0 inner_dims_pos = [0, 1] inner_tiles = [8, 16] into %alloc : memref<8x16xi32, 1> -> memref<1x1x8x16xi32, 1>
   return
 }
 
@@ -44,7 +44,7 @@ func.func @basic_unitdim_pack() {
 func.func @multidim_pack() {
   %alloc = memref.alloc() :  memref<5x4x3x2xi32, 1>
   %alloc_0 = memref.alloc() : memref<15x8xi32, 1>
-  iree_linalg_ext.pack %alloc_0 inner_dims_pos = [0, 1] inner_tiles = [3, 2] into %alloc : (memref<15x8xi32, 1> memref<5x4x3x2xi32, 1>)
+  linalg.pack %alloc_0 inner_dims_pos = [0, 1] inner_tiles = [3, 2] into %alloc : memref<15x8xi32, 1> -> memref<5x4x3x2xi32, 1>
   return
 }
 
@@ -68,7 +68,7 @@ func.func @multidim_pack() {
 func.func @permute_pack() {
   %dst = memref.alloc() : memref<1x1x2x2x4x8xi32, 2>
   %src = memref.alloc() : memref<1x1x8x16xi32, 1>
-  iree_linalg_ext.pack %src outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %dst : (memref<1x1x8x16xi32, 1> memref<1x1x2x2x4x8xi32, 2>)
+  linalg.pack %src outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %dst : memref<1x1x8x16xi32, 1> -> memref<1x1x2x2x4x8xi32, 2>
   return
 }
 
@@ -99,7 +99,7 @@ func.func @subview_pack() {
   scf.parallel (%arg0, %arg1, %arg2) = (%c0, %c0, %c0) to (%c32, %c8, %c64) step (%c1, %c8, %c64) {
     %subview = memref.subview %0[%arg0, %arg1, 0] [1, 8, 8] [1, 1, 1] : memref<32x8x8xf32> to memref<1x8x8xf32, strided<[64, 8, 1], offset: ?>>
     %alloc = memref.alloc() : memref<1x1x1x8x8xf32, 1>
-    iree_linalg_ext.pack %subview inner_dims_pos = [1, 2] inner_tiles = [8, 8] into %alloc : (memref<1x8x8xf32, strided<[64, 8, 1], offset: ?>> memref<1x1x1x8x8xf32, 1>)
+    linalg.pack %subview inner_dims_pos = [1, 2] inner_tiles = [8, 8] into %alloc : memref<1x8x8xf32, strided<[64, 8, 1], offset: ?>> -> memref<1x1x1x8x8xf32, 1>
     scf.reduce
   }
   return
@@ -125,9 +125,9 @@ func.func @collapsing_subview_pack() {
                             [1, 1, 1, 1, 1, 1] :
           memref<12x5x2x10x6x8xf32> to memref<6x2x3xf32, strided<[4800,480,8]>>
   %dst= memref.alloc() : memref<2x2x3x3xf32, 1>
-  iree_linalg_ext.pack %sbv inner_dims_pos = [0]
+  linalg.pack %sbv inner_dims_pos = [0]
                                inner_tiles = [3]
-           into %dst: (memref<6x2x3xf32, strided<[4800,480,8]>> memref<2x2x3x3xf32, 1>)
+           into %dst: memref<6x2x3xf32, strided<[4800,480,8]>> -> memref<2x2x3x3xf32, 1>
   return
 }
 
@@ -151,7 +151,7 @@ func.func @collapsing_subview_pack() {
 func.func @unitdim_unpack() {
   %alloc = memref.alloc() : memref<1x1x8x16xi32, 1>
   %alloc_0 = memref.alloc() : memref<8x16xi32>
-  iree_linalg_ext.unpack %alloc inner_dims_pos = [0, 1] inner_tiles = [8, 16] into %alloc_0 : (memref<1x1x8x16xi32, 1> memref<8x16xi32>)
+  linalg.unpack %alloc inner_dims_pos = [0, 1] inner_tiles = [8, 16] into %alloc_0 : memref<1x1x8x16xi32, 1> -> memref<8x16xi32>
   return
 }
 
@@ -174,7 +174,7 @@ func.func @unitdim_unpack() {
 func.func @multidim_unpack() {
   %alloc = memref.alloc() : memref<5x4x3x2xi32, 1>
   %alloc_0 = memref.alloc() : memref<15x8xi32>
-  iree_linalg_ext.unpack %alloc inner_dims_pos = [0, 1] inner_tiles = [3, 2] into %alloc_0 : (memref<5x4x3x2xi32, 1> memref<15x8xi32>)
+  linalg.unpack %alloc inner_dims_pos = [0, 1] inner_tiles = [3, 2] into %alloc_0 : memref<5x4x3x2xi32, 1> -> memref<15x8xi32>
   return
 }
 
@@ -197,7 +197,7 @@ func.func @multidim_unpack() {
 func.func @permute_unpack() {
   %alloc = memref.alloc() : memref<1x1x2x2x4x8xi32, 2>
   %alloc_0 = memref.alloc() : memref<1x1x8x16xi32, 1>
-  iree_linalg_ext.unpack %alloc outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %alloc_0 : (memref<1x1x2x2x4x8xi32, 2> memref<1x1x8x16xi32, 1>)
+  linalg.unpack %alloc outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %alloc_0 : memref<1x1x2x2x4x8xi32, 2> -> memref<1x1x8x16xi32, 1>
   return
 }
 
@@ -228,7 +228,7 @@ func.func @subview_unpack() {
   scf.parallel (%arg0, %arg1, %arg2) = (%c0, %c0, %c0) to (%c32, %c8, %c64) step (%c1, %c8, %c64) {
     %subview_1 = memref.subview %2[%arg0, %arg1, %arg2] [1, 8, 64] [1, 1, 1] : memref<32x8x64xf32> to memref<1x8x64xf32, strided<[512, 64, 1], offset: ?>>
     %alloc_3 = memref.alloc() : memref<1x1x1x8x64xf32, 1>
-    iree_linalg_ext.unpack %alloc_3 inner_dims_pos = [1, 2] inner_tiles = [8, 64] into %subview_1 : (memref<1x1x1x8x64xf32, 1> memref<1x8x64xf32, strided<[512, 64, 1], offset: ?>>)
+    linalg.unpack %alloc_3 inner_dims_pos = [1, 2] inner_tiles = [8, 64] into %subview_1 : memref<1x1x1x8x64xf32, 1> -> memref<1x8x64xf32, strided<[512, 64, 1], offset: ?>>
     scf.reduce
   }
   return
@@ -316,10 +316,10 @@ func.func @copy_away_from_core() {
 func.func @permute_unpack_tricyle_permute_rank_preserving(){
   %dst = memref.alloc() : memref<30x20x10xf32, 1>
   %src = memref.alloc() : memref<20x10x30xf32, 2>
-  iree_linalg_ext.unpack %src outer_dims_perm = [1, 2, 0]
+  linalg.unpack %src outer_dims_perm = [1, 2, 0]
                               inner_dims_pos = []
                               inner_tiles = []
-                    into %dst : (memref<20x10x30xf32, 2> memref<30x20x10xf32, 1>)
+                    into %dst : memref<20x10x30xf32, 2> -> memref<30x20x10xf32, 1>
   return
 }
 
@@ -339,7 +339,7 @@ func.func @permute_unpack_tricyle_permute_rank_preserving(){
 func.func @permute_pack_tricyle_permute(){
   %dst = memref.alloc() : memref<4x2x6x5x5x5xf32, 2>
   %src = memref.alloc() : memref<30x20x10xf32, 1>
-  iree_linalg_ext.pack %src outer_dims_perm = [1, 2, 0] inner_dims_pos = [0, 1, 2] inner_tiles = [5, 5, 5] into %dst : (memref<30x20x10xf32, 1> memref<4x2x6x5x5x5xf32, 2>)
+  linalg.pack %src outer_dims_perm = [1, 2, 0] inner_dims_pos = [0, 1, 2] inner_tiles = [5, 5, 5] into %dst : memref<30x20x10xf32, 1> -> memref<4x2x6x5x5x5xf32, 2>
   return
 }
 
@@ -359,6 +359,6 @@ func.func @permute_pack_tricyle_permute(){
 func.func @permute_unpack_tricyle_permute(){
   %dst = memref.alloc() : memref<30x20x10xf32, 1>
   %src = memref.alloc() : memref<4x2x6x5x5x5xf32, 2>
-  iree_linalg_ext.unpack %src outer_dims_perm = [1, 2, 0] inner_dims_pos = [0, 1, 2] inner_tiles = [5, 5, 5] into %dst : (memref<4x2x6x5x5x5xf32, 2> memref<30x20x10xf32, 1>)
+  linalg.unpack %src outer_dims_perm = [1, 2, 0] inner_dims_pos = [0, 1, 2] inner_tiles = [5, 5, 5] into %dst : memref<4x2x6x5x5x5xf32, 2> -> memref<30x20x10xf32, 1>
   return
 }
