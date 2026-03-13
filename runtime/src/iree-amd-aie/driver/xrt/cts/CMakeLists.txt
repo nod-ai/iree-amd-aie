@@ -95,7 +95,7 @@ iree_cc_test(
     iree-amd-aie::driver::xrt::registration
     iree::base
     iree::hal
-    iree::hal::cts::cts_test_base
+    iree::hal::cts::util::test_base
     iree::testing::gtest_main
 )
 
@@ -109,7 +109,7 @@ iree_cc_test(
     iree-amd-aie::driver::xrt::registration
     iree::base
     iree::hal
-    iree::hal::cts::cts_test_base
+    iree::hal::cts::util::test_base
     iree::testing::gtest_main
     iree::tools::testing::e2e::e2e_test_util
 )

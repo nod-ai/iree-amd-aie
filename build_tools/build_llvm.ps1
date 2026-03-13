@@ -53,7 +53,7 @@ $env:CMAKE_C_COMPILER_LAUNCHER = 'ccache'
 $env:CMAKE_CXX_COMPILER_LAUNCHER = 'ccache'
 $env:CCACHE_SLOPPINESS = 'include_file_ctime,include_file_mtime,time_macros'
 
-& ccache -z
+if (Get-Command ccache -ErrorAction SilentlyContinue) { & ccache -z }
 
 $CMAKE_ARGS = @(
   "-GNinja"
