@@ -52,7 +52,7 @@ $env:CMAKE_C_COMPILER_LAUNCHER = 'ccache'
 $env:CMAKE_CXX_COMPILER_LAUNCHER = 'ccache'
 $env:CCACHE_SLOPPINESS = 'include_file_ctime,include_file_mtime,time_macros'
 
-& ccache -z
+if (Get-Command ccache -ErrorAction SilentlyContinue) { & ccache -z }
 
 echo "Building IREE"
 
@@ -117,12 +117,15 @@ echo "Install to: $install_dir"
 echo "CTest"
 echo "-----"
 
-# bash because lit doesn't magically translate // RUN to powershell
-# 5 repeats is a hack while Windows is flaky to get past failing tests
-# better have git-bash installed...
+# Lit test scripts require bash (not PowerShell). Ensure git-bash is on PATH
+# so that lit.py can locate bash.exe when executing // RUN: lines.
+# Run ctest directly from PowerShell (not via 'bash -l') so that Python/lit
+# inherits the full Windows PATH (semicolon-separated). Using 'bash -l' resets
+# PATH to MSYS2's minimal login PATH, which causes lit to construct a
+# mixed-separator PATH string that bash cannot resolve tool directories from.
 $env:Path = "C:\Program Files\Git\bin;$env:Path"
 pushd $build_dir
-& bash -l -c "ctest -R amd-aie -E driver --output-on-failure -j --repeat until-pass:5"
+& ctest -R amd-aie -E driver --output-on-failure -j --repeat until-pass:5
 popd
 
 if ($llvm_install_dir -and (Test-Path "$llvm_install_dir"))

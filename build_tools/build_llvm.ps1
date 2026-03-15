@@ -53,7 +53,7 @@ $env:CMAKE_C_COMPILER_LAUNCHER = 'ccache'
 $env:CMAKE_CXX_COMPILER_LAUNCHER = 'ccache'
 $env:CCACHE_SLOPPINESS = 'include_file_ctime,include_file_mtime,time_macros'
 
-& ccache -z
+if (Get-Command ccache -ErrorAction SilentlyContinue) { & ccache -z }
 
 $CMAKE_ARGS = @(
   "-GNinja"
@@ -98,6 +98,48 @@ if (Test-Path "$clang_llvm_tools_not_to_build")
     Get-Content -Path $clang_llvm_tools_not_to_build | ForEach-Object {
        $CMAKE_ARGS += "-D${_}_BUILD=OFF"
     }
+}
+
+# Workaround: MSVC's STL instantiates vector::operator= for all vector
+# specializations, which fails for std::vector<DiagnosticInfo> in MLIRError
+# because PyObjectRef violates the Rule of Five (move ctor declared without
+# explicit copy/move assignment operators, making them implicitly deleted).
+# Apply the fix inline until it lands upstream in LLVM.
+# See: https://github.com/llvm/llvm-project (PyObjectRef Rule of Five)
+echo "Patching IRCore.h: PyObjectRef Rule of Five (MSVC workaround)"
+$ircore_h = Join-Path (Split-Path $llvm_dir) "mlir/include/mlir/Bindings/Python/IRCore.h"
+$ircore_lines = [System.IO.File]::ReadAllLines($ircore_h)
+if (-not ($ircore_lines -contains '  PyObjectRef &operator=(const PyObjectRef &other) {')) {
+    $patched = [System.Collections.Generic.List[string]]::new($ircore_lines)
+    $insert_idx = -1
+    for ($i = 0; $i -lt $patched.Count; $i++) {
+        if ($patched[$i] -like '*: referrent(other.referrent), object(other.object*') {
+            $insert_idx = $i
+            break
+        }
+    }
+    if ($insert_idx -ge 0) {
+        $patched.InsertRange($insert_idx + 1, [string[]]@(
+            '  PyObjectRef &operator=(const PyObjectRef &other) {',
+            '    referrent = other.referrent;',
+            '    object = other.object; // copies (increments ref count)',
+            '    return *this;',
+            '  }',
+            '  PyObjectRef &operator=(PyObjectRef &&other) noexcept {',
+            '    referrent = other.referrent;',
+            '    object = std::move(other.object);',
+            '    other.referrent = nullptr;',
+            '    return *this;',
+            '  }'
+        ))
+        [System.IO.File]::WriteAllLines($ircore_h, $patched)
+        echo "  -> Patched IRCore.h at line $($insert_idx + 1)"
+    } else {
+        echo "  -> ERROR: Could not find insertion point in IRCore.h"
+        exit 1
+    }
+} else {
+    echo "  -> Already patched, skipping"
 }
 
 & cmake $CMAKE_ARGS

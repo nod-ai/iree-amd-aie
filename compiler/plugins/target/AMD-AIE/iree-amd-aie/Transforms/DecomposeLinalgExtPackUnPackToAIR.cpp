@@ -7,9 +7,8 @@
 #include "air/Dialect/AIR/AIRDialect.h"
 #include "iree-amd-aie/Transforms/PassDetail.h"
 #include "iree-amd-aie/Transforms/Passes.h"
-#include "iree/compiler/Dialect/LinalgExt/IR/LinalgExtDialect.h"
-#include "iree/compiler/Dialect/LinalgExt/IR/LinalgExtOps.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Utils/IndexingUtils.h"
@@ -86,9 +85,9 @@ struct LowerPackUnPackResult {
 };
 
 FailureOr<LowerPackUnPackResult> lowerPack(RewriterBase &rewriter,
-                                           IREE::LinalgExt::PackOp packOp) {
+                                           linalg::PackOp packOp) {
   // 1. Filter out NYI cases.
-  auto packedMemrefType = packOp.getOutputType();
+  auto packedMemrefType = packOp.getDestType();
   if (llvm::any_of(packOp.getStaticInnerTiles(),
                    [](int64_t size) { return ShapedType::isDynamic(size); })) {
     return rewriter.notifyMatchFailure(
@@ -101,7 +100,7 @@ FailureOr<LowerPackUnPackResult> lowerPack(RewriterBase &rewriter,
   rewriter.setInsertionPoint(packOp);
 
   auto innerDimsPos = packOp.getInnerDimsPos();
-  auto destShape = packOp.getOutputType().getShape();
+  auto destShape = packOp.getDestType().getShape();
   SmallVector<int64_t> transpPerm = {};
   Value tile = nullptr;
   if (llvm::any_of(innerDimsPos, [destShape](int64_t index) {
@@ -123,15 +122,15 @@ FailureOr<LowerPackUnPackResult> lowerPack(RewriterBase &rewriter,
 
     // 3. Expand from the padded result to the stripMinedShape.
     tile = rewriter.create<memref::ExpandShapeOp>(
-        loc, stripMinedShape, packOp.getInput(),
+        loc, stripMinedShape, packOp.getSource(),
         packingMetadata.reassociations);
 
     // 4. Transpose stripMinedShape to packedShape.
     transpPerm = invertPermutationVector(packedToStripMinedShapePerm);
   } else {
-    tile = packOp.getInput();
+    tile = packOp.getSource();
     // Transpose the tile to match the inner tile order.
-    transpPerm = getPackUnpackNormalizedPerm(packOp.getInputType().getRank(),
+    transpPerm = getPackUnpackNormalizedPerm(packOp.getSourceType().getRank(),
                                              innerDimsPos);
   }
 
@@ -143,7 +142,7 @@ FailureOr<LowerPackUnPackResult> lowerPack(RewriterBase &rewriter,
   SmallVector<Value, 2> emptyVec;
   xilinx::air::DmaMemcpyNdOp dmaOp =
       rewriter.create<xilinx::air::DmaMemcpyNdOp>(
-          loc, SmallVector<Type, 1>{}, emptyVec, packOp.getOutput(), emptyVec,
+          loc, SmallVector<Type, 1>{}, emptyVec, packOp.getDest(), emptyVec,
           emptyVec, emptyVec, transposeOp.getResult(), emptyVec, emptyVec,
           emptyVec);
 
@@ -154,10 +153,10 @@ FailureOr<LowerPackUnPackResult> lowerPack(RewriterBase &rewriter,
 
 /// A wrapper pattern that calls lowerPack on PackOp. It lowers
 /// a pack op to memref.expand_shape + memref.transpose ops.
-struct LowerPackPattern : public OpRewritePattern<IREE::LinalgExt::PackOp> {
-  using OpRewritePattern<IREE::LinalgExt::PackOp>::OpRewritePattern;
+struct LowerPackPattern : public OpRewritePattern<linalg::PackOp> {
+  using OpRewritePattern<linalg::PackOp>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(IREE::LinalgExt::PackOp op,
+  LogicalResult matchAndRewrite(linalg::PackOp op,
                                 PatternRewriter &rewriter) const override {
     FailureOr<LowerPackUnPackResult> res = lowerPack(rewriter, op);
     if (failed(res)) {
@@ -168,13 +167,13 @@ struct LowerPackPattern : public OpRewritePattern<IREE::LinalgExt::PackOp> {
   }
 };
 
-FailureOr<LowerPackUnPackResult> lowerUnPack(
-    RewriterBase &rewriter, IREE::LinalgExt::UnPackOp unPackOp) {
+FailureOr<LowerPackUnPackResult> lowerUnPack(RewriterBase &rewriter,
+                                             linalg::UnPackOp unPackOp) {
   Location loc = unPackOp->getLoc();
   OpBuilder::InsertionGuard g(rewriter);
   rewriter.setInsertionPoint(unPackOp);
 
-  ArrayRef<int64_t> srcShape = unPackOp.getInputType().getShape();
+  ArrayRef<int64_t> srcShape = unPackOp.getSourceType().getShape();
   ArrayRef<int64_t> innerDimsPos = unPackOp.getInnerDimsPos();
 
   SmallVector<int64_t> perm = {};
@@ -183,7 +182,7 @@ FailureOr<LowerPackUnPackResult> lowerUnPack(
   if (llvm::any_of(innerDimsPos, [srcShape](int64_t index) {
         return srcShape[index] != 1;
       })) {
-    MemRefType memrefType = cast<MemRefType>(unPackOp.getInputType());
+    MemRefType memrefType = cast<MemRefType>(unPackOp.getSourceType());
     int64_t packedRank = memrefType.getRank();
 
     // Compute the permutation vector to move the last `numPackedDims` into
@@ -194,10 +193,10 @@ FailureOr<LowerPackUnPackResult> lowerUnPack(
     perm = getPackUnpackStripMinedPerm(memrefType.getShape(), innerDimsPos,
                                        unPackOp.getOuterDimsPerm());
 
-    tile = unPackOp.getInput();
+    tile = unPackOp.getSource();
   } else {
-    int64_t srcRank = unPackOp.getInputRank();
-    int64_t destRank = unPackOp.getOutputRank();
+    int64_t srcRank = unPackOp.getSourceRank();
+    int64_t destRank = unPackOp.getDestRank();
     if (llvm::any_of(innerDimsPos, [srcShape](int64_t index) {
           return srcShape[index] != 1;
         })) {
@@ -208,7 +207,7 @@ FailureOr<LowerPackUnPackResult> lowerUnPack(
 
     // Use memref.subview op to extract the tile.
     Location loc = unPackOp.getLoc();
-    Value input = unPackOp.getInput();
+    Value input = unPackOp.getSource();
     DenseMap<int64_t, OpFoldResult> dimAndTileMapping =
         unPackOp.getDimAndTileMapping();
     Attribute zeroIdxAttr = rewriter.getIndexAttr(0);
@@ -241,7 +240,7 @@ FailureOr<LowerPackUnPackResult> lowerUnPack(
     auto tileShape = srcShape.drop_front(destRank);
     // Append the inner tile shape to the permuted and rank-reduced outer shape.
     readShape.append(tileShape.begin(), tileShape.end());
-    MemRefType inputType = cast<MemRefType>(unPackOp.getInputType());
+    MemRefType inputType = cast<MemRefType>(unPackOp.getSourceType());
     auto readType =
         cast<MemRefType>(memref::SubViewOp::inferRankReducedResultType(
             readShape, inputType, readOffsets, readSizes, readStrides));
@@ -262,7 +261,7 @@ FailureOr<LowerPackUnPackResult> lowerUnPack(
   SmallVector<Value, 2> emptyVec;
   xilinx::air::DmaMemcpyNdOp dmaOp =
       rewriter.create<xilinx::air::DmaMemcpyNdOp>(
-          loc, SmallVector<Type, 1>{}, emptyVec, unPackOp.getOutput(), emptyVec,
+          loc, SmallVector<Type, 1>{}, emptyVec, unPackOp.getDest(), emptyVec,
           emptyVec, emptyVec, transposeOp.getResult(), emptyVec, emptyVec,
           emptyVec);
 
@@ -272,12 +271,12 @@ FailureOr<LowerPackUnPackResult> lowerUnPack(
   return LowerPackUnPackResult{transposeOp, dmaOp};
 }
 
-/// A warpper pattern that calls lowerUnPack on IREE::LinalgExt::UnPackOp. It
+/// A warpper pattern that calls lowerUnPack on linalg::UnPackOp. It
 /// lowers a iree_linalg_ext.unpack op to memref.transpose + memref.subview ops.
-struct LowerUnPackPattern : public OpRewritePattern<IREE::LinalgExt::UnPackOp> {
-  using OpRewritePattern<IREE::LinalgExt::UnPackOp>::OpRewritePattern;
+struct LowerUnPackPattern : public OpRewritePattern<linalg::UnPackOp> {
+  using OpRewritePattern<linalg::UnPackOp>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(IREE::LinalgExt::UnPackOp op,
+  LogicalResult matchAndRewrite(linalg::UnPackOp op,
                                 PatternRewriter &rewriter) const override {
     FailureOr<LowerPackUnPackResult> res = lowerUnPack(rewriter, op);
     if (failed(res)) {
@@ -297,10 +296,8 @@ class AMDAIEDecomposeLinalgExtPackUnPackToAIRPass
           AMDAIEDecomposeLinalgExtPackUnPackToAIRPass> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry
-        .insert<linalg::LinalgDialect, arith::ArithDialect, scf::SCFDialect,
-                memref::MemRefDialect, IREE::LinalgExt::IREELinalgExtDialect,
-                xilinx::air::airDialect>();
+    registry.insert<linalg::LinalgDialect, arith::ArithDialect, scf::SCFDialect,
+                    memref::MemRefDialect, xilinx::air::airDialect>();
   }
 
   AMDAIEDecomposeLinalgExtPackUnPackToAIRPass() = default;

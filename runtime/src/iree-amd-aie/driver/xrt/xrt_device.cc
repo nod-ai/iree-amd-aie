@@ -375,6 +375,19 @@ static iree_status_t iree_hal_xrt_device_profiling_end(
   return iree_ok_status();
 }
 
+static iree_status_t iree_hal_xrt_device_query_capabilities(
+    iree_hal_device_t* base_device,
+    iree_hal_device_capabilities_t* out_capabilities) {
+  memset(out_capabilities, 0, sizeof(*out_capabilities));
+  return iree_ok_status();
+}
+
+static iree_status_t iree_hal_xrt_device_assign_topology_info(
+    iree_hal_device_t* base_device,
+    const iree_hal_device_topology_info_t* topology_info) {
+  return iree_ok_status();
+}
+
 namespace {
 const iree_hal_device_vtable_t iree_hal_xrt_device_vtable = {
     .destroy = iree_hal_xrt_device_destroy,
@@ -385,6 +398,8 @@ const iree_hal_device_vtable_t iree_hal_xrt_device_vtable = {
     .replace_channel_provider = iree_hal_xrt_replace_channel_provider,
     .trim = iree_hal_xrt_device_trim,
     .query_i64 = iree_hal_xrt_device_query_i64,
+    .query_capabilities = iree_hal_xrt_device_query_capabilities,
+    .assign_topology_info = iree_hal_xrt_device_assign_topology_info,
     .create_channel = iree_hal_xrt_device_create_channel,
     .create_command_buffer = iree_hal_xrt_device_create_command_buffer,
     .create_event = iree_hal_xrt_device_create_event,

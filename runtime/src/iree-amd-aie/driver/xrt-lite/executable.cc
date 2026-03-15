@@ -13,7 +13,7 @@
 #include "iree-amd-aie/schemas/pdi_executable_def_reader.h"
 #include "iree-amd-aie/schemas/pdi_executable_def_verifier.h"
 #include "iree/base/api.h"
-#include "iree/base/internal/flags.h"
+#include "iree/base/tooling/flags.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace {
