@@ -6,23 +6,26 @@
 
 include(CMakeDependentOption)
 
-iree_hal_cts_test_suite(
-  DRIVER_NAME
-    xrt
-  DRIVER_REGISTRATION_HDR
-    "iree-amd-aie/driver/xrt/registration/driver_module.h"
-  DRIVER_REGISTRATION_FN
-    "iree_hal_xrt_driver_module_register"
-  COMPILER_TARGET_BACKEND
-    "amd-aie"
-  EXECUTABLE_FORMAT
-    "\"amdaie-xclbin-fb\""
+iree_cc_library(
+  NAME
+    backends
+  SRCS
+    "backends.cc"
   DEPS
     iree-amd-aie::driver::xrt::registration
-  INCLUDED_TESTS
-    "allocator"
-    "buffer_mapping"
-    "driver"
+    iree::hal
+    iree::hal::cts::util::registry
+  TESTONLY
+  ALWAYSLINK
+  PUBLIC
+)
+
+iree_hal_cts_test_suite(
+  BACKENDS_LIB
+    ::backends
+  LABELS
+    "driver=xrt"
+    "requires-npu"
 )
 
 set(PEANO_INSTALL_DIR "" CACHE PATH "")
@@ -92,7 +95,7 @@ iree_cc_test(
     iree-amd-aie::driver::xrt::registration
     iree::base
     iree::hal
-    iree::hal::cts::cts_test_base
+    iree::hal::cts::util::test_base
     iree::testing::gtest_main
 )
 
@@ -106,7 +109,7 @@ iree_cc_test(
     iree-amd-aie::driver::xrt::registration
     iree::base
     iree::hal
-    iree::hal::cts::cts_test_base
+    iree::hal::cts::util::test_base
     iree::testing::gtest_main
     iree::tools::testing::e2e::e2e_test_util
 )

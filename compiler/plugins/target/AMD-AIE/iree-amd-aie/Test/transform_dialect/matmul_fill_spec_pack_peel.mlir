@@ -200,35 +200,35 @@ module attributes { transform.with_named_sequence } {
 //       CHECK: memref.alloc() : memref<1x1x64x64xi32, 1>
 //       CHECK: scf.forall
 //       CHECK: {
-//       CHECK:   iree_linalg_ext.pack %{{.*}} : (memref<64x256xi32, strided<[2048, 1], offset: ?>, #hal.descriptor_type<storage_buffer>> memref<1x1x64x256xi32, 1>)
-//       CHECK:   iree_linalg_ext.pack %{{.*}} : (memref<256x64xi32, strided<[512, 1], offset: ?>, #hal.descriptor_type<storage_buffer>> memref<1x1x256x64xi32, 1>)
+//       CHECK:   linalg.pack %{{.*}} : memref<64x256xi32, strided<[2048, 1], offset: ?>, #hal.descriptor_type<storage_buffer>> -> memref<1x1x64x256xi32, 1>
+//       CHECK:   linalg.pack %{{.*}} : memref<256x64xi32, strided<[512, 1], offset: ?>, #hal.descriptor_type<storage_buffer>> -> memref<1x1x256x64xi32, 1>
 //       CHECK:   scf.forall
 //       CHECK:   {
 //       CHECK:     memref.subview %{{.*}} : memref<1x1x8x16x4x8xi32, 2> to memref<1x1x4x8x4x8xi32, strided<[4096, 4096, 512, 32, 8, 1], offset: ?>, 2>
 //       CHECK:     linalg.fill ins(%{{.*}}) outs(%{{.*}} : memref<1x1x4x8x4x8xi32, strided<[4096, 4096, 512, 32, 8, 1], offset: ?>, 2>)
 //       CHECK:     scf.for
 //       CHECK:     {
-//       CHECK:       iree_linalg_ext.pack %{{.*}} : (memref<1x1x32x32xi32, strided<[16384, 16384, 256, 1], offset: ?>, 1> memref<1x1x4x8x4x8xi32, 2>)
-//       CHECK:       iree_linalg_ext.pack %{{.*}} : (memref<1x1x32x32xi32, strided<[16384, 16384, 64, 1], offset: ?>, 1> memref<1x1x4x4x8x8xi32, 2>)
+//       CHECK:       linalg.pack %{{.*}} : memref<1x1x32x32xi32, strided<[16384, 16384, 256, 1], offset: ?>, 1> -> memref<1x1x4x8x4x8xi32, 2>
+//       CHECK:       linalg.pack %{{.*}} : memref<1x1x32x32xi32, strided<[16384, 16384, 64, 1], offset: ?>, 1> -> memref<1x1x4x4x8x8xi32, 2>
 //       CHECK:       linalg.generic
 //       CHECK:     }
 //       CHECK:   }
 //       CHECK:   scf.for
 //       CHECK:   {
-//       CHECK:     iree_linalg_ext.pack %{{.*}} : (memref<64x256xi32, strided<[2048, 1], offset: ?>, #hal.descriptor_type<storage_buffer>> memref<1x1x64x256xi32, 1>)
-//       CHECK:     iree_linalg_ext.pack %{{.*}} : (memref<256x64xi32, strided<[512, 1], offset: ?>, #hal.descriptor_type<storage_buffer>> memref<1x1x256x64xi32, 1>)
+//       CHECK:     linalg.pack %{{.*}} : memref<64x256xi32, strided<[2048, 1], offset: ?>, #hal.descriptor_type<storage_buffer>> -> memref<1x1x64x256xi32, 1>
+//       CHECK:     linalg.pack %{{.*}} : memref<256x64xi32, strided<[512, 1], offset: ?>, #hal.descriptor_type<storage_buffer>> -> memref<1x1x256x64xi32, 1>
 //       CHECK:     scf.forall
 //       CHECK:     {
 //       CHECK:       scf.for
 //       CHECK:       {
-//       CHECK:         iree_linalg_ext.pack %{{.*}} : (memref<1x1x32x32xi32, strided<[16384, 16384, 256, 1], offset: ?>, 1> memref<1x1x4x8x4x8xi32, 2>)
-//       CHECK:         iree_linalg_ext.pack %{{.*}} : (memref<1x1x32x32xi32, strided<[16384, 16384, 64, 1], offset: ?>, 1> memref<1x1x4x4x8x8xi32, 2>)
+//       CHECK:         linalg.pack %{{.*}} : memref<1x1x32x32xi32, strided<[16384, 16384, 256, 1], offset: ?>, 1> -> memref<1x1x4x8x4x8xi32, 2>
+//       CHECK:         linalg.pack %{{.*}} : memref<1x1x32x32xi32, strided<[16384, 16384, 64, 1], offset: ?>, 1> -> memref<1x1x4x4x8x8xi32, 2>
 //       CHECK:         linalg.generic
 //       CHECK:       }
 //       CHECK:     }
 //       CHECK:   }
-//       CHECK:   iree_linalg_ext.unpack %{{.*}} : (memref<1x1x8x16x4x8xi32, 2> memref<1x1x64x64xi32, 1>)
-//       CHECK:   iree_linalg_ext.unpack %{{.*}} : (memref<1x1x64x64xi32, 1> memref<64x64xi32, strided<[512, 1], offset: ?>, #hal.descriptor_type<storage_buffer>>)
+//       CHECK:   linalg.unpack %{{.*}} : memref<1x1x8x16x4x8xi32, 2> -> memref<1x1x64x64xi32, 1>
+//       CHECK:   linalg.unpack %{{.*}} : memref<1x1x64x64xi32, 1> -> memref<64x64xi32, strided<[512, 1], offset: ?>, #hal.descriptor_type<storage_buffer>>
 //       CHECK: }
 //       CHECK: memref.dealloc %{{.*}} : memref<1x1x64x64xi32, 1>
 //       CHECK: memref.dealloc %{{.*}} : memref<1x1x8x16x4x8xi32, 2>

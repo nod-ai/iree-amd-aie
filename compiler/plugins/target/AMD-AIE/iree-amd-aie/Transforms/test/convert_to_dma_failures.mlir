@@ -18,13 +18,13 @@ func.func @failure_case() {
                memref<152x2432xbf16, 1 : i32> to
                memref<38x8xbf16, strided<[2432, 1], offset: ?>, 1 : i32>
 
-    // expected-error@below {{'iree_linalg_ext.pack' op in dimension 0, the tile size 4 does not divide the tensor size 38. Imperfect/partial tiling is currently not supported}}
-    iree_linalg_ext.pack %subview padding_value(%cst : bf16)
+    // expected-error@below {{'linalg.pack' op in dimension 0, the tile size 4 does not divide the tensor size 38. Imperfect/partial tiling is currently not supported}}
+    linalg.pack %subview padding_value(%cst : bf16)
                          outer_dims_perm = [1, 0]
                          inner_dims_pos = [0, 1]
                          inner_tiles = [4, 8] into %alloc_0 :
-         (memref<38x8xbf16, strided<[2432, 1], offset: ?>, 1 : i32>
-          memref<1x10x4x8xbf16, 2 : i32>)
+         memref<38x8xbf16, strided<[2432, 1], offset: ?>, 1 : i32> ->
+         memref<1x10x4x8xbf16, 2 : i32>
 
     scf.reduce
   }

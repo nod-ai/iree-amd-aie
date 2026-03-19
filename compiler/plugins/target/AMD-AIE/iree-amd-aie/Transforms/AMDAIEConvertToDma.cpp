@@ -7,9 +7,8 @@
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/Passes.h"
-#include "iree/compiler/Dialect/LinalgExt/IR/LinalgExtDialect.h"
-#include "iree/compiler/Dialect/LinalgExt/IR/LinalgExtOps.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Utils/IndexingUtils.h"
@@ -331,8 +330,8 @@ LogicalResult rewriteAsDma(IRRewriter &rewriter, PackOrUnpackOp op, Value input,
 template <typename PackOrUnpackOp>
 LogicalResult rewriteAsDma(PackOrUnpackOp op, IRRewriter &rewriter,
                            bool tranposeOnSource) {
-  Value input = op.getInput();
-  Value output = op.getOutput();
+  Value input = op.getSource();
+  Value output = op.getDest();
   llvm::ArrayRef<int64_t> innerTiles = op.getStaticInnerTiles();
   return rewriteAsDma(rewriter, op, input, output, innerTiles,
                       tranposeOnSource);
@@ -350,13 +349,9 @@ LogicalResult copyToPack(IRRewriter &rewriter, linalg::CopyOp copyOp) {
         << "has " << copyOp.getNumOperands() << " operands and "
         << copyOp.getNumResults()
         << " results. It must have 2 operands and 0 results to convert "
-           "to an iree.linalg_ext dialect pack/unpack operation";
+           "to a linalg pack/unpack operation";
     return failure();
   }
-  // Setting up the 'identity' pack/unpack:
-  ArrayRef<int64_t> innerDimsPos{};
-  ArrayRef<OpFoldResult> innerTiles{};
-
   Value src = copyOp.getOperand(0);
   Value dst = copyOp.getOperand(1);
 
@@ -367,11 +362,24 @@ LogicalResult copyToPack(IRRewriter &rewriter, linalg::CopyOp copyOp) {
 
   rewriter.setInsertionPoint(copyOp);
   if (towardsCore) {
-    rewriter.replaceOpWithNewOp<IREE::LinalgExt::PackOp>(
-        copyOp, src, dst, innerDimsPos, innerTiles);
+    // Use the ODS-generated builder with null result type (Type{}) for buffer
+    // semantics. The custom PackOp::build passes dest.getType() as result type
+    // unconditionally, which is invalid for memref operands (buffer semantics
+    // requires 0 results).
+    rewriter.replaceOpWithNewOp<linalg::PackOp>(
+        copyOp, /*result=*/Type{}, src, dst, /*padding_value=*/Value{},
+        /*outer_dims_perm=*/ArrayRef<int64_t>{},
+        /*inner_dims_pos=*/ArrayRef<int64_t>{},
+        /*inner_tiles=*/ValueRange{},
+        /*static_inner_tiles=*/ArrayRef<int64_t>{});
   } else {
-    rewriter.replaceOpWithNewOp<IREE::LinalgExt::UnPackOp>(
-        copyOp, src, dst, innerDimsPos, innerTiles);
+    // Same fix for UnPackOp: pass null result type for buffer semantics.
+    rewriter.replaceOpWithNewOp<linalg::UnPackOp>(
+        copyOp, /*result=*/Type{}, src, dst,
+        /*outer_dims_perm=*/ArrayRef<int64_t>{},
+        /*inner_dims_pos=*/ArrayRef<int64_t>{},
+        /*inner_tiles=*/ValueRange{},
+        /*static_inner_tiles=*/ArrayRef<int64_t>{});
   }
 
   return success();
@@ -383,8 +391,8 @@ class AMDAIEConvertToDmaPass
     : public impl::AMDAIEConvertToDmaBase<AMDAIEConvertToDmaPass> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<tensor::TensorDialect, linalg::LinalgDialect,
-                    IREE::LinalgExt::IREELinalgExtDialect, AMDAIEDialect>();
+    registry
+        .insert<tensor::TensorDialect, linalg::LinalgDialect, AMDAIEDialect>();
   }
 
   AMDAIEConvertToDmaPass() = default;
@@ -411,16 +419,15 @@ void AMDAIEConvertToDmaPass::runOnOperation() {
       });
   if (convertCopiesWalkResult.wasInterrupted()) return signalPassFailure();
 
-  WalkResult walkResult =
-      getOperation()->walk([&](IREE::LinalgExt::PackOp packOp) {
-        if (failed(rewriteAsDma(packOp, rewriter, packTransposeOnSource))) {
-          return WalkResult::interrupt();
-        }
-        return WalkResult::advance();
-      });
+  WalkResult walkResult = getOperation()->walk([&](linalg::PackOp packOp) {
+    if (failed(rewriteAsDma(packOp, rewriter, packTransposeOnSource))) {
+      return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
+  });
   if (walkResult.wasInterrupted()) signalPassFailure();
 
-  walkResult = getOperation()->walk([&](IREE::LinalgExt::UnPackOp unpackOp) {
+  walkResult = getOperation()->walk([&](linalg::UnPackOp unpackOp) {
     if (failed(rewriteAsDma(unpackOp, rewriter, unpackTransposeOnSource))) {
       return WalkResult::interrupt();
     }

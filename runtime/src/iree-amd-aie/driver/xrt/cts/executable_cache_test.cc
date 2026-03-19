@@ -8,31 +8,53 @@
 #include "iree/base/api.h"
 #include "iree/base/string_view.h"
 #include "iree/hal/api.h"
-#include "iree/hal/cts/cts_test_base.h"
+#include "iree/hal/cts/util/test_base.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
 #include "xrt_executables_c.h"
 
 namespace iree::hal::cts {
 
-const char* get_test_driver_name() { return "xrt"; }
-
-iree_status_t register_test_driver(iree_hal_driver_registry_t* registry) {
-  return iree_hal_xrt_driver_module_register(registry);
+static iree_status_t CreateXrtDevice(iree_hal_driver_t** out_driver,
+                                     iree_hal_device_t** out_device) {
+  iree_status_t status =
+      iree_hal_xrt_driver_module_register(iree_hal_driver_registry_default());
+  if (iree_status_is_already_exists(status)) {
+    iree_status_ignore(status);
+    status = iree_ok_status();
+  }
+  iree_hal_driver_t* driver = nullptr;
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_driver_registry_try_create(
+        iree_hal_driver_registry_default(), iree_make_cstring_view("xrt"),
+        iree_allocator_system(), &driver);
+  }
+  iree_hal_device_t* device = nullptr;
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_driver_create_default_device(
+        driver, iree_allocator_system(), &device);
+  }
+  if (iree_status_is_ok(status)) {
+    *out_driver = driver;
+    *out_device = device;
+  } else {
+    iree_hal_device_release(device);
+    iree_hal_driver_release(driver);
+  }
+  return status;
 }
 
-const char* get_test_executable_format() { return "amdaie-xclbin-fb"; }
-
-iree_const_byte_span_t get_test_executable_data(iree_string_view_t file_name) {
+static iree_const_byte_span_t GetTestExecutableData(
+    iree_string_view_t file_name) {
   const struct iree_file_toc_t* toc =
       iree_cts_testdata_executables_aie_xrt_create();
   const auto& file = toc[0];
   return iree_make_const_byte_span(file.data, file.size);
 }
 
-class ExecutableCacheTest : public CTSTestBase<> {};
+class ExecutableCacheTest : public CtsTestBase<> {};
 
-TEST_F(ExecutableCacheTest, Create) {
+TEST_P(ExecutableCacheTest, Create) {
   iree_status_t loop_status = iree_ok_status();
   iree_hal_executable_cache_t* executable_cache = nullptr;
   IREE_ASSERT_OK(iree_hal_executable_cache_create(
@@ -43,7 +65,7 @@ TEST_F(ExecutableCacheTest, Create) {
   IREE_ASSERT_OK(loop_status);
 }
 
-TEST_F(ExecutableCacheTest, CantPrepareUnknownFormat) {
+TEST_P(ExecutableCacheTest, CantPrepareUnknownFormat) {
   iree_status_t loop_status = iree_ok_status();
   iree_hal_executable_cache_t* executable_cache = nullptr;
   IREE_ASSERT_OK(iree_hal_executable_cache_create(
@@ -57,7 +79,7 @@ TEST_F(ExecutableCacheTest, CantPrepareUnknownFormat) {
   IREE_ASSERT_OK(loop_status);
 }
 
-TEST_F(ExecutableCacheTest, PrepareExecutable) {
+TEST_P(ExecutableCacheTest, PrepareExecutable) {
   iree_status_t loop_status = iree_ok_status();
   iree_hal_executable_cache_t* executable_cache = nullptr;
   IREE_ASSERT_OK(iree_hal_executable_cache_create(
@@ -69,9 +91,9 @@ TEST_F(ExecutableCacheTest, PrepareExecutable) {
   executable_params.caching_mode =
       IREE_HAL_EXECUTABLE_CACHING_MODE_ALIAS_PROVIDED_DATA;
   executable_params.executable_format =
-      iree_make_cstring_view(get_test_executable_format());
-  executable_params.executable_data = get_test_executable_data(
-      iree_make_cstring_view("executable_cache_test.bin"));
+      iree_make_cstring_view(executable_format());
+  executable_params.executable_data =
+      executable_data(iree_make_cstring_view("executable_cache_test.bin"));
 
   iree_hal_executable_t* executable = nullptr;
   IREE_ASSERT_OK(iree_hal_executable_cache_prepare_executable(
@@ -81,5 +103,18 @@ TEST_F(ExecutableCacheTest, PrepareExecutable) {
   iree_hal_executable_cache_release(executable_cache);
   IREE_ASSERT_OK(loop_status);
 }
+
+INSTANTIATE_TEST_SUITE_P(XRT, ExecutableCacheTest,
+                         ::testing::Values(BackendInfo{
+                             "xrt",
+                             CreateXrtDevice,
+                             /*executable_format=*/"amdaie-xclbin-fb",
+                             /*executable_data=*/GetTestExecutableData,
+                             RecordingMode::kDirect,
+                             /*unsupported_tests=*/{},
+                         }),
+                         [](const ::testing::TestParamInfo<BackendInfo>& info) {
+                           return info.param.name;
+                         });
 
 }  // namespace iree::hal::cts

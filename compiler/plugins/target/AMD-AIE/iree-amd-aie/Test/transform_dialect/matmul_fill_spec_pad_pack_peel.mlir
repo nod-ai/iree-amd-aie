@@ -187,11 +187,11 @@ module attributes { transform.with_named_sequence } {
 //       CHECK:     linalg.fill ins(%{{.*}}) outs(%{{.*}} : memref<4x8x4x8xi32, 2>)
 //       CHECK:     scf.for
 //       CHECK:     {
-//       CHECK:       iree_linalg_ext.pack %{{.*}} outer_dims_perm = [1, 0] inner_dims_pos = [0, 1] inner_tiles = [4, 8] into %{{.*}} : (memref<32x32xi32, strided<[256, 1], offset: ?>, 1> memref<4x8x4x8xi32, 2>)
-//       CHECK:       iree_linalg_ext.pack %{{.*}} outer_dims_perm = [1, 0] inner_dims_pos = [0, 1] inner_tiles = [8, 8] into %{{.*}} : (memref<32x32xi32, strided<[64, 1], offset: ?>, 1> memref<4x4x8x8xi32, 2>)
+//       CHECK:       linalg.pack %{{.*}} outer_dims_perm = [1, 0] inner_dims_pos = [0, 1] inner_tiles = [4, 8] into %{{.*}} : memref<32x32xi32, strided<[256, 1], offset: ?>, 1> -> memref<4x8x4x8xi32, 2>
+//       CHECK:       linalg.pack %{{.*}} outer_dims_perm = [1, 0] inner_dims_pos = [0, 1] inner_tiles = [8, 8] into %{{.*}} : memref<32x32xi32, strided<[64, 1], offset: ?>, 1> -> memref<4x4x8x8xi32, 2>
 //       CHECK:       linalg.generic
 //       CHECK:     }
-//       CHECK:     iree_linalg_ext.unpack %{{.*}} outer_dims_perm = [1, 0] inner_dims_pos = [0, 1] inner_tiles = [4, 8] into %{{.*}} : (memref<4x8x4x8xi32, 2> memref<32x32xi32, strided<[64, 1], offset: ?>, 1>)
+//       CHECK:     linalg.unpack %{{.*}} outer_dims_perm = [1, 0] inner_dims_pos = [0, 1] inner_tiles = [4, 8] into %{{.*}} : memref<4x8x4x8xi32, 2> -> memref<32x32xi32, strided<[64, 1], offset: ?>, 1>
 //       CHECK:   }
 //       CHECK:   linalg.copy ins(%{{.*}} : memref<64x64xi32, 1>) outs(%{{.*}} : memref<64x64xi32, strided<[512, 1], offset: ?>, #hal.descriptor_type<storage_buffer>>)
 //       CHECK:   scf.for
@@ -201,14 +201,14 @@ module attributes { transform.with_named_sequence } {
 //       CHECK:     linalg.copy ins(%{{.*}} : memref<64x64xi32, strided<[512, 1], offset: ?>, #hal.descriptor_type<storage_buffer>>) outs(%{{.*}}: memref<64x64xi32, 1>)
 //       CHECK:     scf.forall
 //       CHECK:     {
-//       CHECK:       iree_linalg_ext.pack %{{.*}} outer_dims_perm = [1, 0] inner_dims_pos = [0, 1] inner_tiles = [4, 8] into %{{.*}} : (memref<32x32xi32, strided<[64, 1], offset: ?>, 1> memref<4x8x4x8xi32, 2>)
+//       CHECK:       linalg.pack %{{.*}} outer_dims_perm = [1, 0] inner_dims_pos = [0, 1] inner_tiles = [4, 8] into %{{.*}} : memref<32x32xi32, strided<[64, 1], offset: ?>, 1> -> memref<4x8x4x8xi32, 2>
 //       CHECK:       scf.for
 //       CHECK:       {
-//       CHECK:         iree_linalg_ext.pack %{{.*}} outer_dims_perm = [1, 0] inner_dims_pos = [0, 1] inner_tiles = [4, 8] into %{{.*}} : (memref<32x32xi32, strided<[256, 1], offset: ?>, 1> memref<4x8x4x8xi32, 2>)
-//       CHECK:         iree_linalg_ext.pack %{{.*}} outer_dims_perm = [1, 0] inner_dims_pos = [0, 1] inner_tiles = [8, 8] into %{{.*}} : (memref<32x32xi32, strided<[64, 1], offset: ?>, 1> memref<4x4x8x8xi32, 2>)
+//       CHECK:         linalg.pack %{{.*}} outer_dims_perm = [1, 0] inner_dims_pos = [0, 1] inner_tiles = [4, 8] into %{{.*}} : memref<32x32xi32, strided<[256, 1], offset: ?>, 1> -> memref<4x8x4x8xi32, 2>
+//       CHECK:         linalg.pack %{{.*}} outer_dims_perm = [1, 0] inner_dims_pos = [0, 1] inner_tiles = [8, 8] into %{{.*}} : memref<32x32xi32, strided<[64, 1], offset: ?>, 1> -> memref<4x4x8x8xi32, 2>
 //       CHECK:         linalg.generic
 //       CHECK:       }
-//       CHECK:       iree_linalg_ext.unpack %{{.*}} outer_dims_perm = [1, 0] inner_dims_pos = [0, 1] inner_tiles = [4, 8] into %{{.*}} : (memref<4x8x4x8xi32, 2> memref<32x32xi32, strided<[64, 1], offset: ?>, 1>)
+//       CHECK:       linalg.unpack %{{.*}} outer_dims_perm = [1, 0] inner_dims_pos = [0, 1] inner_tiles = [4, 8] into %{{.*}} : memref<4x8x4x8xi32, 2> -> memref<32x32xi32, strided<[64, 1], offset: ?>, 1>
 //       CHECK:     }
 //       CHECK:     linalg.copy ins(%{{.*}} : memref<64x64xi32, 1>) outs(%{{.*}} : memref<64x64xi32, strided<[512, 1], offset: ?>, #hal.descriptor_type<storage_buffer>>)
 //       CHECK:   }

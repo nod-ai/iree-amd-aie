@@ -11,23 +11,24 @@ endif()
 
 include(CMakeDependentOption)
 
-iree_hal_cts_test_suite(
-  DRIVER_NAME
-    xrt-lite
-  DRIVER_REGISTRATION_HDR
-    "iree-amd-aie/driver/xrt-lite/registration/driver_module.h"
-  DRIVER_REGISTRATION_FN
-    "iree_hal_xrt_lite_driver_module_register"
-  COMPILER_TARGET_BACKEND
-    "amd-aie"
-  EXECUTABLE_FORMAT
-    "\"amdaie-pdi-fb\""
+iree_cc_library(
+  NAME
+    backends
+  SRCS
+    "backends.cc"
   DEPS
+    iree::hal
+    iree::hal::cts::util::registry
+    iree::base::tooling::flags
     iree-amd-aie::driver::xrt-lite::registration
-  INCLUDED_TESTS
-    "allocator"
-    "buffer_mapping"
-    "driver"
+  TESTONLY
+  ALWAYSLINK
+  PUBLIC
+)
+
+iree_hal_cts_test_suite(
+  BACKENDS_LIB
+    ::backends
 )
 
 set(PEANO_INSTALL_DIR "" CACHE PATH "")
@@ -92,7 +93,6 @@ iree_cc_test(
     iree-amd-aie::driver::xrt-lite::registration
     iree::base
     iree::hal
-    iree::hal::cts::cts_test_base
     iree::testing::gtest_main
 )
 
@@ -106,9 +106,7 @@ iree_cc_test(
     iree-amd-aie::driver::xrt-lite::registration
     iree::base
     iree::hal
-    iree::hal::cts::cts_test_base
     iree::testing::gtest_main
-    iree::tools::testing::e2e::e2e_test_util
 )
 
 target_include_directories(iree-amd-aie_driver_xrt-lite_cts_xrt_lite_executable_cache_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")

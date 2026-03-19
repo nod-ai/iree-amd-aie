@@ -10,7 +10,7 @@
 #include "iree/base/api.h"
 #include "iree/base/string_view.h"
 #include "iree/hal/api.h"
-#include "iree/hal/cts/cts_test_base.h"
+#include "iree/hal/cts/util/test_base.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
 #include "tools/testing/e2e/test_utils.h"
@@ -18,23 +18,44 @@
 
 namespace iree::hal::cts {
 
-const char* get_test_driver_name() { return "xrt"; }
-
-iree_status_t register_test_driver(iree_hal_driver_registry_t* registry) {
-  return iree_hal_xrt_driver_module_register(registry);
+static iree_status_t CreateXrtDevice(iree_hal_driver_t** out_driver,
+                                     iree_hal_device_t** out_device) {
+  iree_status_t status =
+      iree_hal_xrt_driver_module_register(iree_hal_driver_registry_default());
+  if (iree_status_is_already_exists(status)) {
+    iree_status_ignore(status);
+    status = iree_ok_status();
+  }
+  iree_hal_driver_t* driver = nullptr;
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_driver_registry_try_create(
+        iree_hal_driver_registry_default(), iree_make_cstring_view("xrt"),
+        iree_allocator_system(), &driver);
+  }
+  iree_hal_device_t* device = nullptr;
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_driver_create_default_device(
+        driver, iree_allocator_system(), &device);
+  }
+  if (iree_status_is_ok(status)) {
+    *out_driver = driver;
+    *out_device = device;
+  } else {
+    iree_hal_device_release(device);
+    iree_hal_driver_release(driver);
+  }
+  return status;
 }
 
-const char* get_test_executable_format() { return "amdaie-xclbin-fb"; }
-
-iree_const_byte_span_t get_test_executable_data(iree_string_view_t file_name) {
+static iree_const_byte_span_t GetTestExecutableData(
+    iree_string_view_t file_name) {
   const struct iree_file_toc_t* toc =
       iree_cts_testdata_executables_aie_xrt_create();
   const auto& file = toc[0];
   return iree_make_const_byte_span(file.data, file.size);
 }
 
-class MatMulDispatchTest
-    : public CTSTestBase<::testing::TestWithParam<RecordingType>> {
+class MatMulDispatchTest : public CtsTestBase<> {
  protected:
   void PrepareMatmulExecutable() {
     IREE_ASSERT_OK(iree_hal_executable_cache_create(
@@ -46,8 +67,8 @@ class MatMulDispatchTest
     executable_params.caching_mode =
         IREE_HAL_EXECUTABLE_CACHING_MODE_ALIAS_PROVIDED_DATA;
     executable_params.executable_format =
-        iree_make_cstring_view(get_test_executable_format());
-    executable_params.executable_data = get_test_executable_data(
+        iree_make_cstring_view(executable_format());
+    executable_params.executable_data = executable_data(
         iree_make_cstring_view("xrt_executable_cache_test.bin"));
 
     IREE_ASSERT_OK(iree_hal_executable_cache_prepare_executable(
@@ -76,7 +97,7 @@ int32_t generate_random_number(iree_hal_element_type_t element_type,
          min;
 }
 
-TEST_F(MatMulDispatchTest, Create) {
+TEST_P(MatMulDispatchTest, Create) {
   iree_hal_command_buffer_t* command_buffer = nullptr;
   IREE_ASSERT_OK(iree_hal_command_buffer_create(
       device_, IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT,
@@ -90,7 +111,7 @@ TEST_F(MatMulDispatchTest, Create) {
   iree_hal_command_buffer_release(command_buffer);
 }
 
-TEST_F(MatMulDispatchTest, BeginEnd) {
+TEST_P(MatMulDispatchTest, BeginEnd) {
   iree_hal_command_buffer_t* command_buffer = nullptr;
   IREE_ASSERT_OK(iree_hal_command_buffer_create(
       device_, IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT,
@@ -103,7 +124,7 @@ TEST_F(MatMulDispatchTest, BeginEnd) {
   iree_hal_command_buffer_release(command_buffer);
 }
 
-TEST_F(MatMulDispatchTest, SubmitEmpty) {
+TEST_P(MatMulDispatchTest, SubmitEmpty) {
   iree_hal_command_buffer_t* command_buffer = nullptr;
   IREE_ASSERT_OK(iree_hal_command_buffer_create(
       device_, IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT,
@@ -218,8 +239,17 @@ TEST_P(MatMulDispatchTest, DispatchMatmul) {
   CleanupExecutable();
 }
 
-INSTANTIATE_TEST_SUITE_P(MatMulDispatchTest, MatMulDispatchTest,
-                         ::testing::Values(RecordingType::kDirect),
-                         GenerateTestName());
+INSTANTIATE_TEST_SUITE_P(XRT, MatMulDispatchTest,
+                         ::testing::Values(BackendInfo{
+                             "xrt",
+                             CreateXrtDevice,
+                             /*executable_format=*/"amdaie-xclbin-fb",
+                             /*executable_data=*/GetTestExecutableData,
+                             RecordingMode::kDirect,
+                             /*unsupported_tests=*/{},
+                         }),
+                         [](const ::testing::TestParamInfo<BackendInfo>& info) {
+                           return info.param.name;
+                         });
 
 }  // namespace iree::hal::cts

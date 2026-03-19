@@ -115,7 +115,13 @@ void AMDAIEVectorizationPass::runOnOperation() {
   vector::populateVectorTransferPermutationMapLoweringPatterns(
       vectorizationPatterns);
 
-  vector::populateVectorMultiReductionLoweringPatterns(
+  vector::populateVectorMultiReductionReorderPatterns(
+      vectorizationPatterns,
+      vector::VectorMultiReductionLowering::InnerReduction);
+  vector::populateVectorMultiReductionFlatteningPatterns(
+      vectorizationPatterns,
+      vector::VectorMultiReductionLowering::InnerReduction);
+  vector::populateVectorMultiReductionUnrollingPatterns(
       vectorizationPatterns,
       vector::VectorMultiReductionLowering::InnerReduction);
   (void)applyPatternsGreedily(funcOp, std::move(vectorizationPatterns));

@@ -8,31 +8,49 @@
 #include "iree/base/api.h"
 #include "iree/base/string_view.h"
 #include "iree/hal/api.h"
-#include "iree/hal/cts/cts_test_base.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
 #include "xrt_lite_executables_c.h"
 
 namespace iree::hal::cts {
 
-const char* get_test_driver_name() { return "xrt-lite"; }
+static const char* get_test_executable_format() { return "amdaie-pdi-fb"; }
 
-iree_status_t register_test_driver(iree_hal_driver_registry_t* registry) {
-  return iree_hal_xrt_lite_driver_module_register(registry);
-}
-
-const char* get_test_executable_format() { return "amdaie-pdi-fb"; }
-
-iree_const_byte_span_t get_test_executable_data() {
+static iree_const_byte_span_t get_test_executable_data() {
   const struct iree_file_toc_t* toc =
       iree_cts_testdata_executables_aie_xrt_lite_create();
   const auto& file = toc[0];
   return iree_make_const_byte_span(file.data, file.size);
 }
 
-class MatMulDispatchTest
-    : public CTSTestBase<::testing::TestWithParam<RecordingType>> {
+class MatMulDispatchTest : public ::testing::Test {
  protected:
+  void SetUp() override {
+    iree_status_t status = iree_hal_xrt_lite_driver_module_register(
+        iree_hal_driver_registry_default());
+    if (iree_status_is_already_exists(status)) {
+      iree_status_ignore(status);
+      status = iree_ok_status();
+    }
+    IREE_ASSERT_OK(status);
+    IREE_ASSERT_OK(iree_hal_driver_registry_try_create(
+        iree_hal_driver_registry_default(), iree_make_cstring_view("xrt-lite"),
+        iree_allocator_system(), &driver_));
+    IREE_ASSERT_OK(iree_hal_driver_create_default_device(
+        driver_, iree_allocator_system(), &device_));
+    device_allocator_ = iree_hal_device_allocator(device_);
+    iree_hal_allocator_retain(device_allocator_);
+  }
+
+  void TearDown() override {
+    iree_hal_allocator_release(device_allocator_);
+    device_allocator_ = nullptr;
+    iree_hal_device_release(device_);
+    device_ = nullptr;
+    iree_hal_driver_release(driver_);
+    driver_ = nullptr;
+  }
+
   void PrepareMatmulExecutable() {
     IREE_ASSERT_OK(iree_hal_executable_cache_create(
         device_, iree_make_cstring_view("default"),
@@ -54,6 +72,59 @@ class MatMulDispatchTest
     iree_hal_executable_cache_release(executable_cache_);
     IREE_ASSERT_OK(loop_status_);
   }
+
+  iree_status_t SubmitCommandBufferAndWait(
+      iree_hal_command_buffer_t* command_buffer,
+      iree_hal_buffer_binding_table_t binding_table =
+          iree_hal_buffer_binding_table_empty()) {
+    iree_hal_semaphore_list_t wait_semaphores = iree_hal_semaphore_list_empty();
+
+    iree_hal_semaphore_t* signal_semaphore = nullptr;
+    IREE_RETURN_IF_ERROR(iree_hal_semaphore_create(
+        device_, IREE_HAL_QUEUE_AFFINITY_ANY, 0ull,
+        IREE_HAL_SEMAPHORE_FLAG_DEFAULT, &signal_semaphore));
+    uint64_t target_payload_value = 1ull;
+    iree_hal_semaphore_list_t signal_semaphores = {
+        /*count=*/1,
+        /*semaphores=*/&signal_semaphore,
+        /*payload_values=*/&target_payload_value,
+    };
+
+    iree_status_t status = iree_hal_device_queue_execute(
+        device_, IREE_HAL_QUEUE_AFFINITY_ANY, wait_semaphores,
+        signal_semaphores, command_buffer, binding_table,
+        IREE_HAL_EXECUTE_FLAG_NONE);
+    if (iree_status_is_ok(status)) {
+      status = iree_hal_semaphore_wait(signal_semaphore, target_payload_value,
+                                       iree_infinite_timeout(),
+                                       IREE_HAL_WAIT_FLAG_DEFAULT);
+    }
+
+    iree_hal_semaphore_release(signal_semaphore);
+    return status;
+  }
+
+  template <typename PatternType>
+  void CreateFilledDeviceBuffer(iree_device_size_t buffer_size,
+                                PatternType pattern,
+                                iree_hal_buffer_t** out_buffer) {
+    iree_hal_buffer_params_t params = {0};
+    params.type = IREE_HAL_MEMORY_TYPE_OPTIMAL_FOR_DEVICE |
+                  IREE_HAL_MEMORY_TYPE_HOST_VISIBLE;
+    params.usage = IREE_HAL_BUFFER_USAGE_DISPATCH_STORAGE |
+                   IREE_HAL_BUFFER_USAGE_TRANSFER |
+                   IREE_HAL_BUFFER_USAGE_MAPPING;
+    iree_hal_buffer_t* buffer = nullptr;
+    IREE_ASSERT_OK(iree_hal_allocator_allocate_buffer(device_allocator_, params,
+                                                      buffer_size, &buffer));
+    IREE_ASSERT_OK(iree_hal_buffer_map_fill(buffer, 0, IREE_HAL_WHOLE_BUFFER,
+                                            &pattern, sizeof(pattern)));
+    *out_buffer = buffer;
+  }
+
+  iree_hal_driver_t* driver_ = nullptr;
+  iree_hal_device_t* device_ = nullptr;
+  iree_hal_allocator_t* device_allocator_ = nullptr;
 
   iree_status_t loop_status_ = iree_ok_status();
   iree_hal_executable_cache_t* executable_cache_ = nullptr;
@@ -106,7 +177,7 @@ static uint16_t float_to_bf16(float value) {
   return (uint16_t)(((*reinterpret_cast<uint32_t*>(&value))) >> 16);
 }
 
-TEST_P(MatMulDispatchTest, DispatchMatmul) {
+TEST_F(MatMulDispatchTest, DispatchMatmul) {
   PrepareMatmulExecutable();
 
   // Create input buffer.
@@ -206,9 +277,5 @@ TEST_P(MatMulDispatchTest, DispatchMatmul) {
   iree_hal_buffer_release(input_A);
   CleanupExecutable();
 }
-
-INSTANTIATE_TEST_SUITE_P(MatMulDispatchTest, MatMulDispatchTest,
-                         ::testing::Values(RecordingType::kDirect),
-                         GenerateTestName());
 
 }  // namespace iree::hal::cts

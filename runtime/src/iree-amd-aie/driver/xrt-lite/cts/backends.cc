@@ -1,0 +1,55 @@
+// Copyright 2025 The IREE Authors
+//
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+// CTS backend registration for the xrt-lite HAL driver.
+
+#include "iree-amd-aie/driver/xrt-lite/registration/driver_module.h"
+#include "iree/hal/api.h"
+#include "iree/hal/cts/util/registry.h"
+
+namespace iree::hal::cts {
+
+static iree_status_t CreateXrtLiteDevice(iree_hal_driver_t** out_driver,
+                                         iree_hal_device_t** out_device) {
+  iree_status_t status = iree_hal_xrt_lite_driver_module_register(
+      iree_hal_driver_registry_default());
+  if (iree_status_is_already_exists(status)) {
+    iree_status_ignore(status);
+    status = iree_ok_status();
+  }
+
+  iree_hal_driver_t* driver = nullptr;
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_driver_registry_try_create(
+        iree_hal_driver_registry_default(), iree_make_cstring_view("xrt-lite"),
+        iree_allocator_system(), &driver);
+  }
+
+  iree_hal_device_t* device = nullptr;
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_driver_create_default_device(
+        driver, iree_allocator_system(), &device);
+  }
+
+  if (iree_status_is_ok(status)) {
+    *out_driver = driver;
+    *out_device = device;
+  } else {
+    iree_hal_device_release(device);
+    iree_hal_driver_release(driver);
+  }
+  return status;
+}
+
+static bool xrt_lite_registered_ =
+    (CtsRegistry::RegisterBackend({
+         "xrt_lite",
+         {"xrt_lite", CreateXrtLiteDevice},
+         /*tags=*/{"allocator", "buffer_mapping", "driver"},
+     }),
+     true);
+
+}  // namespace iree::hal::cts
