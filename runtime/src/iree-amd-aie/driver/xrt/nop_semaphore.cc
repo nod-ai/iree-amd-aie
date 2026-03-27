@@ -64,8 +64,8 @@ iree_status_t iree_hal_xrt_semaphore_create(
 
 static void iree_hal_xrt_semaphore_destroy(
     iree_async_semaphore_t* base_semaphore) {
-  iree_hal_xrt_semaphore* semaphore = iree_hal_xrt_semaphore_cast(
-      iree_hal_semaphore_cast(base_semaphore));
+  iree_hal_xrt_semaphore* semaphore =
+      iree_hal_xrt_semaphore_cast(iree_hal_semaphore_cast(base_semaphore));
   iree_allocator_t host_allocator = semaphore->host_allocator;
   IREE_TRACE_ZONE_BEGIN(z0);
 

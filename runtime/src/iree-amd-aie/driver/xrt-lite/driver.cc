@@ -107,9 +107,8 @@ static iree_status_t iree_hal_xrt_lite_driver_create_device_by_id(
   iree_hal_xrt_lite_device_params options = driver->options.device_params;
 
   IREE_TRACE_ZONE_END(z0);
-  return iree_hal_xrt_lite_device_create(driver->identifier, &options,
-                                         create_params, host_allocator,
-                                         out_device);
+  return iree_hal_xrt_lite_device_create(
+      driver->identifier, &options, create_params, host_allocator, out_device);
 }
 
 static iree_status_t iree_hal_xrt_lite_driver_create_device_by_path(
@@ -129,9 +128,8 @@ static iree_status_t iree_hal_xrt_lite_driver_create_device_by_path(
   iree_hal_xrt_lite_device_params options = driver->options.device_params;
 
   IREE_TRACE_ZONE_END(z0);
-  return iree_hal_xrt_lite_device_create(driver->identifier, &options,
-                                         create_params, host_allocator,
-                                         out_device);
+  return iree_hal_xrt_lite_device_create(
+      driver->identifier, &options, create_params, host_allocator, out_device);
 }
 
 namespace {

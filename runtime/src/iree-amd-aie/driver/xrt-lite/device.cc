@@ -136,9 +136,9 @@ static iree_status_t iree_hal_xrt_lite_device_create_semaphore(
       base_device, iree_hal_xrt_lite_device_vtable, iree_hal_xrt_lite_device);
 
   IREE_TRACE_ZONE_END(z0);
-  return iree_hal_xrt_lite_semaphore_create(device->proactor, queue_affinity,
-                                            initial_value, flags,
-                                            device->host_allocator, out_semaphore);
+  return iree_hal_xrt_lite_semaphore_create(
+      device->proactor, queue_affinity, initial_value, flags,
+      device->host_allocator, out_semaphore);
 }
 
 static iree_status_t iree_hal_xrt_lite_device_queue_execute(
@@ -169,9 +169,8 @@ static iree_status_t iree_hal_xrt_lite_device_queue_execute(
         /*binding_capacity=*/0, &device->block_pool, device->host_allocator,
         &xrt_command_buffer);
     if (iree_status_is_ok(status)) {
-      status = iree_hal_deferred_command_buffer_apply(command_buffer,
-                                                      xrt_command_buffer,
-                                                      binding_table);
+      status = iree_hal_deferred_command_buffer_apply(
+          command_buffer, xrt_command_buffer, binding_table);
     }
     iree_hal_command_buffer_release(xrt_command_buffer);
   }
@@ -211,7 +210,8 @@ static void iree_hal_xrt_lite_device_replace_channel_provider(
   device->channel_provider = new_provider;
 }
 
-static iree_status_t iree_hal_xrt_lite_device_trim(iree_hal_device_t* base_device) {
+static iree_status_t iree_hal_xrt_lite_device_trim(
+    iree_hal_device_t* base_device) {
   (void)base_device;
   return iree_ok_status();
 }
@@ -367,7 +367,8 @@ static iree_status_t iree_hal_xrt_lite_device_queue_update(
     iree_device_size_t length, iree_hal_update_flags_t flags) {
   return iree_hal_device_queue_emulated_update(
       base_device, queue_affinity, wait_semaphore_list, signal_semaphore_list,
-      source_buffer, source_offset, target_buffer, target_offset, length, flags);
+      source_buffer, source_offset, target_buffer, target_offset, length,
+      flags);
 }
 
 static iree_status_t iree_hal_xrt_lite_device_queue_read(
@@ -422,7 +423,8 @@ static iree_status_t iree_hal_xrt_lite_device_queue_dispatch(
     iree_hal_executable_t* executable,
     iree_hal_executable_export_ordinal_t export_ordinal,
     const iree_hal_dispatch_config_t config, iree_const_byte_span_t constants,
-    const iree_hal_buffer_ref_list_t bindings, iree_hal_dispatch_flags_t flags) {
+    const iree_hal_buffer_ref_list_t bindings,
+    iree_hal_dispatch_flags_t flags) {
   return iree_hal_device_queue_emulated_dispatch(
       base_device, queue_affinity, wait_semaphore_list, signal_semaphore_list,
       executable, export_ordinal, config, constants, bindings, flags);
@@ -521,8 +523,8 @@ iree_status_t iree_hal_xrt_lite_device_create(
       identifier, &device->identifier,
       reinterpret_cast<char*>(device) + total_size - identifier.size);
 
-  iree_status_t status = iree_hal_xrt_lite_device_initialize_async(
-      device, create_params);
+  iree_status_t status =
+      iree_hal_xrt_lite_device_initialize_async(device, create_params);
   if (!iree_status_is_ok(status)) {
     iree_arena_block_pool_deinitialize(&device->block_pool);
     iree_hal_allocator_release(device->device_allocator);

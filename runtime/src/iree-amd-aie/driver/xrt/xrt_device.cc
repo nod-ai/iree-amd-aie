@@ -257,8 +257,8 @@ static iree_status_t iree_hal_xrt_device_query_capabilities(
   return iree_ok_status();
 }
 
-static const iree_hal_device_topology_info_t*
-iree_hal_xrt_device_topology_info(iree_hal_device_t* base_device) {
+static const iree_hal_device_topology_info_t* iree_hal_xrt_device_topology_info(
+    iree_hal_device_t* base_device) {
   iree_hal_xrt_device_t* device = iree_hal_xrt_device_cast(base_device);
   return &device->topology_info;
 }
@@ -448,8 +448,8 @@ static iree_status_t iree_hal_xrt_device_queue_execute(
     status = iree_hal_xrt_direct_command_buffer_create(
         iree_hal_device_allocator(base_device), mode,
         IREE_HAL_COMMAND_CATEGORY_ANY,
-        /*binding_capacity=*/0, &device->block_pool,
-        device->host_allocator, &xrt_command_buffer);
+        /*binding_capacity=*/0, &device->block_pool, device->host_allocator,
+        &xrt_command_buffer);
     if (iree_status_is_ok(status)) {
       status = iree_hal_deferred_command_buffer_apply(
           command_buffer, xrt_command_buffer, binding_table);
