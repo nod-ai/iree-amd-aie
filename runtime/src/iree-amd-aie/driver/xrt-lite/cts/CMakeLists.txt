@@ -17,6 +17,8 @@ iree_cc_library(
   SRCS
     "backends.cc"
   DEPS
+    iree::async::util::proactor_pool
+    iree::base::threading
     iree::hal
     iree::hal::cts::util::registry
     iree::base::tooling::flags
@@ -91,7 +93,9 @@ iree_cc_test(
   DEPS
     ::xrt_lite_executables_c
     iree-amd-aie::driver::xrt-lite::registration
+    iree::async::util::proactor_pool
     iree::base
+    iree::base::threading
     iree::hal
     iree::testing::gtest_main
 )
@@ -104,7 +108,9 @@ iree_cc_test(
   DEPS
     ::xrt_lite_executables_c
     iree-amd-aie::driver::xrt-lite::registration
+    iree::async::util::proactor_pool
     iree::base
+    iree::base::threading
     iree::hal
     iree::testing::gtest_main
 )
