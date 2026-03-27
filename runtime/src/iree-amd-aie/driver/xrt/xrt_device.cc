@@ -323,9 +323,11 @@ static iree_status_t iree_hal_xrt_device_import_file(
     iree_hal_device_t* base_device, iree_hal_queue_affinity_t queue_affinity,
     iree_hal_memory_access_t access, iree_io_file_handle_t* handle,
     iree_hal_external_file_flags_t flags, iree_hal_file_t** out_file) {
+  (void)flags;
+  iree_hal_xrt_device_t* device = iree_hal_xrt_device_cast(base_device);
   return iree_hal_file_from_handle(
       iree_hal_device_allocator(base_device), queue_affinity, access, handle,
-      iree_hal_device_host_allocator(base_device), out_file);
+      device->proactor, iree_hal_device_host_allocator(base_device), out_file);
 }
 
 static iree_status_t iree_hal_xrt_device_create_semaphore(
