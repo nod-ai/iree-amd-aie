@@ -5,8 +5,10 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "iree-amd-aie/driver/xrt-lite/registration/driver_module.h"
+#include "iree/async/util/proactor_pool.h"
 #include "iree/base/api.h"
 #include "iree/base/string_view.h"
+#include "iree/base/threading/numa.h"
 #include "iree/hal/api.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
@@ -37,8 +39,15 @@ class ExecutableCacheTest : public ::testing::Test {
     IREE_ASSERT_OK(iree_hal_driver_registry_try_create(
         iree_hal_driver_registry_default(), iree_make_cstring_view("xrt-lite"),
         iree_allocator_system(), &driver_));
+    IREE_ASSERT_OK(iree_async_proactor_pool_create(
+        iree_numa_node_count(), /*node_ids=*/NULL,
+        iree_async_proactor_pool_options_default(), iree_allocator_system(),
+        &proactor_pool_));
+    iree_hal_device_create_params_t create_params =
+        iree_hal_device_create_params_default();
+    create_params.proactor_pool = proactor_pool_;
     IREE_ASSERT_OK(iree_hal_driver_create_default_device(
-        driver_, iree_allocator_system(), &device_));
+        driver_, &create_params, iree_allocator_system(), &device_));
   }
 
   void TearDown() override {
@@ -46,43 +55,38 @@ class ExecutableCacheTest : public ::testing::Test {
     device_ = nullptr;
     iree_hal_driver_release(driver_);
     driver_ = nullptr;
+    iree_async_proactor_pool_release(proactor_pool_);
+    proactor_pool_ = nullptr;
   }
 
   iree_hal_driver_t* driver_ = nullptr;
   iree_hal_device_t* device_ = nullptr;
+  iree_async_proactor_pool_t* proactor_pool_ = nullptr;
 };
 
 TEST_F(ExecutableCacheTest, Create) {
-  iree_status_t loop_status = iree_ok_status();
   iree_hal_executable_cache_t* executable_cache = nullptr;
   IREE_ASSERT_OK(iree_hal_executable_cache_create(
-      device_, iree_make_cstring_view("default"),
-      iree_loop_inline(&loop_status), &executable_cache));
+      device_, iree_make_cstring_view("default"), &executable_cache));
 
   iree_hal_executable_cache_release(executable_cache);
-  IREE_ASSERT_OK(loop_status);
 }
 
 TEST_F(ExecutableCacheTest, CantPrepareUnknownFormat) {
-  iree_status_t loop_status = iree_ok_status();
   iree_hal_executable_cache_t* executable_cache = nullptr;
   IREE_ASSERT_OK(iree_hal_executable_cache_create(
-      device_, iree_make_cstring_view("default"),
-      iree_loop_inline(&loop_status), &executable_cache));
+      device_, iree_make_cstring_view("default"), &executable_cache));
 
   EXPECT_FALSE(iree_hal_executable_cache_can_prepare_format(
       executable_cache, /*caching_mode=*/0, iree_make_cstring_view("FOO?")));
 
   iree_hal_executable_cache_release(executable_cache);
-  IREE_ASSERT_OK(loop_status);
 }
 
 TEST_F(ExecutableCacheTest, PrepareExecutable) {
-  iree_status_t loop_status = iree_ok_status();
   iree_hal_executable_cache_t* executable_cache = nullptr;
   IREE_ASSERT_OK(iree_hal_executable_cache_create(
-      device_, iree_make_cstring_view("default"),
-      iree_loop_inline(&loop_status), &executable_cache));
+      device_, iree_make_cstring_view("default"), &executable_cache));
 
   iree_hal_executable_params_t executable_params;
   iree_hal_executable_params_initialize(&executable_params);
@@ -99,7 +103,6 @@ TEST_F(ExecutableCacheTest, PrepareExecutable) {
 
   iree_hal_executable_release(executable);
   iree_hal_executable_cache_release(executable_cache);
-  IREE_ASSERT_OK(loop_status);
 }
 
 }  // namespace iree::hal::cts

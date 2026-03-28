@@ -12,12 +12,24 @@
 #include "iree/base/internal/arena.h"
 #include "iree/hal/api.h"
 
+struct iree_async_proactor_pool_t;
+struct iree_async_proactor_t;
+
 struct iree_hal_xrt_lite_device {
   iree_hal_resource_t resource;
   iree_allocator_t host_allocator;
   // TODO(max): not used because "device allocations" are performed through
   // device
   iree_hal_allocator_t* device_allocator;
+  iree_hal_channel_provider_t* channel_provider;
+  iree_hal_device_topology_info_t topology_info;
+
+  // Proactor pool is retained for the device lifetime (same contract as
+  // iree_hal_device_create_params_t).
+  iree_async_proactor_pool_t* proactor_pool;
+  // Borrowed from the pool while the pool is retained.
+  iree_async_proactor_t* proactor;
+
   // block pool used for command buffer allocations, uses a larger block size
   // since command buffers can contain inlined data
   iree_arena_block_pool_t block_pool;

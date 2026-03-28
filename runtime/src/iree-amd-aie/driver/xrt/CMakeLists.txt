@@ -42,6 +42,8 @@ iree_cc_library(
     "nop_executable_cache.h"
     "nop_executable_cache.cc"
   DEPS
+    iree::async
+    iree::async::util::proactor_pool
     iree::base
     iree::base::core_headers
     iree::base::internal::arena
@@ -52,7 +54,7 @@ iree_cc_library(
     iree::hal::utils::files
     iree::hal::utils::executable_header
     iree::hal::utils::queue_emulation
-    iree::hal::utils::semaphore_base
+    iree::hal::utils::queue_host_call_emulation
     iree::hal
     iree-amd-aie::schemas::xrt_executable_def_c_fbs
     # hide the target from all exports so it doesn't need to be installed

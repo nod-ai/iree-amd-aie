@@ -37,11 +37,14 @@ iree_cc_library(
     nop_semaphore.h
     util.h
   DEPS
+    iree::async
+    iree::async::util::proactor_pool
     iree::base
     iree::base::core_headers
     iree::hal::utils::deferred_command_buffer
+    iree::hal::utils::file_transfer
     iree::hal::utils::queue_emulation
-    iree::hal::utils::semaphore_base
+    iree::hal::utils::queue_host_call_emulation
     iree::base::internal::flatcc::parsing
     iree-amd-aie::schemas::pdi_executable_def_c_fbs
     iree-amd-aie::driver::xrt-lite::shim::linux::kmq::shim-xdna

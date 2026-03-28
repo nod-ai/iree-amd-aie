@@ -5,8 +5,10 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "iree-amd-aie/driver/xrt-lite/registration/driver_module.h"
+#include "iree/async/util/proactor_pool.h"
 #include "iree/base/api.h"
 #include "iree/base/string_view.h"
+#include "iree/base/threading/numa.h"
 #include "iree/hal/api.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
@@ -36,8 +38,15 @@ class MatMulDispatchTest : public ::testing::Test {
     IREE_ASSERT_OK(iree_hal_driver_registry_try_create(
         iree_hal_driver_registry_default(), iree_make_cstring_view("xrt-lite"),
         iree_allocator_system(), &driver_));
+    IREE_ASSERT_OK(iree_async_proactor_pool_create(
+        iree_numa_node_count(), /*node_ids=*/NULL,
+        iree_async_proactor_pool_options_default(), iree_allocator_system(),
+        &proactor_pool_));
+    iree_hal_device_create_params_t create_params =
+        iree_hal_device_create_params_default();
+    create_params.proactor_pool = proactor_pool_;
     IREE_ASSERT_OK(iree_hal_driver_create_default_device(
-        driver_, iree_allocator_system(), &device_));
+        driver_, &create_params, iree_allocator_system(), &device_));
     device_allocator_ = iree_hal_device_allocator(device_);
     iree_hal_allocator_retain(device_allocator_);
   }
@@ -49,12 +58,13 @@ class MatMulDispatchTest : public ::testing::Test {
     device_ = nullptr;
     iree_hal_driver_release(driver_);
     driver_ = nullptr;
+    iree_async_proactor_pool_release(proactor_pool_);
+    proactor_pool_ = nullptr;
   }
 
   void PrepareMatmulExecutable() {
     IREE_ASSERT_OK(iree_hal_executable_cache_create(
-        device_, iree_make_cstring_view("default"),
-        iree_loop_inline(&loop_status_), &executable_cache_));
+        device_, iree_make_cstring_view("default"), &executable_cache_));
 
     iree_hal_executable_params_t executable_params;
     iree_hal_executable_params_initialize(&executable_params);
@@ -70,7 +80,6 @@ class MatMulDispatchTest : public ::testing::Test {
   void CleanupExecutable() {
     iree_hal_executable_release(executable_);
     iree_hal_executable_cache_release(executable_cache_);
-    IREE_ASSERT_OK(loop_status_);
   }
 
   iree_status_t SubmitCommandBufferAndWait(
@@ -97,7 +106,7 @@ class MatMulDispatchTest : public ::testing::Test {
     if (iree_status_is_ok(status)) {
       status = iree_hal_semaphore_wait(signal_semaphore, target_payload_value,
                                        iree_infinite_timeout(),
-                                       IREE_HAL_WAIT_FLAG_DEFAULT);
+                                       IREE_ASYNC_WAIT_FLAG_NONE);
     }
 
     iree_hal_semaphore_release(signal_semaphore);
@@ -125,8 +134,8 @@ class MatMulDispatchTest : public ::testing::Test {
   iree_hal_driver_t* driver_ = nullptr;
   iree_hal_device_t* device_ = nullptr;
   iree_hal_allocator_t* device_allocator_ = nullptr;
+  iree_async_proactor_pool_t* proactor_pool_ = nullptr;
 
-  iree_status_t loop_status_ = iree_ok_status();
   iree_hal_executable_cache_t* executable_cache_ = nullptr;
   iree_hal_executable_t* executable_ = nullptr;
 };

@@ -185,13 +185,18 @@ static iree_status_t iree_hal_xrt_driver_query_available_devices(
 static iree_status_t iree_hal_xrt_driver_create_device_by_id(
     iree_hal_driver_t* base_driver, iree_hal_device_id_t device_id,
     iree_host_size_t param_count, const iree_string_pair_t* params,
+    const iree_hal_device_create_params_t* create_params,
     iree_allocator_t host_allocator, iree_hal_device_t** out_device) {
   IREE_TRACE_ZONE_BEGIN(z0);
+  (void)device_id;
+  (void)param_count;
+  (void)params;
   iree_hal_xrt_driver_t* driver = iree_hal_xrt_driver_cast(base_driver);
   iree_string_view_t device_name = iree_make_cstring_view("xrt");
 
-  iree_status_t status = iree_hal_xrt_device_create(
-      device_name, &driver->device_params, host_allocator, out_device);
+  iree_status_t status =
+      iree_hal_xrt_device_create(device_name, &driver->device_params,
+                                 create_params, host_allocator, out_device);
 
   IREE_TRACE_ZONE_END(z0);
   return status;
@@ -200,14 +205,20 @@ static iree_status_t iree_hal_xrt_driver_create_device_by_id(
 static iree_status_t iree_hal_xrt_driver_create_device_by_path(
     iree_hal_driver_t* base_driver, iree_string_view_t driver_name,
     iree_string_view_t device_path, iree_host_size_t param_count,
-    const iree_string_pair_t* params, iree_allocator_t host_allocator,
-    iree_hal_device_t** out_device) {
+    const iree_string_pair_t* params,
+    const iree_hal_device_create_params_t* create_params,
+    iree_allocator_t host_allocator, iree_hal_device_t** out_device) {
   IREE_TRACE_ZONE_BEGIN(z0);
+  (void)driver_name;
+  (void)device_path;
+  (void)param_count;
+  (void)params;
   iree_hal_xrt_driver_t* driver = iree_hal_xrt_driver_cast(base_driver);
   iree_string_view_t device_name = iree_make_cstring_view("xrt");
 
-  iree_status_t status = iree_hal_xrt_device_create(
-      device_name, &driver->device_params, host_allocator, out_device);
+  iree_status_t status =
+      iree_hal_xrt_device_create(device_name, &driver->device_params,
+                                 create_params, host_allocator, out_device);
 
   IREE_TRACE_ZONE_END(z0);
   return status;

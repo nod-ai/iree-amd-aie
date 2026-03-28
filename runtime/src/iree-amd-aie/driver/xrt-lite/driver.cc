@@ -95,32 +95,41 @@ static iree_status_t iree_hal_xrt_lite_driver_query_available_devices(
 static iree_status_t iree_hal_xrt_lite_driver_create_device_by_id(
     iree_hal_driver_t* base_driver, iree_hal_device_id_t device_id,
     iree_host_size_t param_count, const iree_string_pair_t* params,
+    const iree_hal_device_create_params_t* create_params,
     iree_allocator_t host_allocator, iree_hal_device_t** out_device) {
   IREE_TRACE_ZONE_BEGIN(z0);
+  (void)device_id;
+  (void)param_count;
+  (void)params;
 
   iree_hal_xrt_lite_driver* driver = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
       base_driver, iree_hal_xrt_lite_driver_vtable, iree_hal_xrt_lite_driver);
   iree_hal_xrt_lite_device_params options = driver->options.device_params;
 
   IREE_TRACE_ZONE_END(z0);
-  return iree_hal_xrt_lite_device_create(driver->identifier, &options,
-                                         host_allocator, out_device);
+  return iree_hal_xrt_lite_device_create(
+      driver->identifier, &options, create_params, host_allocator, out_device);
 }
 
 static iree_status_t iree_hal_xrt_lite_driver_create_device_by_path(
     iree_hal_driver_t* base_driver, iree_string_view_t driver_name,
     iree_string_view_t device_path, iree_host_size_t param_count,
-    const iree_string_pair_t* params, iree_allocator_t host_allocator,
-    iree_hal_device_t** out_device) {
+    const iree_string_pair_t* params,
+    const iree_hal_device_create_params_t* create_params,
+    iree_allocator_t host_allocator, iree_hal_device_t** out_device) {
   IREE_TRACE_ZONE_BEGIN(z0);
+  (void)driver_name;
+  (void)device_path;
+  (void)param_count;
+  (void)params;
 
   iree_hal_xrt_lite_driver* driver = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
       base_driver, iree_hal_xrt_lite_driver_vtable, iree_hal_xrt_lite_driver);
   iree_hal_xrt_lite_device_params options = driver->options.device_params;
 
   IREE_TRACE_ZONE_END(z0);
-  return iree_hal_xrt_lite_device_create(driver->identifier, &options,
-                                         host_allocator, out_device);
+  return iree_hal_xrt_lite_device_create(
+      driver->identifier, &options, create_params, host_allocator, out_device);
 }
 
 namespace {
