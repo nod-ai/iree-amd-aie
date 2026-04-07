@@ -716,7 +716,7 @@ void buildAMDAIETransformPassPipeline(
         false &&
         "Only `ObjectFifo` and `AIR` pipelines supported for lowering to AIE");
   }
-  variantPassManager.addPass(createReconcileTranslationInfoPass());
+  modulePassManager.addPass(createReconcileTranslationInfoPass());
   variantPassManager.addPass(createAMDAIELowerWorkgroupCountPass());
 
   LLVM_DEBUG({
