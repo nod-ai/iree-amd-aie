@@ -104,7 +104,7 @@ jobs:
           tar cf iree-dist-${{ matrix.runs-on }}.tar iree-install
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: ${{ !cancelled() }}
         with:
           name: ${{ matrix.runs-on }}_llvm_packages
@@ -112,7 +112,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: ${{ !cancelled() }}
         with:
           name: ${{ matrix.runs-on }}_iree_packages
