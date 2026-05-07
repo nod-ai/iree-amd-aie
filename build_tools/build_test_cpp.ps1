@@ -54,6 +54,21 @@ $env:CCACHE_SLOPPINESS = 'include_file_ctime,include_file_mtime,time_macros'
 
 if (Get-Command ccache -ErrorAction SilentlyContinue) { & ccache -z }
 
+# Resolve clang's compiler-rt builtins library so lld-link can find helpers
+# like __udivti3 emitted for __uint128_t math. clang-cl defines
+# __SIZEOF_INT128__ on Windows but lld-link does not auto-link the builtins.
+$clang_builtins = & clang-cl.exe --print-libgcc-file-name 2>$null
+if (-not $clang_builtins -or -not (Test-Path $clang_builtins)) {
+    $clang_resource_dir = (& clang-cl.exe -print-resource-dir).Trim()
+    $clang_builtins = Join-Path $clang_resource_dir 'lib\windows\clang_rt.builtins-x86_64.lib'
+}
+echo "clang-cl builtins library: $clang_builtins"
+if (-not (Test-Path $clang_builtins)) {
+    throw "Could not locate clang_rt.builtins-x86_64.lib at: $clang_builtins"
+}
+# /DEFAULTLIB: lets lld-link pull symbols from the static lib as needed.
+$builtins_link_flag = "/DEFAULTLIB:""$clang_builtins"""
+
 echo "Building IREE"
 
 $CMAKE_ARGS = @(
@@ -82,6 +97,9 @@ $CMAKE_ARGS = @(
     "-DIREE_CMAKE_PLUGIN_PATHS=$repo_root"
     "-DIREE_EXTERNAL_HAL_DRIVERS=xrt"
     "-DIREE_BUILD_PYTHON_BINDINGS=ON"
+    "-DCMAKE_EXE_LINKER_FLAGS=$builtins_link_flag"
+    "-DCMAKE_SHARED_LINKER_FLAGS=$builtins_link_flag"
+    "-DCMAKE_MODULE_LINKER_FLAGS=$builtins_link_flag"
 )
 
 $peano_install_dir = "$env:PEANO_INSTALL_DIR"
