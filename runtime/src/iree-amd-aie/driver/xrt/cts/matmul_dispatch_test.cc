@@ -18,8 +18,9 @@
 
 namespace iree::hal::cts {
 
-static iree_status_t CreateXrtDevice(iree_hal_driver_t** out_driver,
-                                     iree_hal_device_t** out_device) {
+static iree_status_t CreateXrtDevice(
+    const iree_hal_device_create_params_t* create_params,
+    iree_hal_driver_t** out_driver, iree_hal_device_t** out_device) {
   iree_status_t status =
       iree_hal_xrt_driver_module_register(iree_hal_driver_registry_default());
   if (iree_status_is_already_exists(status)) {
@@ -35,7 +36,7 @@ static iree_status_t CreateXrtDevice(iree_hal_driver_t** out_driver,
   iree_hal_device_t* device = nullptr;
   if (iree_status_is_ok(status)) {
     status = iree_hal_driver_create_default_device(
-        driver, iree_allocator_system(), &device);
+        driver, create_params, iree_allocator_system(), &device);
   }
   if (iree_status_is_ok(status)) {
     *out_driver = driver;
@@ -59,8 +60,7 @@ class MatMulDispatchTest : public CtsTestBase<> {
  protected:
   void PrepareMatmulExecutable() {
     IREE_ASSERT_OK(iree_hal_executable_cache_create(
-        device_, iree_make_cstring_view("default"),
-        iree_loop_inline(&loop_status_), &executable_cache_));
+        device_, iree_make_cstring_view("default"), &executable_cache_));
 
     iree_hal_executable_params_t executable_params;
     iree_hal_executable_params_initialize(&executable_params);
@@ -78,10 +78,8 @@ class MatMulDispatchTest : public CtsTestBase<> {
   void CleanupExecutable() {
     iree_hal_executable_release(executable_);
     iree_hal_executable_cache_release(executable_cache_);
-    IREE_ASSERT_OK(loop_status_);
   }
 
-  iree_status_t loop_status_ = iree_ok_status();
   iree_hal_executable_cache_t* executable_cache_ = nullptr;
   iree_hal_executable_t* executable_ = nullptr;
 };
