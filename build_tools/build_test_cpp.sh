@@ -146,7 +146,11 @@ cmake --build "$build_dir" --target iree-install-dist
 echo "CTest"
 echo "-----"
 if [[ "$OSTYPE" == "linux"* ]] && [[ "$assertions" == "ON" ]]; then
-  ctest --test-dir "$build_dir" -R amd-aie -E "driver" --output-on-failure -j
+  # Exclude /cts/ — those tests need a real NPU device and are run on the
+  # hardware CI runners via $install_dir/device_tests below. Software-only
+  # driver tests (e.g. driver/xrt-lite/test/AsyncQueueTest) are not under
+  # /cts/ and run here.
+  ctest --test-dir "$build_dir" -R amd-aie -E "/cts/" --output-on-failure -j
 elif [[ "$OSTYPE" == "darwin"* ]]; then
   ctest --test-dir "$build_dir" -R amd-aie -E "matmul_pack_peel_air_e2e|matmul_elementwise_pack_peel_air_e2e" --output-on-failure -j --repeat until-pass:5
 fi
@@ -160,5 +164,10 @@ fi
 cp "$build_dir/tools/testing/e2e/iree-e2e-matmul-test" "$install_dir/bin"
 if [[ "$OSTYPE" == "linux"* ]]; then
   mkdir -p "$install_dir/device_tests"
-  cp "$build_dir"/runtime/plugins/AMD-AIE/iree-amd-aie/driver/xrt-lite/cts/*test "$install_dir/device_tests"
+  # Install both the iree-amd-aie xrt-lite custom dispatch tests (*_test) and
+  # the standard iree_hal_cts_test_suite outputs (*_tests) so the npu1/npu4
+  # hardware CI steps that iterate $install_dir/device_tests pick them all up.
+  cp "$build_dir"/runtime/plugins/AMD-AIE/iree-amd-aie/driver/xrt-lite/cts/*_test \
+     "$build_dir"/runtime/plugins/AMD-AIE/iree-amd-aie/driver/xrt-lite/cts/*_tests \
+     "$install_dir/device_tests"
 fi

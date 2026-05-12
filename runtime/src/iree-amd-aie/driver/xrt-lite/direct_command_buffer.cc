@@ -12,7 +12,6 @@
 #include "iree-amd-aie/driver/xrt-lite/shim/linux/kmq/kernel.h"
 #include "iree-amd-aie/driver/xrt-lite/util.h"
 #include "iree/hal/utils/resource_set.h"
-#include "llvm/Support/raw_ostream.h"
 
 struct iree_hal_xrt_lite_direct_command_buffer {
   iree_hal_command_buffer_t base;
@@ -113,6 +112,33 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_update_buffer(
                  iree_hal_buffer_byte_offset(target_ref.buffer) +
                  target_ref.offset;
   memcpy(dst, src, target_ref.length);
+
+  IREE_TRACE_ZONE_END(z0);
+  return iree_ok_status();
+}
+
+static iree_status_t iree_hal_xrt_lite_direct_command_buffer_fill_buffer(
+    iree_hal_command_buffer_t* base_command_buffer,
+    iree_hal_buffer_ref_t target_ref, const void* pattern,
+    iree_host_size_t pattern_length, iree_hal_fill_flags_t flags) {
+  IREE_TRACE_ZONE_BEGIN(z0);
+
+  shim_xdna::bo* target_device_buffer = iree_hal_xrt_lite_buffer_handle(
+      iree_hal_buffer_allocated_buffer(target_ref.buffer));
+  uint8_t* dst = reinterpret_cast<uint8_t*>(target_device_buffer->map()) +
+                 iree_hal_buffer_byte_offset(target_ref.buffer) +
+                 target_ref.offset;
+  const iree_device_size_t length = target_ref.length;
+
+  // Fast path for byte-pattern fills (most common case).
+  if (pattern_length == 1) {
+    memset(dst, *reinterpret_cast<const uint8_t*>(pattern), length);
+  } else {
+    const uint8_t* p = reinterpret_cast<const uint8_t*>(pattern);
+    for (iree_device_size_t i = 0; i < length; ++i) {
+      dst[i] = p[i % pattern_length];
+    }
+  }
 
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
@@ -314,6 +340,12 @@ const iree_hal_command_buffer_vtable_t
         .begin = unimplemented_ok_status,
         .end = unimplemented_ok_status,
         .execution_barrier = unimplemented_ok_status,
+        // Command buffers execute synchronously on submission, so events are
+        // already implicitly signaled in program order.
+        .signal_event = unimplemented_ok_status,
+        .reset_event = unimplemented_ok_status,
+        .wait_events = unimplemented_ok_status,
+        .fill_buffer = iree_hal_xrt_lite_direct_command_buffer_fill_buffer,
         .update_buffer = iree_hal_xrt_lite_direct_command_buffer_update_buffer,
         .copy_buffer = iree_hal_xrt_lite_direct_command_buffer_copy_buffer,
         .dispatch = iree_hal_xrt_lite_direct_command_buffer_dispatch,

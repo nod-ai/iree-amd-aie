@@ -18,6 +18,9 @@ struct iree_hal_xrt_lite_buffer {
   shim_xdna::bo* bo;
   iree_allocator_t host_allocator;
   iree_hal_buffer_release_callback_t release_callback;
+  // Set to 1 by iree_hal_xrt_lite_buffer_mark_deallocated when the
+  // queue_dealloca task fires. Subsequent queue ops on this buffer will fail.
+  iree_atomic_uint32_t deallocated;
 };
 
 static iree_status_t iree_hal_xrt_lite_buffer_invalidate_range(
@@ -132,6 +135,8 @@ iree_status_t iree_hal_xrt_lite_buffer_wrap(
                              &iree_hal_xrt_lite_buffer_vtable, &buffer->base);
   buffer->release_callback = release_callback;
   buffer->bo = bo;
+  iree_atomic_store(&buffer->deallocated, (uint32_t)0,
+                    iree_memory_order_relaxed);
   *out_buffer = &buffer->base;
 
   IREE_TRACE_ZONE_END(z0);
@@ -163,6 +168,21 @@ shim_xdna::bo* iree_hal_xrt_lite_buffer_handle(iree_hal_buffer_t* base_buffer) {
 
   IREE_TRACE_ZONE_END(z0);
   return buffer->bo;
+}
+
+bool iree_hal_xrt_lite_buffer_is_deallocated(iree_hal_buffer_t* base_buffer) {
+  if (!base_buffer) return false;
+  iree_hal_xrt_lite_buffer* buffer = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
+      base_buffer, iree_hal_xrt_lite_buffer_vtable, iree_hal_xrt_lite_buffer);
+  return iree_atomic_load(&buffer->deallocated, iree_memory_order_acquire) != 0;
+}
+
+void iree_hal_xrt_lite_buffer_mark_deallocated(iree_hal_buffer_t* base_buffer) {
+  if (!base_buffer) return;
+  iree_hal_xrt_lite_buffer* buffer = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
+      base_buffer, iree_hal_xrt_lite_buffer_vtable, iree_hal_xrt_lite_buffer);
+  iree_atomic_store(&buffer->deallocated, (uint32_t)1,
+                    iree_memory_order_release);
 }
 
 namespace {

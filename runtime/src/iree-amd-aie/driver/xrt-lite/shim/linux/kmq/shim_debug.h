@@ -7,27 +7,32 @@
 #include <unistd.h>
 
 #include <cstdio>
+#include <cstdlib>
 #include <memory>
 #include <system_error>
-
-#include "llvm/Support/ErrorHandling.h"
 
 void debugf(const char *format, ...);
 
 namespace shim_xdna {
+
+[[noreturn]] inline void shim_fatal(const char *msg) {
+  std::fputs("shim_xdna fatal: ", stderr);
+  std::fputs(msg, stderr);
+  std::fputc('\n', stderr);
+  std::abort();
+}
 
 template <typename... Args>
 [[noreturn]] void shim_err(int err, const char *fmt, Args &&...args) {
   std::string format = std::string(fmt);
   format += " (err=%d)";
   int sz = std::snprintf(nullptr, 0, format.c_str(), args..., err) + 1;
-  if (sz <= 0) llvm::report_fatal_error("could not format error string");
+  if (sz <= 0) shim_fatal("could not format error string");
 
   auto size = static_cast<size_t>(sz);
   std::unique_ptr<char[]> buf(new char[size]);
   std::snprintf(buf.get(), size, format.c_str(), args..., err);
-  std::string err_str(buf.get());
-  llvm::report_fatal_error(err_str.c_str());
+  shim_fatal(buf.get());
 }
 
 template <typename... Args>

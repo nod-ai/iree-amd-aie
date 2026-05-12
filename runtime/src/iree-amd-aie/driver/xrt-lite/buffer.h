@@ -21,4 +21,12 @@ iree_status_t iree_hal_xrt_lite_buffer_wrap(
 
 shim_xdna::bo* iree_hal_xrt_lite_buffer_handle(iree_hal_buffer_t* base_buffer);
 
+// Returns true if queue_dealloca has fired on this buffer and subsequent
+// queue ops should fail with FAILED_PRECONDITION/INVALID_ARGUMENT.
+bool iree_hal_xrt_lite_buffer_is_deallocated(iree_hal_buffer_t* base_buffer);
+
+// Marks the buffer as deallocated. Called by the queue_dealloca async task
+// after its wait_semaphore_list is satisfied. Idempotent.
+void iree_hal_xrt_lite_buffer_mark_deallocated(iree_hal_buffer_t* base_buffer);
+
 #endif  // IREE_HAL_DRIVERS_XRT_LITE_BUFFER_H_

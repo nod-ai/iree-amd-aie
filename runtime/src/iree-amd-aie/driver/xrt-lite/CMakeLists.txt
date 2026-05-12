@@ -23,6 +23,8 @@ iree_cc_library(
     allocator.cc
     allocator.h
     api.h
+    async_queue.cc
+    async_queue.h
     buffer.cc
     buffer.h
     direct_command_buffer.cc
@@ -31,6 +33,8 @@ iree_cc_library(
     driver.cc
     executable.cc
     executable.h
+    nop_event.cc
+    nop_event.h
     nop_executable_cache.cc
     nop_executable_cache.h
     nop_semaphore.cc
@@ -41,8 +45,11 @@ iree_cc_library(
     iree::async::util::proactor_pool
     iree::base
     iree::base::core_headers
+    iree::hal::memory::cpu_slab_provider
+    iree::hal::memory::passthrough_pool
     iree::hal::utils::deferred_command_buffer
     iree::hal::utils::file_transfer
+    iree::hal::utils::files
     iree::hal::utils::queue_emulation
     iree::hal::utils::queue_host_call_emulation
     iree::base::internal::flatcc::parsing
