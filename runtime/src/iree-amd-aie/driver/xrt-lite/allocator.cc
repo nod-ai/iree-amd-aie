@@ -177,6 +177,14 @@ static void iree_hal_xrt_lite_allocator_destroy(
   IREE_TRACE_ZONE_END(z0);
 }
 
+static bool iree_hal_xrt_lite_allocator_supports_virtual_memory(
+    iree_hal_allocator_t* base_allocator) {
+  // XDNA exposes BOs via DRM ioctl, not a virtual-address-reservation API. A
+  // real implementation would need kernel support for partial-population /
+  // page-level mapping that the amdxdna driver does not provide today.
+  return false;
+}
+
 static iree_allocator_t iree_hal_xrt_lite_allocator_host_allocator(
     const iree_hal_allocator_t* base_allocator) {
   IREE_TRACE_ZONE_BEGIN(z0);
@@ -214,5 +222,21 @@ const iree_hal_allocator_vtable_t iree_hal_xrt_lite_allocator_vtable = {
     // of one copy), or add a kernel userptr path (zero-copy, kernel work).
     .import_buffer = unimplemented,
     .export_buffer = unimplemented,
+    // Virtual memory is not supported on XDNA. supports_virtual_memory
+    // returns false so callers short-circuit before reaching the rest of
+    // the VM vtable; the remaining slots are filled with UNIMPLEMENTED
+    // stubs to keep the vtable complete (NULL fn pointers would SEGV any
+    // caller that bypasses the supports check).
+    .supports_virtual_memory =
+        iree_hal_xrt_lite_allocator_supports_virtual_memory,
+    .virtual_memory_query_granularity = unimplemented,
+    .virtual_memory_reserve = unimplemented,
+    .virtual_memory_release = unimplemented,
+    .physical_memory_allocate = unimplemented,
+    .physical_memory_free = unimplemented,
+    .virtual_memory_map = unimplemented,
+    .virtual_memory_unmap = unimplemented,
+    .virtual_memory_protect = unimplemented,
+    .virtual_memory_advise = unimplemented,
 };
 }
