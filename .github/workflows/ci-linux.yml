@@ -337,6 +337,21 @@ jobs:
           python build_tools/ci/cpu_comparison/performance_summarizer.py \
             performance_npu4.log results_npu4.json
 
+      - name: XRT-LITE tests
+        run: |
+          DEVICE_TEST_DIR="$PWD/iree-install/device_tests"
+          # Run the standard iree_hal_cts_test_suite outputs only. The
+          # iree-amd-aie custom dispatch tests (xrt_lite_dispatch_test,
+          # xrt_lite_executable_cache_test) embed a baked-in npu1_4col
+          # executable that doesn't run correctly on Strix hardware, so they
+          # stay phoenix-only.
+          for t in $(ls $DEVICE_TEST_DIR); do
+            case "$t" in
+              xrt_lite_dispatch_test|xrt_lite_executable_cache_test) continue ;;
+            esac
+            $DEVICE_TEST_DIR/$t --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS
+          done
+
       # Only publish the performance results on main branch pushes.
       - name: Publish performance results
         if: github.event_name == 'push' && github.ref_name == 'main'

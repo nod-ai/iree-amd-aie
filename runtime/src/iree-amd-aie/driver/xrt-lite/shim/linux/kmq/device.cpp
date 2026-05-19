@@ -16,7 +16,6 @@
 #include "bo.h"
 #include "fence.h"
 #include "hwctx.h"
-#include "llvm/Support/ErrorHandling.h"
 #include "shim_debug.h"
 #include "xrt_mem.h"
 
@@ -322,7 +321,7 @@ std::string stringify_amdxdna_power_mode_type(
     case POWER_MODE_TURBO:
       return {"TURBO"};
     default:
-      llvm::report_fatal_error("unknown power mode");
+      shim_fatal("unknown power mode");
   }
 }
 

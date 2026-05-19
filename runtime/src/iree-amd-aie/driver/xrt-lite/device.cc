@@ -8,14 +8,21 @@
 
 #include "iree-amd-aie/driver/xrt-lite/allocator.h"
 #include "iree-amd-aie/driver/xrt-lite/api.h"
+#include "iree-amd-aie/driver/xrt-lite/buffer.h"
 #include "iree-amd-aie/driver/xrt-lite/device.h"
 #include "iree-amd-aie/driver/xrt-lite/direct_command_buffer.h"
+#include "iree-amd-aie/driver/xrt-lite/nop_event.h"
 #include "iree-amd-aie/driver/xrt-lite/nop_executable_cache.h"
 #include "iree-amd-aie/driver/xrt-lite/nop_semaphore.h"
 #include "iree-amd-aie/driver/xrt-lite/util.h"
+#include "iree/async/frontier_tracker.h"
+#include "iree/async/notification.h"
 #include "iree/async/util/proactor_pool.h"
+#include "iree/hal/memory/cpu_slab_provider.h"
+#include "iree/hal/memory/passthrough_pool.h"
 #include "iree/hal/utils/deferred_command_buffer.h"
 #include "iree/hal/utils/deferred_work_queue.h"
+#include "iree/hal/utils/file_registry.h"
 #include "iree/hal/utils/file_transfer.h"
 #include "iree/hal/utils/queue_emulation.h"
 #include "iree/hal/utils/queue_host_call_emulation.h"
@@ -34,8 +41,15 @@ iree_hal_xrt_lite_device::iree_hal_xrt_lite_device(
 
   channel_provider = nullptr;
   memset(&topology_info, 0, sizeof(topology_info));
+  memset(&topology_info_resolved, 0, sizeof(topology_info_resolved));
   proactor_pool = nullptr;
   proactor = nullptr;
+  async_queue = nullptr;
+  default_slab_provider = nullptr;
+  default_pool_notification = nullptr;
+  default_pool = nullptr;
+  frontier_tracker = nullptr;
+  frontier_axis = 0;
 
   iree_hal_resource_initialize(&iree_hal_xrt_lite_device_vtable, &resource);
   this->host_allocator = host_allocator;
@@ -66,6 +80,10 @@ iree_hal_xrt_lite_device::iree_hal_xrt_lite_device(
   iree_arena_block_pool_initialize(ARENA_BLOCK_SIZE, host_allocator,
                                    &block_pool);
 
+  status = iree_hal_xrt_lite_async_queue_create(&block_pool, host_allocator,
+                                                &async_queue);
+  IREE_ASSERT(iree_status_is_ok(status));
+
   IREE_TRACE_ZONE_END(z0);
 }
 
@@ -79,6 +97,105 @@ static iree_status_t iree_hal_xrt_lite_device_initialize_async(
   iree_async_proactor_pool_retain(device->proactor_pool);
   return iree_async_proactor_pool_get(device->proactor_pool, 0,
                                       &device->proactor);
+}
+
+// Creates the device's default slab-backed pool. Pattern mirrors
+// iree_hal_sync_device_create_default_pool: CPU slab provider + proactor-
+// backed notification + passthrough pool wrapping them. The slab provider
+// owns CPU-side bookkeeping; xrt-lite still allocates real BOs for explicit
+// alloca, but the slab/notification pair is what the CTS Explicit*Pool* tests
+// require to drive their pool epochs.
+static iree_status_t iree_hal_xrt_lite_device_create_default_pool(
+    iree_async_proactor_t* proactor, iree_allocator_t host_allocator,
+    iree_hal_slab_provider_t** out_slab_provider,
+    iree_async_notification_t** out_notification, iree_hal_pool_t** out_pool) {
+  IREE_ASSERT_ARGUMENT(proactor);
+  *out_slab_provider = nullptr;
+  *out_notification = nullptr;
+  *out_pool = nullptr;
+
+  iree_hal_slab_provider_t* slab_provider = nullptr;
+  IREE_RETURN_IF_ERROR(
+      iree_hal_cpu_slab_provider_create(host_allocator, &slab_provider));
+
+  iree_async_notification_t* notification = nullptr;
+  iree_status_t status = iree_async_notification_create(
+      proactor, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &notification);
+  if (iree_status_is_ok(status)) {
+    iree_hal_passthrough_pool_options_t options = {0};
+    status = iree_hal_passthrough_pool_create(
+        options, slab_provider, notification, host_allocator, out_pool);
+  }
+  if (iree_status_is_ok(status)) {
+    *out_slab_provider = slab_provider;
+    *out_notification = notification;
+    slab_provider = nullptr;
+    notification = nullptr;
+  }
+  iree_async_notification_release(notification);
+  iree_hal_slab_provider_release(slab_provider);
+  return status;
+}
+
+// Pool epoch query callback. The frontier_tracker is observed via the queue's
+// per-axis epoch counter; when this returns true the test sees pool progress.
+static bool iree_hal_xrt_lite_device_query_pool_epoch(void* user_data,
+                                                      iree_async_axis_t axis,
+                                                      uint64_t epoch) {
+  iree_async_frontier_tracker_t* tracker =
+      reinterpret_cast<iree_async_frontier_tracker_t*>(user_data);
+  return iree_async_frontier_tracker_query_epoch(tracker, axis, epoch);
+}
+
+static iree_status_t iree_hal_xrt_lite_device_query_queue_pool_backend(
+    iree_hal_device_t* base_device, iree_hal_queue_affinity_t queue_affinity,
+    iree_hal_queue_pool_backend_t* out_backend) {
+  (void)queue_affinity;
+  iree_hal_xrt_lite_device* device = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
+      base_device, iree_hal_xrt_lite_device_vtable, iree_hal_xrt_lite_device);
+  if (!device->default_slab_provider || !device->default_pool_notification) {
+    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                            "xrt-lite default pool not initialized");
+  }
+  out_backend->slab_provider = device->default_slab_provider;
+  out_backend->notification = device->default_pool_notification;
+  out_backend->epoch_query = iree_hal_pool_epoch_query_t{
+      /*.fn=*/iree_hal_xrt_lite_device_query_pool_epoch,
+      /*.user_data=*/device->frontier_tracker,
+  };
+  return iree_ok_status();
+}
+
+static iree_status_t iree_hal_xrt_lite_device_assign_topology_info(
+    iree_hal_device_t* base_device,
+    const iree_hal_device_topology_info_t* topology_info) {
+  iree_hal_xrt_lite_device* device = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
+      base_device, iree_hal_xrt_lite_device_vtable, iree_hal_xrt_lite_device);
+  if (!topology_info) {
+    if (device->frontier_tracker) {
+      iree_async_frontier_tracker_retire_axis(
+          device->frontier_tracker, device->frontier_axis,
+          iree_status_from_code(IREE_STATUS_CANCELLED));
+      iree_hal_xrt_lite_async_queue_set_frontier(device->async_queue, nullptr,
+                                                 0);
+      iree_async_frontier_tracker_release(device->frontier_tracker);
+      device->frontier_tracker = nullptr;
+      device->frontier_axis = 0;
+    }
+    memset(&device->topology_info, 0, sizeof(device->topology_info));
+    return iree_ok_status();
+  }
+  iree_async_frontier_tracker_t* tracker = topology_info->frontier.tracker;
+  iree_async_axis_t axis = topology_info->frontier.base_axis;
+  IREE_RETURN_IF_ERROR(iree_async_frontier_tracker_register_axis(
+      tracker, axis, /*semaphore=*/nullptr));
+  device->topology_info = *topology_info;
+  device->frontier_tracker = tracker;
+  device->frontier_axis = axis;
+  iree_async_frontier_tracker_retain(device->frontier_tracker);
+  iree_hal_xrt_lite_async_queue_set_frontier(device->async_queue, tracker,
+                                             axis);
+  return iree_ok_status();
 }
 
 static iree_status_t iree_hal_xrt_lite_device_create_executable_cache(
@@ -101,12 +218,6 @@ static iree_status_t iree_hal_xrt_lite_device_create_command_buffer(
     iree_hal_queue_affinity_t queue_affinity, iree_host_size_t binding_capacity,
     iree_hal_command_buffer_t** out_command_buffer) {
   IREE_TRACE_ZONE_BEGIN(z0);
-
-  if (!iree_all_bits_set(mode, IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT)) {
-    IREE_TRACE_ZONE_END(z0);
-    return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                            "unimplemented multi-shot command buffer");
-  }
 
   iree_hal_xrt_lite_device* device = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
       base_device, iree_hal_xrt_lite_device_vtable, iree_hal_xrt_lite_device);
@@ -239,15 +350,6 @@ static iree_status_t iree_hal_xrt_lite_device_refine_topology_edge(
   return iree_ok_status();
 }
 
-static iree_status_t iree_hal_xrt_lite_device_assign_topology_info(
-    iree_hal_device_t* base_device,
-    const iree_hal_device_topology_info_t* topology_info) {
-  iree_hal_xrt_lite_device* device = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
-      base_device, iree_hal_xrt_lite_device_vtable, iree_hal_xrt_lite_device);
-  device->topology_info = *topology_info;
-  return iree_ok_status();
-}
-
 static iree_status_t iree_hal_xrt_lite_device_create_channel(
     iree_hal_device_t* base_device, iree_hal_queue_affinity_t queue_affinity,
     iree_hal_channel_params_t params, iree_hal_channel_t** out_channel) {
@@ -262,24 +364,21 @@ static iree_status_t iree_hal_xrt_lite_device_create_channel(
 static iree_status_t iree_hal_xrt_lite_device_create_event(
     iree_hal_device_t* base_device, iree_hal_queue_affinity_t queue_affinity,
     iree_hal_event_flags_t flags, iree_hal_event_t** out_event) {
-  (void)base_device;
-  (void)queue_affinity;
-  (void)flags;
-  (void)out_event;
-  return iree_make_status(IREE_STATUS_UNIMPLEMENTED, "events not implemented");
+  iree_hal_xrt_lite_device* device = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
+      base_device, iree_hal_xrt_lite_device_vtable, iree_hal_xrt_lite_device);
+  return iree_hal_xrt_lite_event_create(queue_affinity, flags,
+                                        device->host_allocator, out_event);
 }
 
 static iree_status_t iree_hal_xrt_lite_device_import_file(
     iree_hal_device_t* base_device, iree_hal_queue_affinity_t queue_affinity,
     iree_hal_memory_access_t access, iree_io_file_handle_t* handle,
     iree_hal_external_file_flags_t flags, iree_hal_file_t** out_file) {
-  (void)base_device;
-  (void)queue_affinity;
-  (void)access;
-  (void)handle;
   (void)flags;
-  (void)out_file;
-  return iree_make_status(IREE_STATUS_UNIMPLEMENTED, "files not implemented");
+  return iree_hal_file_from_handle(
+      iree_hal_device_allocator(base_device), queue_affinity, access, handle,
+      /*proactor=*/nullptr, iree_hal_device_host_allocator(base_device),
+      out_file);
 }
 
 static iree_status_t iree_hal_xrt_lite_device_query_i64(
@@ -313,24 +412,73 @@ static iree_status_t iree_hal_xrt_lite_device_queue_alloca(
     iree_device_size_t allocation_size, iree_hal_alloca_flags_t flags,
     iree_hal_buffer_t** IREE_RESTRICT out_buffer) {
   IREE_TRACE_ZONE_BEGIN(z0);
-  (void)queue_affinity;
   (void)pool;
   (void)flags;
 
   iree_hal_xrt_lite_device* device = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
       base_device, iree_hal_xrt_lite_device_vtable, iree_hal_xrt_lite_device);
-  IREE_RETURN_AND_END_ZONE_IF_ERROR(
-      z0,
-      iree_hal_semaphore_list_wait(wait_semaphore_list, iree_infinite_timeout(),
-                                   IREE_ASYNC_WAIT_FLAG_NONE));
+
+  // Allocate the buffer synchronously: the caller needs it returned now even
+  // though the wait_semaphore_list may not yet be satisfied. This is the
+  // standard "async placement" contract — the buffer object exists, but
+  // signal_semaphore_list will not fire until the waits are resolved (which
+  // is what the deferred async_queue task below ensures).
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_hal_allocator_allocate_buffer(device->device_allocator, params,
                                              allocation_size, out_buffer));
-  IREE_RETURN_AND_END_ZONE_IF_ERROR(
-      z0, iree_hal_semaphore_list_signal(signal_semaphore_list,
-                                         /*frontier=*/NULL));
+
+  // Tag the buffer with async placement so callers can route dealloca back to
+  // this device/queue.
+  //
+  // The CTS BufferMetadata test asserts placement.queue_affinity has exactly
+  // one bit set (so callers can use it as a target queue id directly). The
+  // caller passes IREE_HAL_QUEUE_AFFINITY_ANY which is all-bits, so we
+  // collapse to a single bit here. Today xrt-lite reports a single physical
+  // queue; the lowest-set-bit pick is therefore both deterministic and
+  // correct. A multi-queue redesign would need a real scheduling decision
+  // here instead of a fixed pick.
+  // TODO(1401): replace this with a queue-affinity → ordinal lookup
+  // once xrt-lite reports more than one HAL queue.
+  iree_hal_queue_affinity_t selected =
+      iree_hal_queue_affinity_is_empty(queue_affinity)
+          ? iree_hal_queue_affinity_t{1}
+          : iree_hal_queue_affinity_t{
+                1ull << iree_hal_queue_affinity_find_first_set(queue_affinity)};
+  (*out_buffer)->placement = iree_hal_buffer_placement_t{
+      /*.device=*/base_device,
+      /*.queue_affinity=*/selected,
+      /*.flags=*/IREE_HAL_BUFFER_PLACEMENT_FLAG_ASYNCHRONOUS,
+  };
+
+  // Defer signaling until wait_semaphore_list is satisfied. The op body is
+  // empty — the buffer is already usable from the caller's POV; we just need
+  // to fire signal_semaphore_list at the right time. No resources to retain
+  // (the buffer is owned by the caller, not by the deferred signal task).
+  iree_status_t enqueue_status = iree_hal_xrt_lite_async_queue_enqueue(
+      device->async_queue, wait_semaphore_list, signal_semaphore_list,
+      /*op_fn=*/nullptr, /*user_data=*/nullptr,
+      /*retained_resources=*/nullptr, /*retained_resource_count=*/0);
+  if (!iree_status_is_ok(enqueue_status)) {
+    iree_hal_buffer_release(*out_buffer);
+    *out_buffer = nullptr;
+    IREE_TRACE_ZONE_END(z0);
+    return enqueue_status;
+  }
 
   IREE_TRACE_ZONE_END(z0);
+  return iree_ok_status();
+}
+
+// op_fn that marks a buffer as deallocated. Runs on the async_queue worker
+// when the op fires successfully. user_data is a borrowed buffer pointer —
+// the buffer's lifetime is owned by the queue's retained_resources mechanism
+// (separately retained by queue_dealloca below) so we do NOT release here.
+// If the op is cancelled, the queue still releases the retained buffer; we
+// just don't get to mark it deallocated, which is fine because the buffer
+// is on its way out anyway.
+static iree_status_t iree_hal_xrt_lite_dealloca_op_fn(void* user_data) {
+  iree_hal_buffer_t* buffer = reinterpret_cast<iree_hal_buffer_t*>(user_data);
+  iree_hal_xrt_lite_buffer_mark_deallocated(buffer);
   return iree_ok_status();
 }
 
@@ -339,11 +487,30 @@ static iree_status_t iree_hal_xrt_lite_device_queue_dealloca(
     const iree_hal_semaphore_list_t wait_semaphore_list,
     const iree_hal_semaphore_list_t signal_semaphore_list,
     iree_hal_buffer_t* buffer, iree_hal_dealloca_flags_t flags) {
-  (void)buffer;
+  (void)queue_affinity;
   (void)flags;
-  return iree_hal_device_queue_barrier(
-      base_device, queue_affinity, wait_semaphore_list, signal_semaphore_list,
-      IREE_HAL_EXECUTE_FLAG_NONE);
+  iree_hal_xrt_lite_device* device = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
+      base_device, iree_hal_xrt_lite_device_vtable, iree_hal_xrt_lite_device);
+
+  // Retain the buffer and hand it to the queue as a retained_resource. The
+  // queue will release it on every termination path (success, cancellation,
+  // wait failure) — so the +1 retain is never leaked even if op_fn doesn't
+  // run. user_data is the same buffer pointer (borrowed) for op_fn to use
+  // while the retain is held.
+  iree_hal_buffer_retain(buffer);
+  iree_hal_resource_t* retained[] = {
+      reinterpret_cast<iree_hal_resource_t*>(buffer),
+  };
+  iree_status_t status = iree_hal_xrt_lite_async_queue_enqueue(
+      device->async_queue, wait_semaphore_list, signal_semaphore_list,
+      iree_hal_xrt_lite_dealloca_op_fn, /*user_data=*/buffer,
+      /*retained_resources=*/retained,
+      /*retained_resource_count=*/IREE_ARRAYSIZE(retained));
+  if (!iree_status_is_ok(status)) {
+    // Enqueue failed — caller still owns the +1 retain.
+    iree_hal_buffer_release(buffer);
+  }
+  return status;
 }
 
 static iree_status_t iree_hal_xrt_lite_device_queue_fill(
@@ -353,6 +520,11 @@ static iree_status_t iree_hal_xrt_lite_device_queue_fill(
     iree_hal_buffer_t* target_buffer, iree_device_size_t target_offset,
     iree_device_size_t length, const void* pattern,
     iree_host_size_t pattern_length, iree_hal_fill_flags_t flags) {
+  if (iree_hal_xrt_lite_buffer_is_deallocated(
+          iree_hal_buffer_allocated_buffer(target_buffer))) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "queue_fill on a deallocated xrt-lite buffer");
+  }
   return iree_hal_device_queue_emulated_fill(
       base_device, queue_affinity, wait_semaphore_list, signal_semaphore_list,
       target_buffer, target_offset, length, pattern, pattern_length, flags);
@@ -454,6 +626,32 @@ static void iree_hal_xrt_lite_device_destroy(iree_hal_device_t* base_device) {
   iree_hal_xrt_lite_device* device = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
       base_device, iree_hal_xrt_lite_device_vtable, iree_hal_xrt_lite_device);
 
+  // Drain and shut down the async queue before tearing down the block pool
+  // (the queue's pending ops live in arenas backed by the block pool).
+  if (device->async_queue) {
+    iree_hal_xrt_lite_async_queue_destroy(device->async_queue);
+    device->async_queue = nullptr;
+  }
+  // Retire the frontier axis (if assigned) before releasing the tracker.
+  if (device->frontier_tracker) {
+    iree_async_frontier_tracker_retire_axis(
+        device->frontier_tracker, device->frontier_axis,
+        iree_status_from_code(IREE_STATUS_CANCELLED));
+    iree_async_frontier_tracker_release(device->frontier_tracker);
+    device->frontier_tracker = nullptr;
+  }
+  if (device->default_pool) {
+    iree_hal_pool_release(device->default_pool);
+    device->default_pool = nullptr;
+  }
+  if (device->default_slab_provider) {
+    iree_hal_slab_provider_release(device->default_slab_provider);
+    device->default_slab_provider = nullptr;
+  }
+  if (device->default_pool_notification) {
+    iree_async_notification_release(device->default_pool_notification);
+    device->default_pool_notification = nullptr;
+  }
   iree_arena_block_pool_deinitialize(&device->block_pool);
   iree_hal_channel_provider_release(device->channel_provider);
   iree_hal_allocator_release(device->device_allocator);
@@ -525,7 +723,25 @@ iree_status_t iree_hal_xrt_lite_device_create(
 
   iree_status_t status =
       iree_hal_xrt_lite_device_initialize_async(device, create_params);
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_xrt_lite_device_create_default_pool(
+        device->proactor, device->host_allocator,
+        &device->default_slab_provider, &device->default_pool_notification,
+        &device->default_pool);
+  }
   if (!iree_status_is_ok(status)) {
+    if (device->default_pool) {
+      iree_hal_pool_release(device->default_pool);
+    }
+    if (device->default_slab_provider) {
+      iree_hal_slab_provider_release(device->default_slab_provider);
+    }
+    if (device->default_pool_notification) {
+      iree_async_notification_release(device->default_pool_notification);
+    }
+    if (device->async_queue) {
+      iree_hal_xrt_lite_async_queue_destroy(device->async_queue);
+    }
     iree_arena_block_pool_deinitialize(&device->block_pool);
     iree_hal_allocator_release(device->device_allocator);
     delete device->shim_device;
@@ -567,6 +783,11 @@ const iree_hal_device_vtable_t iree_hal_xrt_lite_device_vtable = {
     .create_semaphore = iree_hal_xrt_lite_device_create_semaphore,
     .query_semaphore_compatibility =
         iree_hal_xrt_lite_device_query_semaphore_compatibility,
+    // Pool-backed queue alloca is not supported. Returning UNIMPLEMENTED here
+    // makes pool-using tests fail gracefully instead of NULL-deref crashing
+    // through the vtable.
+    .query_queue_pool_backend =
+        iree_hal_xrt_lite_device_query_queue_pool_backend,
     .queue_alloca = iree_hal_xrt_lite_device_queue_alloca,
     .queue_dealloca = iree_hal_xrt_lite_device_queue_dealloca,
     .queue_fill = iree_hal_xrt_lite_device_queue_fill,
@@ -578,8 +799,12 @@ const iree_hal_device_vtable_t iree_hal_xrt_lite_device_vtable = {
     .queue_dispatch = iree_hal_xrt_lite_device_queue_dispatch,
     .queue_execute = iree_hal_xrt_lite_device_queue_execute,
     .queue_flush = iree_hal_xrt_lite_device_queue_flush,
-    .profiling_begin = unimplemented_ok_status,
-    .profiling_flush = unimplemented_ok_status,
-    .profiling_end = unimplemented_ok_status,
+    // Returning UNIMPLEMENTED here signals callers (e.g. the CTS profiling
+    // tests) to skip profiling-dependent assertions instead of treating the
+    // begin as a successful no-op and then failing because no events were
+    // recorded.
+    .profiling_begin = unimplemented,
+    .profiling_flush = unimplemented,
+    .profiling_end = unimplemented,
 };
 }

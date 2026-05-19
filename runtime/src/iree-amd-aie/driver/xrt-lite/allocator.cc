@@ -200,5 +200,19 @@ const iree_hal_allocator_vtable_t iree_hal_xrt_lite_allocator_vtable = {
         iree_hal_xrt_lite_allocator_query_buffer_compatibility,
     .allocate_buffer = iree_hal_xrt_lite_allocator_allocate_buffer,
     .deallocate_buffer = iree_hal_xrt_lite_allocator_deallocate_buffer,
+    // Stubs that return UNIMPLEMENTED. The XDNA kernel ABI has no
+    // wrap-host-pointer / userptr ioctl (no equivalent of
+    // hipHostRegister/cuMemHostRegister), so a real zero-copy import is not
+    // possible without kernel changes. Today the AllocatorTest.Import*
+    // CTS tests SKIP at compatibility-check time because
+    // query_buffer_compatibility above never sets IMPORTABLE; callers that
+    // do reach iree_hal_memory_file_wrap see UNIMPLEMENTED here and fall
+    // back to a HOST_LOCAL | HOST_COHERENT heap buffer — fine for transfer
+    // source/target use but not DEVICE_VISIBLE so it cannot be a dispatch
+    // binding. A real implementation would have to allocate a SHMEM BO and
+    // memcpy host data into it (gives a dispatch-capable buffer at the cost
+    // of one copy), or add a kernel userptr path (zero-copy, kernel work).
+    .import_buffer = unimplemented,
+    .export_buffer = unimplemented,
 };
 }

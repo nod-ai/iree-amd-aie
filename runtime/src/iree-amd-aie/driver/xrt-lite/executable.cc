@@ -14,7 +14,6 @@
 #include "iree-amd-aie/schemas/pdi_executable_def_verifier.h"
 #include "iree/base/api.h"
 #include "iree/base/tooling/flags.h"
-#include "llvm/Support/raw_ostream.h"
 
 namespace {
 extern const iree_hal_executable_vtable_t iree_hal_xrt_lite_executable_vtable;

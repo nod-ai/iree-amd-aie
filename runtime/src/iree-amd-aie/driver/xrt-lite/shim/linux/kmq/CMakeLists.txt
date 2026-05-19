@@ -27,7 +27,6 @@ iree_cc_library(
     shim_debug.h
   DEPS
     uuid
-    LLVMSupport
   DEFINES
     $<$<CONFIG:Debug>:SHIM_XDNA_DEBUG>
   PUBLIC

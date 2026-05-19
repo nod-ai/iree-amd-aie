@@ -8,6 +8,7 @@
 #define IREE_AMD_AIE_DRIVER_XRT_LITE_XRT_LITE_DEVICE_H_
 
 #include "iree-amd-aie/driver/xrt-lite/api.h"
+#include "iree-amd-aie/driver/xrt-lite/async_queue.h"
 #include "iree-amd-aie/driver/xrt-lite/shim/linux/kmq/device.h"
 #include "iree/base/internal/arena.h"
 #include "iree/hal/api.h"
@@ -33,6 +34,25 @@ struct iree_hal_xrt_lite_device {
   // block pool used for command buffer allocations, uses a larger block size
   // since command buffers can contain inlined data
   iree_arena_block_pool_t block_pool;
+
+  // Per-device async work queue. Defers HAL queue ops until their wait
+  // semaphores are satisfied, then runs them on a single worker thread.
+  iree_hal_xrt_lite_async_queue_t* async_queue;
+
+  // Default pool backend exposed via query_queue_pool_backend; required so
+  // CTS pool tests can create explicit pools (passthrough/TLSF/fixed-block)
+  // that share the device's slab provider + completion notification.
+  iree_hal_slab_provider_t* default_slab_provider;
+  iree_async_notification_t* default_pool_notification;
+  iree_hal_pool_t* default_pool;
+
+  // Frontier tracker borrowed from the runtime topology_info during
+  // assign_topology_info. Used to advance the queue epoch on each successful
+  // signal so pool epoch_query results stay coherent.
+  iree_hal_device_topology_info_t topology_info_resolved;
+  iree_async_frontier_tracker_t* frontier_tracker;
+  iree_async_axis_t frontier_axis;
+
   shim_xdna::device* shim_device;
   // should come last; see the definition of total_size below in
   // iree_hal_xrt_lite_device_create
