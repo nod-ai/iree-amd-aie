@@ -8,6 +8,8 @@
 #include <unistd.h>
 #include <x86intrin.h>
 
+#include <unordered_set>
+
 #include "shim_debug.h"
 #include "xrt_mem.h"
 
@@ -459,14 +461,26 @@ void bo::bind_at(size_t pos, const bo &boh, size_t offset, size_t size) {
 uint32_t bo::get_arg_bo_handles(uint32_t *handles, size_t num) const {
   std::lock_guard<std::mutex> lg(m_args_map_lock);
 
-  auto sz = m_args_map.size();
-  if (sz > num)
-    shim_err(E2BIG, "There are %ld BO args, provided buffer can hold only %ld",
-             sz, num);
+  // m_args_map is keyed by patch position, so the same BO handle can appear at
+  // multiple positions when a command references one buffer more than once.
+  // These handles are passed to DRM_IOCTL_AMDXDNA_EXEC_CMD, where the kernel
+  // locks them via drm_gem_lock_reservations(), which rejects a duplicate GEM
+  // object in the list with -EALREADY (causing the shim to abort). Arg BOs are
+  // only used kernel-side for reservation locking, fence tracking and HMM
+  // residency, all idempotent per BO, so emit each distinct handle once.
+  std::unordered_set<uint32_t> seen;
+  uint32_t count = 0;
+  for (auto &m : m_args_map) {
+    if (!seen.insert(m.second).second) continue;
+    if (count >= num)
+      shim_err(E2BIG,
+               "There are more than %ld distinct BO args, provided buffer can "
+               "hold only %ld",
+               num, num);
+    handles[count++] = m.second;
+  }
 
-  for (auto &m : m_args_map) *(handles++) = m.second;
-
-  return sz;
+  return count;
 }
 
 }  // namespace shim_xdna

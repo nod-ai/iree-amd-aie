@@ -167,9 +167,20 @@ def find_npu_device():
 
 def read_vbnv(npu_device_path):
     f = open(npu_device_path / "vbnv")
-    vbnv = f.read()
-    assert vbnv.startswith("NPU ")
-    return vbnv.split(" ")[-1].strip()
+    vbnv = f.read().strip()
+    # Two known vbnv formats across driver versions:
+    #   "NPU <Arch>"      e.g. "NPU Phoenix", "NPU Strix"
+    #   "RyzenAI-npu<N>"  e.g. "RyzenAI-npu1", "RyzenAI-npu4"
+    # Normalize both to the arch name get_core_n_cols branches on.
+    if vbnv.startswith("NPU "):
+        return vbnv.split(" ")[-1].strip()
+    if vbnv.startswith("RyzenAI-npu"):
+        gen = vbnv.rsplit("npu", 1)[-1].strip()
+        # Map by NPU generation to the column-handling branch: npu1 uses the
+        # Phoenix path (one column reserved); later generations use the Strix
+        # path (all columns usable).
+        return "Phoenix" if gen == "1" else "Strix"
+    raise RuntimeError(f"unrecognized vbnv format: {vbnv!r}")
 
 
 def get_core_n_cols(drv_fd, npu_device):
