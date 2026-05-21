@@ -1002,38 +1002,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target) {
   });
 
   target.addDynamicallyLegalOp<vector::ReductionOp>(
-      [=](vector::ReductionOp op) {
-        if (auto kind = op.getKind(); kind != vector::CombiningKind::ADD &&
-                                      kind != vector::CombiningKind::MINSI &&
-                                      kind != vector::CombiningKind::MINUI &&
-                                      kind != vector::CombiningKind::MINIMUMF &&
-                                      kind != vector::CombiningKind::MAXSI &&
-                                      kind != vector::CombiningKind::MAXUI &&
-                                      kind != vector::CombiningKind::MAXIMUMF)
-          return true;
-
-        auto vType = dyn_cast<VectorType>(op.getVector().getType());
-        if (!vType) return true;
-
-        llvm::SmallSet<std::pair<unsigned, signed>, 16> laneSizeElWidthPairSet;
-        laneSizeElWidthPairSet.insert({64, 8});
-        laneSizeElWidthPairSet.insert({32, 16});
-        laneSizeElWidthPairSet.insert({32, 32});
-        laneSizeElWidthPairSet.insert({16, 32});
-
-        Type scalarType = vType.getElementType();
-        unsigned elWidth = scalarType.getIntOrFloatBitWidth();
-        unsigned laneSize = aievec::getVectorLaneSize(vType);
-
-        if (isa<IntegerType>(scalarType) &&
-            !laneSizeElWidthPairSet.count(std::make_pair(laneSize, elWidth)))
-          return true;
-
-        if (isa<FloatType>(scalarType) && laneSize != 16 && laneSize != 32)
-          return true;
-
-        return false;
-      });
+      [=](vector::ReductionOp op) { return true; });
 
   target.addIllegalOp<vector::ContractionOp, vector::TransposeOp>();
 }
