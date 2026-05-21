@@ -74,6 +74,7 @@ iree_lit_test_suite(
     "lowering_strategy_objectfifo_npu4.mlir"
     "lowering_strategy_softmax.mlir"
     "map_forall_to_cores.mlir"
+    "multi_reduction_to_llvm_intrinsics.mlir"
     "multi_reduction_to_reduction.mlir"
     "none_access_to_temporary_buffer.mlir"
     "normalize_loop_bounds.mlir"
