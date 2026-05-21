@@ -131,7 +131,7 @@ def generate_and_write_input(bin_fn, nb_elements, element_type, input_number, se
 
     # Random integer values in range [lower_bound, upper_bound)
     lower_bound = 0
-    upper_bound = 10
+    upper_bound = 2
 
     rng = get_generator(seed)
 
