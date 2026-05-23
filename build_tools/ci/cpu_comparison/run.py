@@ -49,6 +49,9 @@ class TestParams(ABC):
     n_reconfigure_runs: int = 1
     n_pdi_loads: int = 1
     enable_ctrlpkt: bool = True
+    # Submit each dispatch's commands as a single ERT_CMD_CHAIN (xrt-lite HAL,
+    # via --xrt_lite_cmd_chain=1) instead of per-command issue/wait.
+    use_cmd_chain: bool = False
     stack_size: int = 1024
     rtol: float = 1e-6
     atol: float = 1e-6
@@ -212,6 +215,7 @@ class BaseTest(ABC):
             atol=self.atol,
             preset_inputs=self.preset_inputs,
             preset_output=self.preset_output,
+            use_cmd_chain=self.use_cmd_chain,
         )
         return True
 
@@ -993,7 +997,9 @@ def generate_aie_vmfb(
     return aie_vmfb
 
 
-def generate_aie_output(config, aie_vmfb, input_args, function_name, name, output_type):
+def generate_aie_output(
+    config, aie_vmfb, input_args, function_name, name, output_type, use_cmd_chain=False
+):
     """
     Run a compiled AIE module (aie_vmfb), returning a numpy array of the output.
     """
@@ -1013,6 +1019,9 @@ def generate_aie_output(config, aie_vmfb, input_args, function_name, name, outpu
         run_args += [f"--xrt_lite_n_core_rows={config.xrt_lite_n_core_rows}"]
     if config.xrt_lite_n_core_cols is not None:
         run_args += [f"--xrt_lite_n_core_cols={config.xrt_lite_n_core_cols}"]
+    if use_cmd_chain:
+        # Batch the dispatch's commands into a single ERT_CMD_CHAIN (xrt-lite).
+        run_args += ["--xrt_lite_cmd_chain=1"]
 
     if config.reset_npu_between_runs:
         shell_out(config.reset_npu_script, verbose=config.verbose)
@@ -1390,6 +1399,7 @@ def aie_vs_baseline(
     atol,
     n_repeats,
     output_type,
+    use_cmd_chain=False,
 ):
     """
     Arguments to the function are:
@@ -1453,6 +1463,7 @@ def aie_vs_baseline(
             function_name,
             name,
             output_type,
+            use_cmd_chain=use_cmd_chain,
         )
 
         summary_string = compare(baseline_value, aie_output, rtol, atol)
@@ -1582,6 +1593,7 @@ def aie_vs_llvm_cpu(
     n_repeats=1,
     preset_inputs={},
     preset_output=None,
+    use_cmd_chain=False,
 ):
     """
     Compare the output obtained when compiling and running on IREE's
@@ -1628,6 +1640,7 @@ def aie_vs_llvm_cpu(
         atol,
         n_repeats,
         output_type,
+        use_cmd_chain=use_cmd_chain,
     )
 
 
@@ -2450,6 +2463,33 @@ class Tests:
                         ),
                     )
                 )
+
+        # ERT_CMD_CHAIN coverage (xrt-lite): the same multi-kernel + control-packet
+        # designs, submitted as one ERT_CMD_CHAIN per dispatch (reconfig + exec
+        # batched) instead of per-command issue/wait. Verifies chaining produces
+        # results identical to the default path (compared against llvm-cpu). npu4
+        # only, where the ERT_CMD_CHAIN path is supported.
+        for file_base_name, func_name in [
+            ["two_matmul_switching", "matmul_small"],
+            ["three_matmuls", "three_$mm$"],
+        ]:
+            self.register(
+                MultipleDispatches(
+                    file_base_name,
+                    func_name,
+                    test_params=TestParams(
+                        aie_compilation_flags=[
+                            "--iree-amdaie-num-rows=1",
+                            "--iree-amdaie-num-cols=1",
+                        ],
+                        run_on_target=["npu4"],
+                        name_suffix="OneCore_npu4_cmd_chain",
+                        enable_ctrlpkt=True,
+                        use_cmd_chain=True,
+                        n_repeats=2,
+                    ),
+                )
+            )
 
         # Convolution 2D tests:
         conv_2d_map = {

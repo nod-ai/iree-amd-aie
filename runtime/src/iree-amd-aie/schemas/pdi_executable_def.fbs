@@ -79,6 +79,20 @@ table ExecutableDef {
   //   - The third dimension contains a uint32 array with control packet data required for a single reconfiguration.
   reconf_data_runlists: [UI32Array2dDef];
 
+  // Host patch table for `asm_instr_runlists`, used by the xrt-lite HAL's
+  // ERT_CMD_CHAIN submission path (which cannot rely on firmware-side address
+  // patching). Parallel to `asm_instr_runlists` and indexed the same way (via
+  // `asm_instr_runlist_indices`): `patch_runlists[i]` holds the patches for
+  // `asm_instr_runlists[i]`, with one inner array per run.
+  //
+  // Each inner array is a flat list of (offset, arg_idx, arg_plus) triples (so
+  // its length is a multiple of 3). For each triple the HAL writes the 48-bit
+  // shim-DMA address `args[arg_idx] + arg_plus + aperture` into the
+  // buffer-descriptor address words located at byte `offset` within the run's
+  // control code. This keeps all XAie-transaction-format knowledge in the
+  // compiler; the HAL applies the table without parsing the instruction stream.
+  patch_runlists: [UI32Array2dDef];
+
   source_locations:[FileLineLocDef];
 }
 

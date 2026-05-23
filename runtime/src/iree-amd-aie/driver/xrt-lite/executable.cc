@@ -355,6 +355,14 @@ iree_status_t iree_hal_xrt_lite_native_executable_create(
   iree_amd_aie_hal_xrt_lite_UI32Array2dDef_vec_t reconf_data_runlists_vec =
       iree_amd_aie_hal_xrt_lite_ExecutableDef_reconf_data_runlists_get(
           executable_def);
+  // Host patch table, parallel to `asm_instr_runlists` (xrt-lite cmd-chain
+  // path). Absent on executables produced before this field existed.
+  iree_amd_aie_hal_xrt_lite_UI32Array2dDef_vec_t patch_runlists_vec =
+      iree_amd_aie_hal_xrt_lite_ExecutableDef_patch_runlists_is_present(
+          executable_def)
+          ? iree_amd_aie_hal_xrt_lite_ExecutableDef_patch_runlists_get(
+                executable_def)
+          : nullptr;
   iree_host_size_t entry_point_count =
       flatbuffers_string_vec_len(entry_points_vec);
 
@@ -375,6 +383,11 @@ iree_status_t iree_hal_xrt_lite_native_executable_create(
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_allocator_malloc(host_allocator, total_size,
                                 reinterpret_cast<void**>(&executable)));
+  // The struct holds non-trivial members (kernel_params std::vectors, the
+  // context shared_ptr); placement-new it so their default constructors run
+  // before any assignment. Paired with the explicit destructor call in
+  // iree_hal_xrt_lite_native_executable_destroy.
+  new (executable) iree_hal_xrt_lite_executable();
   IREE_TRACE(char* string_table_buffer = reinterpret_cast<char*>(
                  reinterpret_cast<char*>(executable) + sizeof(*executable) +
                  entry_point_count * sizeof(executable->entry_points[0])));
@@ -416,6 +429,21 @@ iree_status_t iree_hal_xrt_lite_native_executable_create(
     IREE_RETURN_AND_END_ZONE_IF_ERROR(
         z0, iree_amd_aie_hal_xrt_lite_executable_parse_UI32Array2dDef(
                 asm_inst_runlist_def, params->asm_inst_runlist));
+
+    // Get the host patch table for the current entry point (parallel to and
+    // indexed the same as `asm_instr_runlists`). Used by the cmd-chain path.
+    if (patch_runlists_vec &&
+        asm_instr_runlist_index <
+            static_cast<int32_t>(
+                iree_amd_aie_hal_xrt_lite_UI32Array2dDef_vec_len(
+                    patch_runlists_vec))) {
+      iree_amd_aie_hal_xrt_lite_UI32Array2dDef_table_t patch_runlist_def =
+          iree_amd_aie_hal_xrt_lite_UI32Array2dDef_vec_at(
+              patch_runlists_vec, asm_instr_runlist_index);
+      IREE_RETURN_AND_END_ZONE_IF_ERROR(
+          z0, iree_amd_aie_hal_xrt_lite_executable_parse_UI32Array2dDef(
+                  patch_runlist_def, params->patch_runlist));
+    }
 
     // Get the reconfiguration data runlist for the current entry point, and
     // store it in the kernel parameters as a 2D std::vector.
@@ -473,6 +501,11 @@ static void iree_hal_xrt_lite_native_executable_destroy(
                                             iree_hal_xrt_lite_executable_vtable,
                                             iree_hal_xrt_lite_executable);
   iree_allocator_t host_allocator = executable->host_allocator;
+  // Pairs with the placement-new in iree_hal_xrt_lite_native_executable_create:
+  // run the destructor so non-trivial members (kernel_params std::vectors, the
+  // context shared_ptr) release their allocations / drop refcounts before the
+  // backing storage is freed.
+  executable->~iree_hal_xrt_lite_executable();
   iree_allocator_free(host_allocator, executable);
 
   IREE_TRACE_ZONE_END(z0);

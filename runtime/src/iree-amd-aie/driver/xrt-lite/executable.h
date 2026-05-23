@@ -8,6 +8,9 @@
 #define IREE_AMD_AIE_DRIVER_XRT_LITE_NATIVE_EXECUTABLE_H_
 
 #include <cstdint>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "flatbuffers_common_reader.h"
 #include "iree-amd-aie/driver/xrt-lite/shim/linux/kmq/bo.h"
@@ -21,6 +24,11 @@ struct iree_hal_xrt_lite_kernel_params {
   std::vector<uint8_t> pdi;
   std::vector<std::vector<uint32_t>> asm_inst_runlist;
   std::vector<std::vector<uint32_t>> reconf_data_runlist;
+  // Host patch table parallel to `asm_inst_runlist`: each inner vector is a
+  // flat list of (offset, arg_idx, arg_plus) triples for the corresponding
+  // control code, applied by the ERT_CMD_CHAIN path (see
+  // direct_command_buffer.cc).
+  std::vector<std::vector<uint32_t>> patch_runlist;
   std::string kernel_name;
   uint32_t n_kernel_runs{1};
   uint32_t n_reconfigure_runs{1};
@@ -36,7 +44,17 @@ struct iree_hal_xrt_lite_executable {
   iree_allocator_t host_allocator;
   iree_host_size_t entry_point_count;
   iree_hal_xrt_lite_kernel_params entry_points[16];
-  std::unique_ptr<shim_xdna::hw_ctx> context;
+  // The hw_ctx this executable's entry points dispatch on. shared_ptr because
+  // ownership is split by lifetime model:
+  //  - non-control-packet: a fresh context per dispatch (cores run once),
+  //    held solely by this executable (refcount 1); the previous one drops
+  //    when overwritten.
+  //  - control-packet: the same context is shared with the device's PDI
+  //    cache, and with every other executable whose bootstrap PDI is byte-
+  //    identical (refcount >= 2). Resolved by the PDI-carrying entry point
+  //    (entry 0); empty-PDI entry points reuse it.
+  // Both cases use one field and one accessor (`context.get()`).
+  std::shared_ptr<shim_xdna::hw_ctx> context;
 };
 
 // `out_executable` must be released by the caller (see

@@ -236,6 +236,11 @@ jobs:
         run: |
           DEVICE_TEST_DIR="$PWD/iree-install/device_tests"
           for t in $(ls $DEVICE_TEST_DIR); do
+            # xexec_chain_test embeds an npu4-compiled control-packet matmul
+            # (cmd_chain is firmware-gated to npu4); skip on phoenix.
+            case "$t" in
+              xexec_chain_test) continue ;;
+            esac
             $DEVICE_TEST_DIR/$t --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS
           done
 

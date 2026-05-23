@@ -6,11 +6,96 @@
 
 #include "AMDAIETransactionBuilder.h"
 
+#include <cstring>
+
 #include "AMDAIEUtils.h"
+#include "llvm/Support/ErrorHandling.h"
 
 #define DEBUG_TYPE "iree-amdaie-transaction-builder"
 
 namespace mlir::iree_compiler::AMDAIE {
+
+std::vector<uint32_t> deriveHostPatchTableFromTransaction(
+    ArrayRef<uint32_t> txn) {
+  // Transaction opcodes (XAie_TxnOpcode) and the field layouts below follow
+  // aie-rt's serialized header structs (XAie_TxnHeader, XAie_Write32Hdr,
+  // XAie_BlockWrite32Hdr, XAie_MaskWrite32Hdr, XAie_MaskPoll32Hdr,
+  // XAie_CustomOpHdr) and XRT's patch_op_t, matching what this file's
+  // `appendAddressPatch` / aie-rt emit.
+  enum : uint8_t {
+    kWrite32 = 0,
+    kBlockWrite = 1,
+    kMaskWrite = 3,
+    kMaskPoll = 4,
+    kCustomOpBase = 128,
+    kDdrPatch =
+        static_cast<uint8_t>(XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_DDR_PATCH),
+  };
+  std::vector<uint32_t> table;
+  const uint8_t *b = reinterpret_cast<const uint8_t *>(txn.data());
+  size_t total = txn.size() * sizeof(uint32_t);
+  if (total < 16) return table;
+  auto rd = [&](size_t off) -> uint32_t {
+    uint32_t v;
+    std::memcpy(&v, b + off, sizeof(v));
+    return v;
+  };
+  uint32_t numOps = rd(8);  // XAie_TxnHeader.NumOps
+  size_t p = 16;            // past the 16-byte header
+  struct BlockWrite {
+    uint32_t reg;
+    uint32_t bytes;
+    size_t payloadOff;
+  };
+  SmallVector<BlockWrite> bws;
+  for (uint32_t i = 0; i < numOps && p + 8 <= total; i++) {
+    uint8_t op = b[p];
+    uint32_t sz;
+    if (op == kWrite32) {
+      sz = rd(p + 20);
+    } else if (op == kBlockWrite) {
+      sz = rd(p + 12);
+    } else if (op == kMaskWrite || op == kMaskPoll) {
+      sz = rd(p + 24);
+    } else if (op >= kCustomOpBase) {
+      sz = rd(p + 4);  // custom op (TCT, DDR_PATCH, ...)
+    } else {
+      sz = 4;
+    }
+    if (sz < 4 || p + sz > total) break;
+    if (op == kBlockWrite && sz >= 16) {
+      bws.push_back({rd(p + 8), sz - 16, p + 16});
+    } else if (op == kDdrPatch && sz >= 44) {
+      uint32_t regAddr = rd(p + 24), argIdx = rd(p + 32), argPlus = rd(p + 40);
+      uint32_t bdBase = regAddr & ~0xFu;
+      bool matched = false;
+      for (const BlockWrite &bw : bws) {
+        if (bdBase >= bw.reg && bdBase < bw.reg + bw.bytes) {
+          table.push_back(
+              static_cast<uint32_t>(bw.payloadOff + (bdBase - bw.reg)));
+          table.push_back(argIdx);
+          table.push_back(argPlus);
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) {
+        // A DDR_PATCH with no covering BLOCKWRITE means the transaction builder
+        // emitted an address patch for a BD that nothing programs — silently
+        // dropping it produces a runtime where that BD's shim-DMA address stays
+        // zero (output buffer reads as zeros). That's a compiler bug; fail
+        // loudly here rather than burying it in inscrutable runtime behavior.
+        llvm::report_fatal_error(
+            "DDR_PATCH op has no covering BLOCKWRITE in the transaction "
+            "stream; the transaction builder emitted an address patch for a "
+            "BD that no BLOCKWRITE programs (this would silently produce a "
+            "zero shim-DMA address at runtime)");
+      }
+    }
+    p += sz;
+  }
+  return table;
+}
 
 void TransactionBuilder::clearAndInitialize() {
   instructions.clear();

@@ -117,3 +117,69 @@ iree_cc_test(
 
 target_include_directories(iree-amd-aie_driver_xrt-lite_cts_xrt_lite_executable_cache_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 target_include_directories(iree-amd-aie_driver_xrt-lite_cts_xrt_lite_dispatch_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+
+# Cross-executable ERT_CMD_CHAIN test. Compiles a small control-packet matmul at
+# build time (npu4-only, since ERT_CMD_CHAIN is firmware-gated to npu4) and
+# embeds the resulting amdaie-pdi-fb so the test can load it twice as two
+# distinct hal.executable objects.
+iree_bytecode_module(
+  NAME
+    xexec_chain_test_module
+  MODULE_FILE_NAME
+    xexec_chain_test.bin
+  SRC
+    "${CMAKE_CURRENT_LIST_DIR}/xexec_chain_test.mlir"
+  FLAGS
+    --compile-mode=hal-executable
+    --iree-hal-target-backends=amd-aie
+    --iree-amdaie-lower-to-aie-pipeline=objectFifo
+    --iree-amdaie-target-device=npu4
+    --iree-amd-aie-peano-install-dir=${PEANO_INSTALL_DIR}
+    --iree-amd-aie-vitis-install-dir=${VITIS_DIR}
+    --iree-amdaie-device-hal=xrt-lite
+    --iree-amdaie-enable-control-packet=true
+    --iree-amdaie-packet-flow-strategy=auto
+    --iree-amdaie-num-rows=1
+    --iree-amdaie-num-cols=1
+    --iree-amdaie-stack-size=1024
+    --iree-hal-memoization=false
+    --iree-hal-indirect-command-buffers=false
+  PUBLIC
+  TESTONLY
+)
+
+iree_c_embed_data(
+  NAME
+    xexec_chain_executables_c
+  SRCS
+    xexec_chain_test.bin
+  C_FILE_OUTPUT
+    xexec_chain_executables_c.c
+  H_FILE_OUTPUT
+    xexec_chain_executables_c.h
+  IDENTIFIER
+    iree_cts_testdata_executables_xexec_chain
+  STRIP_PREFIX
+    xexec_chain_
+  DEPENDS
+    ::xexec_chain_test_module
+  FLATTEN
+  PUBLIC
+  TESTONLY
+)
+
+iree_cc_test(
+  NAME
+    xexec_chain_test
+  SRCS
+    xexec_chain_test.cc
+  DEPS
+    ::xexec_chain_executables_c
+    iree-amd-aie::driver::xrt-lite::xrt-lite
+    iree::async::util::proactor_pool
+    iree::base
+    iree::base::tooling::flags
+    iree::hal
+    iree::testing::gtest_main
+)
+target_include_directories(iree-amd-aie_driver_xrt-lite_cts_xexec_chain_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")

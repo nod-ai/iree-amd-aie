@@ -140,3 +140,13 @@ iree_cc_test(
     gtest
     iree::target::amd-aie::Transforms
 )
+
+iree_cc_test(
+  NAME
+    AMDAIETransactionBuilderTest
+  SRCS
+    "AMDAIETransactionBuilderTest.cpp"
+  DEPS
+    gtest
+    iree::target::amd-aie::Transforms
+)

@@ -16,6 +16,9 @@ IREE_FLAG(int32_t, xrt_lite_n_core_cols, 0,
           "Number of core cols to use on NPU.");
 // see shim/linux/kmq/amdxdna_accel.h#L460 for options
 IREE_FLAG(string, xrt_lite_power_mode, "", "Set the power mode of the NPU.");
+IREE_FLAG(int32_t, xrt_lite_cmd_chain, 0,
+          "Batch each dispatch's commands into a single ERT_CMD_CHAIN "
+          "(removes the per-command host round-trip). 0 = off (default).");
 
 static const iree_string_view_t key_xrt_lite_n_core_rows =
     iree_string_view_literal("xrt_lite_n_core_rows");
@@ -23,6 +26,8 @@ static const iree_string_view_t key_xrt_lite_n_core_cols =
     iree_string_view_literal("xrt_lite_n_core_cols");
 static const iree_string_view_t key_xrt_lite_power_mode =
     iree_string_view_literal("xrt_lite_power_mode");
+static const iree_string_view_t key_xrt_lite_cmd_chain =
+    iree_string_view_literal("xrt_lite_cmd_chain");
 
 static iree_status_t iree_hal_xrt_lite_driver_factory_enumerate(
     void* self, iree_host_size_t* out_driver_info_count,
@@ -50,6 +55,9 @@ static iree_status_t iree_hal_xrt_lite_driver_parse_flags(
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_string_pair_builder_add_int32(builder, key_xrt_lite_n_core_cols,
                                              FLAG_xrt_lite_n_core_cols));
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(
+      z0, iree_string_pair_builder_add_int32(builder, key_xrt_lite_cmd_chain,
+                                             FLAG_xrt_lite_cmd_chain));
   iree_string_view_t power_mode = IREE_SV(FLAG_xrt_lite_power_mode);
   if (!iree_string_view_is_empty(power_mode)) {
     IREE_RETURN_AND_END_ZONE_IF_ERROR(
@@ -106,6 +114,15 @@ static iree_status_t iree_hal_xrt_lite_driver_populate_options(
             (int)value.size, value.data);
       }
       device_params->n_core_cols = ivalue;
+    } else if (iree_string_view_equal(key, key_xrt_lite_cmd_chain)) {
+      if (!iree_string_view_atoi_int32(value, &ivalue)) {
+        IREE_TRACE_ZONE_END(z0);
+        return iree_make_status(
+            IREE_STATUS_FAILED_PRECONDITION,
+            "Option 'xrt_lite_cmd_chain' expected to be int. Got: '%.*s'",
+            (int)value.size, value.data);
+      }
+      device_params->cmd_chain = ivalue;
     } else if (iree_string_view_equal(key, key_xrt_lite_power_mode)) {
       if (!(iree_string_view_equal(value, IREE_SV("default")) ||
             iree_string_view_equal(value, IREE_SV("low")) ||
