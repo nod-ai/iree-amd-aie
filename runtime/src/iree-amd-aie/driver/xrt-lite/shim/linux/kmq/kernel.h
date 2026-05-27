@@ -29,6 +29,11 @@ struct kernel {
   void add_arg_32(uint32_t val);
   void add_arg_64(uint64_t val);
   void add_arg_bo(bo &bo_arg, const std::string &arg_name = "");
+  // Like add_arg_bo but adds `offset` to the BO base before passing the
+  // address to firmware. Required when a binding references a subview of a
+  // larger BO at a non-zero offset.
+  void add_arg_bo_at_offset(bo &bo_arg, uint64_t offset,
+                            const std::string &arg_name = "");
   void dump();
   void inc_pkt_count(uint32_t n) const;
 };

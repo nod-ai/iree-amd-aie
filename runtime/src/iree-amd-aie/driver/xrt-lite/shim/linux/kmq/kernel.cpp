@@ -98,6 +98,19 @@ void kernel::add_arg_bo(bo &bo_arg, const std::string &arg_name) {
   add_arg_64(bo_arg.get_paddr());
 }
 
+void kernel::add_arg_bo_at_offset(bo &bo_arg, uint64_t offset,
+                                  const std::string &arg_name) {
+  // Bind starting at `offset` so the driver tracks the slice this dispatch
+  // actually touches. Size is capped to remaining BO bytes.
+  m_exec_buf_bo->bind_at(m_arg_cnt, bo_arg, offset, bo_arg.size() - offset);
+  uint64_t paddr = bo_arg.get_paddr() + offset;
+  if (arg_name.empty())
+    m_patching_args.emplace_back(std::to_string(m_arg_cnt), paddr);
+  else
+    m_patching_args.emplace_back(arg_name, paddr);
+  add_arg_64(paddr);
+}
+
 void kernel::dump() {
   std::cout << "Dumping exec buf:";
   int *data = static_cast<int *>(m_exec_buf_bo->map());
