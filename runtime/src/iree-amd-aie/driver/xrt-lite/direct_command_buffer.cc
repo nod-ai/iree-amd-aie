@@ -162,11 +162,16 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_copy_buffer(
   iree_device_size_t source_offset =
       iree_hal_buffer_byte_offset(source_ref.buffer) + source_ref.offset;
 
-  uint8_t* dst =
-      reinterpret_cast<uint8_t*>(target_device_buffer_ptr) + target_offset;
-  uint8_t* src =
-      reinterpret_cast<uint8_t*>(source_device_buffer_ptr) + source_offset;
-  memcpy(dst, src, target_ref.length);
+  // Sync the host-mapped source range so the host memcpy reads device-written
+  // data, then sync the target range back to device so a subsequent dispatch
+  // sees the freshly copied bytes.
+  source_device_buffer->sync(shim_xdna::direction::device2host,
+                             target_ref.length, source_offset);
+  memcpy(reinterpret_cast<uint8_t*>(target_device_buffer_ptr) + target_offset,
+         reinterpret_cast<uint8_t*>(source_device_buffer_ptr) + source_offset,
+         target_ref.length);
+  target_device_buffer->sync(shim_xdna::direction::host2device,
+                             target_ref.length, target_offset);
 
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
@@ -204,7 +209,15 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_normal_run(
   for (iree_host_size_t j = 0; j < bindings.count; ++j) {
     shim_xdna::bo* bo = iree_hal_xrt_lite_buffer_handle(
         iree_hal_buffer_allocated_buffer(bindings.values[j].buffer));
-    ebuf.add_arg_bo(*bo);
+    // Propagate per-binding byte_offset (both the buffer's own subview offset
+    // within its allocated root, and the binding-level offset) into the
+    // device-side address. Without this, two bindings on the same root BO at
+    // different offsets collapse to the same physical address, causing the
+    // next dispatch to read/write the wrong slot.
+    uint64_t buffer_byte_off =
+        (uint64_t)iree_hal_buffer_byte_offset(bindings.values[j].buffer);
+    uint64_t binding_off = (uint64_t)bindings.values[j].offset;
+    ebuf.add_arg_bo_at_offset(*bo, buffer_byte_off + binding_off);
   }
   // Repeat the kernel execution `n_kernel_runs` times.
   for (int i = 0; i < n_kernel_runs; i++) {

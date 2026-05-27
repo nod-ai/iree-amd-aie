@@ -1,0 +1,59 @@
+# Copyright 2026 The IREE Authors
+#
+# Licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# Composite action: run a pytest selection from build_tools/ci/xrt_lite_tests/
+# with the standard prlimit + venv prelude. Centralizes the boilerplate so
+# the workflow body is just `marker:` and optional pytest args.
+#
+# Persists iree-run-module stderr from failing iters to
+# $GITHUB_WORKSPACE/ci_failure_logs/ for the workflow to upload as an
+# artifact on failure.
+
+name: "Run XRT-LITE pytest selection"
+description: "Run an XRT-LITE pytest marker selection with the standard prelude."
+
+inputs:
+  marker:
+    description: "pytest -m selector (e.g. 'regression', 'soak')."
+    required: true
+  iree-install-dir:
+    description: "Absolute path to IREE install dir (containing bin/iree-compile etc)."
+    required: true
+  peano-dir:
+    description: "Absolute path to peano (llvm-aie) install dir."
+    required: true
+  target-device:
+    description: "iree-amdaie target device."
+    required: false
+    default: "npu4"
+  n-core-rows:
+    description: "xrt-lite core-row count."
+    required: true
+  n-core-cols:
+    description: "xrt-lite core-col count."
+    required: true
+  extra-args:
+    description: "Extra args appended to pytest (e.g. '--n-iters=5000')."
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Run pytest"
+      shell: bash
+      run: |
+        sudo prlimit -lunlimited --pid $$
+        source "$GITHUB_WORKSPACE/.venv/bin/activate"
+        pytest "$GITHUB_WORKSPACE/build_tools/ci/xrt_lite_tests" \
+          -m "${{ inputs.marker }}" \
+          --iree-install-dir="${{ inputs.iree-install-dir }}" \
+          --peano-dir="${{ inputs.peano-dir }}" \
+          --target-device="${{ inputs.target-device }}" \
+          --n-core-rows="${{ inputs.n-core-rows }}" \
+          --n-core-cols="${{ inputs.n-core-cols }}" \
+          --failure-log-dir="$GITHUB_WORKSPACE/ci_failure_logs" \
+          ${{ inputs.extra-args }}

@@ -317,6 +317,62 @@ jobs:
             --skip_tests=Performance \
             -v
 
+      - name: XRT-LITE tests
+        run: |
+          DEVICE_TEST_DIR="$PWD/iree-install/device_tests"
+          # Run the standard iree_hal_cts_test_suite outputs only. The
+          # iree-amd-aie custom dispatch tests (xrt_lite_dispatch_test,
+          # xrt_lite_executable_cache_test) embed a baked-in npu1_4col
+          # executable that doesn't run correctly on Strix hardware, so they
+          # stay phoenix-only.
+          for t in $(ls $DEVICE_TEST_DIR); do
+            case "$t" in
+              xrt_lite_dispatch_test|xrt_lite_executable_cache_test) continue ;;
+            esac
+            $DEVICE_TEST_DIR/$t --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS
+          done
+
+      # High-iteration runtime soak tests. Catches latent runtime races
+      # (the iree-tooling deferred copy_buffer race at ~0.05% per-iter
+      # rate, and any similar future regression) at >99% probability over
+      # 5000 iters. Every `test_*.py` in build_tools/ci/xrt_lite_tests/
+      # marked `@pytest.mark.soak` is auto-collected; adding a new soak
+      # test requires no CI change. ~7 min on npu4.
+      - name: XRT-LITE soak tests
+        uses: ./.github/actions/xrt-lite-pytest
+        with:
+          marker: soak
+          iree-install-dir: ${{ github.workspace }}/iree-install
+          peano-dir: ${{ github.workspace }}/llvm-aie
+          n-core-rows: ${{ env.XRT_LITE_N_CORE_ROWS }}
+          n-core-cols: ${{ env.XRT_LITE_N_CORE_COLS }}
+          extra-args: "--n-iters=5000"
+
+      # Deterministic regression tests pinning behaviour against
+      # previously-fixed bugs (currently: per-binding byte_offset
+      # propagation in direct_command_buffer.cc::normal_run). Every
+      # `test_*.py` marked `@pytest.mark.regression` is auto-collected;
+      # adding a new regression test requires no CI change. Runs in
+      # seconds.
+      - name: XRT-LITE regression tests
+        uses: ./.github/actions/xrt-lite-pytest
+        with:
+          marker: regression
+          iree-install-dir: ${{ github.workspace }}/iree-install
+          peano-dir: ${{ github.workspace }}/llvm-aie
+          n-core-rows: ${{ env.XRT_LITE_N_CORE_ROWS }}
+          n-core-cols: ${{ env.XRT_LITE_N_CORE_COLS }}
+
+      # Upload iree-run-module stderr from any failing iteration of the
+      # soak/regression steps above for post-mortem.
+      - name: Upload XRT-LITE pytest failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xrt-lite-pytest-failure-logs
+          path: ci_failure_logs/
+          if-no-files-found: ignore
+
       # Run the 'Performance' tests. These do not check numerical correctness,
       # just measure the time to run some workloads.
       - name : Performance benchmarks
@@ -336,21 +392,6 @@ jobs:
           # Print a summary of the findings.
           python build_tools/ci/cpu_comparison/performance_summarizer.py \
             performance_npu4.log results_npu4.json
-
-      - name: XRT-LITE tests
-        run: |
-          DEVICE_TEST_DIR="$PWD/iree-install/device_tests"
-          # Run the standard iree_hal_cts_test_suite outputs only. The
-          # iree-amd-aie custom dispatch tests (xrt_lite_dispatch_test,
-          # xrt_lite_executable_cache_test) embed a baked-in npu1_4col
-          # executable that doesn't run correctly on Strix hardware, so they
-          # stay phoenix-only.
-          for t in $(ls $DEVICE_TEST_DIR); do
-            case "$t" in
-              xrt_lite_dispatch_test|xrt_lite_executable_cache_test) continue ;;
-            esac
-            $DEVICE_TEST_DIR/$t --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS
-          done
 
       # Only publish the performance results on main branch pushes.
       - name: Publish performance results
