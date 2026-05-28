@@ -69,3 +69,23 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
     return
   }
 }
+
+// -----
+
+// A 2-dim access pattern whose outer dim (1536) exceeds WrapMax (1023). The
+// highest hardware dim (e.g. shim D2) is wrap-less/implicit, but a 2-dim pattern
+// occupies the two innermost (wrap-limited, max 1023) dims and leaves the
+// wrap-less dim unused, so the 1536 must be split rather than left in a
+// wrap-limited dim. Before the `getMaxSizes` fix the outermost-of-two dim was
+// wrongly treated as unbounded, so this was left as a single [1536] dim that
+// later lowering demoted into a wrap-limited dim, which the hardware rejects.
+// CHECK-LABEL:    func.func @two_dim_outer_exceeds_wrap_max
+// CHECK:          amdaie.dma_cpy_nd(%{{.+}}[0, 0, 0] [2, 768, 32] [49152, 64, 1], %{{.+}}[0, 0, 0] [2, 768, 32] [49152, 64, 1])
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @two_dim_outer_exceeds_wrap_max(%arg0: !amdaie.logicalobjectfifo<memref<49152xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<49152xi32>>) {
+    %0 = amdaie.dma_cpy_nd(%arg0[0, 0] [1536, 32] [64, 1], %arg1[0, 0] [1536, 32] [64, 1]) : (!amdaie.logicalobjectfifo<memref<49152xi32, 1>>, !amdaie.logicalobjectfifo<memref<49152xi32>>)
+    "iree.keep"(%0) : (index) -> ()
+    return
+  }
+}

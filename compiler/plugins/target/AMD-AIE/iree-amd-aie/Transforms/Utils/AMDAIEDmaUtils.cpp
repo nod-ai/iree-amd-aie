@@ -698,7 +698,17 @@ SmallVector<int64_t> DmaDimConfig::getMaxSizes(
   assert(intraStart >= 0 &&
          "The start index for intra dimensions should be greater than or equal "
          "to zero");
-  if (intraStart < maxSizes.size())
+  // The highest intra dimension (e.g. shim/NOC D2) has no `wrap` register, so
+  // its size is implicit (derived from the buffer length) and effectively
+  // unbounded. This only holds when the access pattern actually occupies all
+  // `nbIntraDims` intra dimensions: the hardware fills the innermost dimension
+  // (D0) first, so a pattern with fewer dims than `nbIntraDims` leaves the
+  // wrap-less highest dim unused and its outermost dim maps to a lower,
+  // wrap-limited dimension (e.g. D1). Marking that dim unbounded would let the
+  // DMA combiner produce a size exceeding the hardware `WrapMax` that later
+  // lowering demotes into a wrap-limited dimension, which the hardware rejects.
+  if (nbIntraDimsToBeFilled == (int64_t)nbIntraDims &&
+      intraStart < maxSizes.size())
     maxSizes[intraStart] = std::numeric_limits<int64_t>::max();
   int64_t nbInterDimsToBeFilled = std::min((int64_t)nbInterDims, intraStart);
   int64_t interStart = intraStart - nbInterDimsToBeFilled;
