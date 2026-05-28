@@ -761,10 +761,12 @@ TEST_P(DmaDimConfigTest, ShimTileSizes) {
   SmallVector<int64_t> expectedMaxSizes = {
       63, std::numeric_limits<int64_t>::max(), 1023, 1023};
   EXPECT_EQ(maxSizes, expectedMaxSizes);
-  EXPECT_EQ(config.getMaxSizes(1),
-            SmallVector<int64_t>{std::numeric_limits<int64_t>::max()});
-  SmallVector<int64_t> expectedMaxSizes2 = {std::numeric_limits<int64_t>::max(),
-                                            1023};
+  // The highest intra dim (shim D2) has no `wrap` register and is therefore
+  // unbounded, but only when the access pattern actually occupies all
+  // `nbIntraDims` (3) intra dims. Patterns with fewer dims map their outermost
+  // dim to a lower, wrap-limited dim (D1/D0), so no entry is unbounded.
+  EXPECT_EQ(config.getMaxSizes(1), SmallVector<int64_t>{1023});
+  SmallVector<int64_t> expectedMaxSizes2 = {1023, 1023};
   EXPECT_EQ(config.getMaxSizes(2), expectedMaxSizes2);
   SmallVector<int64_t> expectedMaxSizes3 = {std::numeric_limits<int64_t>::max(),
                                             1023, 1023};
@@ -805,13 +807,13 @@ TEST_P(DmaDimConfigTest, MemTileSizes) {
   SmallVector<int64_t> expectedMaxSizes = {std::numeric_limits<int64_t>::max(),
                                            1023, 1023, 1023};
   EXPECT_EQ(maxSizes, expectedMaxSizes);
-  EXPECT_EQ(config.getMaxSizes(1),
-            SmallVector<int64_t>{std::numeric_limits<int64_t>::max()});
-  SmallVector<int64_t> expectedMaxSizes2 = {std::numeric_limits<int64_t>::max(),
-                                            1023};
+  // The highest intra dim is only unbounded when the access pattern occupies
+  // all `nbIntraDims` (4) intra dims; narrower patterns map their outermost dim
+  // to a wrap-limited dim.
+  EXPECT_EQ(config.getMaxSizes(1), SmallVector<int64_t>{1023});
+  SmallVector<int64_t> expectedMaxSizes2 = {1023, 1023};
   EXPECT_EQ(config.getMaxSizes(2), expectedMaxSizes2);
-  SmallVector<int64_t> expectedMaxSizes3 = {std::numeric_limits<int64_t>::max(),
-                                            1023, 1023};
+  SmallVector<int64_t> expectedMaxSizes3 = {1023, 1023, 1023};
   EXPECT_EQ(config.getMaxSizes(3), expectedMaxSizes3);
   EXPECT_EQ(config.getMaxSizes(4), expectedMaxSizes);
   SmallVector<int64_t> expectedMaxSizes5 = {
@@ -847,10 +849,11 @@ TEST_P(DmaDimConfigTest, CoreTileSizes) {
   SmallVector<int64_t> expectedMaxSizes = {std::numeric_limits<int64_t>::max(),
                                            255, 255};
   EXPECT_EQ(maxSizes, expectedMaxSizes);
-  EXPECT_EQ(config.getMaxSizes(1),
-            SmallVector<int64_t>{std::numeric_limits<int64_t>::max()});
-  SmallVector<int64_t> expectedMaxSizes2 = {std::numeric_limits<int64_t>::max(),
-                                            255};
+  // The highest intra dim is only unbounded when the access pattern occupies
+  // all `nbIntraDims` (3) intra dims; narrower patterns map their outermost dim
+  // to a wrap-limited dim.
+  EXPECT_EQ(config.getMaxSizes(1), SmallVector<int64_t>{255});
+  SmallVector<int64_t> expectedMaxSizes2 = {255, 255};
   EXPECT_EQ(config.getMaxSizes(2), expectedMaxSizes2);
   EXPECT_EQ(config.getMaxSizes(3), expectedMaxSizes);
   SmallVector<int64_t> expectedMaxSizes4 = {
