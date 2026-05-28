@@ -55,6 +55,17 @@ iree_hal_xrt_lite_allocator_query_buffer_compatibility(
   }
 
   params->type &= ~IREE_HAL_MEMORY_TYPE_OPTIMAL;
+  // xrt-lite allocates SHMEM BOs (XCL_BO_FLAGS_HOST_ONLY) that are mmap'd
+  // shared with the device, so every allocation is simultaneously host-local,
+  // device-visible, host-mappable, and host-transferable. Declaring those
+  // capabilities lets iree-tooling's `requires_buffer_transfer` return false
+  // for output buffer views and skip the staging copy_buffer — the host can
+  // read the dispatch output BO directly, saving one BO allocation + one
+  // submission + one host memcpy per output.
+  params->type |=
+      IREE_HAL_MEMORY_TYPE_HOST_LOCAL | IREE_HAL_MEMORY_TYPE_DEVICE_VISIBLE;
+  params->usage |=
+      IREE_HAL_BUFFER_USAGE_MAPPING | IREE_HAL_BUFFER_USAGE_TRANSFER;
 
   // Guard against the corner case where the requested buffer size is 0. The
   // application is unlikely to do anything when requesting a 0-byte buffer;
