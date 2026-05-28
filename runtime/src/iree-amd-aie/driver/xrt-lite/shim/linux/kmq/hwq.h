@@ -4,6 +4,9 @@
 #ifndef _HWQ_XDNA_H_
 #define _HWQ_XDNA_H_
 
+#include <atomic>
+#include <cstdint>
+
 #include "fence.h"
 #include "hwctx.h"
 
@@ -13,6 +16,11 @@ struct hw_q {
   const hw_ctx *m_hwctx;
   const pdev &m_pdev;
   uint32_t m_queue_boh;
+  // Number of DRM_IOCTL_AMDXDNA_EXEC_CMD submissions issued through this queue
+  // (incremented by issue_command). Lets tests assert the count of on-device
+  // submits — e.g. that a deferred ERT_CMD_CHAIN actually batched the
+  // recorded dispatches into one submit rather than fanning out.
+  std::atomic<uint64_t> m_exec_cmd_count{0};
 
   hw_q(const device &device);
   ~hw_q();
@@ -24,6 +32,9 @@ struct hw_q {
   void bind_hwctx(const hw_ctx *ctx);
   void unbind_hwctx();
   void issue_command(bo *);
+  uint64_t exec_cmd_count() const {
+    return m_exec_cmd_count.load(std::memory_order_relaxed);
+  }
 };
 
 int poll_command(bo *);

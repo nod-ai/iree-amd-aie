@@ -19,6 +19,7 @@
 #include "air/Dialect/AIRRt/AIRRtDialect.h"
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/Transforms/Passes.h"
+#include "iree-amd-aie/Transforms/Utils/AMDAIETransactionBuilder.h"
 #include "iree-amd-aie/schemas/pdi_executable_def_builder.h"
 #include "iree-amd-aie/schemas/xrt_executable_def_builder.h"
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenDialect.h"
@@ -305,7 +306,8 @@ void serializePDIToFb(FlatbufferBuilder &builder,
                       SmallVector<int32_t> &reconfDataIndices,
                       SmallVector<flatbuffers_ref_t> pdiRefs,
                       SmallVector<flatbuffers_ref_t> asmInstrRefs,
-                      SmallVector<flatbuffers_ref_t> reconfDataRefs) {
+                      SmallVector<flatbuffers_ref_t> reconfDataRefs,
+                      SmallVector<flatbuffers_ref_t> patchRefs) {
   // Add the entry points to the flatbuffer.
   iree_amd_aie_hal_xrt_lite_ExecutableDef_entry_points_add(builder,
                                                            entryPointsRef);
@@ -335,6 +337,10 @@ void serializePDIToFb(FlatbufferBuilder &builder,
       builder.createOffsetVecDestructive(reconfDataRefs);
   iree_amd_aie_hal_xrt_lite_ExecutableDef_reconf_data_runlists_add(
       builder, reconfDataRef);
+  // Add the host patch table (parallel to asm_instr_runlists).
+  flatbuffers_vec_ref_t patchRef =
+      builder.createOffsetVecDestructive(patchRefs);
+  iree_amd_aie_hal_xrt_lite_ExecutableDef_patch_runlists_add(builder, patchRef);
   iree_amd_aie_hal_xrt_lite_ExecutableDef_end_as_root(builder);
 }
 
@@ -532,6 +538,9 @@ LogicalResult AIETargetBackend::serializeExecutable(
   Flatbuffer1dStringArrayConverter entryPointNameConvertor(ordinalCount);
   Flatbuffer1dStringArrayConverter artifactConvertor(ordinalCount);
   Flatbuffer3dUInt32ArrayConverter asmInstrConverter(ordinalCount);
+  // Host patch table, parallel to `asmInstrConverter` (xrt-lite cmd-chain
+  // path).
+  Flatbuffer3dUInt32ArrayConverter patchConverter(ordinalCount);
   Flatbuffer3dUInt32ArrayConverter reconfDataConverter(ordinalCount);
 
   for (size_t i = 0; i < entryPointNames.size(); i++) {
@@ -670,6 +679,14 @@ LogicalResult AIETargetBackend::serializeExecutable(
     // Add the 2D array entry to the converter.
     asmInstrConverter.addEntry(ordinal, asmInstrs2d);
     reconfDataConverter.addEntry(ordinal, reconfData2d);
+    // Derive the host patch table for each run, parallel to `asmInstrs2d`.
+    // Parsing of the serialized transaction format lives entirely in the
+    // transaction-builder layer (the component that produces it); the HAL only
+    // applies the resulting (offset, arg_idx, arg_plus) triples.
+    SmallVector<std::vector<uint32_t>> patch2d;
+    for (const std::vector<uint32_t> &txn : asmInstrs2d)
+      patch2d.push_back(deriveHostPatchTableFromTransaction(txn));
+    patchConverter.addEntry(ordinal, patch2d);
 
     // Get the artifact (XCLBIN or PDI) only if control packet reconfiguration
     // is disabled or this is the first entry point. Otherwise, leave it as an
@@ -724,7 +741,8 @@ LogicalResult AIETargetBackend::serializeExecutable(
                        artifactConvertor.getFlatbufferRefs(
                            builder, iree_amd_aie_hal_xrt_lite_PdiDef_create),
                        get3dUInt32ArrayRefs(asmInstrConverter),
-                       get3dUInt32ArrayRefs(reconfDataConverter));
+                       get3dUInt32ArrayRefs(reconfDataConverter),
+                       get3dUInt32ArrayRefs(patchConverter));
       break;
     }
     default:

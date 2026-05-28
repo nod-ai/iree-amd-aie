@@ -54,6 +54,7 @@ iree_hal_xrt_lite_device::iree_hal_xrt_lite_device(
   iree_hal_resource_initialize(&iree_hal_xrt_lite_device_vtable, &resource);
   this->host_allocator = host_allocator;
   this->power_mode = options->power_mode;
+  this->cmd_chain = options->cmd_chain != 0;
   if (iree_string_view_equal(power_mode, IREE_SV("default"))) {
     shim_device = new shim_xdna::device(
         options->n_core_rows, options->n_core_cols, POWER_MODE_DEFAULT);
@@ -662,11 +663,54 @@ static void iree_hal_xrt_lite_device_destroy(iree_hal_device_t* base_device) {
       !iree_string_view_equal(device->power_mode, IREE_SV("default"))) {
     device->shim_device->set_power_mode(POWER_MODE_DEFAULT);
   }
+  // Drop the cache's shared_ptr<hw_ctx> refs before the shim device they
+  // reference is torn down. Per the IREE HAL lifetime contract, executables
+  // (which co-own these via executable->context) are released before their
+  // device, so by the time we get here the cache holds the last refs and
+  // clear() runs the hw_ctx destructors (delete-context ioctls) cleanly.
+  // Lock defensively against the contract being violated (zero cost
+  // uncontended) and so a future audit can't ask "is this clear racy?"
+  {
+    std::lock_guard<std::mutex> lock(device->pdi_context_cache_mutex);
+    device->pdi_context_cache.clear();
+  }
   delete device->shim_device;
-  iree_allocator_free(device->host_allocator, device);
+  // The device struct is placement-new'd in iree_hal_xrt_lite_device_create;
+  // explicitly run the destructor before freeing the storage so non-trivial
+  // members (e.g. the std::map cache, even after clear()) release their
+  // internal bookkeeping cleanly. Save host_allocator first — accessing
+  // `device->` after the destructor is UB.
+  iree_allocator_t host_allocator = device->host_allocator;
+  device->~iree_hal_xrt_lite_device();
+  iree_allocator_free(host_allocator, device);
 
   IREE_TRACE_ZONE_END(z0);
 };
+
+std::shared_ptr<shim_xdna::hw_ctx>
+iree_hal_xrt_lite_device_get_or_create_context(iree_hal_xrt_lite_device* device,
+                                               const std::vector<uint8_t>& pdi,
+                                               const std::string& kernel_name) {
+  // Callers must only pass a non-empty PDI (empty-PDI entry points reuse their
+  // executable's already-resolved context instead of querying the cache).
+  // Lock is held across create_hw_context so two threads racing on the same
+  // (or different) PDI serialize on the cache; concurrent misses on different
+  // PDIs are rare enough that finer-grained locking isn't worth the
+  // complexity.
+  std::lock_guard<std::mutex> lock(device->pdi_context_cache_mutex);
+  auto it = device->pdi_context_cache.find(pdi);
+  if (it != device->pdi_context_cache.end()) return it->second;
+  std::shared_ptr<shim_xdna::hw_ctx> ctx(
+      device->shim_device->create_hw_context(pdi, kernel_name).release());
+  device->pdi_context_cache.emplace(pdi, ctx);
+  return ctx;
+}
+
+iree_hal_xrt_lite_device* iree_hal_xrt_lite_device_cast(
+    iree_hal_device_t* base_device) {
+  return IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
+      base_device, iree_hal_xrt_lite_device_vtable, iree_hal_xrt_lite_device);
+}
 
 static iree_allocator_t iree_hal_xrt_lite_device_host_allocator(
     iree_hal_device_t* base_device) {

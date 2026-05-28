@@ -54,6 +54,25 @@ class TransactionBuilder {
   std::vector<uint32_t> instructions;
 };
 
+/// Derive the host-side address-patch table for a serialized uController
+/// transaction (the binary produced by `TransactionBuilder`, i.e. the same
+/// format `appendAddressPatch` emits into).
+///
+/// Returns a flat list of (byteOffset, argIdx, argPlus) triples. For each
+/// `XAIE_IO_CUSTOM_OP_DDR_PATCH` op, `byteOffset` is the offset (in bytes, from
+/// the start of `txn`) of the BD-address word that must be patched at dispatch
+/// time with `args[argIdx] + argPlus`. A single BLOCKWRITE may program several
+/// consecutive BDs, so each DDR_PATCH is matched to the BLOCKWRITE whose
+/// register span [reg, reg + payload_bytes) contains its BD base
+/// (`regaddr & ~0xF`), and `byteOffset` points into that BLOCKWRITE's payload.
+///
+/// This is the single place that parses the serialized transaction binary: the
+/// xrt-lite HAL's ERT_CMD_CHAIN path cannot rely on firmware-side address
+/// patching, so it host-patches BD addresses using this table without itself
+/// understanding the transaction format.
+std::vector<uint32_t> deriveHostPatchTableFromTransaction(
+    ArrayRef<uint32_t> txn);
+
 }  // namespace mlir::iree_compiler::AMDAIE
 
 #endif

@@ -15,6 +15,11 @@ struct iree_hal_xrt_lite_device_params {
   int32_t n_core_rows;
   int32_t n_core_cols;
   iree_string_view_t power_mode;
+  // When non-zero, batch each dispatch's commands (control-packet reconfig +
+  // kernel exec) into a single ERT_CMD_CHAIN submitted with one issue/wait,
+  // removing the per-command host round-trip. Default 0 = the proven
+  // per-command ERT_START_CU path.
+  int32_t cmd_chain;
 };
 
 IREE_API_EXPORT void iree_hal_xrt_lite_device_options_initialize(

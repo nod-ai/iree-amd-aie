@@ -123,6 +123,7 @@ void hw_q::issue_command(bo *cmd_bo) {
       .arg_count = cmd_bo->get_arg_bo_handles(arg_bo_hdls, max_arg_bos),
   };
   m_pdev.ioctl(DRM_IOCTL_AMDXDNA_EXEC_CMD, &ecmd);
+  m_exec_cmd_count.fetch_add(1, std::memory_order_relaxed);
 
   auto id = ecmd.seq;
   cmd_bo->set_cmd_id(id);
