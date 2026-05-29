@@ -88,9 +88,9 @@ PEANO_INSTALL_DIR=${PEANO_INSTALL_DIR:-""}
 if [ "$PEANO_INSTALL_DIR" != "" ] && [ -d "$PEANO_INSTALL_DIR" ]; then
   CMAKE_ARGS+=(-DPEANO_INSTALL_DIR="$PEANO_INSTALL_DIR")
 fi
-ENABLE_XRT_LITE_CTS_TESTS=${ENABLE_XRT_LITE_CTS_TESTS:-""}
-if [ "$ENABLE_XRT_LITE_CTS_TESTS" != "" ]; then
-  CMAKE_ARGS+=(-DENABLE_XRT_LITE_CTS_TESTS="$ENABLE_XRT_LITE_CTS_TESTS")
+ENABLE_AMDXDNA_CTS_TESTS=${ENABLE_AMDXDNA_CTS_TESTS:-""}
+if [ "$ENABLE_AMDXDNA_CTS_TESTS" != "" ]; then
+  CMAKE_ARGS+=(-DENABLE_AMDXDNA_CTS_TESTS="$ENABLE_AMDXDNA_CTS_TESTS")
 fi
 
 if [ -d "$llvm_install_dir" ]; then
@@ -112,7 +112,7 @@ if [[ "$OSTYPE" == "linux"* ]]; then
     -DCMAKE_CXX_COMPILER="${CXX}"
     -DLLVM_TARGET_ARCH=X86
     -DLLVM_TARGETS_TO_BUILD=X86
-    -DIREE_EXTERNAL_HAL_DRIVERS="xrt-lite"
+    -DIREE_EXTERNAL_HAL_DRIVERS="amdxdna"
     -S
     "$iree_dir"
     -B
@@ -148,7 +148,7 @@ echo "-----"
 if [[ "$OSTYPE" == "linux"* ]] && [[ "$assertions" == "ON" ]]; then
   # Exclude /cts/ — those tests need a real NPU device and are run on the
   # hardware CI runners via $install_dir/device_tests below. Software-only
-  # driver tests (e.g. driver/xrt-lite/test/AsyncQueueTest) are not under
+  # driver tests (e.g. driver/amdxdna/test/AsyncQueueTest) are not under
   # /cts/ and run here.
   ctest --test-dir "$build_dir" -R amd-aie -E "/cts/" --output-on-failure -j
 elif [[ "$OSTYPE" == "darwin"* ]]; then
@@ -164,10 +164,10 @@ fi
 cp "$build_dir/tools/testing/e2e/iree-e2e-matmul-test" "$install_dir/bin"
 if [[ "$OSTYPE" == "linux"* ]]; then
   mkdir -p "$install_dir/device_tests"
-  # Install both the iree-amd-aie xrt-lite custom dispatch tests (*_test) and
+  # Install both the iree-amd-aie amdxdna custom dispatch tests (*_test) and
   # the standard iree_hal_cts_test_suite outputs (*_tests) so the npu1/npu4
   # hardware CI steps that iterate $install_dir/device_tests pick them all up.
-  cp "$build_dir"/runtime/plugins/AMD-AIE/iree-amd-aie/driver/xrt-lite/cts/*_test \
-     "$build_dir"/runtime/plugins/AMD-AIE/iree-amd-aie/driver/xrt-lite/cts/*_tests \
+  cp "$build_dir"/runtime/plugins/AMD-AIE/iree-amd-aie/driver/amdxdna/cts/*_test \
+     "$build_dir"/runtime/plugins/AMD-AIE/iree-amd-aie/driver/amdxdna/cts/*_tests \
      "$install_dir/device_tests"
 fi

@@ -67,7 +67,7 @@ class TransactionBuilder {
 /// (`regaddr & ~0xF`), and `byteOffset` points into that BLOCKWRITE's payload.
 ///
 /// This is the single place that parses the serialized transaction binary: the
-/// xrt-lite HAL's ERT_CMD_CHAIN path cannot rely on firmware-side address
+/// amdxdna HAL's ERT_CMD_CHAIN path cannot rely on firmware-side address
 /// patching, so it host-patches BD addresses using this table without itself
 /// understanding the transaction format.
 std::vector<uint32_t> deriveHostPatchTableFromTransaction(

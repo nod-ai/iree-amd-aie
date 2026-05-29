@@ -110,9 +110,9 @@ class AIETargetDevice final : public IREE::HAL::TargetDevice {
       case AMDAIEOptions::DeviceHAL::XRT:
         return IREE::HAL::DeviceTargetAttr::get(
             context, b.getStringAttr("xrt"), configAttr, executableTargetAttrs);
-      case AMDAIEOptions::DeviceHAL::XRT_LITE:
+      case AMDAIEOptions::DeviceHAL::AMDXDNA:
         return IREE::HAL::DeviceTargetAttr::get(
-            context, b.getStringAttr("xrt-lite"), configAttr,
+            context, b.getStringAttr("amdxdna"), configAttr,
             executableTargetAttrs);
       default:
         llvm_unreachable("unsupported device HAL\n");
@@ -132,8 +132,8 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
     switch (options.deviceHal) {
       case AMDAIEOptions::DeviceHAL::XRT:
         return "xrt";
-      case AMDAIEOptions::DeviceHAL::XRT_LITE:
-        return "xrt-lite";
+      case AMDAIEOptions::DeviceHAL::AMDXDNA:
+        return "amdxdna";
       default:;
         llvm::report_fatal_error("unsupported default device\n");
     };
@@ -196,7 +196,7 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
         return IREE::HAL::ExecutableTargetAttr::get(
             context, b.getStringAttr("amd-aie"),
             b.getStringAttr("amdaie-xclbin-fb"), configAttr);
-      case AMDAIEOptions::DeviceHAL::XRT_LITE:
+      case AMDAIEOptions::DeviceHAL::AMDXDNA:
         return IREE::HAL::ExecutableTargetAttr::get(
             context, b.getStringAttr("amd-aie"),
             b.getStringAttr("amdaie-pdi-fb"), configAttr);
@@ -309,39 +309,39 @@ void serializePDIToFb(FlatbufferBuilder &builder,
                       SmallVector<flatbuffers_ref_t> reconfDataRefs,
                       SmallVector<flatbuffers_ref_t> patchRefs) {
   // Add the entry points to the flatbuffer.
-  iree_amd_aie_hal_xrt_lite_ExecutableDef_entry_points_add(builder,
-                                                           entryPointsRef);
+  iree_amd_aie_hal_amdxdna_ExecutableDef_entry_points_add(builder,
+                                                          entryPointsRef);
   // Add all the indices to the flatbuffer.
   flatbuffers_int32_vec_ref_t asmInstrIndicesRef =
       builder.createInt32Vec(asmInstrIndices);
-  iree_amd_aie_hal_xrt_lite_ExecutableDef_asm_instr_runlist_indices_add(
+  iree_amd_aie_hal_amdxdna_ExecutableDef_asm_instr_runlist_indices_add(
       builder, asmInstrIndicesRef);
   flatbuffers_int32_vec_ref_t pdiIndicesRef =
       builder.createInt32Vec(pdiIndices);
-  iree_amd_aie_hal_xrt_lite_ExecutableDef_pdi_indices_add(builder,
-                                                          pdiIndicesRef);
+  iree_amd_aie_hal_amdxdna_ExecutableDef_pdi_indices_add(builder,
+                                                         pdiIndicesRef);
   flatbuffers_int32_vec_ref_t reconfDataIndicesRef =
       builder.createInt32Vec(reconfDataIndices);
-  iree_amd_aie_hal_xrt_lite_ExecutableDef_reconf_data_runlist_indices_add(
+  iree_amd_aie_hal_amdxdna_ExecutableDef_reconf_data_runlist_indices_add(
       builder, reconfDataIndicesRef);
   // Add the PDI strings to the flatbuffer.
   flatbuffers_vec_ref_t pdisRef = builder.createOffsetVecDestructive(pdiRefs);
-  iree_amd_aie_hal_xrt_lite_ExecutableDef_pdis_add(builder, pdisRef);
+  iree_amd_aie_hal_amdxdna_ExecutableDef_pdis_add(builder, pdisRef);
   // Add the npu instructions to the flatbuffer.
   flatbuffers_vec_ref_t asmInstrsRef =
       builder.createOffsetVecDestructive(asmInstrRefs);
-  iree_amd_aie_hal_xrt_lite_ExecutableDef_asm_instr_runlists_add(builder,
-                                                                 asmInstrsRef);
+  iree_amd_aie_hal_amdxdna_ExecutableDef_asm_instr_runlists_add(builder,
+                                                                asmInstrsRef);
   // Add the reconfiguration data to the flatbuffer.
   flatbuffers_vec_ref_t reconfDataRef =
       builder.createOffsetVecDestructive(reconfDataRefs);
-  iree_amd_aie_hal_xrt_lite_ExecutableDef_reconf_data_runlists_add(
+  iree_amd_aie_hal_amdxdna_ExecutableDef_reconf_data_runlists_add(
       builder, reconfDataRef);
   // Add the host patch table (parallel to asm_instr_runlists).
   flatbuffers_vec_ref_t patchRef =
       builder.createOffsetVecDestructive(patchRefs);
-  iree_amd_aie_hal_xrt_lite_ExecutableDef_patch_runlists_add(builder, patchRef);
-  iree_amd_aie_hal_xrt_lite_ExecutableDef_end_as_root(builder);
+  iree_amd_aie_hal_amdxdna_ExecutableDef_patch_runlists_add(builder, patchRef);
+  iree_amd_aie_hal_amdxdna_ExecutableDef_end_as_root(builder);
 }
 
 /// Loads a uint32_t array from a file. Each line in the file should contain a
@@ -526,8 +526,8 @@ LogicalResult AIETargetBackend::serializeExecutable(
     case AMDAIEOptions::DeviceHAL::XRT:
       iree_amd_aie_hal_xrt_ExecutableDef_start_as_root(builder);
       break;
-    case AMDAIEOptions::DeviceHAL::XRT_LITE:
-      iree_amd_aie_hal_xrt_lite_ExecutableDef_start_as_root(builder);
+    case AMDAIEOptions::DeviceHAL::AMDXDNA:
+      iree_amd_aie_hal_amdxdna_ExecutableDef_start_as_root(builder);
       break;
     default:
       llvm::errs() << "Unsupported device HAL\n";
@@ -538,7 +538,7 @@ LogicalResult AIETargetBackend::serializeExecutable(
   Flatbuffer1dStringArrayConverter entryPointNameConvertor(ordinalCount);
   Flatbuffer1dStringArrayConverter artifactConvertor(ordinalCount);
   Flatbuffer3dUInt32ArrayConverter asmInstrConverter(ordinalCount);
-  // Host patch table, parallel to `asmInstrConverter` (xrt-lite cmd-chain
+  // Host patch table, parallel to `asmInstrConverter` (amdxdna cmd-chain
   // path).
   Flatbuffer3dUInt32ArrayConverter patchConverter(ordinalCount);
   Flatbuffer3dUInt32ArrayConverter reconfDataConverter(ordinalCount);
@@ -568,7 +568,7 @@ LogicalResult AIETargetBackend::serializeExecutable(
       case AMDAIEOptions::DeviceHAL::XRT:
         llvm::sys::path::append(artifactPath, entryPointNames[i] + ".xclbin");
         break;
-      case AMDAIEOptions::DeviceHAL::XRT_LITE:
+      case AMDAIEOptions::DeviceHAL::AMDXDNA:
         llvm::sys::path::append(artifactPath, entryPointNames[i] + ".pdi");
         break;
       default:
@@ -726,20 +726,20 @@ LogicalResult AIETargetBackend::serializeExecutable(
                           get3dUInt32ArrayRefs(reconfDataConverter));
       break;
     }
-    case AMDAIEOptions::DeviceHAL::XRT_LITE: {
+    case AMDAIEOptions::DeviceHAL::AMDXDNA: {
       auto get3dUInt32ArrayRefs = [&](Flatbuffer3dUInt32ArrayConverter
                                           &converter) {
         return converter
-            .getFlatbufferRefs<iree_amd_aie_hal_xrt_lite_UI32Array1dDef_ref_t>(
-                builder, iree_amd_aie_hal_xrt_lite_UI32Array1dDef_create,
-                iree_amd_aie_hal_xrt_lite_UI32Array2dDef_create);
+            .getFlatbufferRefs<iree_amd_aie_hal_amdxdna_UI32Array1dDef_ref_t>(
+                builder, iree_amd_aie_hal_amdxdna_UI32Array1dDef_create,
+                iree_amd_aie_hal_amdxdna_UI32Array2dDef_create);
       };
       serializePDIToFb(builder,
                        entryPointNameConvertor.getFlatbufferVecRef(builder),
                        asmInstrConverter.indices, artifactConvertor.indices,
                        reconfDataConverter.indices,
                        artifactConvertor.getFlatbufferRefs(
-                           builder, iree_amd_aie_hal_xrt_lite_PdiDef_create),
+                           builder, iree_amd_aie_hal_amdxdna_PdiDef_create),
                        get3dUInt32ArrayRefs(asmInstrConverter),
                        get3dUInt32ArrayRefs(reconfDataConverter),
                        get3dUInt32ArrayRefs(patchConverter));

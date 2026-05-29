@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-namespace iree.amd.aie.hal.xrt_lite;
+namespace iree.amd.aie.hal.amdxdna;
 
 file_identifier "PDIR";
 file_extension "pdir";
@@ -79,7 +79,7 @@ table ExecutableDef {
   //   - The third dimension contains a uint32 array with control packet data required for a single reconfiguration.
   reconf_data_runlists: [UI32Array2dDef];
 
-  // Host patch table for `asm_instr_runlists`, used by the xrt-lite HAL's
+  // Host patch table for `asm_instr_runlists`, used by the amdxdna HAL's
   // ERT_CMD_CHAIN submission path (which cannot rely on firmware-side address
   // patching). Parallel to `asm_instr_runlists` and indexed the same way (via
   // `asm_instr_runlist_indices`): `patch_runlists[i]` holds the patches for

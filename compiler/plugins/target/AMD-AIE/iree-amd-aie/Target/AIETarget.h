@@ -89,8 +89,8 @@ struct AMDAIEOptions {
   PacketFlowStrategy packetFlowStrategy{PacketFlowStrategy::None};
   bool enableCtrlPkt{false};
 
-  enum class DeviceHAL { XRT, XRT_LITE };
-  DeviceHAL deviceHal{DeviceHAL::XRT_LITE};
+  enum class DeviceHAL { XRT, AMDXDNA };
+  DeviceHAL deviceHal{DeviceHAL::AMDXDNA};
 
   // The default stack size for all cores is 1024 bytes.
   uint32_t coreStackSize{1024};
@@ -325,9 +325,9 @@ struct AMDAIEOptions {
     binder.opt<DeviceHAL>(
         "iree-amdaie-device-hal", deviceHal, llvm::cl::cat(category),
         llvm::cl::desc("Sets the target device HAL."),
-        llvm::cl::values(clEnumValN(DeviceHAL::XRT, "xrt", "xrt device HAL"),
-                         clEnumValN(DeviceHAL::XRT_LITE, "xrt-lite",
-                                    "xrt-lite device HAL")));
+        llvm::cl::values(
+            clEnumValN(DeviceHAL::XRT, "xrt", "xrt device HAL"),
+            clEnumValN(DeviceHAL::AMDXDNA, "amdxdna", "amdxdna device HAL")));
 
     binder.opt<bool>(
         "iree-amdaie-enable-control-packet", enableCtrlPkt,

@@ -1598,7 +1598,7 @@ LogicalResult aie2xclbin(
     return failure();
   }
 
-  if (deviceHal == AMDAIEOptions::DeviceHAL::XRT_LITE) {
+  if (deviceHal == AMDAIEOptions::DeviceHAL::AMDXDNA) {
     std::error_code ec;
     if (!std::filesystem::copy_file(
             pdiPath, artifactPath,
