@@ -49,8 +49,9 @@ int wait_cmd(const shim_xdna::pdev &pdev, const shim_xdna::hw_ctx *ctx,
       if (errno == ETIME) {
         ret = 0;
       } else {
-        shim_xdna::shim_err(errno,
-                            "DRM_IOCTL_SYNCOBJ_TIMELINE_WAIT IOCTL failed");
+        // Don't abort the process on a hard wait failure; let the caller turn
+        // it into an iree_status_t.
+        return -errno;
       }
     }
   } else {
@@ -63,7 +64,9 @@ int wait_cmd(const shim_xdna::pdev &pdev, const shim_xdna::hw_ctx *ctx,
       if (errno == ETIME) {
         ret = 0;
       } else {
-        shim_xdna::shim_err(errno, "DRM_IOCTL_AMDXDNA_WAIT_CMD IOCTL failed");
+        // Don't abort the process on a hard wait failure; let the caller turn
+        // it into an iree_status_t.
+        return -errno;
       }
     }
   }
@@ -107,7 +110,7 @@ void hw_q::submit_signal(const fence_handle *f) { f->submit_signal(m_hwctx); }
 
 hw_q::~hw_q() { SHIM_DEBUG("Destroying KMQ HW queue"); }
 
-void hw_q::issue_command(bo *cmd_bo) {
+int hw_q::issue_command(bo *cmd_bo) {
   // Assuming 1024 max args per cmd bo
   const size_t max_arg_bos = 1024;
 
@@ -122,17 +125,25 @@ void hw_q::issue_command(bo *cmd_bo) {
       .cmd_count = 1,
       .arg_count = cmd_bo->get_arg_bo_handles(arg_bo_hdls, max_arg_bos),
   };
-  m_pdev.ioctl(DRM_IOCTL_AMDXDNA_EXEC_CMD, &ecmd);
+  int err = m_pdev.try_ioctl(DRM_IOCTL_AMDXDNA_EXEC_CMD, &ecmd);
+  if (err) return err;
   m_exec_cmd_count.fetch_add(1, std::memory_order_relaxed);
 
   auto id = ecmd.seq;
   cmd_bo->set_cmd_id(id);
   SHIM_DEBUG("Submitted command (%ld)", id);
+  return 0;
 }
 
 int poll_command(bo *cmd) {
   ert_packet *cmdpkt = reinterpret_cast<ert_packet *>(cmd->map());
-  if (cmdpkt->state >= ERT_CMD_STATE_COMPLETED) {
+  // Only ERT_CMD_STATE_COMPLETED means "finished successfully". The ert state
+  // enum is NOT monotonic past COMPLETED(4): SUBMITTED(7) is a pre-completion
+  // state, and ERROR(5)/ABORT(6)/TIMEOUT(8)/NORESPONSE(9) are terminal
+  // failures. A `>= COMPLETED` test wrongly reported all of those as done. Let
+  // terminal-error states fall through to the syncobj wait (their fence is
+  // signaled) so the caller's ert-state check surfaces the failure.
+  if (cmdpkt->state == ERT_CMD_STATE_COMPLETED) {
     return 1;
   }
   return 0;

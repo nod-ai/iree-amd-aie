@@ -130,6 +130,13 @@ void pdev::ioctl(unsigned long cmd, void *arg) const {
   }
 }
 
+int pdev::try_ioctl(unsigned long cmd, void *arg) const {
+  if (::ioctl(m_dev_fd, cmd, arg) == -1) {
+    return errno;
+  }
+  return 0;
+}
+
 void *pdev::mmap(void *addr, size_t len, int prot, int flags,
                  off_t offset) const {
   void *ret = ::mmap(addr, len, prot, flags, m_dev_fd, offset);

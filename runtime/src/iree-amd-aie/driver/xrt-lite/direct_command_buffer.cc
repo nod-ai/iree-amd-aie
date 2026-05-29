@@ -482,8 +482,21 @@ static iree_status_t iree_hal_xrt_lite_submit_chain(
     chain_bo->bind_at(arg_pos++, *bo, 0, bo->size());
   }
 
-  hwq->issue_command(chain_bo);
-  hwq->wait_command(chain_bo, 0);
+  if (int err = hwq->issue_command(chain_bo)) {
+    return iree_make_status(
+        IREE_STATUS_INTERNAL,
+        "xrt-lite ERT_CMD_CHAIN submit (EXEC_CMD ioctl) failed: errno %d", err);
+  }
+  int rc = hwq->wait_command(chain_bo, 0);
+  if (rc < 0) {
+    return iree_make_status(
+        IREE_STATUS_INTERNAL,
+        "xrt-lite ERT_CMD_CHAIN wait ioctl failed: errno %d", -rc);
+  }
+  if (rc == 0) {
+    return iree_make_status(IREE_STATUS_DEADLINE_EXCEEDED,
+                            "xrt-lite ERT_CMD_CHAIN of %zu slots timed out", n);
+  }
 
   // Fail loudly if the chain did not complete (firmware reject / timeout)
   // rather than silently returning stale buffer contents.
@@ -602,8 +615,36 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_normal_run(
   // Repeat the kernel execution `n_kernel_runs` times.
   for (int i = 0; i < n_kernel_runs; i++) {
     ebuf.m_cmd_pkt->state = ERT_CMD_STATE_NEW;
-    hwq->issue_command(ebuf.get_exec_buf_bo());
-    hwq->wait_command(ebuf.get_exec_buf_bo(), 0);
+    if (int err = hwq->issue_command(ebuf.get_exec_buf_bo())) {
+      IREE_TRACE_ZONE_END(z0);
+      return iree_make_status(
+          IREE_STATUS_INTERNAL,
+          "xrt-lite dispatch submit (EXEC_CMD ioctl) failed: errno %d", err);
+    }
+    int rc = hwq->wait_command(ebuf.get_exec_buf_bo(), 0);
+    if (rc < 0) {
+      IREE_TRACE_ZONE_END(z0);
+      return iree_make_status(IREE_STATUS_INTERNAL,
+                              "xrt-lite dispatch wait ioctl failed: errno %d",
+                              -rc);
+    }
+    if (rc == 0) {
+      IREE_TRACE_ZONE_END(z0);
+      return iree_make_status(IREE_STATUS_DEADLINE_EXCEEDED,
+                              "xrt-lite dispatch timed out");
+    }
+    // The driver signals the command fence even on a TDR abort or timeout, so
+    // the wait returning is not proof of success. Trust the firmware-written
+    // ert state: anything other than COMPLETED means the output buffers are
+    // stale/garbage, so surface it instead of syncing wrong results back to the
+    // host. Mirrors the chain path's check.
+    if (ebuf.m_cmd_pkt->state != ERT_CMD_STATE_COMPLETED) {
+      IREE_TRACE_ZONE_END(z0);
+      return iree_make_status(
+          IREE_STATUS_INTERNAL,
+          "xrt-lite dispatch did not complete: ert state %u",
+          ebuf.m_cmd_pkt->state);
+    }
   }
   // Sync the bindings back to the host.
   for (iree_host_size_t j = 0; j < bindings.count; ++j) {
@@ -652,8 +693,37 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_reconfigure(
   // Execute the reconfiguration for `n_reconfigure_runs` times.
   for (int i = 0; i < n_reconfigure_runs; ++i) {
     ebuf.m_cmd_pkt->state = ERT_CMD_STATE_NEW;
-    hwq->issue_command(ebuf.get_exec_buf_bo());
-    hwq->wait_command(ebuf.get_exec_buf_bo(), 0);
+    if (int err = hwq->issue_command(ebuf.get_exec_buf_bo())) {
+      IREE_TRACE_ZONE_END(z0);
+      return iree_make_status(
+          IREE_STATUS_INTERNAL,
+          "xrt-lite reconfiguration submit (EXEC_CMD ioctl) failed: errno %d",
+          err);
+    }
+    int rc = hwq->wait_command(ebuf.get_exec_buf_bo(), 0);
+    if (rc < 0) {
+      IREE_TRACE_ZONE_END(z0);
+      return iree_make_status(
+          IREE_STATUS_INTERNAL,
+          "xrt-lite reconfiguration wait ioctl failed: errno %d", -rc);
+    }
+    if (rc == 0) {
+      IREE_TRACE_ZONE_END(z0);
+      return iree_make_status(IREE_STATUS_DEADLINE_EXCEEDED,
+                              "xrt-lite control-packet reconfiguration timed "
+                              "out");
+    }
+    // A failed reconfiguration leaves the array partially programmed; the next
+    // dispatch would run against a bad config and produce wrong results. Reject
+    // a non-COMPLETED ert state here rather than proceeding silently.
+    if (ebuf.m_cmd_pkt->state != ERT_CMD_STATE_COMPLETED) {
+      IREE_TRACE_ZONE_END(z0);
+      return iree_make_status(
+          IREE_STATUS_INTERNAL,
+          "xrt-lite control-packet reconfiguration did not complete: ert "
+          "state %u",
+          ebuf.m_cmd_pkt->state);
+    }
   }
 
   IREE_TRACE_ZONE_END(z0);
