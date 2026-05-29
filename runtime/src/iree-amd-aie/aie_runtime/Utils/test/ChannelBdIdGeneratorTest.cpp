@@ -22,6 +22,13 @@ getTestSingleRangeChannelToValidBdIds() {
   return channelToValidBdIds;
 }
 
+DenseMap<uint32_t, SmallVector<uint32_t>> getTestRangeChannelToValidBdIds(
+    uint32_t n) {
+  SmallVector<uint32_t> range(n);
+  std::iota(range.begin(), range.end(), 0);
+  return {{0, range}, {1, range}};
+}
+
 DenseMap<uint32_t, SmallVector<uint32_t>> getTestEvenOddChannelToValidBdIds() {
   SmallVector<uint32_t> evenRange(4);
   std::iota(evenRange.begin(), evenRange.end(), 0);
@@ -126,6 +133,65 @@ TEST(ChannelBdIdGeneratorTest, IncrementalWrap) {
       generator.getAndAssignBdId(0, BdIdAssignmentMode::Incremental).value(),
       0);
   generator.releaseBdId(0);
+}
+
+TEST(ChannelBdIdGeneratorTest, ConsecutiveBlockFull) {
+  ChannelBdIdGenerator generator(getTestRangeChannelToValidBdIds(8));
+  EXPECT_EQ(generator.getAndAssignConsecutiveBdIds(0, 3),
+            SmallVector<uint32_t>({0, 1, 2}));
+  EXPECT_TRUE(generator.isBdIdAssigned(0));
+  EXPECT_TRUE(generator.isBdIdAssigned(2));
+  // The next block continues after the first.
+  EXPECT_EQ(generator.getAndAssignConsecutiveBdIds(0, 3),
+            SmallVector<uint32_t>({3, 4, 5}));
+}
+
+TEST(ChannelBdIdGeneratorTest, ConsecutiveBlockShorterWhenFragmented) {
+  ChannelBdIdGenerator generator(getTestRangeChannelToValidBdIds(4));
+  // Reserve id 2, splitting the pool into {0, 1} and {3}.
+  generator.assignBdId(2);
+  // A run of 4 doesn't exist; the longest available run is {0, 1}.
+  EXPECT_EQ(generator.getAndAssignConsecutiveBdIds(0, 4),
+            SmallVector<uint32_t>({0, 1}));
+}
+
+TEST(ChannelBdIdGeneratorTest, ConsecutiveBlockNeverWrapsOutOfRange) {
+  // Regression: a plain incremental allocation marches `lastUsedBdId` toward
+  // the top of the pool and then wraps, yielding a non-consecutive set (e.g.
+  // [3, 0]) whose use as `offset + iv % n` would emit out-of-range ids. The
+  // consecutive allocator must always return an in-range, consecutive run.
+  ChannelBdIdGenerator generator(getTestRangeChannelToValidBdIds(4));  // 0..3
+  generator.getAndAssignBdId(0, BdIdAssignmentMode::Incremental);      // 0
+  generator.getAndAssignBdId(0, BdIdAssignmentMode::Incremental);      // 1
+  generator.getAndAssignBdId(0, BdIdAssignmentMode::Incremental);      // 2
+  generator.releaseBdId(0);
+  generator.releaseBdId(1);
+  // Free now: {0, 1, 3}, incremental cursor at 2 (an incremental block of 2
+  // would wrap to [3, 0]). The consecutive run must be the in-range [0, 1].
+  SmallVector<uint32_t> block = generator.getAndAssignConsecutiveBdIds(0, 2);
+  EXPECT_EQ(block, SmallVector<uint32_t>({0, 1}));
+  for (uint32_t id : block) EXPECT_LT(id, 4u);
+}
+
+TEST(ChannelBdIdGeneratorTest, ConsecutiveBlockSingleWhenFullyFragmented) {
+  ChannelBdIdGenerator generator(getTestRangeChannelToValidBdIds(4));  // 0..3
+  // Reserve 1 and 2, leaving only the isolated singles {0} and {3}.
+  generator.assignBdId(1);
+  generator.assignBdId(2);
+  // No run of length > 1 exists; the lowest single is returned (this is what
+  // collapses `AMDAIEAssignNpuDmaBdIds` to its constant-id branch).
+  EXPECT_EQ(generator.getAndAssignConsecutiveBdIds(0, 3),
+            SmallVector<uint32_t>({0}));
+}
+
+TEST(ChannelBdIdGeneratorTest, ConsecutiveBlockEmptyWhenExhausted) {
+  ChannelBdIdGenerator generator(getTestRangeChannelToValidBdIds(2));  // 0..1
+  generator.assignBdId(0);
+  generator.assignBdId(1);
+  // Channel fully assigned -> empty (drives the pass's failure path).
+  EXPECT_TRUE(generator.getAndAssignConsecutiveBdIds(0, 2).empty());
+  // Unknown channel -> empty too.
+  EXPECT_TRUE(generator.getAndAssignConsecutiveBdIds(7, 1).empty());
 }
 
 }  // namespace

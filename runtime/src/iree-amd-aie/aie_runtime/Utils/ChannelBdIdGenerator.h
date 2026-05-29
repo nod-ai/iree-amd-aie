@@ -43,6 +43,17 @@ class ChannelBdIdGenerator {
   std::optional<uint32_t> getAndAssignBdId(
       uint32_t channel, BdIdAssignmentMode mode = BdIdAssignmentMode::Smallest);
 
+  /// Find and assign the lowest-offset run of `num` consecutive (contiguous in
+  /// value) unassigned BD ids for `channel`. If no run of length `num` exists,
+  /// assigns and returns the largest available consecutive run instead (which
+  /// may be a single id). Returns an empty vector only if the channel is
+  /// unknown or fully assigned. Consecutiveness is required by callers that
+  /// index the ids with an affine expression `iv % n + offset` (see
+  /// `AMDAIEAssignNpuDmaBdIds`); a plain incremental allocation can wrap around
+  /// the end of the valid range and break that invariant.
+  SmallVector<uint32_t> getAndAssignConsecutiveBdIds(uint32_t channel,
+                                                     uint32_t num);
+
   /// Check whether the provided BD id is currently assigned.
   bool isBdIdAssigned(uint32_t bdId) const { return assignedBdIds.count(bdId); }
 

@@ -46,4 +46,33 @@ std::optional<uint32_t> ChannelBdIdGenerator::getAndAssignBdId(
   return std::nullopt;
 }
 
+SmallVector<uint32_t> ChannelBdIdGenerator::getAndAssignConsecutiveBdIds(
+    uint32_t channel, uint32_t num) {
+  SmallVector<uint32_t> result;
+  if (num == 0 || !channelToValidBdIds.contains(channel)) return result;
+  const SmallVector<uint32_t> &valid = channelToValidBdIds[channel];
+  // Scan the valid ids in order and track the longest run of consecutive
+  // (contiguous-value) unassigned ids, stopping early once a run reaches `num`.
+  // Scanning ascending makes `best` the lowest-offset such run.
+  SmallVector<uint32_t> best, cur;
+  for (uint32_t id : valid) {
+    if (isBdIdAssigned(id)) {
+      cur.clear();
+      continue;
+    }
+    if (!cur.empty() && id == cur.back() + 1)
+      cur.push_back(id);
+    else
+      cur.assign(1, id);
+    if (cur.size() > best.size()) best = cur;
+    if (best.size() >= num) break;
+  }
+  uint32_t n = std::min<uint32_t>(best.size(), num);
+  for (uint32_t i = 0; i < n; ++i) {
+    assignBdId(best[i]);
+    result.push_back(best[i]);
+  }
+  return result;
+}
+
 }  // namespace mlir::iree_compiler::AMDAIE
