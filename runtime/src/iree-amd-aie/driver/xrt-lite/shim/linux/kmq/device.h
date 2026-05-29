@@ -24,6 +24,11 @@ struct pdev {
   ~pdev();
 
   void ioctl(unsigned long cmd, void *arg) const;
+  // Non-aborting variant of ioctl(): returns 0 on success or the failing errno,
+  // instead of std::abort()-ing through shim_err(). Use on recoverable hot
+  // paths (command submit/wait) so a transient or bad-input ioctl surfaces as
+  // an iree_status_t rather than a process SIGABRT.
+  int try_ioctl(unsigned long cmd, void *arg) const;
   void *mmap(void *addr, size_t len, int prot, int flags, off_t offset) const;
 };
 

@@ -25,13 +25,18 @@ struct hw_q {
   hw_q(const device &device);
   ~hw_q();
 
+  // Returns: >0 the command was signaled (check its ert state for COMPLETED vs
+  // a terminal error), 0 on ETIME timeout, or -errno on a hard wait-ioctl
+  // failure (no longer aborts).
   int wait_command(bo *, uint32_t timeout_ms) const;
   void submit_wait(const fence_handle *);
   void submit_wait(const std::vector<fence_handle *> &);
   void submit_signal(const fence_handle *);
   void bind_hwctx(const hw_ctx *ctx);
   void unbind_hwctx();
-  void issue_command(bo *);
+  // Returns 0 on success or the failing errno from the EXEC_CMD ioctl (no
+  // longer aborts).
+  int issue_command(bo *);
   uint64_t exec_cmd_count() const {
     return m_exec_cmd_count.load(std::memory_order_relaxed);
   }
