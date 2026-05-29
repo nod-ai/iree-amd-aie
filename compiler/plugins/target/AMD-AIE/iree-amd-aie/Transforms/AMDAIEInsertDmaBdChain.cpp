@@ -184,6 +184,27 @@ LogicalResult insertDmaBdChain(const AMDAIE::AMDAIEDeviceModel &deviceModel,
       }
 
       DmaChain currDmaChain = {tileOp, connectionOp};
+
+      // Packet flows share stream-switch arbiters (routed by packet id), so the
+      // order of their queue-pushes must be preserved. A BD chain defers every
+      // push but the tail (see `AMDAIEControlCodeLowering`), so any chain --
+      // packet or circuit -- that straddles a packet-flow DMA moves a push
+      // across it and corrupts the result. Treat a packet-flow DMA as a
+      // sequence point: close all open chains at it. Breaking only other packet
+      // chains is insufficient; circuit chains must break too. All-circuit
+      // sequences are unaffected and still interleave freely.
+      bool isPacketFlow = false;
+      if (std::optional<AMDAIE::FlowOp> flowOp = connectionOp.getFlowOp())
+        isPacketFlow = flowOp->getIsPacketFlow();
+      if (isPacketFlow) {
+        for (const std::pair<DmaChain, DenseSet<uint32_t>> &entry :
+             dmaChainToBdIds) {
+          if (entry.first != currDmaChain) {
+            chainsToBreak.insert(entry.first);
+          }
+        }
+      }
+
       // Any duplicate BD ID from the same tile indicates that the chain
       // cannot grow further and requires breaking to release the
       // conflicting BD ID.

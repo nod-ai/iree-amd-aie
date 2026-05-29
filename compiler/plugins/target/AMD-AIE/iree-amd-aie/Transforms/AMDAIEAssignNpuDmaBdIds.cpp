@@ -392,25 +392,40 @@ class BdIdAssignmentUtil {
       // Only create expression if more than 1 BD ID is needed and if,
       // otherwise, fall back to constant BD ID.
       if (size > 1) {
-        // Assigning BD IDs for all iterations in the loop.
-        SmallVector<uint32_t> bdIds;
-        for (uint32_t i = 0; i < size; i++) {
-          std::optional<uint32_t> bdId = generator.getAndAssignBdId(
-              dmaTileData.channel, BdIdAssignmentMode::Incremental);
-          if (!bdId) return failure();
-          bdIds.push_back(bdId.value());
-        }
-        // Get the BD ID for the first iteration as the offset.
+        // The semi-affine expression `iv % effSize + offset` used below indexes
+        // the loop iterations into the consecutive BD-id run
+        // [offset, offset + effSize - 1], so the reserved ids must be
+        // consecutive. Reserve a consecutive block: a plain incremental
+        // allocation can wrap around the end of the channel's valid range and
+        // produce a non-consecutive set (e.g. [15, 0, 1, ...] on a shim's 0..15
+        // pool), which would make the expression emit out-of-range ids. The
+        // block may be shorter than `size` if the channel can't fit a full run;
+        // the loop then cycles through fewer ids, which is still correct.
+        SmallVector<uint32_t> bdIds =
+            generator.getAndAssignConsecutiveBdIds(dmaTileData.channel, size);
+        if (bdIds.empty()) return failure();
         uint32_t offset = bdIds.front();
+        uint32_t effSize = bdIds.size();
 
-        // Create the semi-affine expression.
-        auto affineApply = rewriter.create<affine::AffineApplyOp>(
-            loop.getLoc(), ivExpr % size + offset,
-            ValueRange{
-                iv,
-            });
+        // When more than one consecutive id is available, use the semi-affine
+        // expression so the loop cycles through them; otherwise (`effSize ==
+        // 1`) the expression would fold to a constant map with a dangling `iv`
+        // operand, so emit a constant id instead.
+        Value bdIdValue;
+        if (effSize > 1) {
+          auto affineApply = rewriter.create<affine::AffineApplyOp>(
+              loop.getLoc(), ivExpr % effSize + offset,
+              ValueRange{
+                  iv,
+              });
+          bdIdValue = affineApply.getResult();
+        } else {
+          auto constant = rewriter.create<arith::ConstantOp>(
+              rewriter.getUnknownLoc(), rewriter.getIndexAttr(offset));
+          bdIdValue = constant.getResult();
+        }
         AMDAIE::BdIdOp bdIdOp = rewriter.create<AMDAIE::BdIdOp>(
-            rewriter.getUnknownLoc(), tileOp, affineApply.getResult());
+            rewriter.getUnknownLoc(), tileOp, bdIdValue);
         bdIdOpToBdIdsMap[bdIdOp] = bdIds;
         if (!shimDmaOpToBdIdMap.contains(dmaOp)) {
           SmallVector<AMDAIE::BdIdOp, 2> bdIdOps = {nullptr, nullptr};
