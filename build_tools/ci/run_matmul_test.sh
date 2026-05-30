@@ -123,7 +123,7 @@ cd ${OUTPUT_DIR}
 export MATMUL_TESTS_RUN=0
 export MATMUL_TESTS_FAILS=0
 
-DEVICE_HAL="${DEVICE_HAL:-xrt-lite}"
+DEVICE_HAL="${DEVICE_HAL:-amdxdna}"
 
 ###############################################################################
 # Define helper function                                                      #
@@ -415,11 +415,11 @@ function run_matmul_test() {
       --device=${DEVICE_HAL} \
       --max_elements_to_check=${max_elements_to_check}"
 
-  if [ -n "${XRT_LITE_N_CORE_ROWS:-}" ]; then
-    COMMAND="${COMMAND} --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS"
+  if [ -n "${AMDXDNA_N_CORE_ROWS:-}" ]; then
+    COMMAND="${COMMAND} --amdxdna_n_core_rows=$AMDXDNA_N_CORE_ROWS"
   fi
-  if [ -n "${XRT_LITE_N_CORE_COLS:-}" ]; then
-    COMMAND="${COMMAND} --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS"
+  if [ -n "${AMDXDNA_N_CORE_COLS:-}" ]; then
+    COMMAND="${COMMAND} --amdxdna_n_core_cols=$AMDXDNA_N_CORE_COLS"
   fi
 
   total_num_runs=$(( num_repeat_runs * num_corruption_repeat_runs))
@@ -653,19 +653,19 @@ run_matmul_test_on_shapes ${bf16_i8_shapes_medium[@]} \
 
 
 # TODO(jornt): Disabled turbo tests temporarily due to instability issues in CI. Locally, I have been able to crash the NPU in this mode.
-# # note this will not actually show any devices because --xrt_lite_n_core_rows --xrt_lite_n_core_cols are not passed
+# # note this will not actually show any devices because --amdxdna_n_core_rows --amdxdna_n_core_cols are not passed
 # # which i have omitted to make the conditional slightly more succinct
-# if [[ $($IREE_INSTALL_DIR/bin/iree-benchmark-module --dump_devices | grep xrt-lite) ]]; then
+# if [[ $($IREE_INSTALL_DIR/bin/iree-benchmark-module --dump_devices | grep amdxdna) ]]; then
 
 #   $IREE_INSTALL_DIR/bin/iree-benchmark-module \
 #     --module=$OUTPUT_DIR/mm_test1_bf16_f32_m64_n64_k64.vmfb \
 #     --function=matmul_64x64_64xbf16_ \
 #     --input=64x64xbf16 \
 #     --input=64x64xbf16 \
-#     --device=xrt-lite \
+#     --device=amdxdna \
 #     --benchmark_repetitions=10 \
-#     --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
-#     --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
+#     --amdxdna_n_core_rows=$AMDXDNA_N_CORE_ROWS \
+#     --amdxdna_n_core_cols=$AMDXDNA_N_CORE_COLS \
 
 #   # TURBO POWER!!!!!!!!!!!!!!!!!
 #   set +o pipefail
@@ -677,11 +677,11 @@ run_matmul_test_on_shapes ${bf16_i8_shapes_medium[@]} \
 #       --function=matmul_64x64_64xbf16_ \
 #       --input=64x64xbf16 \
 #       --input=64x64xbf16 \
-#       --device=xrt-lite \
+#       --device=amdxdna \
 #       --benchmark_repetitions=10 \
-#       --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
-#       --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
-#       --xrt_lite_power_mode=turbo
+#       --amdxdna_n_core_rows=$AMDXDNA_N_CORE_ROWS \
+#       --amdxdna_n_core_cols=$AMDXDNA_N_CORE_COLS \
+#       --amdxdna_power_mode=turbo
 #   fi
 
 # fi

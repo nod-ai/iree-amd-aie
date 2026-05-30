@@ -49,8 +49,8 @@ class TestParams(ABC):
     n_reconfigure_runs: int = 1
     n_pdi_loads: int = 1
     enable_ctrlpkt: bool = True
-    # Submit each dispatch's commands as a single ERT_CMD_CHAIN (xrt-lite HAL,
-    # via --xrt_lite_cmd_chain=1) instead of per-command issue/wait.
+    # Submit each dispatch's commands as a single ERT_CMD_CHAIN (amdxdna HAL,
+    # via --amdxdna_cmd_chain=1) instead of per-command issue/wait.
     use_cmd_chain: bool = False
     stack_size: int = 1024
     rtol: float = 1e-6
@@ -1015,13 +1015,13 @@ def generate_aie_output(
     ]
     if function_name:
         run_args += [f"--function={function_name}"]
-    if config.xrt_lite_n_core_rows is not None:
-        run_args += [f"--xrt_lite_n_core_rows={config.xrt_lite_n_core_rows}"]
-    if config.xrt_lite_n_core_cols is not None:
-        run_args += [f"--xrt_lite_n_core_cols={config.xrt_lite_n_core_cols}"]
+    if config.amdxdna_n_core_rows is not None:
+        run_args += [f"--amdxdna_n_core_rows={config.amdxdna_n_core_rows}"]
+    if config.amdxdna_n_core_cols is not None:
+        run_args += [f"--amdxdna_n_core_cols={config.amdxdna_n_core_cols}"]
     if use_cmd_chain:
-        # Batch the dispatch's commands into a single ERT_CMD_CHAIN (xrt-lite).
-        run_args += ["--xrt_lite_cmd_chain=1"]
+        # Batch the dispatch's commands into a single ERT_CMD_CHAIN (amdxdna).
+        run_args += ["--amdxdna_cmd_chain=1"]
 
     if config.reset_npu_between_runs:
         shell_out(config.reset_npu_script, verbose=config.verbose)
@@ -1113,17 +1113,17 @@ def benchmark_aie_kernel_time(
         f"--device={config.device_hal}",
         f"--benchmark_repetitions={n_repeats}",
         f"--batch_size={batch_size}",
-        f"--xrt_lite_n_kernel_runs={n_kernel_runs}",
-        f"--xrt_lite_n_reconfigure_runs={n_reconfigure_runs}",
-        f"--xrt_lite_n_pdi_loads={n_pdi_loads}",
+        f"--amdxdna_n_kernel_runs={n_kernel_runs}",
+        f"--amdxdna_n_reconfigure_runs={n_reconfigure_runs}",
+        f"--amdxdna_n_pdi_loads={n_pdi_loads}",
         f"--time_unit={time_unit}",
     ]
     if function_name:
         run_args += [f"--function={function_name}"]
-    if config.xrt_lite_n_core_rows is not None:
-        run_args += [f"--xrt_lite_n_core_rows={config.xrt_lite_n_core_rows}"]
-    if config.xrt_lite_n_core_cols is not None:
-        run_args += [f"--xrt_lite_n_core_cols={config.xrt_lite_n_core_cols}"]
+    if config.amdxdna_n_core_rows is not None:
+        run_args += [f"--amdxdna_n_core_rows={config.amdxdna_n_core_rows}"]
+    if config.amdxdna_n_core_cols is not None:
+        run_args += [f"--amdxdna_n_core_cols={config.amdxdna_n_core_cols}"]
 
     if config.reset_npu_between_runs:
         shell_out(config.reset_npu_script, verbose=config.verbose)
@@ -1207,8 +1207,8 @@ class TestConfig:
         reset_npu_between_runs,
         do_not_run_aie,
         device_hal,
-        xrt_lite_n_core_rows,
-        xrt_lite_n_core_cols,
+        amdxdna_n_core_rows,
+        amdxdna_n_core_cols,
         target_device,
     ):
         self.output_dir = output_dir
@@ -1226,8 +1226,8 @@ class TestConfig:
         self.reset_npu_between_runs = reset_npu_between_runs
         self.do_not_run_aie = do_not_run_aie
         self.device_hal = device_hal
-        self.xrt_lite_n_core_rows = xrt_lite_n_core_rows
-        self.xrt_lite_n_core_cols = xrt_lite_n_core_cols
+        self.amdxdna_n_core_rows = amdxdna_n_core_rows
+        self.amdxdna_n_core_cols = amdxdna_n_core_cols
         self.target_device = target_device
 
         # Try get the xrt and (linux) kernel versions.
@@ -2464,7 +2464,7 @@ class Tests:
                     )
                 )
 
-        # ERT_CMD_CHAIN coverage (xrt-lite): the same multi-kernel + control-packet
+        # ERT_CMD_CHAIN coverage (amdxdna): the same multi-kernel + control-packet
         # designs, submitted as one ERT_CMD_CHAIN per dispatch (reconfig + exec
         # batched) instead of per-command issue/wait. Verifies chaining produces
         # results identical to the default path (compared against llvm-cpu). npu4
@@ -2635,8 +2635,8 @@ def all_tests(
     test_set,
     skip_test_set,
     device_hal,
-    xrt_lite_n_core_rows,
-    xrt_lite_n_core_cols,
+    amdxdna_n_core_rows,
+    amdxdna_n_core_cols,
     target_device,
 ):
     """
@@ -2680,8 +2680,8 @@ def all_tests(
         reset_npu_between_runs,
         do_not_run_aie,
         device_hal,
-        xrt_lite_n_core_rows,
-        xrt_lite_n_core_cols,
+        amdxdna_n_core_rows,
+        amdxdna_n_core_cols,
         target_device,
     )
     if verbose:
@@ -2763,14 +2763,14 @@ if __name__ == "__main__":
 
     parser.add_argument("--xrt_dir", type=abs_path)
     parser.add_argument(
-        "--xrt_lite_n_core_rows",
+        "--amdxdna_n_core_rows",
         type=int,
-        help="Number of AIE core rows of the xrt-lite device to use",
+        help="Number of AIE core rows of the amdxdna device to use",
     )
     parser.add_argument(
-        "--xrt_lite_n_core_cols",
+        "--amdxdna_n_core_cols",
         type=int,
-        help="Number of AIE core columns of the xrt-lite device to use",
+        help="Number of AIE core columns of the amdxdna device to use",
     )
 
     # Taken from AMDAIEEnums.td
@@ -2877,14 +2877,14 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--device_hal",
-        default="xrt-lite",
-        const="xrt-lite",
+        default="amdxdna",
+        const="amdxdna",
         nargs="?",
-        choices=["xrt", "xrt-lite"],
+        choices=["xrt", "amdxdna"],
         help="device HAL to use (default: %(default)s)",
     )
 
-    parser.epilog = "Example call: ./run.py --verbose  output_dir ${IREE_INSTALL}  --peano_dir=${LLVM_AIE}  --target_device=npu1_4col --xrt_lite_n_core_rows=4 --xrt_lite_n_core_cols=4 --tests=Peano"
+    parser.epilog = "Example call: ./run.py --verbose  output_dir ${IREE_INSTALL}  --peano_dir=${LLVM_AIE}  --target_device=npu1_4col --amdxdna_n_core_rows=4 --amdxdna_n_core_cols=4 --tests=Peano"
 
     args = parser.parse_args()
 
@@ -2916,7 +2916,7 @@ if __name__ == "__main__":
         test_set_list,
         skip_test_list,
         args.device_hal,
-        args.xrt_lite_n_core_rows,
-        args.xrt_lite_n_core_cols,
+        args.amdxdna_n_core_rows,
+        args.amdxdna_n_core_cols,
         args.target_device,
     )

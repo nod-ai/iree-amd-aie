@@ -8,8 +8,8 @@ if(IREE_AMD_AIE_ENABLE_XRT_DRIVER)
   add_subdirectory(driver/xrt)
 endif()
 
-if("xrt-lite" IN_LIST IREE_EXTERNAL_HAL_DRIVERS)
-  add_subdirectory(driver/xrt-lite)
+if("amdxdna" IN_LIST IREE_EXTERNAL_HAL_DRIVERS)
+  add_subdirectory(driver/amdxdna)
 endif()
 
 # Flatbuffer schema generation does not require a driver but the generated

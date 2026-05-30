@@ -133,7 +133,7 @@ int main(int argc, char **argv) {
           /*targetArch=*/targetArch.value(),
           /*npuVersion=*/npuVersion.value(),
           /*peanoDir=*/peanoDirStr,
-          /*deviceHal=*/AMDAIEOptions::DeviceHAL::XRT_LITE,
+          /*deviceHal=*/AMDAIEOptions::DeviceHAL::AMDXDNA,
           /*xclBinKernelID=*/"",
           /*xclBinKernelName=*/"",
           /*xclBinInstanceName=*/"",

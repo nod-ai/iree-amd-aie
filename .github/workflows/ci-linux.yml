@@ -86,7 +86,7 @@ jobs:
         run: |
           bash build_tools/download_peano.sh
           echo "PEANO_INSTALL_DIR=$PWD/llvm-aie" >> $GITHUB_ENV
-          echo "ENABLE_XRT_LITE_CTS_TESTS=ON" >> $GITHUB_ENV
+          echo "ENABLE_AMDXDNA_CTS_TESTS=ON" >> $GITHUB_ENV
 
       - name: Install linux deps
         run: |
@@ -180,8 +180,8 @@ jobs:
           python build_tools/ci/amdxdna_driver_utils/amdxdna_ioctl.py --aie-metadata
           echo "aie-version"
           python build_tools/ci/amdxdna_driver_utils/amdxdna_ioctl.py --aie-version
-          echo "XRT_LITE_N_CORE_ROWS=$(python build_tools/ci/amdxdna_driver_utils/amdxdna_ioctl.py --num-rows)" >> $GITHUB_ENV
-          echo "XRT_LITE_N_CORE_COLS=$(python build_tools/ci/amdxdna_driver_utils/amdxdna_ioctl.py --num-cols)" >> $GITHUB_ENV
+          echo "AMDXDNA_N_CORE_ROWS=$(python build_tools/ci/amdxdna_driver_utils/amdxdna_ioctl.py --num-rows)" >> $GITHUB_ENV
+          echo "AMDXDNA_N_CORE_COLS=$(python build_tools/ci/amdxdna_driver_utils/amdxdna_ioctl.py --num-cols)" >> $GITHUB_ENV
 
       - name: E2E correctness matmul test
         run: |
@@ -206,8 +206,8 @@ jobs:
             --peano_dir=$PWD/llvm-aie \
             --vitis_dir=/opt/Xilinx/Vitis/2024.2 \
             --target_device="npu1_4col" \
-            --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
-            --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
+            --amdxdna_n_core_rows=$AMDXDNA_N_CORE_ROWS \
+            --amdxdna_n_core_cols=$AMDXDNA_N_CORE_COLS \
             --skip_tests=Performance \
             -v
 
@@ -223,8 +223,8 @@ jobs:
             --peano_dir=$PWD/llvm-aie \
             --vitis_dir=/opt/Xilinx/Vitis/2024.2 \
             --target_device="npu1_4col" \
-            --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
-            --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
+            --amdxdna_n_core_rows=$AMDXDNA_N_CORE_ROWS \
+            --amdxdna_n_core_cols=$AMDXDNA_N_CORE_COLS \
             --tests=Performance \
             -v > performance_npu1.log
 
@@ -232,7 +232,7 @@ jobs:
           python build_tools/ci/cpu_comparison/performance_summarizer.py \
             performance_npu1.log results_npu1.json
 
-      - name: XRT-LITE tests
+      - name: amdxdna tests
         run: |
           DEVICE_TEST_DIR="$PWD/iree-install/device_tests"
           for t in $(ls $DEVICE_TEST_DIR); do
@@ -241,7 +241,7 @@ jobs:
             case "$t" in
               xexec_chain_test) continue ;;
             esac
-            $DEVICE_TEST_DIR/$t --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS
+            $DEVICE_TEST_DIR/$t --amdxdna_n_core_rows=$AMDXDNA_N_CORE_ROWS --amdxdna_n_core_cols=$AMDXDNA_N_CORE_COLS
           done
 
       # Only publish the performance results on main branch pushes.
@@ -304,8 +304,8 @@ jobs:
           python build_tools/ci/amdxdna_driver_utils/amdxdna_ioctl.py --aie-metadata
           echo "aie-version"
           python build_tools/ci/amdxdna_driver_utils/amdxdna_ioctl.py --aie-version
-          echo "XRT_LITE_N_CORE_ROWS=$(python build_tools/ci/amdxdna_driver_utils/amdxdna_ioctl.py --num-rows)" >> $GITHUB_ENV
-          echo "XRT_LITE_N_CORE_COLS=$(python build_tools/ci/amdxdna_driver_utils/amdxdna_ioctl.py --num-cols)" >> $GITHUB_ENV
+          echo "AMDXDNA_N_CORE_ROWS=$(python build_tools/ci/amdxdna_driver_utils/amdxdna_ioctl.py --num-rows)" >> $GITHUB_ENV
+          echo "AMDXDNA_N_CORE_COLS=$(python build_tools/ci/amdxdna_driver_utils/amdxdna_ioctl.py --num-cols)" >> $GITHUB_ENV
 
       - name : E2E comparison of AIE to llvm-cpu
         run: |
@@ -317,40 +317,40 @@ jobs:
             --peano_dir=$PWD/llvm-aie \
             --vitis_dir=/opt/xilinx/Vitis/2024.2 \
             --target_device="npu4" \
-            --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
-            --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
+            --amdxdna_n_core_rows=$AMDXDNA_N_CORE_ROWS \
+            --amdxdna_n_core_cols=$AMDXDNA_N_CORE_COLS \
             --skip_tests=Performance \
             -v
 
-      - name: XRT-LITE tests
+      - name: amdxdna tests
         run: |
           DEVICE_TEST_DIR="$PWD/iree-install/device_tests"
           # Run the standard iree_hal_cts_test_suite outputs only. The
-          # iree-amd-aie custom dispatch tests (xrt_lite_dispatch_test,
-          # xrt_lite_executable_cache_test) embed a baked-in npu1_4col
+          # iree-amd-aie custom dispatch tests (amdxdna_dispatch_test,
+          # amdxdna_executable_cache_test) embed a baked-in npu1_4col
           # executable that doesn't run correctly on Strix hardware, so they
           # stay phoenix-only.
           for t in $(ls $DEVICE_TEST_DIR); do
             case "$t" in
-              xrt_lite_dispatch_test|xrt_lite_executable_cache_test) continue ;;
+              amdxdna_dispatch_test|amdxdna_executable_cache_test) continue ;;
             esac
-            $DEVICE_TEST_DIR/$t --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS
+            $DEVICE_TEST_DIR/$t --amdxdna_n_core_rows=$AMDXDNA_N_CORE_ROWS --amdxdna_n_core_cols=$AMDXDNA_N_CORE_COLS
           done
 
       # High-iteration runtime soak tests. Catches latent runtime races
       # (the iree-tooling deferred copy_buffer race at ~0.05% per-iter
       # rate, and any similar future regression) at >99% probability over
-      # 5000 iters. Every `test_*.py` in build_tools/ci/xrt_lite_tests/
+      # 5000 iters. Every `test_*.py` in build_tools/ci/amdxdna_tests/
       # marked `@pytest.mark.soak` is auto-collected; adding a new soak
       # test requires no CI change. ~7 min on npu4.
-      - name: XRT-LITE soak tests
-        uses: ./.github/actions/xrt-lite-pytest
+      - name: amdxdna soak tests
+        uses: ./.github/actions/amdxdna-pytest
         with:
           marker: soak
           iree-install-dir: ${{ github.workspace }}/iree-install
           peano-dir: ${{ github.workspace }}/llvm-aie
-          n-core-rows: ${{ env.XRT_LITE_N_CORE_ROWS }}
-          n-core-cols: ${{ env.XRT_LITE_N_CORE_COLS }}
+          n-core-rows: ${{ env.AMDXDNA_N_CORE_ROWS }}
+          n-core-cols: ${{ env.AMDXDNA_N_CORE_COLS }}
           extra-args: "--n-iters=5000"
 
       # Deterministic regression tests pinning behaviour against
@@ -359,22 +359,22 @@ jobs:
       # `test_*.py` marked `@pytest.mark.regression` is auto-collected;
       # adding a new regression test requires no CI change. Runs in
       # seconds.
-      - name: XRT-LITE regression tests
-        uses: ./.github/actions/xrt-lite-pytest
+      - name: amdxdna regression tests
+        uses: ./.github/actions/amdxdna-pytest
         with:
           marker: regression
           iree-install-dir: ${{ github.workspace }}/iree-install
           peano-dir: ${{ github.workspace }}/llvm-aie
-          n-core-rows: ${{ env.XRT_LITE_N_CORE_ROWS }}
-          n-core-cols: ${{ env.XRT_LITE_N_CORE_COLS }}
+          n-core-rows: ${{ env.AMDXDNA_N_CORE_ROWS }}
+          n-core-cols: ${{ env.AMDXDNA_N_CORE_COLS }}
 
       # Upload iree-run-module stderr from any failing iteration of the
       # soak/regression steps above for post-mortem.
-      - name: Upload XRT-LITE pytest failure logs
+      - name: Upload amdxdna pytest failure logs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: xrt-lite-pytest-failure-logs
+          name: amdxdna-pytest-failure-logs
           path: ci_failure_logs/
           if-no-files-found: ignore
 
@@ -390,8 +390,8 @@ jobs:
             --peano_dir=$PWD/llvm-aie \
             --vitis_dir=/opt/xilinx/Vitis/2024.2 \
             --target_device="npu4" \
-            --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
-            --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
+            --amdxdna_n_core_rows=$AMDXDNA_N_CORE_ROWS \
+            --amdxdna_n_core_cols=$AMDXDNA_N_CORE_COLS \
             --tests=Performance -v > performance_npu4.log
 
           # Print a summary of the findings.

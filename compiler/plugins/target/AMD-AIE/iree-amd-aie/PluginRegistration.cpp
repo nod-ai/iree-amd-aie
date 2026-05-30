@@ -58,9 +58,9 @@ struct AMDAIESession
       options.deviceHal = AMDAIE::AMDAIEOptions::DeviceHAL::XRT;
       return AMDAIE::createTarget(options);
     });
-    // #hal.device.target<"xrt-lite", ...
-    targets.add("xrt-lite", [=] {
-      options.deviceHal = AMDAIE::AMDAIEOptions::DeviceHAL::XRT_LITE;
+    // #hal.device.target<"amdxdna", ...
+    targets.add("amdxdna", [=] {
+      options.deviceHal = AMDAIE::AMDAIEOptions::DeviceHAL::AMDXDNA;
       return AMDAIE::createTarget(options);
     });
   }

@@ -26,8 +26,8 @@ if [ -z "${XILINXD_LICENSE_FILE}" ]; then
 fi
 
 export PYTHONPATH=$IREE_INSTALL_DIR/python_packages/iree_compiler:$IREE_INSTALL_DIR/python_packages/iree_runtime
-export XRT_LITE_N_CORE_ROWS=$(python $this_dir/amdxdna_driver_utils/amdxdna_ioctl.py --num-rows)
-export XRT_LITE_N_CORE_COLS=$(python $this_dir/amdxdna_driver_utils/amdxdna_ioctl.py --num-cols)
+export AMDXDNA_N_CORE_ROWS=$(python $this_dir/amdxdna_driver_utils/amdxdna_ioctl.py --num-rows)
+export AMDXDNA_N_CORE_COLS=$(python $this_dir/amdxdna_driver_utils/amdxdna_ioctl.py --num-cols)
 export PATH=$IREE_INSTALL_DIR/bin:$PATH
 
 $this_dir/cpu_comparison/run.py \
@@ -36,8 +36,8 @@ $this_dir/cpu_comparison/run.py \
   $PEANO_INSTALL_DIR \
   --vitis-dir $VITIS_DIR \
   --target_device "npu1_4col" \
-  --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
-  --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
+  --amdxdna_n_core_rows=$AMDXDNA_N_CORE_ROWS \
+  --amdxdna_n_core_cols=$AMDXDNA_N_CORE_COLS \
   -v
 
 $this_dir/run_matmul_test.sh \
@@ -48,5 +48,5 @@ $this_dir/run_matmul_test.sh \
 pytest -rv --capture=tee-sys $src_dir/tests \
   --peano-install-dir=$PEANO_INSTALL_DIR \
   --iree-install-dir=$IREE_INSTALL_DIR \
-  --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
-  --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS
+  --amdxdna_n_core_rows=$AMDXDNA_N_CORE_ROWS \
+  --amdxdna_n_core_cols=$AMDXDNA_N_CORE_COLS
