@@ -473,11 +473,15 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // DMA ordering checks
 //===----------------------------------------------------------------------===//
 
-// We combine across wait operations, which should be ok as no other actor should
-// touch the circular DMA in between. Therefore, the wait can be removed.
+// The first DMA is `async_source` (token) and the second is non-async (empty).
+// The walker skips past the intervening wait, but `createCombinedDoublyStridedOp`
+// bails on the `(token, empty)` result-type case because `replaceOp(next,
+// combined)` would mismatch result counts (1 vs 0). Net: same observable IR.
 // CHECK-LABEL: @wait_after_first
 // CHECK:       %[[CONNECTION:.+]] = amdaie.connection
-// CHECK:       amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [] [] [])
+// CHECK:       %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd async_source %[[CONNECTION]]([] [] [], [] [] [])
+// CHECK-NEXT:  amdaie.npu.dma_wait(%[[NPU_DMA]] : !amdaie.async_source_token)
+// CHECK-NEXT:  amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [] [] [])
 // CHECK-NOT:   amdaie.npu.dma_cpy_nd
 // CHECK-NOT:   amdaie.npu.dma_wait
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
@@ -489,6 +493,325 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
         %1 = amdaie.npu.dma_cpy_nd async_source %0([] [] [], [] [] [])
         amdaie.npu.dma_wait(%1 : !amdaie.async_source_token)
         amdaie.npu.dma_cpy_nd %0([] [] [], [] [] [])
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+// A wait for an unrelated connection is not a global barrier. The two DMAs on
+// the first connection can still be combined across the independent DMA/wait
+// stream on the second connection.
+// CHECK-LABEL: @unrelated_wait_does_not_block_combine
+// CHECK:       %[[CONNECTION_0:.+]] = amdaie.connection
+// CHECK:       %[[CONNECTION_1:.+]] = amdaie.connection
+// CHECK:       amdaie.npu.dma_cpy_nd %[[CONNECTION_0]]([] [] [], [0, 0] [2, 16] [32, 1])
+// CHECK-NEXT:  %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd async_source %[[CONNECTION_1]]([] [] [], [] [] [])
+// CHECK-NEXT:  amdaie.npu.dma_wait(%[[NPU_DMA]] : !amdaie.async_source_token)
+// CHECK-NOT:   amdaie.npu.dma_cpy_nd
+// CHECK-NOT:   amdaie.npu.dma_wait
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @unrelated_wait_does_not_block_combine(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32>>) {
+    amdaie.workgroup {
+      %0 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32>>)
+      %1 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32>>)
+      amdaie.controlcode {
+        amdaie.npu.dma_cpy_nd %0([] [] [], [0] [16] [1])
+        %2 = amdaie.npu.dma_cpy_nd async_source %1([] [] [], [] [] [])
+        amdaie.npu.dma_wait(%2 : !amdaie.async_source_token)
+        amdaie.npu.dma_cpy_nd %0([] [] [], [32] [16] [1])
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+// When combining legal adjacent DMAs, preserve the first DMA's operands. Using
+// operands from the later DMA while inserting before the first DMA can create
+// invalid IR if the later BD id is defined after the first DMA.
+// CHECK-LABEL: @combine_preserves_first_bd_id
+// CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
+// CHECK:       %[[TILE:.+]] = amdaie.tile(%[[C0]], %[[C0]])
+// CHECK:       %[[CONNECTION:.+]] = amdaie.connection
+// CHECK:       %[[BD0:.+]] = amdaie.bd_id(%[[TILE]], %[[C0]])
+// CHECK:       amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [0, 0] [2, 16] [32, 1] bd_id = %[[BD0]])
+// CHECK-NOT:   amdaie.npu.dma_cpy_nd
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @combine_preserves_first_bd_id(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32>>) {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    amdaie.workgroup {
+      %tile = amdaie.tile(%c0, %c0)
+      %0 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32>>)
+      amdaie.controlcode {
+        %bd0 = amdaie.bd_id(%tile, %c0)
+        amdaie.npu.dma_cpy_nd %0([] [] [], [0] [16] [1] bd_id = %bd0)
+        %bd1 = amdaie.bd_id(%tile, %c1)
+        amdaie.npu.dma_cpy_nd %0([] [] [], [32] [16] [1] bd_id = %bd1)
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+// Mirror of `@combine_preserves_first_bd_id` on the target side: the combined
+// op must take the first DMA's target BD id (not next's) for the same
+// dominance reason.
+// CHECK-LABEL: @combine_preserves_first_target_bd_id
+// CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
+// CHECK:       %[[TILE:.+]] = amdaie.tile(%[[C0]], %[[C0]])
+// CHECK:       %[[CONNECTION:.+]] = amdaie.connection
+// CHECK:       %[[BD0:.+]] = amdaie.bd_id(%[[TILE]], %[[C0]])
+// CHECK:       amdaie.npu.dma_cpy_nd %[[CONNECTION]]([0, 0] [2, 16] [32, 1] bd_id = %[[BD0]], [] [] [])
+// CHECK-NOT:   amdaie.npu.dma_cpy_nd
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @combine_preserves_first_target_bd_id(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    amdaie.workgroup {
+      %tile = amdaie.tile(%c0, %c0)
+      %0 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+      amdaie.controlcode {
+        %bd0 = amdaie.bd_id(%tile, %c0)
+        amdaie.npu.dma_cpy_nd %0([0] [16] [1] bd_id = %bd0, [] [] [])
+        %bd1 = amdaie.bd_id(%tile, %c1)
+        amdaie.npu.dma_cpy_nd %0([32] [16] [1] bd_id = %bd1, [] [] [])
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+// An `amdaie.npu.barrier` is a global ordering boundary: no combining may
+// cross it, even on the same connection.
+// CHECK-LABEL: @barrier_blocks_combine
+// CHECK:       %[[CONNECTION:.+]] = amdaie.connection
+// CHECK:       amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [0] [16] [1])
+// CHECK-NEXT:  amdaie.npu.barrier
+// CHECK-NEXT:  amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [32] [16] [1])
+// CHECK-NOT:   amdaie.npu.dma_cpy_nd
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @barrier_blocks_combine(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32>>) {
+    amdaie.workgroup {
+      %0 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32>>)
+      amdaie.controlcode {
+        amdaie.npu.dma_cpy_nd %0([] [] [], [0] [16] [1])
+        amdaie.npu.barrier
+        amdaie.npu.dma_cpy_nd %0([] [] [], [32] [16] [1])
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+// Mixed async/non-async combine is safe when the first DMA is non-async and the
+// second is async: the combined op inherits the second's async token, so the
+// trailing wait redirects to it. The reverse direction -- first async, second
+// non-async -- hits the `(token, empty)` bail in `createCombinedDoublyStridedOp`
+// (covered by `@do_not_combine_async_then_non_async`).
+// CHECK-LABEL: @combine_non_async_then_async
+// CHECK:       %[[CONNECTION:.+]] = amdaie.connection
+// CHECK:       %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd async_source %[[CONNECTION]]([] [] [], [0, 0] [2, 16] [32, 1])
+// CHECK-NEXT:  amdaie.npu.dma_wait(%[[NPU_DMA]] : !amdaie.async_source_token)
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @combine_non_async_then_async(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32>>) {
+    amdaie.workgroup {
+      %0 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32>>)
+      amdaie.controlcode {
+        amdaie.npu.dma_cpy_nd %0([] [] [], [0] [16] [1])
+        %1 = amdaie.npu.dma_cpy_nd async_source %0([] [] [], [32] [16] [1])
+        amdaie.npu.dma_wait(%1 : !amdaie.async_source_token)
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+// Two combinable adjacent DMAs whose async-token shapes differ (one
+// `async_source`, one `async_target`) must not combine: a single combined op
+// can't carry both token kinds.
+// CHECK-LABEL: @do_not_combine_mismatched_async_token_shapes
+// CHECK:       %[[CONNECTION:.+]] = amdaie.connection
+// CHECK:       %[[NPU_DMA_0:.+]] = amdaie.npu.dma_cpy_nd async_source %[[CONNECTION]]([0] [16] [1], [0] [16] [1])
+// CHECK-NEXT:  %[[NPU_DMA_1:.+]] = amdaie.npu.dma_cpy_nd async_target %[[CONNECTION]]([32] [16] [1], [32] [16] [1])
+// CHECK-NEXT:  amdaie.npu.dma_wait(%[[NPU_DMA_0]] : !amdaie.async_source_token)
+// CHECK-NEXT:  amdaie.npu.dma_wait(%[[NPU_DMA_1]] : !amdaie.async_target_token)
+// CHECK-NOT:   amdaie.npu.dma_cpy_nd
+// CHECK-NOT:   amdaie.npu.dma_wait
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @do_not_combine_mismatched_async_token_shapes(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32>>) {
+    amdaie.workgroup {
+      %0 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32>>)
+      amdaie.controlcode {
+        %1 = amdaie.npu.dma_cpy_nd async_source %0([0] [16] [1], [0] [16] [1])
+        %2 = amdaie.npu.dma_cpy_nd async_target %0([32] [16] [1], [32] [16] [1])
+        amdaie.npu.dma_wait(%1 : !amdaie.async_source_token)
+        amdaie.npu.dma_wait(%2 : !amdaie.async_target_token)
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+// Symmetric to `@combine_non_async_then_async`: when the first DMA is async
+// (waited later) and the second is non-async, the combined op would need the
+// first's token but `replaceOp(nextStridedOp, newOp)` requires matching result
+// counts (1 vs 0). Bail; leave the ops separate.
+// CHECK-LABEL: @do_not_combine_async_then_non_async
+// CHECK:       %[[CONNECTION:.+]] = amdaie.connection
+// CHECK:       %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd async_source %[[CONNECTION]]([] [] [], [0] [16] [1])
+// CHECK-NEXT:  amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [32] [16] [1])
+// CHECK-NEXT:  amdaie.npu.dma_wait(%[[NPU_DMA]] : !amdaie.async_source_token)
+// CHECK-NOT:   amdaie.npu.dma_cpy_nd
+// CHECK-NOT:   amdaie.npu.dma_wait
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @do_not_combine_async_then_non_async(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32>>) {
+    amdaie.workgroup {
+      %0 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32>>)
+      amdaie.controlcode {
+        %1 = amdaie.npu.dma_cpy_nd async_source %0([] [] [], [0] [16] [1])
+        amdaie.npu.dma_cpy_nd %0([] [] [], [32] [16] [1])
+        amdaie.npu.dma_wait(%1 : !amdaie.async_source_token)
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+// A same-connection DMA actor of a *different kind* (here an
+// `npu.circular_dma_cpy_nd` between two `npu.dma_cpy_nd`s on the same
+// connection) blocks combining: hoisting the combined op before that work
+// would reorder the controlcode.
+// CHECK-LABEL: @do_not_combine_across_same_conn_different_actor
+// CHECK:       %[[CONNECTION:.+]] = amdaie.connection
+// CHECK:       amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [0] [16] [1])
+// CHECK-NEXT:  amdaie.npu.circular_dma_cpy_nd %[[CONNECTION]]([] [] [], [0] [16] [1])
+// CHECK-NEXT:  amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [32] [16] [1])
+// CHECK-NOT:   amdaie.npu.dma_cpy_nd
+// CHECK-NOT:   amdaie.npu.circular_dma_cpy_nd
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @do_not_combine_across_same_conn_different_actor(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32>>) {
+    amdaie.workgroup {
+      %0 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32>>)
+      amdaie.controlcode {
+        amdaie.npu.dma_cpy_nd %0([] [] [], [0] [16] [1])
+        amdaie.npu.circular_dma_cpy_nd %0([] [] [], [0] [16] [1])
+        amdaie.npu.dma_cpy_nd %0([] [] [], [32] [16] [1])
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+// Route reuse: the same hardware connection drains two distinct logical source
+// objectFifos in different phases. Combining would silently keep the first
+// op's source operand and redirect the second phase to it, so the combiner
+// must bail.
+// CHECK-LABEL: @do_not_combine_route_reuse_different_source
+// CHECK:       %[[CONNECTION:.+]] = amdaie.connection
+// CHECK:       amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], %{{[^[]+}}[0] [16] [1])
+// CHECK-NEXT:  amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], %{{[^[]+}}[32] [16] [1])
+// CHECK-NEXT:  amdaie.end
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @do_not_combine_route_reuse_different_source(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32>>, %arg2: !amdaie.logicalobjectfifo<memref<8x16xi32>>) {
+    amdaie.workgroup {
+      %0 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32>>)
+      amdaie.controlcode {
+        amdaie.npu.dma_cpy_nd %0([] [] [], %arg1 [0] [16] [1]) : source_type = !amdaie.logicalobjectfifo<memref<8x16xi32>>
+        amdaie.npu.dma_cpy_nd %0([] [] [], %arg2 [32] [16] [1]) : source_type = !amdaie.logicalobjectfifo<memref<8x16xi32>>
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+// Mirror of `@do_not_combine_route_reuse_different_source` on the target side.
+// CHECK-LABEL: @do_not_combine_route_reuse_different_target
+// CHECK:       %[[CONNECTION:.+]] = amdaie.connection
+// CHECK:       amdaie.npu.dma_cpy_nd %[[CONNECTION]](%{{[^[]+}}[0] [16] [1], [] [] [])
+// CHECK-NEXT:  amdaie.npu.dma_cpy_nd %[[CONNECTION]](%{{[^[]+}}[32] [16] [1], [] [] [])
+// CHECK-NEXT:  amdaie.end
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @do_not_combine_route_reuse_different_target(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, %arg1: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, %arg2: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
+    amdaie.workgroup {
+      %0 = amdaie.connection(%arg0, %arg2) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+      amdaie.controlcode {
+        amdaie.npu.dma_cpy_nd %0(%arg0 [0] [16] [1], [] [] []) : target_type = !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>
+        amdaie.npu.dma_cpy_nd %0(%arg1 [32] [16] [1], [] [] []) : target_type = !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+// The combiner erases the first op's wait users wholesale. A multi-token wait
+// also synchronizes another DMA whose sync would be silently dropped, so the
+// combiner bails. (`FoldDmaWaits` runs after `DmaComposition` in the standard
+// pipeline so multi-token waits never reach the combiner; the precondition
+// guards hand-authored IR.)
+// CHECK-LABEL: @do_not_combine_when_wait_has_multiple_tokens
+// CHECK:       %[[CONNECTION_0:.+]] = amdaie.connection
+// CHECK:       %[[CONNECTION_1:.+]] = amdaie.connection
+// CHECK:       %[[NPU_DMA_0:.+]] = amdaie.npu.dma_cpy_nd async_source %[[CONNECTION_0]]([] [] [], [0] [16] [1])
+// CHECK-NEXT:  %[[NPU_DMA_1:.+]] = amdaie.npu.dma_cpy_nd async_source %[[CONNECTION_1]]([] [] [], [0] [16] [1])
+// CHECK-NEXT:  amdaie.npu.dma_wait(%[[NPU_DMA_0]], %[[NPU_DMA_1]] : !amdaie.async_source_token, !amdaie.async_source_token)
+// CHECK-NEXT:  amdaie.npu.dma_cpy_nd %[[CONNECTION_0]]([] [] [], [32] [16] [1])
+// CHECK-NOT:   amdaie.npu.dma_cpy_nd
+// CHECK-NOT:   amdaie.npu.dma_wait
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @do_not_combine_when_wait_has_multiple_tokens(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32>>) {
+    amdaie.workgroup {
+      %0 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32>>)
+      %1 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32>>)
+      amdaie.controlcode {
+        %2 = amdaie.npu.dma_cpy_nd async_source %0([] [] [], [0] [16] [1])
+        %3 = amdaie.npu.dma_cpy_nd async_source %1([] [] [], [0] [16] [1])
+        amdaie.npu.dma_wait(%2, %3 : !amdaie.async_source_token, !amdaie.async_source_token)
+        amdaie.npu.dma_cpy_nd %0([] [] [], [32] [16] [1])
         amdaie.end
       }
     }

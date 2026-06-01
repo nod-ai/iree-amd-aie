@@ -75,21 +75,23 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // -----
 
 //===----------------------------------------------------------------------===//
-// Checks in which composition should happen.
+// Composition behavior with loops + same-connection waits.
 //===----------------------------------------------------------------------===//
 
-// CHECK-NOT:   affine_map
-// CHECK-LABEL: @combination_and_subsumption
+// Same-connection waits do not block combining in the loop body. The two DMAs
+// combine inside the body (the wait between them is skipped at the walk) and
+// then `scf.for` subsumption hoists the merged op out as a single higher-rank
+// DMA.
+// CHECK-LABEL: @combine_and_subsume_across_wait_in_loop_body
 // CHECK:       %[[CONNECTION:.+]] = amdaie.connection
 // CHECK:       amdaie.controlcode
 // CHECK-NOT:     scf.for
 // CHECK:         %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd async_source %[[CONNECTION]]([] [] [], [0, 0, 0, 0] [6, 2, 8, 16] [128, 32, 8, 1])
-// CHECK-NOT:     amdaie.npu.dma_cpy_nd
 // CHECK:         amdaie.npu.dma_wait(%[[NPU_DMA]] : !amdaie.async_source_token)
 #map = affine_map<(d0) -> (d0 * 16)>
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
-  func.func @combination_and_subsumption(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32>>) {
+  func.func @combine_and_subsume_across_wait_in_loop_body(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32>>) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %c6 = arith.constant 6 : index
@@ -112,18 +114,22 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
+// Subsumption folds the loop's inner DMA into [0, 0, 0] [6, 8, 16] [32, 8, 1].
+// The hoisted-out DMA and the outer DMA [0, 0, 32] [6, 8, 16] [32, 8, 1] share
+// source/target and connection, the result-type matrix matches (both
+// `async_source`), and the walker skips the intervening wait, so the combine
+// fires and the trailing wait redirects to the single merged DMA.
 // CHECK-NOT:   affine_map
-// CHECK-LABEL: @subsumption_and_combination
+// CHECK-LABEL: @subsumption_then_combination_across_wait
 // CHECK:       %[[CONNECTION:.+]] = amdaie.connection
 // CHECK:       amdaie.controlcode
 // CHECK-NOT:     scf.for
 // CHECK:         %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd async_source %[[CONNECTION]]([] [] [], [0, 0, 0, 0] [2, 6, 8, 16] [32, 32, 8, 1])
-// CHECK-NOT:     amdaie.npu.dma_cpy_nd
 // CHECK:         amdaie.npu.dma_wait(%[[NPU_DMA]] : !amdaie.async_source_token)
 #map = affine_map<(d0) -> (d0 * 32)>
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
-  func.func @subsumption_and_combination(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32>>) {
+  func.func @subsumption_then_combination_across_wait(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32>>) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %c6 = arith.constant 6 : index

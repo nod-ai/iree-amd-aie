@@ -52,19 +52,33 @@ struct CombineStridedOps
 
     if (auto npuDmaOp = dyn_cast<AMDAIE::NpuDmaCpyNdOp>(op.getOperation())) {
       LLVM_DEBUG(llvm::dbgs() << "npuDmaOp: " << npuDmaOp << "\n");
-      // Fail if any non-wait user operations.
+      // The wait users of `npuDmaOp` are erased after combining, so each one
+      // must reference only `npuDmaOp`'s tokens. Bail on any non-wait user or
+      // any multi-token wait (which would also be synchronizing another DMA
+      // whose sync we would silently drop). At this pipeline stage
+      // (DmaComposition runs before NpuDmaToHalfDmaCpyNd and FoldDmaWaits),
+      // every wait is single-token in the standard flow; the check guards
+      // hand-authored IR.
       for (Operation *userOp : npuDmaOp->getUsers()) {
-        if (isa<AMDAIE::NpuDmaWaitOp>(userOp)) {
-          userOpsToBeErased.push_back(userOp);
-        } else {
-          return failure();
-        }
+        auto waitOp = dyn_cast<AMDAIE::NpuDmaWaitOp>(userOp);
+        if (!waitOp || waitOp.getAsyncTokens().size() != 1) return failure();
+        userOpsToBeErased.push_back(userOp);
       }
       FailureOr<AMDAIE::NpuDmaCpyNdOp> maybeNextNpuDmaOp =
           findNextDmaOpWithSameConnection(npuDmaOp, block);
       if (failed(maybeNextNpuDmaOp)) return failure();
-      nextStridedOp = cast<AMDAIE::DoublyStridedOpInterface>(
-          maybeNextNpuDmaOp->getOperation());
+      AMDAIE::NpuDmaCpyNdOp nextNpuDmaOp = *maybeNextNpuDmaOp;
+      // The same hardware connection can be intentionally reused for distinct
+      // logical transfers in different phases (for example, draining two
+      // different outputs through one route). Combining such ops would keep the
+      // first op's source/target operands and silently redirect the later
+      // phase.
+      if (npuDmaOp.getSource() != nextNpuDmaOp.getSource() ||
+          npuDmaOp.getTarget() != nextNpuDmaOp.getTarget()) {
+        return failure();
+      }
+      nextStridedOp =
+          cast<AMDAIE::DoublyStridedOpInterface>(nextNpuDmaOp.getOperation());
       if (!nextStridedOp) return failure();
 
       std::optional<uint8_t> sourceMemspaceInt =
@@ -149,9 +163,13 @@ struct CombineStridedOps
     }
 
     rewriter.setInsertionPoint(op);
-    auto newDoublyStridedOp = nextStridedOp.createDoublyStridedOp(
-        rewriter, newTargetOffsets, newTargetSizes, newTargetStrides,
-        newSourceOffsets, newSourceSizes, newSourceStrides);
+    FailureOr<AMDAIE::DoublyStridedOpInterface> maybeNewDoublyStridedOp =
+        createCombinedDoublyStridedOp(op, nextStridedOp, rewriter,
+                                      newTargetOffsets, newTargetSizes,
+                                      newTargetStrides, newSourceOffsets,
+                                      newSourceSizes, newSourceStrides);
+    if (failed(maybeNewDoublyStridedOp)) return failure();
+    auto newDoublyStridedOp = *maybeNewDoublyStridedOp;
     rewriter.replaceOp(nextStridedOp, newDoublyStridedOp.getOperation());
 
     for (Operation *userOp : userOpsToBeErased) rewriter.eraseOp(userOp);
@@ -159,17 +177,102 @@ struct CombineStridedOps
     return success();
   }
 
+  static FailureOr<AMDAIE::DoublyStridedOpInterface>
+  createCombinedDoublyStridedOp(AMDAIE::DoublyStridedOpInterface op,
+                                AMDAIE::DoublyStridedOpInterface nextStridedOp,
+                                PatternRewriter &rewriter,
+                                ArrayRef<OpFoldResult> newTargetOffsets,
+                                ArrayRef<OpFoldResult> newTargetSizes,
+                                ArrayRef<OpFoldResult> newTargetStrides,
+                                ArrayRef<OpFoldResult> newSourceOffsets,
+                                ArrayRef<OpFoldResult> newSourceSizes,
+                                ArrayRef<OpFoldResult> newSourceStrides) {
+    // Build the combined npu.dma_cpy_nd op from the first DMA's operands so BD
+    // ids and FIFO operands dominate the insertion point. Result-type handling
+    // is asymmetric because the combined op is created at the first op's
+    // position but takes the second op's place via `replaceOp(nextStridedOp,
+    // newOp)`, which requires equal result counts:
+    //   - (empty op, token next): combine; the combined op inherits the
+    //     second's token, and the trailing wait redirects to it.
+    //   - (token op, empty next): bail -- `replaceOp` would mismatch (1 vs 0).
+    //   - (token, token same):    combine; keep the shared token type.
+    //   - (token, token diff):    bail; no token-union exists.
+    if (auto npuDmaOp = dyn_cast<AMDAIE::NpuDmaCpyNdOp>(op.getOperation())) {
+      SmallVector<Type> resultTypes(op->getResultTypes());
+      if (resultTypes.empty()) {
+        resultTypes.assign(nextStridedOp->getResultTypes().begin(),
+                           nextStridedOp->getResultTypes().end());
+      } else if (nextStridedOp->getResultTypes().empty()) {
+        // (token op, empty next): the new op would have op's token type but
+        // `rewriter.replaceOp(nextStridedOp, newOp)` below requires equal
+        // result counts. Preserving op's wait by replacing op's users instead
+        // would require a different rewrite strategy; bail.
+        return failure();
+      } else if (!llvm::equal(resultTypes, nextStridedOp->getResultTypes())) {
+        return failure();
+      }
+      auto newOp = AMDAIE::NpuDmaCpyNdOp::create(
+          rewriter, npuDmaOp.getLoc(), TypeRange(resultTypes),
+          npuDmaOp.getConnection(), npuDmaOp.getTarget(), newTargetOffsets,
+          newTargetSizes, newTargetStrides, npuDmaOp.getTargetBdId(),
+          npuDmaOp.getSource(), newSourceOffsets, newSourceSizes,
+          newSourceStrides, npuDmaOp.getSourceBdId());
+      return cast<AMDAIE::DoublyStridedOpInterface>(newOp.getOperation());
+    }
+
+    // Fallback path (e.g. NpuCircularDmaCpyNdOp): the `createDoublyStridedOp`
+    // interface method's signature takes mutable `SmallVector<OpFoldResult>&`,
+    // so materialize local copies to forward through it.
+    SmallVector<OpFoldResult> tgtOffs(newTargetOffsets);
+    SmallVector<OpFoldResult> tgtSizes(newTargetSizes);
+    SmallVector<OpFoldResult> tgtStrides(newTargetStrides);
+    SmallVector<OpFoldResult> srcOffs(newSourceOffsets);
+    SmallVector<OpFoldResult> srcSizes(newSourceSizes);
+    SmallVector<OpFoldResult> srcStrides(newSourceStrides);
+    return op.createDoublyStridedOp(rewriter, tgtOffs, tgtSizes, tgtStrides,
+                                    srcOffs, srcSizes, srcStrides);
+  }
+
   template <typename T>
   static FailureOr<T> findNextDmaOpWithSameConnection(T dmaOp, Block *block) {
+    // Walk the block (pre-order, recursing into nested regions) looking for
+    // the next op of type `T` on the same connection. Policy:
+    //   - `amdaie.npu.barrier`: global ordering boundary, bail.
+    //   - Same-connection DMA actor of a *different* kind (a
+    //     `circular_dma_cpy_nd` between two `dma_cpy_nd`s on the same
+    //     connection, or vice versa): bail. The combined op would be hoisted
+    //     past it and reorder the controlcode stream.
+    //   - Type-T same-connection candidate found in a different block
+    //     (nested region): bail; hoisting past nested control flow would
+    //     reorder. Empty or unrelated nested regions flow through. This
+    //     matters when `SubsumeLoopIntoDMA` leaves an empty loop shell
+    //     after hoisting DMAs out -- the combiner needs to keep merging
+    //     adjacent hoisted DMAs across that empty loop.
+    //   - Same-block same-connection type-T candidate: return.
+    Value connection = dmaOp.getConnection();
     T nextDmaOp;
     Block::iterator begin = std::next(dmaOp->getIterator());
-    block->walk(begin, block->end(), [&](T other) {
-      if (dmaOp.getConnection() != other.getConnection())
+    block->walk(begin, block->end(), [&](Operation *other) {
+      if (isa<AMDAIE::NpuBarrierOp>(other)) return WalkResult::interrupt();
+      auto candidate = dyn_cast<T>(other);
+      if (!candidate) {
+        // Same-connection DMA actor of a different kind blocks.
+        if (auto npuDmaOp = dyn_cast<AMDAIE::NpuDmaCpyNdOp>(other)) {
+          if (npuDmaOp.getConnection() == connection)
+            return WalkResult::interrupt();
+        }
+        if (auto npuCircDmaOp =
+                dyn_cast<AMDAIE::NpuCircularDmaCpyNdOp>(other)) {
+          if (npuCircDmaOp.getConnection() == connection)
+            return WalkResult::interrupt();
+        }
         return WalkResult::advance();
-      Block *otherBlock = other->getBlock();
+      }
+      if (candidate.getConnection() != connection) return WalkResult::advance();
+      Block *otherBlock = candidate->getBlock();
       if (!otherBlock) return WalkResult::advance();
       if (otherBlock != block) return WalkResult::interrupt();
-      nextDmaOp = other;
+      nextDmaOp = candidate;
       return WalkResult::interrupt();
     });
     if (nextDmaOp) return nextDmaOp;
