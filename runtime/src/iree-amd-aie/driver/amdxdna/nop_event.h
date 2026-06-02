@@ -11,7 +11,7 @@
 #include "iree/hal/api.h"
 
 // HAL events for amdxdna. Command buffers execute synchronously on submission,
-// so events carry no signal/reset state — they exist purely as resource handles
+// so events carry no signal/reset state; they exist purely as resource handles
 // that the deferred command buffer can record references to.
 iree_status_t iree_hal_amdxdna_event_create(
     iree_hal_queue_affinity_t queue_affinity, iree_hal_event_flags_t flags,

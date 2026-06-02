@@ -5,6 +5,11 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  message(STATUS "amdxdna HAL backend is only implemented for Linux KMQ; skipping")
+  return()
+endif()
+
 iree_add_all_subdirs()
 
 iree_register_external_hal_driver(
@@ -14,6 +19,16 @@ iree_register_external_hal_driver(
     iree-amd-aie::driver::amdxdna::registration
   REGISTER_FN
     iree_hal_amdxdna_driver_module_register
+)
+
+set(IREE_HAL_AMDXDNA_NATIVE_SRCS
+  native.h
+)
+set(IREE_HAL_AMDXDNA_NATIVE_DEPS
+  iree-amd-aie::driver::amdxdna::shim::linux::kmq::shim-xdna
+)
+list(APPEND IREE_HAL_AMDXDNA_NATIVE_SRCS
+  native_linux_kmq.cc
 )
 
 iree_cc_library(
@@ -30,9 +45,12 @@ iree_cc_library(
     direct_command_buffer.cc
     direct_command_buffer.h
     device.cc
+    device_internal.h
     driver.cc
     executable.cc
     executable.h
+    executable_internal.h
+    ${IREE_HAL_AMDXDNA_NATIVE_SRCS}
     nop_event.cc
     nop_event.h
     nop_executable_cache.cc
@@ -52,8 +70,9 @@ iree_cc_library(
     iree::hal::utils::files
     iree::hal::utils::queue_emulation
     iree::hal::utils::queue_host_call_emulation
+    iree::hal::utils::resource_set
     iree::base::internal::flatcc::parsing
     iree-amd-aie::schemas::pdi_executable_def_c_fbs
-    iree-amd-aie::driver::amdxdna::shim::linux::kmq::shim-xdna
+    ${IREE_HAL_AMDXDNA_NATIVE_DEPS}
   PUBLIC
 )

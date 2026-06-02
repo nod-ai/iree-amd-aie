@@ -49,8 +49,6 @@ int wait_cmd(const shim_xdna::pdev &pdev, const shim_xdna::hw_ctx *ctx,
       if (errno == ETIME) {
         ret = 0;
       } else {
-        // Don't abort the process on a hard wait failure; let the caller turn
-        // it into an iree_status_t.
         return -errno;
       }
     }
@@ -64,8 +62,6 @@ int wait_cmd(const shim_xdna::pdev &pdev, const shim_xdna::hw_ctx *ctx,
       if (errno == ETIME) {
         ret = 0;
       } else {
-        // Don't abort the process on a hard wait failure; let the caller turn
-        // it into an iree_status_t.
         return -errno;
       }
     }
@@ -100,13 +96,18 @@ int hw_q::wait_command(bo *cmd, uint32_t timeout_ms) const {
   return wait_cmd(m_pdev, m_hwctx, cmd, timeout_ms);
 }
 
-void hw_q::submit_wait(const fence_handle *f) { f->submit_wait(m_hwctx); }
-
-void hw_q::submit_wait(const std::vector<fence_handle *> &fences) {
-  fence_handle::submit_wait(m_pdev, m_hwctx, fences);
+int hw_q::submit_wait(const fence_handle *f, uint64_t *out_state) {
+  return f->submit_wait(m_hwctx, out_state);
 }
 
-void hw_q::submit_signal(const fence_handle *f) { f->submit_signal(m_hwctx); }
+int hw_q::submit_wait(const std::vector<fence_handle *> &fences,
+                      uint64_t *out_last_state) {
+  return fence_handle::submit_wait(m_pdev, m_hwctx, fences, out_last_state);
+}
+
+int hw_q::submit_signal(const fence_handle *f, uint64_t *out_state) {
+  return f->submit_signal(m_hwctx, out_state);
+}
 
 hw_q::~hw_q() { SHIM_DEBUG("Destroying KMQ HW queue"); }
 
@@ -116,6 +117,9 @@ int hw_q::issue_command(bo *cmd_bo) {
 
   uint32_t arg_bo_hdls[max_arg_bos];
   uint32_t cmd_bo_hdl = cmd_bo->get_drm_bo_handle();
+  uint32_t arg_count = 0;
+  int err = cmd_bo->get_arg_bo_handles(arg_bo_hdls, max_arg_bos, &arg_count);
+  if (err) return err;
 
   amdxdna_drm_exec_cmd ecmd = {
       .hwctx = m_hwctx->m_handle,
@@ -123,9 +127,9 @@ int hw_q::issue_command(bo *cmd_bo) {
       .cmd_handles = cmd_bo_hdl,
       .args = reinterpret_cast<uint64_t>(arg_bo_hdls),
       .cmd_count = 1,
-      .arg_count = cmd_bo->get_arg_bo_handles(arg_bo_hdls, max_arg_bos),
+      .arg_count = arg_count,
   };
-  int err = m_pdev.try_ioctl(DRM_IOCTL_AMDXDNA_EXEC_CMD, &ecmd);
+  err = m_pdev.try_ioctl(DRM_IOCTL_AMDXDNA_EXEC_CMD, &ecmd);
   if (err) return err;
   m_exec_cmd_count.fetch_add(1, std::memory_order_relaxed);
 

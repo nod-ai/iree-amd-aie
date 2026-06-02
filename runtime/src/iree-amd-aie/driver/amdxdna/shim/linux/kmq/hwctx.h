@@ -4,9 +4,15 @@
 #ifndef _HWCTX_XDNA_H_
 #define _HWCTX_XDNA_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <map>
+#include <memory>
+#include <string>
+#include <vector>
 
-#include "device.h"
+#include "amdxdna_accel.h"
+#include "xrt_mem.h"
 
 namespace shim_xdna {
 
@@ -60,6 +66,7 @@ struct hw_ctx {
   uint32_t m_num_cols;
   uint32_t m_doorbell;
   uint32_t m_syncobj;
+  int m_init_errno = 0;
   std::unique_ptr<bo> m_log_bo;
   void *m_log_buf;
   std::vector<std::unique_ptr<bo>> m_pdi_bos;
@@ -75,11 +82,12 @@ struct hw_ctx {
   hw_ctx(const hw_ctx &) = delete;
   hw_ctx &operator=(const hw_ctx &) = delete;
 
-  std::unique_ptr<bo> alloc_bo(size_t size, shim_xcl_bo_flags flags);
-  std::unique_ptr<bo> import_bo(pid_t, int);
+  int init_errno() const;
+  int alloc_bo(size_t size, shim_xcl_bo_flags flags,
+               std::unique_ptr<bo> *out_bo);
 
-  cuidx_t open_cu_context(const std::string &cuname);
-  void create_ctx_on_device();
+  int open_cu_context(const std::string &cuname, cuidx_t *out_cu_idx);
+  int create_ctx_on_device();
   void init_log_buf();
   void fini_log_buf() const;
   void delete_ctx_on_device() const;

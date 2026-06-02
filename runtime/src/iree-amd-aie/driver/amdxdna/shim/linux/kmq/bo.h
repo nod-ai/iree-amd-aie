@@ -59,6 +59,7 @@ struct bo {
   // Only for AMDXDNA_BO_CMD type
   std::map<size_t, uint32_t> m_args_map;
   mutable std::mutex m_args_map_lock;
+  int m_init_errno = 0;
 
   // Command ID in the queue after command submission.
   // Only valid for cmd BO.
@@ -82,12 +83,21 @@ struct bo {
 
   void *map() const;
   void unmap(void *addr);
-  void sync(direction, size_t size, size_t offset);
-  void sync(direction);
+  int init_errno() const;
+  static int create(const pdev &p, uint32_t ctx_id, size_t size,
+                    shim_xcl_bo_flags flags, std::unique_ptr<bo> *out_bo);
+  static int create(const pdev &p, uint32_t ctx_id, size_t size, uint32_t flags,
+                    std::unique_ptr<bo> *out_bo);
+  static int create(const pdev &p, size_t size, amdxdna_bo_type type,
+                    std::unique_ptr<bo> *out_bo);
+  static int create_imported(const pdev &p, int ehdl,
+                             std::unique_ptr<bo> *out_bo);
+  int sync(direction, size_t size, size_t offset);
+  int sync(direction);
   properties get_properties() const;
   size_t size();
 
-  std::unique_ptr<shared_handle> share() const;
+  int share(std::unique_ptr<shared_handle> *out_handle) const;
   // For cmd BO only
   void set_cmd_id(uint64_t id);
   // For cmd BO only
@@ -95,20 +105,21 @@ struct bo {
   uint32_t get_drm_bo_handle() const;
   amdxdna_bo_type get_type() const;
   // DRM BO managed by driver.
-  void bind_at(size_t pos, const bo &bh, size_t offset, size_t size);
+  int bind_at(size_t pos, const bo &bh, size_t offset, size_t size);
   std::string describe() const;
   // Import DRM BO from m_import shared object
-  void import_bo();
+  int import_bo();
   // Free DRM BO in driver
   void free_bo();
-  void mmap_bo(size_t align = 0);
+  int mmap_bo(size_t align = 0);
   void munmap_bo();
   uint64_t get_paddr() const;
   std::string type_to_name() const;
-  void attach_to_ctx();
-  void detach_from_ctx();
+  int attach_to_ctx();
+  int detach_from_ctx();
   // Obtain array of arg BO handles, returns real number of handles
-  uint32_t get_arg_bo_handles(uint32_t *handles, size_t num) const;
+  int get_arg_bo_handles(uint32_t *handles, size_t num,
+                         uint32_t *out_count) const;
 };
 
 }  // namespace shim_xdna

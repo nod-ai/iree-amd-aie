@@ -14,13 +14,13 @@
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
 
-namespace iree::hal::cts {
+namespace iree::hal::amdxdna {
 
 static const char* get_test_executable_format() { return "amdaie-pdi-fb"; }
 
 static iree_const_byte_span_t get_test_executable_data() {
   const struct iree_file_toc_t* toc =
-      iree_cts_testdata_executables_aie_amdxdna_create();
+      iree_amdxdna_testdata_executables_aie_create();
   const auto& file = toc[0];
   return iree_make_const_byte_span(file.data, file.size);
 }
@@ -182,26 +182,20 @@ TEST_F(MatMulDispatchTest, SubmitEmpty) {
   iree_hal_command_buffer_release(command_buffer);
 }
 
-static uint16_t float_to_bf16(float value) {
-  return (uint16_t)(((*reinterpret_cast<uint32_t*>(&value))) >> 16);
-}
-
 TEST_F(MatMulDispatchTest, DispatchMatmul) {
   PrepareMatmulExecutable();
 
   // Create input buffer.
-  constexpr iree_device_size_t M = 512, K = 4096, N = 512;
+  constexpr iree_device_size_t M = 8, K = 4, N = 8;
   iree_hal_buffer_t *input_A = nullptr, *input_B = nullptr, *output_C = nullptr;
 
-  float a_32 = 1.5;
-  float b_32 = 3.25;
+  float a_32 = 2.0;
+  float b_32 = 3.0;
   float ab_32 = a_32 * b_32;
   float abK_32 = ab_32 * K;
-  uint16_t a = float_to_bf16(a_32);
-  uint16_t b = float_to_bf16(b_32);
 
-  CreateFilledDeviceBuffer<uint16_t>(M * K * sizeof(uint16_t), a, &input_A);
-  CreateFilledDeviceBuffer<uint16_t>(K * N * sizeof(uint16_t), b, &input_B);
+  CreateFilledDeviceBuffer<float>(M * K * sizeof(float), a_32, &input_A);
+  CreateFilledDeviceBuffer<float>(K * N * sizeof(float), b_32, &input_B);
   CreateFilledDeviceBuffer<float>(M * N * sizeof(float), -1, &output_C);
 
   iree_hal_buffer_ref_t binding_refs[3];
@@ -259,17 +253,14 @@ TEST_F(MatMulDispatchTest, DispatchMatmul) {
   IREE_ASSERT_OK(iree_hal_command_buffer_end(command_buffer));
   IREE_ASSERT_OK(SubmitCommandBufferAndWait(command_buffer, binding_table));
 
-  std::vector<float> output_values;
-  output_values.reserve(M * N);
+  std::vector<float> output_values(M * N);
 
   IREE_ASSERT_OK(iree_hal_device_transfer_d2h(
       device_, output_C,
       /*source_offset=*/0, output_values.data(), M * N * sizeof(float),
       IREE_HAL_TRANSFER_BUFFER_FLAG_DEFAULT, iree_infinite_timeout()));
 
-  std::vector<float> correct_output_values;
-  correct_output_values.reserve(M * N);
-  std::fill_n(correct_output_values.data(), M * N, abK_32);
+  std::vector<float> correct_output_values(M * N, abK_32);
   int n_wrong = 0;
   for (int i = 0; i < M * N; ++i) {
     if (output_values[i] != correct_output_values[i]) {
@@ -287,4 +278,4 @@ TEST_F(MatMulDispatchTest, DispatchMatmul) {
   CleanupExecutable();
 }
 
-}  // namespace iree::hal::cts
+}  // namespace iree::hal::amdxdna

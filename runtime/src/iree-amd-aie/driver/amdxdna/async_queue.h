@@ -23,10 +23,11 @@
 typedef struct iree_hal_amdxdna_async_queue_t iree_hal_amdxdna_async_queue_t;
 
 // Op body callback run on the worker thread when the op fires. May be NULL
-// for pure signal-deferral. Skipped on the cancel/wait-failure path — use
+// for pure signal-deferral. Skipped on the cancel/wait-failure path; use
 // retained_resources for cleanup that must run on every termination path.
 // Returning non-OK fails signal_list with that status (queue takes ownership).
 typedef iree_status_t (*iree_hal_amdxdna_async_op_fn_t)(void* user_data);
+typedef void (*iree_hal_amdxdna_async_op_cleanup_fn_t)(void* user_data);
 
 // Creates a queue with a single worker thread. |block_pool| is borrowed and
 // must outlive the queue.
@@ -38,7 +39,7 @@ iree_status_t iree_hal_amdxdna_async_queue_create(
 // each successful signal so pool epoch_query results stay coherent. The
 // lifecycle contract (asserted) is single-shot non-null setup at topology
 // assignment and a single null-clear at teardown after the worker has
-// joined — replacing a live tracker would race with the worker.
+// joined; replacing a live tracker would race with the worker.
 void iree_hal_amdxdna_async_queue_set_frontier(
     iree_hal_amdxdna_async_queue_t* queue,
     iree_async_frontier_tracker_t* tracker, iree_async_axis_t axis);
@@ -55,17 +56,21 @@ void iree_hal_amdxdna_async_queue_destroy(
 // is empty).
 //
 // |retained_resources| are caller-retained pointers (each with a +1 the
-// queue consumes) that the queue releases on every termination path —
+// queue consumes) that the queue releases on every termination path:
 // success, op_fn error, wait failure, shutdown cancellation. Use it for
-// resource lifecycle. |user_data| is the (unretained, borrowed) context for
-// op_fn and is not touched by the queue.
+// resource lifecycle. |user_data| is the context for op_fn. If |cleanup_fn|
+// is provided it runs exactly once on the worker after the signal list is
+// signaled/failed and before the op storage is released; use it for owned
+// payload state that must be reclaimed even when op_fn is skipped by
+// wait-failure/cancellation.
 //
 // On error return the queue owns nothing: caller still holds its
-// retained_resources retains and must fail signal_list itself.
+// retained_resources retains/user_data and must fail signal_list itself.
 iree_status_t iree_hal_amdxdna_async_queue_enqueue(
     iree_hal_amdxdna_async_queue_t* queue, iree_hal_semaphore_list_t wait_list,
     iree_hal_semaphore_list_t signal_list, iree_hal_amdxdna_async_op_fn_t op_fn,
-    void* user_data, iree_hal_resource_t* const* retained_resources,
+    iree_hal_amdxdna_async_op_cleanup_fn_t cleanup_fn, void* user_data,
+    iree_hal_resource_t* const* retained_resources,
     iree_host_size_t retained_resource_count);
 
 #endif  // IREE_AMD_AIE_DRIVER_AMDXDNA_ASYNC_QUEUE_H_
