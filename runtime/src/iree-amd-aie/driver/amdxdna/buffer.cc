@@ -6,7 +6,8 @@
 
 #include "iree-amd-aie/driver/amdxdna/buffer.h"
 
-#include "iree-amd-aie/driver/amdxdna/shim/linux/kmq/bo.h"
+#include <limits>
+
 #include "iree-amd-aie/driver/amdxdna/util.h"
 
 namespace {
@@ -15,7 +16,7 @@ extern const iree_hal_buffer_vtable_t iree_hal_amdxdna_buffer_vtable;
 
 struct iree_hal_amdxdna_buffer {
   iree_hal_buffer_t base;
-  shim_xdna::bo* bo;
+  iree_hal_amdxdna_native_buffer_t* native_buffer;
   iree_allocator_t host_allocator;
   iree_hal_buffer_release_callback_t release_callback;
   // Set to 1 by iree_hal_amdxdna_buffer_mark_deallocated when the
@@ -23,21 +24,68 @@ struct iree_hal_amdxdna_buffer {
   iree_atomic_uint32_t deallocated;
 };
 
-static iree_status_t iree_hal_amdxdna_buffer_invalidate_range(
+static iree_status_t iree_hal_amdxdna_buffer_resolve_root_range(
+    iree_hal_buffer_t* base_buffer, iree_device_size_t local_byte_offset,
+    iree_device_size_t local_byte_length,
+    iree_device_size_t* out_root_byte_offset,
+    iree_device_size_t* out_byte_length) {
+  iree_device_size_t buffer_byte_length =
+      iree_hal_buffer_byte_length(base_buffer);
+  if (local_byte_length == IREE_HAL_WHOLE_BUFFER) {
+    if (IREE_UNLIKELY(local_byte_offset > buffer_byte_length)) {
+      return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                              "buffer range offset %" PRIu64
+                              " exceeds buffer length %" PRIu64,
+                              local_byte_offset, buffer_byte_length);
+    }
+    local_byte_length = buffer_byte_length - local_byte_offset;
+  }
+  if (IREE_UNLIKELY(local_byte_offset > buffer_byte_length ||
+                    local_byte_length >
+                        buffer_byte_length - local_byte_offset)) {
+    return iree_make_status(
+        IREE_STATUS_OUT_OF_RANGE,
+        "buffer range %" PRIu64 " + %" PRIu64 " exceeds buffer length %" PRIu64,
+        local_byte_offset, local_byte_length, buffer_byte_length);
+  }
+
+  iree_device_size_t buffer_byte_offset =
+      iree_hal_buffer_byte_offset(base_buffer);
+  if (IREE_UNLIKELY(local_byte_offset >
+                    std::numeric_limits<iree_device_size_t>::max() -
+                        buffer_byte_offset)) {
+    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                            "buffer root offset overflow");
+  }
+  *out_root_byte_offset = buffer_byte_offset + local_byte_offset;
+  *out_byte_length = local_byte_length;
+  return iree_ok_status();
+}
+
+iree_status_t iree_hal_amdxdna_buffer_invalidate_range(
     iree_hal_buffer_t* base_buffer, iree_device_size_t local_byte_offset,
     iree_device_size_t local_byte_length) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_hal_amdxdna_buffer* buffer = IREE_HAL_AMDXDNA_CHECKED_VTABLE_CAST(
       base_buffer, iree_hal_amdxdna_buffer_vtable, iree_hal_amdxdna_buffer);
-  if (IREE_UNLIKELY(!buffer->bo)) {
+  if (IREE_UNLIKELY(!buffer->native_buffer)) {
     IREE_TRACE_ZONE_END(z0);
     return iree_make_status(
         IREE_STATUS_FAILED_PRECONDITION,
         "buffer does not have device memory attached and cannot be mapped");
   }
-  buffer->bo->sync(shim_xdna::direction::device2host, local_byte_length,
-                   local_byte_offset);
+  iree_device_size_t root_byte_offset = 0;
+  iree_device_size_t byte_length = 0;
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(
+      z0, iree_hal_amdxdna_buffer_resolve_root_range(
+              base_buffer, local_byte_offset, local_byte_length,
+              &root_byte_offset, &byte_length));
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(
+      z0, iree_hal_amdxdna_native_buffer_sync(
+              buffer->native_buffer,
+              iree_hal_amdxdna_native_sync_direction_t::device_to_host,
+              byte_length, root_byte_offset));
 
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
@@ -65,10 +113,22 @@ static iree_status_t iree_hal_amdxdna_buffer_map_range(
                   ? IREE_HAL_BUFFER_USAGE_MAPPING_PERSISTENT
                   : IREE_HAL_BUFFER_USAGE_MAPPING_SCOPED));
 
-  void* host_ptr = buffer->bo->map();
-  // Should be guaranteed by previous checks.
-  IREE_ASSERT(host_ptr != nullptr);
-  uint8_t* data_ptr = reinterpret_cast<uint8_t*>(host_ptr) + local_byte_offset;
+  if (IREE_UNLIKELY(!buffer->native_buffer)) {
+    IREE_TRACE_ZONE_END(z0);
+    return iree_make_status(
+        IREE_STATUS_FAILED_PRECONDITION,
+        "buffer does not have device memory attached and cannot be mapped");
+  }
+  void* host_ptr = nullptr;
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(
+      z0, iree_hal_amdxdna_native_buffer_map(buffer->native_buffer, &host_ptr));
+  iree_device_size_t root_byte_offset = 0;
+  iree_device_size_t byte_length = 0;
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(
+      z0, iree_hal_amdxdna_buffer_resolve_root_range(
+              base_buffer, local_byte_offset, local_byte_length,
+              &root_byte_offset, &byte_length));
+  uint8_t* data_ptr = reinterpret_cast<uint8_t*>(host_ptr) + root_byte_offset;
   iree_status_t status = iree_hal_amdxdna_buffer_invalidate_range(
       base_buffer, local_byte_offset, local_byte_length);
   // If we mapped for discard, scribble over the bytes. This is not a mandated
@@ -77,10 +137,10 @@ static iree_status_t iree_hal_amdxdna_buffer_map_range(
   // only work if the entire buffer was discarded.
 #ifndef NDEBUG
   if (iree_any_bit_set(memory_access, IREE_HAL_MEMORY_ACCESS_DISCARD)) {
-    memset(data_ptr, 0xCD, local_byte_length);
+    memset(data_ptr, 0xCD, byte_length);
   }
 #endif  // !NDEBUG
-  mapping->contents = iree_make_byte_span(data_ptr, local_byte_length);
+  mapping->contents = iree_make_byte_span(data_ptr, byte_length);
 
   IREE_TRACE_ZONE_END(z0);
   return status;
@@ -93,15 +153,24 @@ static iree_status_t iree_hal_amdxdna_buffer_flush_range(
 
   iree_hal_amdxdna_buffer* buffer = IREE_HAL_AMDXDNA_CHECKED_VTABLE_CAST(
       base_buffer, iree_hal_amdxdna_buffer_vtable, iree_hal_amdxdna_buffer);
-  if (IREE_UNLIKELY(!buffer->bo)) {
+  if (IREE_UNLIKELY(!buffer->native_buffer)) {
     IREE_TRACE_ZONE_END(z0);
     return iree_make_status(
         IREE_STATUS_FAILED_PRECONDITION,
         "buffer does not have device memory attached and cannot be mapped");
   }
 
-  buffer->bo->sync(shim_xdna::direction::host2device, local_byte_length,
-                   local_byte_offset);
+  iree_device_size_t root_byte_offset = 0;
+  iree_device_size_t byte_length = 0;
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(
+      z0, iree_hal_amdxdna_buffer_resolve_root_range(
+              base_buffer, local_byte_offset, local_byte_length,
+              &root_byte_offset, &byte_length));
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(
+      z0, iree_hal_amdxdna_native_buffer_sync(
+              buffer->native_buffer,
+              iree_hal_amdxdna_native_sync_direction_t::host_to_device,
+              byte_length, root_byte_offset));
 
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
@@ -115,8 +184,9 @@ static iree_status_t iree_hal_amdxdna_buffer_unmap_range(
 }
 
 iree_status_t iree_hal_amdxdna_buffer_wrap(
-    shim_xdna::bo* bo, iree_hal_buffer_placement_t placement,
-    iree_hal_memory_type_t memory_type, iree_hal_memory_access_t allowed_access,
+    iree_hal_amdxdna_native_buffer_t* native_buffer,
+    iree_hal_buffer_placement_t placement, iree_hal_memory_type_t memory_type,
+    iree_hal_memory_access_t allowed_access,
     iree_hal_buffer_usage_t allowed_usage, iree_device_size_t allocation_size,
     iree_device_size_t byte_offset, iree_device_size_t byte_length,
     iree_hal_buffer_release_callback_t release_callback,
@@ -133,8 +203,9 @@ iree_status_t iree_hal_amdxdna_buffer_wrap(
                              byte_offset, byte_length, memory_type,
                              allowed_access, allowed_usage,
                              &iree_hal_amdxdna_buffer_vtable, &buffer->base);
+  buffer->host_allocator = host_allocator;
   buffer->release_callback = release_callback;
-  buffer->bo = bo;
+  buffer->native_buffer = native_buffer;
   iree_atomic_store(&buffer->deallocated, (uint32_t)0,
                     iree_memory_order_relaxed);
   *out_buffer = &buffer->base;
@@ -154,20 +225,21 @@ static void iree_hal_amdxdna_buffer_destroy(iree_hal_buffer_t* base_buffer) {
                                 base_buffer);
   }
 
-  delete buffer->bo;
+  iree_hal_amdxdna_native_buffer_destroy(buffer->native_buffer);
   iree_allocator_free(host_allocator, buffer);
 
   IREE_TRACE_ZONE_END(z0);
 }
 
-shim_xdna::bo* iree_hal_amdxdna_buffer_handle(iree_hal_buffer_t* base_buffer) {
+iree_hal_amdxdna_native_buffer_t* iree_hal_amdxdna_buffer_handle(
+    iree_hal_buffer_t* base_buffer) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_hal_amdxdna_buffer* buffer = IREE_HAL_AMDXDNA_CHECKED_VTABLE_CAST(
       base_buffer, iree_hal_amdxdna_buffer_vtable, iree_hal_amdxdna_buffer);
 
   IREE_TRACE_ZONE_END(z0);
-  return buffer->bo;
+  return buffer->native_buffer;
 }
 
 bool iree_hal_amdxdna_buffer_is_deallocated(iree_hal_buffer_t* base_buffer) {

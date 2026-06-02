@@ -87,6 +87,7 @@ jobs:
           bash build_tools/download_peano.sh
           echo "PEANO_INSTALL_DIR=$PWD/llvm-aie" >> $GITHUB_ENV
           echo "ENABLE_AMDXDNA_CTS_TESTS=ON" >> $GITHUB_ENV
+          echo "ENABLE_AMDXDNA_AIE_EXECUTABLE_TESTS=ON" >> $GITHUB_ENV
 
       - name: Install linux deps
         run: |

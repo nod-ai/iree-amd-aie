@@ -41,7 +41,7 @@ static iree_async_proactor_t* TestProactor() {
   return proactor;
 }
 
-// Test fixture — fresh block pool + queue per test.
+// Test fixture: fresh block pool + queue per test.
 class AsyncQueueTest : public ::testing::Test {
  protected:
   void SetUp() override {
@@ -82,7 +82,7 @@ class AsyncQueueTest : public ::testing::Test {
   }
 
   // Wait for one async semaphore to reach |value| with a generous timeout.
-  // Fails the test on timeout — the queue should signal within milliseconds.
+  // Fails the test on timeout; the queue should signal within milliseconds.
   void WaitForValue(iree_async_semaphore_t* sem, uint64_t value,
                     int32_t timeout_ms = 5000) {
     IREE_ASSERT_OK(iree_async_semaphore_multi_wait(
@@ -109,7 +109,7 @@ TEST_F(AsyncQueueTest, EmptyWaitListDispatchesImmediately) {
 
   IREE_ASSERT_OK(iree_hal_amdxdna_async_queue_enqueue(
       queue_, iree_hal_semaphore_list_empty(),
-      MakeList(&signal_sems, &signal_values), op, &ran,
+      MakeList(&signal_sems, &signal_values), op, /*cleanup_fn=*/nullptr, &ran,
       /*retained_resources=*/nullptr, /*retained_resource_count=*/0));
 
   WaitForValue(signal_sem, 1);
@@ -118,7 +118,7 @@ TEST_F(AsyncQueueTest, EmptyWaitListDispatchesImmediately) {
   iree_async_semaphore_release(signal_sem);
 }
 
-// Single wait, single signal — the wait-then-signal-on-same-thread pattern
+// Single wait, single signal: the wait-then-signal-on-same-thread pattern
 // that motivated the async redesign. Sync drivers deadlock on this; the
 // async queue should not.
 TEST_F(AsyncQueueTest, WaitBeforeSignalSameThreadDoesNotDeadlock) {
@@ -132,13 +132,13 @@ TEST_F(AsyncQueueTest, WaitBeforeSignalSameThreadDoesNotDeadlock) {
   IREE_ASSERT_OK(iree_hal_amdxdna_async_queue_enqueue(
       queue_, MakeList(&wait_sems, &wait_values),
       MakeList(&signal_sems, &signal_values),
-      /*op_fn=*/nullptr, /*user_data=*/nullptr,
+      /*op_fn=*/nullptr, /*cleanup_fn=*/nullptr, /*user_data=*/nullptr,
       /*retained_resources=*/nullptr, /*retained_resource_count=*/0));
 
   // The signal must not fire before the wait is satisfied.
   EXPECT_EQ(iree_async_semaphore_query(signal_sem), 0u);
 
-  // Now signal the wait — this should fire the chain on the worker.
+  // Now signal the wait; this should fire the chain on the worker.
   IREE_ASSERT_OK(iree_async_semaphore_signal(wait_sem, 1, nullptr));
 
   WaitForValue(signal_sem, 1);
@@ -164,7 +164,7 @@ TEST_F(AsyncQueueTest, MultiWaitMultiSignal) {
   IREE_ASSERT_OK(iree_hal_amdxdna_async_queue_enqueue(
       queue_, MakeList(&waits, &wait_values),
       MakeList(&signals, &signal_values),
-      /*op_fn=*/nullptr, /*user_data=*/nullptr,
+      /*op_fn=*/nullptr, /*cleanup_fn=*/nullptr, /*user_data=*/nullptr,
       /*retained_resources=*/nullptr, /*retained_resource_count=*/0));
 
   // Signal in scrambled order.
@@ -184,7 +184,7 @@ TEST_F(AsyncQueueTest, MultiWaitMultiSignal) {
   iree_async_semaphore_release(w0);
 }
 
-// op_fn returns an error → signal_list fails (does not advance), and the
+// op_fn returns an error: signal_list fails (does not advance), and the
 // caller observes the failure via query_status.
 TEST_F(AsyncQueueTest, OpFnErrorFailsSignalList) {
   iree_async_semaphore_t* signal_sem = MakeSem(0);
@@ -197,8 +197,9 @@ TEST_F(AsyncQueueTest, OpFnErrorFailsSignalList) {
 
   IREE_ASSERT_OK(iree_hal_amdxdna_async_queue_enqueue(
       queue_, iree_hal_semaphore_list_empty(),
-      MakeList(&signal_sems, &signal_values), op, /*user_data=*/nullptr,
-      /*retained_resources=*/nullptr, /*retained_resource_count=*/0));
+      MakeList(&signal_sems, &signal_values), op, /*cleanup_fn=*/nullptr,
+      /*user_data=*/nullptr, /*retained_resources=*/nullptr,
+      /*retained_resource_count=*/0));
 
   // Poll for failure (multi_wait returns ABORTED on a failed semaphore).
   iree_status_code_t code = IREE_STATUS_OK;
@@ -232,7 +233,7 @@ TEST_F(AsyncQueueTest, ShutdownWithInflightOpCancels) {
   IREE_ASSERT_OK(iree_hal_amdxdna_async_queue_enqueue(
       queue_, MakeList(&wait_sems, &wait_values),
       MakeList(&signal_sems, &signal_values),
-      /*op_fn=*/nullptr, /*user_data=*/nullptr,
+      /*op_fn=*/nullptr, /*cleanup_fn=*/nullptr, /*user_data=*/nullptr,
       /*retained_resources=*/nullptr, /*retained_resource_count=*/0));
 
   // Sanity: the wait hasn't fired, so signal hasn't either.
@@ -250,7 +251,7 @@ TEST_F(AsyncQueueTest, ShutdownWithInflightOpCancels) {
   iree_async_semaphore_release(wait_sem);
 }
 
-// Many enqueues with empty waits — stress the worker's LIFO drain and
+// Many enqueues with empty waits: stress the worker's LIFO drain and
 // arena recycling. No deterministic ordering guarantee, but every signal
 // must eventually fire.
 TEST_F(AsyncQueueTest, ManyEnqueuesAllSignal) {
@@ -270,7 +271,7 @@ TEST_F(AsyncQueueTest, ManyEnqueuesAllSignal) {
     std::vector<uint64_t> vals = {1};
     IREE_ASSERT_OK(iree_hal_amdxdna_async_queue_enqueue(
         queue_, iree_hal_semaphore_list_empty(), MakeList(&sigvec, &vals), op,
-        &ran, /*retained_resources=*/nullptr,
+        /*cleanup_fn=*/nullptr, &ran, /*retained_resources=*/nullptr,
         /*retained_resource_count=*/0));
   }
 
@@ -321,8 +322,8 @@ TEST_F(AsyncQueueTest, RetainedResourcesReleasedOnCancellation) {
   IREE_ASSERT_OK(iree_hal_amdxdna_async_queue_enqueue(
       queue_, MakeList(&wait_sems, &wait_values),
       MakeList(&signal_sems, &signal_values),
-      /*op_fn=*/nullptr, /*user_data=*/nullptr, retained,
-      IREE_ARRAYSIZE(retained)));
+      /*op_fn=*/nullptr, /*cleanup_fn=*/nullptr, /*user_data=*/nullptr,
+      retained, IREE_ARRAYSIZE(retained)));
 
   // Op is parked on wait_sem. destroy() will cancel and release the retain.
   EXPECT_EQ(destroy_count.load(), 0);
@@ -349,8 +350,8 @@ TEST_F(AsyncQueueTest, RetainedResourcesReleasedOnSuccess) {
   IREE_ASSERT_OK(iree_hal_amdxdna_async_queue_enqueue(
       queue_, iree_hal_semaphore_list_empty(),
       MakeList(&signal_sems, &signal_values),
-      /*op_fn=*/nullptr, /*user_data=*/nullptr, retained,
-      IREE_ARRAYSIZE(retained)));
+      /*op_fn=*/nullptr, /*cleanup_fn=*/nullptr, /*user_data=*/nullptr,
+      retained, IREE_ARRAYSIZE(retained)));
 
   WaitForValue(signal_sem, 1);
   // signal_sem fired, but the worker may still be in the small post-signal
@@ -378,8 +379,8 @@ TEST_F(AsyncQueueTest, RetainedResourcesReleasedOnOpFnError) {
 
   IREE_ASSERT_OK(iree_hal_amdxdna_async_queue_enqueue(
       queue_, iree_hal_semaphore_list_empty(),
-      MakeList(&signal_sems, &signal_values), op, /*user_data=*/nullptr,
-      retained, IREE_ARRAYSIZE(retained)));
+      MakeList(&signal_sems, &signal_values), op, /*cleanup_fn=*/nullptr,
+      /*user_data=*/nullptr, retained, IREE_ARRAYSIZE(retained)));
 
   iree_hal_amdxdna_async_queue_destroy(queue_);
   queue_ = nullptr;
@@ -388,6 +389,34 @@ TEST_F(AsyncQueueTest, RetainedResourcesReleasedOnOpFnError) {
   EXPECT_EQ(iree_async_semaphore_query_status(signal_sem),
             IREE_STATUS_INVALID_ARGUMENT);
   iree_async_semaphore_release(signal_sem);
+}
+
+TEST_F(AsyncQueueTest, CleanupRunsOnCancellation) {
+  iree_async_semaphore_t* wait_sem = MakeSem(0);
+  iree_async_semaphore_t* signal_sem = MakeSem(0);
+  std::vector<iree_async_semaphore_t*> wait_sems = {wait_sem};
+  std::vector<uint64_t> wait_values = {1};
+  std::vector<iree_async_semaphore_t*> signal_sems = {signal_sem};
+  std::vector<uint64_t> signal_values = {1};
+
+  std::atomic<int> cleanup_count{0};
+  iree_hal_amdxdna_async_op_cleanup_fn_t cleanup = [](void* user_data) -> void {
+    reinterpret_cast<std::atomic<int>*>(user_data)->fetch_add(1);
+  };
+
+  IREE_ASSERT_OK(iree_hal_amdxdna_async_queue_enqueue(
+      queue_, MakeList(&wait_sems, &wait_values),
+      MakeList(&signal_sems, &signal_values),
+      /*op_fn=*/nullptr, cleanup, &cleanup_count,
+      /*retained_resources=*/nullptr, /*retained_resource_count=*/0));
+
+  iree_hal_amdxdna_async_queue_destroy(queue_);
+  queue_ = nullptr;
+
+  EXPECT_EQ(cleanup_count.load(), 1);
+  EXPECT_NE(iree_async_semaphore_query_status(signal_sem), IREE_STATUS_OK);
+  iree_async_semaphore_release(signal_sem);
+  iree_async_semaphore_release(wait_sem);
 }
 
 }  // namespace

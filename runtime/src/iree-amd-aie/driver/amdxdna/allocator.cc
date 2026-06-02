@@ -6,9 +6,9 @@
 
 #include "iree-amd-aie/driver/amdxdna/allocator.h"
 
+#include <memory>
+
 #include "iree-amd-aie/driver/amdxdna/buffer.h"
-#include "iree-amd-aie/driver/amdxdna/shim/linux/kmq/bo.h"
-#include "iree-amd-aie/driver/amdxdna/shim/linux/kmq/device.h"
 #include "iree-amd-aie/driver/amdxdna/util.h"
 
 namespace {
@@ -18,12 +18,12 @@ extern const iree_hal_allocator_vtable_t iree_hal_amdxdna_allocator_vtable;
 struct iree_hal_amdxdna_allocator {
   iree_hal_resource_t resource;
   iree_allocator_t host_allocator;
-  shim_xdna::device* shim_device;
+  iree_hal_amdxdna_native_device_t* native_device;
   IREE_STATISTICS(iree_hal_allocator_statistics_t statistics;)
 
   iree_hal_amdxdna_allocator(iree_allocator_t host_allocator,
-                             shim_xdna::device* shim_device)
-      : host_allocator(host_allocator), shim_device(shim_device) {
+                             iree_hal_amdxdna_native_device_t* native_device)
+      : host_allocator(host_allocator), native_device(native_device) {
     IREE_TRACE_ZONE_BEGIN(z0);
 
     iree_hal_resource_initialize(&iree_hal_amdxdna_allocator_vtable,
@@ -55,13 +55,13 @@ iree_hal_amdxdna_allocator_query_buffer_compatibility(
   }
 
   params->type &= ~IREE_HAL_MEMORY_TYPE_OPTIMAL;
-  // amdxdna allocates SHMEM BOs (XCL_BO_FLAGS_HOST_ONLY) that are mmap'd
-  // shared with the device, so every allocation is simultaneously host-local,
-  // device-visible, host-mappable, and host-transferable. Declaring those
-  // capabilities lets iree-tooling's `requires_buffer_transfer` return false
-  // for output buffer views and skip the staging copy_buffer — the host can
-  // read the dispatch output BO directly, saving one BO allocation + one
-  // submission + one host memcpy per output.
+  // amdxdna native host-visible allocations are mmap'd shared with the device,
+  // so every allocation is simultaneously host-local, device-visible,
+  // host-mappable, and host-transferable. Declaring those capabilities lets
+  // iree-tooling's `requires_buffer_transfer` return false for output buffer
+  // views and skip the staging copy_buffer; the host can read the dispatch
+  // output buffer directly, saving one allocation + one submission + one host
+  // memcpy per output.
   params->type |=
       IREE_HAL_MEMORY_TYPE_HOST_LOCAL | IREE_HAL_MEMORY_TYPE_DEVICE_VISIBLE;
   params->usage |=
@@ -101,9 +101,12 @@ static iree_status_t iree_hal_amdxdna_allocator_allocate_buffer(
         "allocator cannot allocate a buffer with the given parameters");
   }
 
-  uint32_t flags = XCL_BO_FLAGS_HOST_ONLY;
-  shim_xdna::bo* bo =
-      allocator->shim_device->alloc_bo(allocation_size, flags).release();
+  iree_hal_amdxdna_native_buffer_ptr native_buffer;
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(
+      z0,
+      iree_hal_amdxdna_native_device_alloc_buffer(
+          allocator->native_device, allocation_size,
+          iree_hal_amdxdna_native_buffer_type_t::host_only, &native_buffer));
   iree_hal_buffer_t* buffer = nullptr;
   const iree_hal_buffer_placement_t placement = {
       .queue_affinity = params->queue_affinity ? params->queue_affinity
@@ -111,7 +114,7 @@ static iree_status_t iree_hal_amdxdna_allocator_allocate_buffer(
       .flags = IREE_HAL_BUFFER_PLACEMENT_FLAG_NONE,
   };
   iree_status_t status = iree_hal_amdxdna_buffer_wrap(
-      bo, placement, compat_params.type, compat_params.access,
+      native_buffer.get(), placement, compat_params.type, compat_params.access,
       compat_params.usage, allocation_size,
       /*byte_offset=*/0, /*byte_length=*/allocation_size,
       iree_hal_buffer_release_callback_null(), allocator->host_allocator,
@@ -120,6 +123,7 @@ static iree_status_t iree_hal_amdxdna_allocator_allocate_buffer(
   if (iree_status_is_ok(status)) {
     IREE_STATISTICS(iree_hal_allocator_statistics_record_alloc(
         &allocator->statistics, compat_params.type, allocation_size));
+    native_buffer.release();
     *out_buffer = buffer;
   } else {
     iree_hal_buffer_release(buffer);
@@ -136,19 +140,17 @@ static void iree_hal_amdxdna_allocator_deallocate_buffer(
   iree_hal_amdxdna_allocator* allocator = IREE_HAL_AMDXDNA_CHECKED_VTABLE_CAST(
       base_allocator, iree_hal_amdxdna_allocator_vtable,
       iree_hal_amdxdna_allocator);
-  bool was_imported = false;
-  if (!was_imported) {
-    IREE_STATISTICS(iree_hal_allocator_statistics_record_free(
-        &allocator->statistics, iree_hal_buffer_memory_type(base_buffer),
-        iree_hal_buffer_allocation_size(base_buffer)));
-  }
+  IREE_STATISTICS(iree_hal_allocator_statistics_record_free(
+      &allocator->statistics, iree_hal_buffer_memory_type(base_buffer),
+      iree_hal_buffer_allocation_size(base_buffer)));
   iree_hal_buffer_destroy(base_buffer);
 
   IREE_TRACE_ZONE_END(z0);
 }
 
 iree_status_t iree_hal_amdxdna_allocator_create(
-    iree_allocator_t host_allocator, shim_xdna::device* device,
+    iree_allocator_t host_allocator,
+    iree_hal_amdxdna_native_device_t* native_device,
     iree_hal_allocator_t** out_allocator) {
   IREE_ASSERT_ARGUMENT(out_allocator);
   IREE_TRACE_ZONE_BEGIN(z0);
@@ -158,7 +160,7 @@ iree_status_t iree_hal_amdxdna_allocator_create(
       z0, iree_allocator_malloc(host_allocator, sizeof(*allocator),
                                 reinterpret_cast<void**>(&allocator)));
   allocator =
-      new (allocator) iree_hal_amdxdna_allocator(host_allocator, device);
+      new (allocator) iree_hal_amdxdna_allocator(host_allocator, native_device);
   iree_status_t status = iree_ok_status();
 
   if (iree_status_is_ok(status)) {
@@ -179,7 +181,6 @@ static void iree_hal_amdxdna_allocator_destroy(
   iree_hal_amdxdna_allocator* allocator = IREE_HAL_AMDXDNA_CHECKED_VTABLE_CAST(
       base_allocator, iree_hal_amdxdna_allocator_vtable,
       iree_hal_amdxdna_allocator);
-  iree_hal_resource_release(&allocator->resource);
   iree_allocator_free(allocator->host_allocator, allocator);
 
   IREE_TRACE_ZONE_END(z0);
@@ -206,11 +207,19 @@ static iree_allocator_t iree_hal_amdxdna_allocator_host_allocator(
   return allocator->host_allocator;
 }
 
+static iree_status_t iree_hal_amdxdna_allocator_trim(
+    iree_hal_allocator_t* base_allocator) {
+  (void)base_allocator;
+  // BOs are owned directly by HAL buffers and released immediately on buffer
+  // destruction; there is no allocator-side cache to trim.
+  return iree_ok_status();
+}
+
 namespace {
 const iree_hal_allocator_vtable_t iree_hal_amdxdna_allocator_vtable = {
     .destroy = iree_hal_amdxdna_allocator_destroy,
     .host_allocator = iree_hal_amdxdna_allocator_host_allocator,
-    .trim = unimplemented_ok_status,
+    .trim = iree_hal_amdxdna_allocator_trim,
     .query_statistics = unimplemented_ok_void,
     .query_buffer_compatibility =
         iree_hal_amdxdna_allocator_query_buffer_compatibility,
@@ -223,7 +232,7 @@ const iree_hal_allocator_vtable_t iree_hal_amdxdna_allocator_vtable = {
     // CTS tests SKIP at compatibility-check time because
     // query_buffer_compatibility above never sets IMPORTABLE; callers that
     // do reach iree_hal_memory_file_wrap see UNIMPLEMENTED here and fall
-    // back to a HOST_LOCAL | HOST_COHERENT heap buffer — fine for transfer
+    // back to a HOST_LOCAL | HOST_COHERENT heap buffer; fine for transfer
     // source/target use but not DEVICE_VISIBLE so it cannot be a dispatch
     // binding. A real implementation would have to allocate a SHMEM BO and
     // memcpy host data into it (gives a dispatch-capable buffer at the cost

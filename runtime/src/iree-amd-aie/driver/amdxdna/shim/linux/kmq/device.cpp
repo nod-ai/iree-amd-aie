@@ -9,10 +9,16 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
+#include <algorithm>
+#include <cerrno>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
-#include <iostream>
+#include <string>
+#include <system_error>
+#include <vector>
 
+#include "amdxdna_accel.h"
 #include "bo.h"
 #include "fence.h"
 #include "hwctx.h"
@@ -21,113 +27,158 @@
 
 namespace {
 
-int64_t import_fd(pid_t pid, int ehdl) {
-  if (pid == 0 || getpid() == pid) return ehdl;
+int import_fd_checked(pid_t pid, int ehdl, int *out_fd) {
+  *out_fd = -1;
+  if (pid == 0 || getpid() == pid) {
+    *out_fd = ehdl;
+    return 0;
+  }
 
 #if defined(SYS_pidfd_open) && defined(SYS_pidfd_getfd)
   auto pidfd = syscall(SYS_pidfd_open, pid, 0);
-  if (pidfd < 0) shim_xdna::shim_err(errno, "pidfd_open failed");
+  if (pidfd < 0) return errno;
 
   int64_t fd = syscall(SYS_pidfd_getfd, pidfd, ehdl, 0);
-  if (fd < 0) {
-    if (errno == EPERM) {
-      shim_xdna::shim_err(
-          errno,
-          "pidfd_getfd failed, check that ptrace access mode "
-          "allows PTRACE_MODE_ATTACH_REALCREDS.  For more details please "
-          "check /etc/sysctl.d/10-ptrace.conf");
-    }
-
-    shim_xdna::shim_err(errno, "pidfd_getfd failed");
-  }
-  return fd;
+  int saved_errno = fd < 0 ? errno : 0;
+  if (close(pidfd) && saved_errno == 0) saved_errno = errno;
+  if (saved_errno != 0) return saved_errno;
+  *out_fd = static_cast<int>(fd);
+  return 0;
 #else
-  shim_xdna::shim_err(
-      int(std::errc::not_supported),
-      "Importing buffer object from different process requires XRT "
-      " built and installed on a system with 'pidfd' kernel support");
+  return int(std::errc::not_supported);
 #endif
-}
-
-std::string ioctl_cmd2name(unsigned long cmd) {
-  switch (cmd) {
-    case DRM_IOCTL_AMDXDNA_CREATE_HWCTX:
-      return "DRM_IOCTL_AMDXDNA_CREATE_HWCTX";
-    case DRM_IOCTL_AMDXDNA_DESTROY_HWCTX:
-      return "DRM_IOCTL_AMDXDNA_DESTROY_HWCTX";
-    case DRM_IOCTL_AMDXDNA_CONFIG_HWCTX:
-      return "DRM_IOCTL_AMDXDNA_CONFIG_HWCTX";
-    case DRM_IOCTL_AMDXDNA_CREATE_BO:
-      return "DRM_IOCTL_AMDXDNA_CREATE_BO";
-    case DRM_IOCTL_AMDXDNA_GET_BO_INFO:
-      return "DRM_IOCTL_AMDXDNA_GET_BO_INFO";
-    case DRM_IOCTL_AMDXDNA_SYNC_BO:
-      return "DRM_IOCTL_AMDXDNA_SYNC_BO";
-    case DRM_IOCTL_AMDXDNA_EXEC_CMD:
-      return "DRM_IOCTL_AMDXDNA_EXEC_CMD";
-    case DRM_IOCTL_AMDXDNA_WAIT_CMD:
-      return "DRM_IOCTL_AMDXDNA_WAIT_CMD";
-    case DRM_IOCTL_AMDXDNA_GET_INFO:
-      return "DRM_IOCTL_AMDXDNA_GET_INFO";
-    case DRM_IOCTL_AMDXDNA_SET_STATE:
-      return "DRM_IOCTL_AMDXDNA_SET_STATE";
-    case DRM_IOCTL_GEM_CLOSE:
-      return "DRM_IOCTL_GEM_CLOSE";
-    case DRM_IOCTL_PRIME_HANDLE_TO_FD:
-      return "DRM_IOCTL_PRIME_HANDLE_TO_FD";
-    case DRM_IOCTL_PRIME_FD_TO_HANDLE:
-      return "DRM_IOCTL_PRIME_FD_TO_HANDLE";
-    case DRM_IOCTL_SYNCOBJ_CREATE:
-      return "DRM_IOCTL_SYNCOBJ_CREATE";
-    case DRM_IOCTL_SYNCOBJ_QUERY:
-      return "DRM_IOCTL_SYNCOBJ_QUERY";
-    case DRM_IOCTL_SYNCOBJ_DESTROY:
-      return "DRM_IOCTL_SYNCOBJ_DESTROY";
-    case DRM_IOCTL_SYNCOBJ_HANDLE_TO_FD:
-      return "DRM_IOCTL_SYNCOBJ_HANDLE_TO_FD";
-    case DRM_IOCTL_SYNCOBJ_FD_TO_HANDLE:
-      return "DRM_IOCTL_SYNCOBJ_FD_TO_HANDLE";
-    case DRM_IOCTL_SYNCOBJ_TIMELINE_SIGNAL:
-      return "DRM_IOCTL_SYNCOBJ_TIMELINE_SIGNAL";
-    case DRM_IOCTL_SYNCOBJ_TIMELINE_WAIT:
-      return "DRM_IOCTL_SYNCOBJ_TIMELINE_WAIT";
-    default:
-      return "UNKNOWN(" + std::to_string(cmd) + ")";
-  }
-  return "UNKNOWN(" + std::to_string(cmd) + ")";
 }
 
 // Device memory heap needs to be within one 64MB page. The maximum size is
 // 64MB.
 const size_t dev_mem_size = (64 << 20);
+
+std::filesystem::path try_find_npu_device() {
+  const std::filesystem::path drvpath = "/sys/bus/pci/drivers/amdxdna";
+  std::error_code ec;
+  for (std::filesystem::directory_iterator it(drvpath, ec), end;
+       !ec && it != end; it.increment(ec)) {
+    auto const &dir_entry = *it;
+    std::error_code read_ec;
+    if (dir_entry.is_symlink(read_ec) && !read_ec) {
+      auto actual_path =
+          drvpath / std::filesystem::read_symlink(dir_entry, read_ec);
+      if (read_ec) continue;
+      auto rel =
+          std::filesystem::relative(actual_path, "/sys/devices", read_ec);
+      if (read_ec) continue;
+      if (!rel.empty() && rel.native()[0] != '.') {
+        auto abs_path = std::filesystem::absolute(actual_path, read_ec);
+        if (!read_ec) return abs_path;
+      }
+    }
+  }
+  return {};
+}
+
+std::string read_first_line(const std::filesystem::path &path) {
+  std::ifstream file(path);
+  std::string line;
+  if (file.is_open()) std::getline(file, line);
+  return line;
+}
+
+int try_ioctl_fd(int fd, unsigned long cmd, void *arg) {
+  if (::ioctl(fd, cmd, arg) == -1) return errno;
+  return 0;
+}
+
+amdxdna_power_mode_type to_amdxdna_power_mode(shim_xdna::power_mode mode) {
+  switch (mode) {
+    case shim_xdna::power_mode::default_mode:
+      return POWER_MODE_DEFAULT;
+    case shim_xdna::power_mode::low:
+      return POWER_MODE_LOW;
+    case shim_xdna::power_mode::medium:
+      return POWER_MODE_MEDIUM;
+    case shim_xdna::power_mode::high:
+      return POWER_MODE_HIGH;
+    case shim_xdna::power_mode::turbo:
+      return POWER_MODE_TURBO;
+  }
+  return POWER_MODE_DEFAULT;
+}
+
+int from_amdxdna_power_mode(uint8_t value, shim_xdna::power_mode *out_mode) {
+  switch (static_cast<amdxdna_power_mode_type>(value)) {
+    case POWER_MODE_DEFAULT:
+      *out_mode = shim_xdna::power_mode::default_mode;
+      return 0;
+    case POWER_MODE_LOW:
+      *out_mode = shim_xdna::power_mode::low;
+      return 0;
+    case POWER_MODE_MEDIUM:
+      *out_mode = shim_xdna::power_mode::medium;
+      return 0;
+    case POWER_MODE_HIGH:
+      *out_mode = shim_xdna::power_mode::high;
+      return 0;
+    case POWER_MODE_TURBO:
+      *out_mode = shim_xdna::power_mode::turbo;
+      return 0;
+    default:
+      *out_mode = shim_xdna::power_mode::default_mode;
+      return EINVAL;
+  }
+}
 }  // namespace
 
 namespace shim_xdna {
 
-pdev::pdev() {
-  const std::lock_guard<std::mutex> lock(m_lock);
-  // TODO(max): hardcoded
-  m_dev_fd = ::open("/dev/accel/accel0", O_RDWR);
-  if (m_dev_fd < 0) shim_err(EINVAL, "Failed to open KMQ device");
-  SHIM_DEBUG("Device opened, fd=%d", m_dev_fd);
-  m_dev_heap_bo =
-      std::make_unique<bo>(*this, dev_mem_size, AMDXDNA_BO_DEV_HEAP);
-  SHIM_DEBUG("Created KMQ pcidev");
+std::filesystem::path find_default_accel_device_path() {
+  const std::filesystem::path accel_dir = "/dev/accel";
+  std::error_code ec;
+  std::vector<std::filesystem::path> candidates;
+  for (std::filesystem::directory_iterator it(accel_dir, ec), end;
+       !ec && it != end; it.increment(ec)) {
+    const auto filename = it->path().filename().native();
+    if (filename.rfind("accel", 0) == 0) candidates.push_back(it->path());
+  }
+  if (!candidates.empty()) {
+    std::sort(candidates.begin(), candidates.end());
+    return candidates.front();
+  }
+  return accel_dir / "accel0";
 }
+
+pdev::pdev() : pdev(find_default_accel_device_path()) {}
+
+pdev::pdev(const std::filesystem::path &device_path) {
+  m_init_errno = open_device(device_path);
+}
+
+int pdev::open_device(const std::filesystem::path &device_path) {
+  const std::lock_guard<std::mutex> lock(m_lock);
+  m_dev_fd = ::open(device_path.c_str(), O_RDWR | O_CLOEXEC);
+  if (m_dev_fd < 0) {
+    return errno;
+  }
+  SHIM_DEBUG("Device opened, fd=%d", m_dev_fd);
+  int err =
+      bo::create(*this, dev_mem_size, AMDXDNA_BO_DEV_HEAP, &m_dev_heap_bo);
+  if (err) {
+    ::close(m_dev_fd);
+    m_dev_fd = -1;
+    return err;
+  }
+  SHIM_DEBUG("Created KMQ pcidev");
+  return 0;
+}
+
+int pdev::init_errno() const { return m_init_errno; }
 
 pdev::~pdev() {
   SHIM_DEBUG("Destroying KMQ pcidev");
   const std::lock_guard<std::mutex> lock(m_lock);
   m_dev_heap_bo.reset();
-  ::close(m_dev_fd);
+  if (m_dev_fd >= 0) ::close(m_dev_fd);
   SHIM_DEBUG("Device closed, fd=%d", m_dev_fd);
   SHIM_DEBUG("Destroyed KMQ pcidev");
-}
-
-void pdev::ioctl(unsigned long cmd, void *arg) const {
-  if (::ioctl(m_dev_fd, cmd, arg) == -1) {
-    shim_err(errno, "%s IOCTL failed", ioctl_cmd2name(cmd).c_str());
-  }
 }
 
 int pdev::try_ioctl(unsigned long cmd, void *arg) const {
@@ -137,77 +188,207 @@ int pdev::try_ioctl(unsigned long cmd, void *arg) const {
   return 0;
 }
 
-void *pdev::mmap(void *addr, size_t len, int prot, int flags,
-                 off_t offset) const {
+int pdev::try_mmap(void *addr, size_t len, int prot, int flags, off_t offset,
+                   void **out_ptr) const {
+  *out_ptr = nullptr;
   void *ret = ::mmap(addr, len, prot, flags, m_dev_fd, offset);
-  if (ret == reinterpret_cast<void *>(-1))
-    shim_err(errno,
-             "mmap(addr=%p, len=%ld, prot=%d, flags=%d, offset=%ld) failed",
-             addr, len, prot, flags, offset);
-  return ret;
+  if (ret == MAP_FAILED) return errno;
+  *out_ptr = ret;
+  return 0;
+}
+
+namespace {
+
+struct core_grid_size {
+  uint32_t rows;
+  uint32_t cols;
+};
+
+int query_aie_metadata(const pdev &pdev,
+                       amdxdna_drm_query_aie_metadata *metadata) {
+  amdxdna_drm_get_info arg = {.param = DRM_AMDXDNA_QUERY_AIE_METADATA,
+                              .buffer_size = sizeof(*metadata),
+                              .buffer = reinterpret_cast<uintptr_t>(metadata)};
+  return pdev.try_ioctl(DRM_IOCTL_AMDXDNA_GET_INFO, &arg);
+}
+
+std::string normalize_vbnv_arch(std::string vbnv) {
+  if (vbnv.rfind("NPU ", 0) == 0) return vbnv.substr(4);
+  constexpr const char *kRyzenAiPrefix = "RyzenAI-npu";
+  if (vbnv.rfind(kRyzenAiPrefix, 0) == 0) {
+    const std::string gen = vbnv.substr(strlen(kRyzenAiPrefix));
+    return gen == "1" ? "Phoenix" : "Strix";
+  }
+  return {};
+}
+
+std::string query_npu_arch() {
+  const std::filesystem::path npu_device = try_find_npu_device();
+  if (npu_device.empty()) return {};
+  return normalize_vbnv_arch(read_first_line(npu_device / "vbnv"));
+}
+
+int resolve_core_grid_size(const pdev &pdev, uint32_t rows, uint32_t cols,
+                           core_grid_size *out_grid) {
+  if (rows != 0 && cols != 0) {
+    *out_grid = {rows, cols};
+    return 0;
+  }
+
+  amdxdna_drm_query_aie_metadata metadata{};
+  int err = query_aie_metadata(pdev, &metadata);
+  if (err) return err;
+  if (rows == 0) rows = metadata.core.row_count;
+  if (cols == 0) {
+    cols = metadata.cols;
+    if (query_npu_arch() == "Phoenix" && cols != 0) --cols;
+  }
+  if (rows == 0 || cols == 0) return EINVAL;
+  *out_grid = {rows, cols};
+  return 0;
+}
+
+}  // namespace
+
+int resolve_core_grid_size(const std::filesystem::path &device_path,
+                           uint32_t requested_rows, uint32_t requested_cols,
+                           uint32_t *out_rows, uint32_t *out_cols) {
+  if (requested_rows != 0 && requested_cols != 0) {
+    *out_rows = requested_rows;
+    *out_cols = requested_cols;
+    return 0;
+  }
+
+  const std::filesystem::path resolved_device_path =
+      device_path.empty() ? find_default_accel_device_path() : device_path;
+  const int fd = ::open(resolved_device_path.c_str(), O_RDWR | O_CLOEXEC);
+  if (fd < 0) return errno;
+
+  amdxdna_drm_query_aie_metadata metadata{};
+  amdxdna_drm_get_info arg = {.param = DRM_AMDXDNA_QUERY_AIE_METADATA,
+                              .buffer_size = sizeof(metadata),
+                              .buffer = reinterpret_cast<uintptr_t>(&metadata)};
+  const int err = try_ioctl_fd(fd, DRM_IOCTL_AMDXDNA_GET_INFO, &arg);
+  ::close(fd);
+  if (err != 0) return err;
+
+  uint32_t rows = requested_rows;
+  uint32_t cols = requested_cols;
+  if (rows == 0) rows = metadata.core.row_count;
+  if (cols == 0) {
+    cols = metadata.cols;
+    if (query_npu_arch() == "Phoenix" && cols != 0) --cols;
+  }
+  if (rows == 0 || cols == 0) return EINVAL;
+
+  *out_rows = rows;
+  *out_cols = cols;
+  return 0;
 }
 
 device::device(uint32_t n_rows, uint32_t n_cols)
-    : n_rows(n_rows), n_cols(n_cols) {
-  SHIM_DEBUG("Created KMQ device n_rows %d n_cols %d", n_rows, n_cols);
-}
+    : device(n_rows, n_cols, std::filesystem::path()) {}
 
 device::device(uint32_t n_rows, uint32_t n_cols,
-               amdxdna_power_mode_type power_mode)
-    : device(n_rows, n_cols) {
-  set_power_mode(power_mode);
+               const std::filesystem::path &device_path)
+    : m_pdev(device_path.empty() ? find_default_accel_device_path()
+                                 : device_path),
+      n_rows(n_rows),
+      n_cols(n_cols) {
+  m_init_errno = m_pdev.init_errno();
+  if (m_init_errno) return;
+  core_grid_size grid{};
+  m_init_errno =
+      resolve_core_grid_size(m_pdev, this->n_rows, this->n_cols, &grid);
+  if (m_init_errno) return;
+  this->n_rows = grid.rows;
+  this->n_cols = grid.cols;
+  SHIM_DEBUG("Created KMQ device n_rows %d n_cols %d", this->n_rows,
+             this->n_cols);
+}
+
+device::device(uint32_t n_rows, uint32_t n_cols, power_mode mode)
+    : device(n_rows, n_cols, std::filesystem::path(), mode) {}
+
+device::device(uint32_t n_rows, uint32_t n_cols,
+               const std::filesystem::path &device_path, power_mode mode)
+    : device(n_rows, n_cols, device_path) {
+  const int err = set_power_mode(mode);
+  if (err != 0) {
+    SHIM_DEBUG("Unable to set power_mode %s, errno=%d",
+               stringify_power_mode(mode).c_str(), err);
+  }
   SHIM_DEBUG("Created KMQ device n_rows %d n_cols %d with power_mode %s",
-             n_rows, n_cols,
-             stringify_amdxdna_power_mode_type(power_mode).c_str());
+             n_rows, n_cols, stringify_power_mode(mode).c_str());
 }
 
 device::~device() { SHIM_DEBUG("Destroying KMQ device"); }
 
+int device::create(uint32_t n_rows, uint32_t n_cols,
+                   const std::filesystem::path &device_path,
+                   std::unique_ptr<device> *out_device) {
+  out_device->reset();
+  std::unique_ptr<device> new_device =
+      std::make_unique<device>(n_rows, n_cols, device_path);
+  int err = new_device->init_errno();
+  if (err) return err;
+  *out_device = std::move(new_device);
+  return 0;
+}
+
+int device::init_errno() const { return m_init_errno; }
+
 const pdev &device::get_pdev() const { return m_pdev; }
 
-std::unique_ptr<hw_ctx> device::create_hw_context(
-    const std::vector<uint8_t> &pdi, const std::string &cu_name,
-    const std::map<std::string, uint32_t> &qos) {
-  return std::make_unique<hw_ctx>(*this, pdi, cu_name, n_rows, n_cols, qos);
+int device::create_hw_context(const std::vector<uint8_t> &pdi,
+                              const std::string &cu_name,
+                              const std::map<std::string, uint32_t> &qos,
+                              std::unique_ptr<hw_ctx> *out_context) {
+  out_context->reset();
+  std::unique_ptr<hw_ctx> new_context =
+      std::make_unique<hw_ctx>(*this, pdi, cu_name, n_rows, n_cols, qos);
+  int err = new_context->init_errno();
+  if (err) return err;
+  *out_context = std::move(new_context);
+  return 0;
 }
 
-std::unique_ptr<hw_ctx> device::create_hw_context(
-    const std::vector<uint8_t> &pdi, const std::string &cu_name) {
-  return std::make_unique<hw_ctx>(*this, pdi, cu_name, n_rows, n_cols);
+int device::create_hw_context(const std::vector<uint8_t> &pdi,
+                              const std::string &cu_name,
+                              std::unique_ptr<hw_ctx> *out_context) {
+  return create_hw_context(pdi, cu_name, {}, out_context);
 }
 
-std::unique_ptr<bo> device::alloc_bo(uint32_t ctx_id, size_t size,
-                                     shim_xcl_bo_flags flags) {
-  return std::make_unique<bo>(this->m_pdev, ctx_id, size, flags);
+int device::alloc_bo(uint32_t ctx_id, size_t size, shim_xcl_bo_flags flags,
+                     std::unique_ptr<bo> *out_bo) {
+  return bo::create(this->m_pdev, ctx_id, size, flags, out_bo);
 }
 
-std::unique_ptr<bo> device::alloc_bo(size_t size, shim_xcl_bo_flags flags) {
-  return alloc_bo(AMDXDNA_INVALID_CTX_HANDLE, size, flags);
+int device::alloc_bo(size_t size, shim_xcl_bo_flags flags,
+                     std::unique_ptr<bo> *out_bo) {
+  return alloc_bo(AMDXDNA_INVALID_CTX_HANDLE, size, flags, out_bo);
 }
 
-std::unique_ptr<bo> device::alloc_bo(size_t size, uint32_t flags) {
+int device::alloc_bo(size_t size, uint32_t flags, std::unique_ptr<bo> *out_bo) {
   return alloc_bo(AMDXDNA_INVALID_CTX_HANDLE, size,
-                  shim_xcl_bo_flags{.flags = flags});
+                  shim_xcl_bo_flags{.flags = flags}, out_bo);
 }
 
-std::unique_ptr<bo> device::import_bo(pid_t pid, int ehdl) {
-  return import_bo(import_fd(pid, ehdl));
+int device::create_fence(fence_handle::access_mode,
+                         std::unique_ptr<fence_handle> *out_fence) {
+  return fence_handle::create(*this, out_fence);
 }
 
-std::unique_ptr<fence_handle> device::create_fence(fence_handle::access_mode) {
-  return std::make_unique<fence_handle>(*this);
+int device::import_fence(pid_t pid, int ehdl,
+                         std::unique_ptr<fence_handle> *out_fence) {
+  int fd = -1;
+  int err = import_fd_checked(pid, ehdl, &fd);
+  if (err) return err;
+  return fence_handle::create_imported(*this, fd, out_fence);
 }
 
-std::unique_ptr<fence_handle> device::import_fence(pid_t pid, int ehdl) {
-  return std::make_unique<fence_handle>(*this, import_fd(pid, ehdl));
-}
-
-std::unique_ptr<bo> device::import_bo(int ehdl) const {
-  return std::make_unique<bo>(this->m_pdev, ehdl);
-}
-
-std::vector<char> device::read_aie_mem(uint16_t col, uint16_t row,
-                                       uint32_t offset, uint32_t size) {
+int device::read_aie_mem(uint16_t col, uint16_t row, uint32_t offset,
+                         uint32_t size, std::vector<char> *out_buf) {
   amdxdna_drm_aie_mem mem{};
   std::vector<char> store_buf(size);
   mem.col = col;
@@ -218,11 +399,14 @@ std::vector<char> device::read_aie_mem(uint16_t col, uint16_t row,
   amdxdna_drm_get_info arg = {.param = DRM_AMDXDNA_READ_AIE_MEM,
                               .buffer_size = sizeof(mem),
                               .buffer = reinterpret_cast<uintptr_t>(&mem)};
-  m_pdev.ioctl(DRM_IOCTL_AMDXDNA_GET_INFO, &arg);
-  return store_buf;
+  int err = m_pdev.try_ioctl(DRM_IOCTL_AMDXDNA_GET_INFO, &arg);
+  if (err) return err;
+  *out_buf = std::move(store_buf);
+  return 0;
 }
 
-uint32_t device::read_aie_reg(uint16_t col, uint16_t row, uint32_t reg_addr) {
+int device::read_aie_reg(uint16_t col, uint16_t row, uint32_t reg_addr,
+                         uint32_t *out_reg_val) {
   amdxdna_drm_aie_reg reg{};
   reg.col = col;
   reg.row = row;
@@ -231,12 +415,14 @@ uint32_t device::read_aie_reg(uint16_t col, uint16_t row, uint32_t reg_addr) {
   amdxdna_drm_get_info arg = {.param = DRM_AMDXDNA_READ_AIE_REG,
                               .buffer_size = sizeof(reg),
                               .buffer = reinterpret_cast<uintptr_t>(&reg)};
-  m_pdev.ioctl(DRM_IOCTL_AMDXDNA_GET_INFO, &arg);
-  return reg.val;
+  int err = m_pdev.try_ioctl(DRM_IOCTL_AMDXDNA_GET_INFO, &arg);
+  if (err) return err;
+  *out_reg_val = reg.val;
+  return 0;
 }
 
-size_t device::write_aie_mem(uint16_t col, uint16_t row, uint32_t offset,
-                             const std::vector<char> &buf) {
+int device::write_aie_mem(uint16_t col, uint16_t row, uint32_t offset,
+                          const std::vector<char> &buf, size_t *out_size) {
   amdxdna_drm_aie_mem mem{};
   uint32_t size = static_cast<uint32_t>(buf.size());
   mem.col = col;
@@ -247,12 +433,14 @@ size_t device::write_aie_mem(uint16_t col, uint16_t row, uint32_t offset,
   amdxdna_drm_get_info arg = {.param = DRM_AMDXDNA_WRITE_AIE_MEM,
                               .buffer_size = sizeof(mem),
                               .buffer = reinterpret_cast<uintptr_t>(&mem)};
-  m_pdev.ioctl(DRM_IOCTL_AMDXDNA_SET_STATE, &arg);
-  return size;
+  int err = m_pdev.try_ioctl(DRM_IOCTL_AMDXDNA_SET_STATE, &arg);
+  if (err) return err;
+  *out_size = size;
+  return 0;
 }
 
-void device::write_aie_reg(uint16_t col, uint16_t row, uint32_t reg_addr,
-                           uint32_t reg_val) {
+int device::write_aie_reg_checked(uint16_t col, uint16_t row, uint32_t reg_addr,
+                                  uint32_t reg_val) {
   amdxdna_drm_aie_reg reg{};
   reg.col = col;
   reg.row = row;
@@ -261,75 +449,50 @@ void device::write_aie_reg(uint16_t col, uint16_t row, uint32_t reg_addr,
   amdxdna_drm_get_info arg = {.param = DRM_AMDXDNA_WRITE_AIE_REG,
                               .buffer_size = sizeof(reg),
                               .buffer = reinterpret_cast<uintptr_t>(&reg)};
-  m_pdev.ioctl(DRM_IOCTL_AMDXDNA_SET_STATE, &arg);
+  return m_pdev.try_ioctl(DRM_IOCTL_AMDXDNA_SET_STATE, &arg);
 }
 
-amdxdna_power_mode_type device::get_power_mode() const {
+int device::get_power_mode(power_mode *out_mode) const {
   amdxdna_drm_get_power_mode state;
   amdxdna_drm_get_info arg = {.param = DRM_AMDXDNA_GET_POWER_MODE,
                               .buffer_size = sizeof(state),
                               .buffer = reinterpret_cast<uintptr_t>(&state)};
 
-  m_pdev.ioctl(DRM_IOCTL_AMDXDNA_GET_INFO, &arg);
-  return static_cast<amdxdna_power_mode_type>(state.power_mode);
+  int err = m_pdev.try_ioctl(DRM_IOCTL_AMDXDNA_GET_INFO, &arg);
+  if (err) return err;
+  return from_amdxdna_power_mode(state.power_mode, out_mode);
 }
 
-void device::set_power_mode(amdxdna_power_mode_type mode) const {
+int device::set_power_mode(power_mode mode) const {
   amdxdna_drm_set_power_mode state;
-  state.power_mode = mode;
+  state.power_mode = to_amdxdna_power_mode(mode);
   amdxdna_drm_set_state arg = {.param = DRM_AMDXDNA_SET_POWER_MODE,
                                .buffer_size = sizeof(state),
                                .buffer = reinterpret_cast<uintptr_t>(&state)};
-  if (::ioctl(m_pdev.m_dev_fd, DRM_IOCTL_AMDXDNA_SET_STATE, &arg) == -1) {
-    shim_err(
-        errno,
-        "DRM_AMDXDNA_SET_POWER_MODE failed; probably you need sudo privileges");
-  }
-  SHIM_DEBUG("set power_mode to %s",
-             stringify_amdxdna_power_mode_type(mode).c_str());
+  const int err = m_pdev.try_ioctl(DRM_IOCTL_AMDXDNA_SET_STATE, &arg);
+  if (err != 0) return err;
+  SHIM_DEBUG("set power_mode to %s", stringify_power_mode(mode).c_str());
+  return 0;
 }
 
 std::string read_sysfs(const std::string &filename) {
-  std::ifstream file(filename);
-  std::string line;
-  if (file.is_open()) {
-    std::getline(file, line);
-    file.close();
-  } else {
-    std::cerr << "Error opening file: " << filename << std::endl;
-    line = "";
-  }
-  return line;
+  return read_first_line(filename);
 }
 
-std::filesystem::path find_npu_device() {
-  const std::filesystem::path drvpath = "/sys/bus/pci/drivers/amdxdna";
-  for (auto const &dir_entry : std::filesystem::directory_iterator{drvpath})
-    if (dir_entry.is_symlink()) {
-      std::cout << dir_entry.path() << '\n';
-      auto actual_path = drvpath / std::filesystem::read_symlink(dir_entry);
-      auto rel = std::filesystem::relative(actual_path, "/sys/devices");
-      if (!rel.empty() && rel.native()[0] != '.') return absolute(actual_path);
-    }
-  shim_err(errno, "No npu device found");
-}
-
-std::string stringify_amdxdna_power_mode_type(
-    amdxdna_power_mode_type power_mode) {
-  switch (power_mode) {
-    case POWER_MODE_DEFAULT:
+std::string stringify_power_mode(power_mode mode) {
+  switch (mode) {
+    case power_mode::default_mode:
       return {"DEFAULT"};
-    case POWER_MODE_LOW:
+    case power_mode::low:
       return {"LOW"};
-    case POWER_MODE_MEDIUM:
+    case power_mode::medium:
       return {"MEDIUM"};
-    case POWER_MODE_HIGH:
+    case power_mode::high:
       return {"HIGH"};
-    case POWER_MODE_TURBO:
+    case power_mode::turbo:
       return {"TURBO"};
-    default:
-      shim_fatal("unknown power mode");
   }
+  return "UNKNOWN(" + std::to_string(static_cast<int>(mode)) + ")";
 }
 
 }  // namespace shim_xdna

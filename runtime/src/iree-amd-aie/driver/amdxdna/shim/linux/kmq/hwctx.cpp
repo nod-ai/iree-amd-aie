@@ -3,7 +3,7 @@
 
 #include "hwctx.h"
 
-#include <cassert>
+#include <cerrno>
 #include <cstring>
 
 #include "amdxdna_accel.h"
@@ -12,6 +12,8 @@
 #include "shim_debug.h"
 
 namespace shim_xdna {
+
+static constexpr uint32_t kDefaultOpsPerCycle = 2048;
 
 hw_ctx::hw_ctx(device &dev, const std::map<std::string, uint32_t> &qos,
                std::unique_ptr<hw_q> q, const std::vector<uint8_t> &pdi,
@@ -40,14 +42,15 @@ hw_ctx::hw_ctx(device &dev, const std::map<std::string, uint32_t> &qos,
       m_qos.priority = value;
   }
 
-  // TODO(max): multiple pdis?
+  // The flatbuffer executable path supplies one PDI/CU entry per hardware
+  // context today. If multi-PDI contexts become useful, extend the constructor
+  // API to accept a list and keep the CONFIG_CU packing below in lockstep.
   m_cu_info.push_back(
       {.m_name = cu_name, .m_func = /*functional*/ 0, .m_pdi = pdi});
 
-  if (m_cu_info.empty())
-    shim_err(EINVAL, "No valid DPU kernel found in xclbin");
-  // TODO(max): configure this
-  m_ops_per_cycle = 2048;
+  // max_opc is a kernel QoS hint. There is no HAL/device option for it yet, so
+  // use the driver default value expected by the current XDNA stack.
+  m_ops_per_cycle = kDefaultOpsPerCycle;
 }
 
 hw_ctx::hw_ctx(device &device, const std::vector<uint8_t> &pdi,
@@ -55,7 +58,8 @@ hw_ctx::hw_ctx(device &device, const std::vector<uint8_t> &pdi,
                const std::map<std::string, uint32_t> &qos)
     : hw_ctx(device, qos, std::make_unique<hw_q>(device), pdi, cu_name, n_rows,
              n_cols) {
-  create_ctx_on_device();
+  m_init_errno = create_ctx_on_device();
+  if (m_init_errno) return;
   std::vector<char> cu_conf_param_buf(sizeof(amdxdna_hwctx_param_config_cu) +
                                       m_cu_info.size() *
                                           sizeof(amdxdna_cu_config));
@@ -68,17 +72,28 @@ hw_ctx::hw_ctx(device &device, const std::vector<uint8_t> &pdi,
   for (int i = 0; i < m_cu_info.size(); i++) {
     cu_info &ci = m_cu_info[i];
 
-    m_pdi_bos.push_back(alloc_bo(ci.m_pdi.size(), f));
-    std::unique_ptr<bo> &pdi_bo = m_pdi_bos[i];
+    std::unique_ptr<bo> pdi_bo;
+    m_init_errno = alloc_bo(ci.m_pdi.size(), f, &pdi_bo);
+    if (m_init_errno) return;
     char *pdi_vaddr = reinterpret_cast<char *>(pdi_bo->map());
+    if (!pdi_vaddr) {
+      m_init_errno = EINVAL;
+      return;
+    }
 
     // see cu_configs[1] in amdxdna_hwctx_param_config_cu
-    assert(i < 1 && "only 1 CU supported");
+    if (i >= 1) {
+      m_init_errno = EINVAL;
+      return;
+    }
     amdxdna_cu_config &cf = cu_conf_param->cu_configs[i];
     std::memcpy(pdi_vaddr, ci.m_pdi.data(), ci.m_pdi.size());
-    pdi_bo->sync(direction::host2device, pdi_bo->get_properties().size, 0);
+    m_init_errno =
+        pdi_bo->sync(direction::host2device, pdi_bo->get_properties().size, 0);
+    if (m_init_errno) return;
     cf.cu_bo = pdi_bo->get_drm_bo_handle();
     cf.cu_func = ci.m_func;
+    m_pdi_bos.push_back(std::move(pdi_bo));
   }
 
   amdxdna_drm_config_hwctx arg = {};
@@ -86,7 +101,9 @@ hw_ctx::hw_ctx(device &device, const std::vector<uint8_t> &pdi,
   arg.param_type = DRM_AMDXDNA_HWCTX_CONFIG_CU;
   arg.param_val = reinterpret_cast<uintptr_t>(cu_conf_param);
   arg.param_val_size = cu_conf_param_buf.size();
-  m_device.get_pdev().ioctl(DRM_IOCTL_AMDXDNA_CONFIG_HWCTX, &arg);
+  m_init_errno =
+      m_device.get_pdev().try_ioctl(DRM_IOCTL_AMDXDNA_CONFIG_HWCTX, &arg);
+  if (m_init_errno) return;
 
   SHIM_DEBUG("Created KMQ HW context (%d)", m_handle);
 }
@@ -98,33 +115,33 @@ hw_ctx::~hw_ctx() {
   SHIM_DEBUG("Destroying KMQ HW context (%d)...", m_handle);
 }
 
-cuidx_t hw_ctx::open_cu_context(const std::string &cu_name) {
+int hw_ctx::init_errno() const { return m_init_errno; }
+
+int hw_ctx::open_cu_context(const std::string &cu_name, cuidx_t *out_cu_idx) {
   for (uint32_t i = 0; i < m_cu_info.size(); i++) {
     auto &ci = m_cu_info[i];
     SHIM_DEBUG("ci.m_name %s", ci.m_name.c_str());
-    if (ci.m_name == cu_name) return cuidx_t{.index = i};
+    if (ci.m_name == cu_name) {
+      *out_cu_idx = cuidx_t{.index = i};
+      return 0;
+    }
   }
 
-  shim_err(ENOENT, "CU name (%s) not found", cu_name.c_str());
+  return ENOENT;
 }
 
-std::unique_ptr<bo> hw_ctx::alloc_bo(size_t size, shim_xcl_bo_flags flags) {
-  // const_cast: alloc_bo() is not const yet in device class
+int hw_ctx::alloc_bo(size_t size, shim_xcl_bo_flags flags,
+                     std::unique_ptr<bo> *out_bo) {
   // Debug buffer is specific to one context.
   if (flags.use == XRT_BO_USE_DEBUG)
-    return m_device.alloc_bo(m_handle, size, flags);
+    return m_device.alloc_bo(m_handle, size, flags, out_bo);
   // Other BOs are shared across all contexts.
-  return m_device.alloc_bo(AMDXDNA_INVALID_CTX_HANDLE, size, flags);
-}
-
-std::unique_ptr<bo> hw_ctx::import_bo(pid_t pid, int ehdl) {
-  // const_cast: import_bo() is not const yet in device class
-  return m_device.import_bo(pid, ehdl);
+  return m_device.alloc_bo(AMDXDNA_INVALID_CTX_HANDLE, size, flags, out_bo);
 }
 
 hw_q *hw_ctx::get_hw_queue() const { return m_q.get(); }
 
-void hw_ctx::create_ctx_on_device() {
+int hw_ctx::create_ctx_on_device() {
   amdxdna_drm_create_hwctx arg = {};
   arg.qos_p = reinterpret_cast<uintptr_t>(&m_qos);
   arg.umq_bo = m_q->m_queue_boh;
@@ -132,13 +149,15 @@ void hw_ctx::create_ctx_on_device() {
   arg.num_tiles = m_num_rows * m_num_cols;
   arg.log_buf_bo =
       m_log_bo ? m_log_bo->get_drm_bo_handle() : AMDXDNA_INVALID_BO_HANDLE;
-  m_device.get_pdev().ioctl(DRM_IOCTL_AMDXDNA_CREATE_HWCTX, &arg);
+  int err = m_device.get_pdev().try_ioctl(DRM_IOCTL_AMDXDNA_CREATE_HWCTX, &arg);
+  if (err) return err;
 
   m_handle = arg.handle;
   m_doorbell = arg.umq_doorbell;
   m_syncobj = arg.syncobj_handle;
 
   m_q->bind_hwctx(this);
+  return 0;
 }
 
 void hw_ctx::delete_ctx_on_device() const {
@@ -147,7 +166,7 @@ void hw_ctx::delete_ctx_on_device() const {
   m_q->unbind_hwctx();
   amdxdna_drm_destroy_hwctx arg = {};
   arg.handle = m_handle;
-  m_device.get_pdev().ioctl(DRM_IOCTL_AMDXDNA_DESTROY_HWCTX, &arg);
+  (void)m_device.get_pdev().try_ioctl(DRM_IOCTL_AMDXDNA_DESTROY_HWCTX, &arg);
 
   fini_log_buf();
 }
@@ -155,7 +174,7 @@ void hw_ctx::delete_ctx_on_device() const {
 void hw_ctx::delete_syncobj() const {
   if (m_syncobj == AMDXDNA_INVALID_FENCE_HANDLE) return;
   drm_syncobj_destroy dsobj = {.handle = m_syncobj};
-  m_device.get_pdev().ioctl(DRM_IOCTL_SYNCOBJ_DESTROY, &dsobj);
+  (void)m_device.get_pdev().try_ioctl(DRM_IOCTL_SYNCOBJ_DESTROY, &dsobj);
 }
 
 void hw_ctx::init_log_buf() {
@@ -163,8 +182,13 @@ void hw_ctx::init_log_buf() {
   auto log_buf_size = m_num_cols * column_size + sizeof(m_metadata);
   shim_xcl_bo_flags f;
   f.flags = XCL_BO_FLAGS_EXECBUF;
-  m_log_bo = alloc_bo(log_buf_size, f);
+  m_init_errno = alloc_bo(log_buf_size, f, &m_log_bo);
+  if (m_init_errno) return;
   m_log_buf = m_log_bo->map();
+  if (!m_log_buf) {
+    m_init_errno = EINVAL;
+    return;
+  }
   uint64_t bo_paddr = m_log_bo->get_properties().paddr;
   set_metadata(m_num_cols, column_size, bo_paddr, 1);
   std::memset(m_log_buf, 0, log_buf_size);

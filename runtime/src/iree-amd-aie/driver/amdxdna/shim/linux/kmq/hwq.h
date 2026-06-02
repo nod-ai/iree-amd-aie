@@ -6,19 +6,22 @@
 
 #include <atomic>
 #include <cstdint>
+#include <vector>
 
 #include "fence.h"
 #include "hwctx.h"
 
 namespace shim_xdna {
 struct bo;
+struct device;
+struct pdev;
 struct hw_q {
   const hw_ctx *m_hwctx;
   const pdev &m_pdev;
   uint32_t m_queue_boh;
   // Number of DRM_IOCTL_AMDXDNA_EXEC_CMD submissions issued through this queue
   // (incremented by issue_command). Lets tests assert the count of on-device
-  // submits — e.g. that a deferred ERT_CMD_CHAIN actually batched the
+  // submits, e.g. that a deferred ERT_CMD_CHAIN actually batched the
   // recorded dispatches into one submit rather than fanning out.
   std::atomic<uint64_t> m_exec_cmd_count{0};
 
@@ -27,15 +30,15 @@ struct hw_q {
 
   // Returns: >0 the command was signaled (check its ert state for COMPLETED vs
   // a terminal error), 0 on ETIME timeout, or -errno on a hard wait-ioctl
-  // failure (no longer aborts).
+  // failure.
   int wait_command(bo *, uint32_t timeout_ms) const;
-  void submit_wait(const fence_handle *);
-  void submit_wait(const std::vector<fence_handle *> &);
-  void submit_signal(const fence_handle *);
+  int submit_wait(const fence_handle *, uint64_t *out_state);
+  int submit_wait(const std::vector<fence_handle *> &,
+                  uint64_t *out_last_state);
+  int submit_signal(const fence_handle *, uint64_t *out_state);
   void bind_hwctx(const hw_ctx *ctx);
   void unbind_hwctx();
-  // Returns 0 on success or the failing errno from the EXEC_CMD ioctl (no
-  // longer aborts).
+  // Returns 0 on success or the failing errno from the EXEC_CMD ioctl.
   int issue_command(bo *);
   uint64_t exec_cmd_count() const {
     return m_exec_cmd_count.load(std::memory_order_relaxed);

@@ -92,6 +92,10 @@ ENABLE_AMDXDNA_CTS_TESTS=${ENABLE_AMDXDNA_CTS_TESTS:-""}
 if [ "$ENABLE_AMDXDNA_CTS_TESTS" != "" ]; then
   CMAKE_ARGS+=(-DENABLE_AMDXDNA_CTS_TESTS="$ENABLE_AMDXDNA_CTS_TESTS")
 fi
+ENABLE_AMDXDNA_AIE_EXECUTABLE_TESTS=${ENABLE_AMDXDNA_AIE_EXECUTABLE_TESTS:-""}
+if [ "$ENABLE_AMDXDNA_AIE_EXECUTABLE_TESTS" != "" ]; then
+  CMAKE_ARGS+=(-DENABLE_AMDXDNA_AIE_EXECUTABLE_TESTS="$ENABLE_AMDXDNA_AIE_EXECUTABLE_TESTS")
+fi
 
 if [ -d "$llvm_install_dir" ]; then
   CMAKE_ARGS+=(
@@ -146,11 +150,11 @@ cmake --build "$build_dir" --target iree-install-dist
 echo "CTest"
 echo "-----"
 if [[ "$OSTYPE" == "linux"* ]] && [[ "$assertions" == "ON" ]]; then
-  # Exclude /cts/ — those tests need a real NPU device and are run on the
-  # hardware CI runners via $install_dir/device_tests below. Software-only
-  # driver tests (e.g. driver/amdxdna/test/AsyncQueueTest) are not under
-  # /cts/ and run here.
-  ctest --test-dir "$build_dir" -R amd-aie -E "/cts/" --output-on-failure -j
+  # Exclude /cts/ and requires-npu tests — those need a real NPU device and
+  # are run on the hardware CI runners via $install_dir/device_tests below.
+  # Software-only driver tests (e.g. driver/amdxdna/test/AsyncQueueTest) run
+  # here.
+  ctest --test-dir "$build_dir" -R amd-aie -E "/cts/" -LE "requires-npu" --output-on-failure -j
 elif [[ "$OSTYPE" == "darwin"* ]]; then
   ctest --test-dir "$build_dir" -R amd-aie -E "matmul_pack_peel_air_e2e|matmul_elementwise_pack_peel_air_e2e" --output-on-failure -j --repeat until-pass:5
 fi
@@ -164,10 +168,20 @@ fi
 cp "$build_dir/tools/testing/e2e/iree-e2e-matmul-test" "$install_dir/bin"
 if [[ "$OSTYPE" == "linux"* ]]; then
   mkdir -p "$install_dir/device_tests"
-  # Install both the iree-amd-aie amdxdna custom dispatch tests (*_test) and
-  # the standard iree_hal_cts_test_suite outputs (*_tests) so the npu1/npu4
+  # Install both the standard iree_hal_cts_test_suite outputs (*_tests) and
+  # the iree-amd-aie amdxdna executable/device tests (*_test) so the npu1/npu4
   # hardware CI steps that iterate $install_dir/device_tests pick them all up.
-  cp "$build_dir"/runtime/plugins/AMD-AIE/iree-amd-aie/driver/amdxdna/cts/*_test \
-     "$build_dir"/runtime/plugins/AMD-AIE/iree-amd-aie/driver/amdxdna/cts/*_tests \
-     "$install_dir/device_tests"
+  amdxdna_cts_dir="$build_dir/runtime/plugins/AMD-AIE/iree-amd-aie/driver/amdxdna/cts"
+  amdxdna_executable_test_dir="$build_dir/runtime/plugins/AMD-AIE/iree-amd-aie/driver/amdxdna/test/executable"
+  shopt -s nullglob
+  amdxdna_device_tests=(
+    "$amdxdna_cts_dir"/*_tests
+    "$amdxdna_cts_dir"/*_test
+    "$amdxdna_executable_test_dir"/*_tests
+    "$amdxdna_executable_test_dir"/*_test
+  )
+  shopt -u nullglob
+  if (( ${#amdxdna_device_tests[@]} )); then
+    cp "${amdxdna_device_tests[@]}" "$install_dir/device_tests"
+  fi
 fi

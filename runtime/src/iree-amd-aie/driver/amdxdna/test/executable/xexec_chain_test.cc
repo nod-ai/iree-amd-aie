@@ -7,9 +7,10 @@
 // Cross-executable ERT_CMD_CHAIN tests (NPU).
 //
 // Proves that TWO DISTINCT hal.executable objects shipping a byte-identical
-// control-packet bootstrap PDI are (a) resolved to ONE shared hw context by
-// the device PDI cache and (b) batched into ERT_CMD_CHAIN(s) on that shared
-// queue when recorded into a single command buffer with cmd_chain enabled.
+// control-packet bootstrap PDI and CU/export name are (a) resolved to ONE
+// shared hw context by the device context cache and (b) batched into
+// ERT_CMD_CHAIN(s) on that shared queue when recorded into a single command
+// buffer with cmd_chain enabled.
 //
 // This case can't be produced from MLIR via the full iree-compile pipeline
 // (the AIE backend co-locates a function's dispatches into one executable with
@@ -26,7 +27,7 @@
 #include "iree-amd-aie/driver/amdxdna/api.h"
 #include "iree-amd-aie/driver/amdxdna/device.h"
 #include "iree-amd-aie/driver/amdxdna/executable.h"
-#include "iree-amd-aie/driver/amdxdna/shim/linux/kmq/hwq.h"
+#include "iree-amd-aie/driver/amdxdna/native.h"
 #include "iree/async/util/proactor_pool.h"
 #include "iree/base/api.h"
 #include "iree/hal/api.h"
@@ -38,7 +39,7 @@ namespace {
 
 static iree_const_byte_span_t GetTestExecutableData() {
   const struct iree_file_toc_t* toc =
-      iree_cts_testdata_executables_xexec_chain_create();
+      iree_amdxdna_testdata_executables_xexec_chain_create();
   return iree_make_const_byte_span(toc[0].data, toc[0].size);
 }
 
@@ -51,10 +52,10 @@ static iree_hal_buffer_ref_t BufferRefOf(iree_hal_buffer_t* b, size_t size) {
 }
 
 // Runs the 2-distinct-executable + 2-dispatch + 1-command-buffer scenario on
-// npu4 with cmd_chain enabled. Verifies output correctness and that the PDI
+// npu4 with cmd_chain enabled. Verifies output correctness and that the context
 // cache returned the SAME hw context for both executables (cross-executable
-// sharing). Returns the EXEC_CMD ioctl count observed on the shared hw queue
-// so each TEST can assert on it.
+// sharing). Returns the EXEC_CMD ioctl count observed on the shared hw queue so
+// each TEST can assert on it.
 //
 // If `forced_max_slots != 0`, sets `device->chain_max_slots` to that value
 // before submission to exercise the chunking path (a single accumulated
@@ -178,13 +179,13 @@ static uint64_t RunCrossExecChainScenario(uint32_t forced_max_slots) {
                                          IREE_ASYNC_WAIT_FLAG_NONE));
 
   // Cross-executable sharing check: the two distinct executables must have
-  // been resolved to the SAME shared hw context by the PDI cache (PDIs are
-  // byte-identical, so a HIT for exe1 returns exe0's cached context).
-  iree_hal_amdxdna_executable* exe0_xrt =
-      iree_hal_amdxdna_executable_cast(exe0);
-  iree_hal_amdxdna_executable* exe1_xrt =
-      iree_hal_amdxdna_executable_cast(exe1);
-  EXPECT_EQ(exe0_xrt->context.get(), exe1_xrt->context.get());
+  // been resolved to the SAME shared hw context by the context cache (the
+  // bootstrap PDI and CU/export names match, so exe1 hits exe0's context).
+  iree_hal_amdxdna_native_context_t* exe0_context =
+      iree_hal_amdxdna_executable_control_context_borrow(exe0);
+  iree_hal_amdxdna_native_context_t* exe1_context =
+      iree_hal_amdxdna_executable_control_context_borrow(exe1);
+  EXPECT_EQ(exe0_context, exe1_context);
 
   // Both dispatches must have run on the (shared) array and produced 24.0.
   for (iree_hal_buffer_t* out : {C0, C1}) {
@@ -197,9 +198,10 @@ static uint64_t RunCrossExecChainScenario(uint32_t forced_max_slots) {
     }
   }
 
-  // Snapshot the count BEFORE we tear anything down (the hw_q is owned by the
-  // shared context which gets released when the device drops it below).
-  uint64_t exec_cmd_count = exe0_xrt->context->get_hw_queue()->exec_cmd_count();
+  // Snapshot the count BEFORE we tear anything down (the native queue is owned
+  // by the shared context which gets released when the device drops it below).
+  uint64_t exec_cmd_count = iree_hal_amdxdna_native_queue_exec_command_count(
+      iree_hal_amdxdna_native_context_queue(exe0_context));
 
   iree_hal_semaphore_release(sem);
   iree_hal_buffer_release(C1);
@@ -218,19 +220,19 @@ static uint64_t RunCrossExecChainScenario(uint32_t forced_max_slots) {
 }
 
 // Default chain_max_slots (lazy-computed, ~506 on a 4KB exec BO) easily fits
-// the 4 accumulated slots (two dispatches × [reconfig, exec]) into one chain.
+// the 4 accumulated slots (two dispatches x [reconfig, exec]) into one chain.
 TEST(AmdxdnaCrossExecChain, TwoExecutablesOneCmdChain) {
   uint64_t exec_cmd_count = RunCrossExecChainScenario(/*forced_max_slots=*/0);
   EXPECT_EQ(exec_cmd_count, 1u);
 }
 
 // Force chain_max_slots = 2 to exercise the chunking path. The same 4 slots
-// must now split into two chains of 2 slots each — two EXEC_CMD ioctls
+// must now split into two chains of 2 slots each: two EXEC_CMD ioctls
 // submitted in recorded order on the shared hw queue, with the device's
 // in-order completion preserving the original semantics.
 TEST(AmdxdnaCrossExecChain, ChunkingSplitsLargeChainIntoMultipleSubmits) {
   uint64_t exec_cmd_count = RunCrossExecChainScenario(/*forced_max_slots=*/2);
-  // 2 dispatches × (reconfig + exec) = 4 slots; max_slots = 2 → 2 chunks.
+  // 2 dispatches x (reconfig + exec) = 4 slots; max_slots = 2 -> 2 chunks.
   EXPECT_EQ(exec_cmd_count, 2u);
 }
 

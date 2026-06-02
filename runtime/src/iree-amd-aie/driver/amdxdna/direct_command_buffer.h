@@ -4,11 +4,10 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#ifndef IREE_AMD_AIE_DRIVER_AMDXDNA_AMDXDNA_COMMAND_BUFFER_H_
-#define IREE_AMD_AIE_DRIVER_AMDXDNA_AMDXDNA_COMMAND_BUFFER_H_
+#ifndef IREE_AMD_AIE_DRIVER_AMDXDNA_DIRECT_COMMAND_BUFFER_H_
+#define IREE_AMD_AIE_DRIVER_AMDXDNA_DIRECT_COMMAND_BUFFER_H_
 
 #include "iree-amd-aie/driver/amdxdna/device.h"
-#include "iree-amd-aie/driver/amdxdna/shim/linux/kmq/device.h"
 #include "iree/base/internal/arena.h"
 #include "iree/hal/api.h"
 
@@ -21,4 +20,4 @@ iree_status_t iree_hal_amdxdna_direct_command_buffer_create(
     iree_allocator_t host_allocator,
     iree_hal_command_buffer_t** out_command_buffer);
 
-#endif  // IREE_AMD_AIE_DRIVER_AMDXDNA_AMDXDNA_COMMAND_BUFFER_H_
+#endif  // IREE_AMD_AIE_DRIVER_AMDXDNA_DIRECT_COMMAND_BUFFER_H_

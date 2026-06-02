@@ -7,13 +7,20 @@
 #ifndef IREE_AMD_AIE_DRIVER_AMDXDNA_API_H_
 #define IREE_AMD_AIE_DRIVER_AMDXDNA_API_H_
 
-#include "iree-amd-aie/driver/amdxdna/shim/linux/kmq/amdxdna_accel.h"
 #include "iree/base/api.h"
 #include "iree/hal/api.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif  // __cplusplus
+
 struct iree_hal_amdxdna_device_params {
+  // Number of core tile rows/cols to use. 0 discovers the hardware defaults.
   int32_t n_core_rows;
   int32_t n_core_cols;
+  // Optional DRM accel device path. Empty discovers the first /dev/accel/accel*
+  // node.
+  iree_string_view_t device_path;
   iree_string_view_t power_mode;
   // When non-zero, batch each dispatch's commands (control-packet reconfig +
   // kernel exec) into a single ERT_CMD_CHAIN submitted with one issue/wait,
@@ -24,6 +31,10 @@ struct iree_hal_amdxdna_device_params {
 
 IREE_API_EXPORT void iree_hal_amdxdna_device_options_initialize(
     struct iree_hal_amdxdna_device_params* out_params);
+
+IREE_API_EXPORT iree_status_t iree_hal_amdxdna_device_options_parse(
+    struct iree_hal_amdxdna_device_params* params, iree_host_size_t pairs_size,
+    const iree_string_pair_t* pairs);
 
 struct iree_hal_amdxdna_driver_options {
   struct iree_hal_amdxdna_device_params device_params;
@@ -48,5 +59,9 @@ IREE_API_EXPORT iree_status_t iree_hal_amdxdna_device_create(
     const struct iree_hal_amdxdna_device_params* params,
     const iree_hal_device_create_params_t* create_params,
     iree_allocator_t host_allocator, iree_hal_device_t** out_device);
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif  // __cplusplus
 
 #endif  // IREE_AMD_AIE_DRIVER_AMDXDNA_API_H_

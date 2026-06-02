@@ -61,13 +61,12 @@ static bool amdxdna_registered_ =
               // that are only meaningful for drivers with multiple physical
               // queues. local_sync skips them for the same reason.
               //
-              // TODO(1401): revisit when a real workload measurably
-              // benefits from parallel hwctx submission on disjoint AIE
-              // column groups. The XDNA kernel and IREE HAL both support
-              // multi-queue today; amdxdna would need ~500-800 LOC
-              // ported from the amdgpu HAL pattern to enable it. The
-              // linked issue tracks the benchmark plan and decision
-              // criteria.
+              // Revisit this when a real workload measurably benefits from
+              // parallel hwctx submission on disjoint AIE column groups. The
+              // XDNA kernel and IREE HAL both support multi-queue today;
+              // amdxdna would need ~500-800 LOC ported from the amdgpu HAL
+              // pattern to enable it. The linked issue tracks the benchmark
+              // plan and decision criteria.
               {"QueueAllocaTest.ExplicitFixedBlockPoolCrossQueueWaitFrontier",
                "single-queue driver: pool's OK_NEEDS_WAIT path is only "
                "meaningful when peer queues release while the freed work is "

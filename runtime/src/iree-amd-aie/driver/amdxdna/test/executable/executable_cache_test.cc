@@ -14,14 +14,14 @@
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
 
-namespace iree::hal::cts {
+namespace iree::hal::amdxdna {
 
 static const char* get_test_executable_format() { return "amdaie-pdi-fb"; }
 
 static iree_const_byte_span_t get_test_executable_data(
     iree_string_view_t /*file_name*/) {
   const struct iree_file_toc_t* toc =
-      iree_cts_testdata_executables_aie_amdxdna_create();
+      iree_amdxdna_testdata_executables_aie_create();
   const auto& file = toc[0];
   return iree_make_const_byte_span(file.data, file.size);
 }
@@ -105,4 +105,4 @@ TEST_F(ExecutableCacheTest, PrepareExecutable) {
   iree_hal_executable_cache_release(executable_cache);
 }
 
-}  // namespace iree::hal::cts
+}  // namespace iree::hal::amdxdna

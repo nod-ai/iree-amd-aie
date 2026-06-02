@@ -4,6 +4,7 @@
 #ifndef _FENCE_XDNA_H_
 #define _FENCE_XDNA_H_
 
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -23,8 +24,9 @@ struct shared_handle {
 struct fence_handle {
   using export_handle = int;
   const pdev &m_pdev;
-  const std::unique_ptr<shared_handle> m_import;
+  std::unique_ptr<shared_handle> m_import;
   uint32_t m_syncobj_hdl;
+  int m_init_errno = 0;
   // Protecting below mutables
   mutable std::mutex m_lock;
   // Set once at first signal
@@ -39,17 +41,22 @@ struct fence_handle {
   fence_handle(const fence_handle &);
   ~fence_handle();
 
-  std::unique_ptr<fence_handle> clone() const;
-  std::unique_ptr<shared_handle> share_handle() const;
-  void wait(uint32_t timeout_ms) const;
+  int init_errno() const;
+  static int create(const device &device, std::unique_ptr<fence_handle> *out);
+  static int create_imported(const device &device, int ehdl,
+                             std::unique_ptr<fence_handle> *out);
+  int clone(std::unique_ptr<fence_handle> *out) const;
+  int share_handle(std::unique_ptr<shared_handle> *out_handle) const;
+  int wait(uint32_t timeout_ms, uint64_t *out_state) const;
   uint64_t get_next_state() const;
-  void signal() const;
-  void submit_wait(const hw_ctx *) const;
-  static void submit_wait(const pdev &dev, const hw_ctx *,
-                          const std::vector<fence_handle *> &fences);
-  void submit_signal(const hw_ctx *) const;
-  uint64_t wait_next_state() const;
-  uint64_t signal_next_state() const;
+  int signal(uint64_t *out_state) const;
+  int submit_wait(const hw_ctx *, uint64_t *out_state) const;
+  static int submit_wait(const pdev &dev, const hw_ctx *,
+                         const std::vector<fence_handle *> &fences,
+                         uint64_t *out_last_state);
+  int submit_signal(const hw_ctx *, uint64_t *out_state) const;
+  int wait_next_state(uint64_t *out_state) const;
+  int signal_next_state(uint64_t *out_state) const;
 };
 
 }  // namespace shim_xdna

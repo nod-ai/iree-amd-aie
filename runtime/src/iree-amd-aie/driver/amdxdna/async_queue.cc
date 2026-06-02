@@ -56,6 +56,7 @@ struct iree_hal_amdxdna_async_op_t {
 
   // Op body and arg. Run on the worker thread.
   iree_hal_amdxdna_async_op_fn_t op_fn;
+  iree_hal_amdxdna_async_op_cleanup_fn_t cleanup_fn;
   void* op_user_data;
 
   // Cloned wait/signal lists. wait_list is only used while timepoints are
@@ -97,7 +98,7 @@ struct iree_hal_amdxdna_async_queue_t {
   iree_atomic_uint64_t epoch;
 
   // Worker thread that runs op_fn callbacks and signals semaphores. A single
-  // thread is intentional — it serializes all NPU access.
+  // thread is intentional: it serializes all NPU access.
   iree_thread_t* worker_thread;
 
   // Notification used to wake the worker when ops are pushed or shutdown is
@@ -178,6 +179,9 @@ void iree_hal_amdxdna_async_queue_push_ready(
 // notification when it reaches 0.
 void iree_hal_amdxdna_async_queue_release_op(
     iree_hal_amdxdna_async_queue_t* queue, iree_hal_amdxdna_async_op_t* op) {
+  if (op->cleanup_fn) {
+    op->cleanup_fn(op->op_user_data);
+  }
   // Release caller-supplied retained resources. Runs on every termination
   // path (success, op_fn error, wait failure, shutdown cancellation), which
   // is what makes the retained_resources mechanism correct: callers can rely
@@ -244,9 +248,12 @@ int iree_hal_amdxdna_async_queue_worker_main(void* arg) {
       iree_wait_token_t token =
           iree_notification_prepare_wait(&queue->worker_notification);
       head = iree_atomic_load(&queue->ready_head, iree_memory_order_acquire);
-      if (head == 0 &&
+      // Re-check the wake conditions after prepare_wait: ready_head may have
+      // been pushed, and shutdown_requested is monotonic 0 -> 1.
+      bool shutdown_after_prepare =
           iree_atomic_load(&queue->shutdown_requested,
-                           iree_memory_order_acquire) == (shutdown ? 1 : 0)) {
+                           iree_memory_order_acquire) != 0;
+      if (head == 0 && shutdown_after_prepare == shutdown) {
         iree_notification_commit_wait(&queue->worker_notification, token,
                                       /*spin_ns=*/0, IREE_TIME_INFINITE_FUTURE);
       } else {
@@ -326,12 +333,13 @@ iree_status_t iree_hal_amdxdna_async_queue_create(
   iree_atomic_store(&queue->inflight_count, 0, iree_memory_order_relaxed);
   iree_atomic_store(&queue->epoch, (uint64_t)0, iree_memory_order_relaxed);
 
-  iree_thread_create_params_t thread_params = {{0}};
+  iree_thread_create_params_t thread_params = {};
   thread_params.name = iree_make_cstring_view("amdxdna-async-queue");
   iree_status_t status =
       iree_thread_create(iree_hal_amdxdna_async_queue_worker_main, queue,
                          thread_params, host_allocator, &queue->worker_thread);
   if (!iree_status_is_ok(status)) {
+    iree_slim_mutex_deinitialize(&queue->inflight_mutex);
     iree_notification_deinitialize(&queue->drain_notification);
     iree_notification_deinitialize(&queue->worker_notification);
     iree_allocator_free(host_allocator, queue);
@@ -360,7 +368,7 @@ void iree_hal_amdxdna_async_queue_set_frontier(
   // Lifecycle contract (matches iree/hal/drivers/amdgpu's host_queue): the
   // tracker is set non-null exactly once at topology assignment and cleared
   // exactly once at teardown after the worker has joined. The transitions
-  // are non-null→null and null→non-null only; replacing a live tracker
+  // are non-null->null and null->non-null only; replacing a live tracker
   // would race with the worker's plain reads on the advance path.
   IREE_ASSERT(tracker == nullptr || queue->frontier_tracker == nullptr,
               "set_frontier replacing a live frontier tracker; the lifecycle "
@@ -471,7 +479,12 @@ void iree_hal_amdxdna_async_queue_destroy(
 
   iree_atomic_store(&queue->shutdown_requested, 1, iree_memory_order_release);
   iree_notification_post(&queue->worker_notification, IREE_ALL_WAITERS);
-  iree_thread_join(queue->worker_thread);
+  // iree_thread_release() joins the worker on the final reference (see
+  // iree_thread_delete). Calling iree_thread_join() here as well double-joins
+  // the pthread-backed handle, which is undefined behavior and aborts under
+  // ASan ("Joining already joined thread"). The shutdown request + worker
+  // notification above guarantee the worker will exit, so the release-side
+  // join is sufficient to wait for completion.
   iree_thread_release(queue->worker_thread);
 
   iree_slim_mutex_deinitialize(&queue->inflight_mutex);
@@ -483,7 +496,8 @@ void iree_hal_amdxdna_async_queue_destroy(
 iree_status_t iree_hal_amdxdna_async_queue_enqueue(
     iree_hal_amdxdna_async_queue_t* queue, iree_hal_semaphore_list_t wait_list,
     iree_hal_semaphore_list_t signal_list, iree_hal_amdxdna_async_op_fn_t op_fn,
-    void* user_data, iree_hal_resource_t* const* retained_resources,
+    iree_hal_amdxdna_async_op_cleanup_fn_t cleanup_fn, void* user_data,
+    iree_hal_resource_t* const* retained_resources,
     iree_host_size_t retained_resource_count) {
   IREE_ASSERT_ARGUMENT(queue);
   IREE_ASSERT_ARGUMENT(!retained_resource_count || retained_resources);
@@ -507,6 +521,7 @@ iree_status_t iree_hal_amdxdna_async_queue_enqueue(
     iree_atomic_store(&op->error_status, (intptr_t)0,
                       iree_memory_order_relaxed);
     op->op_fn = op_fn;
+    op->cleanup_fn = cleanup_fn;
     op->op_user_data = user_data;
     op->wait_list = iree_hal_semaphore_list_empty();
     op->signal_list = iree_hal_semaphore_list_empty();
@@ -552,7 +567,7 @@ iree_status_t iree_hal_amdxdna_async_queue_enqueue(
 
   iree_atomic_fetch_add(&queue->inflight_count, 1, iree_memory_order_acq_rel);
 
-  // Empty wait list → dispatch immediately. No inflight tracking needed
+  // Empty wait list: dispatch immediately. No inflight tracking needed
   // because the op is on the ready queue from this point onward.
   if (wait_list.count == 0) {
     iree_hal_amdxdna_async_queue_push_ready(queue, op);
