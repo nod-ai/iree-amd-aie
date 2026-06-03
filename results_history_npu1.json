@@ -1,197 +1,5 @@
 [
   {
-    "commit_hash": "cc68c6c8e663c0bc1079853cfa0b9dec75bf5d04",
-    "cpu": "AMD Ryzen 7 8845HS w/ Radeon 780M Graphics",
-    "tests": [
-      {
-        "name": "matmul_512_512_512_bf16_f32_O2_npu1_4col_callrepl_100_outline_ctrlpkt_benchmark",
-        "time_mean": "256526",
-        "time_mean_unit": "us",
-        "total_ops": "26843545600",
-        "n_cols": "1",
-        "n_rows": "1"
-      },
-      {
-        "name": "matmul_512_512_512_bf16_f32_O3_npu1_4col_callrepl_100_outline_ctrlpkt_benchmark",
-        "time_mean": "200460",
-        "time_mean_unit": "us",
-        "total_ops": "26843545600",
-        "n_cols": "1",
-        "n_rows": "1"
-      },
-      {
-        "name": "matmul_512_512_512_bf16_f32_O3_npu1_4col_callrepl_100_outline_ukernel_chess_ctrlpkt_benchmark",
-        "time_mean": "92938",
-        "time_mean_unit": "us",
-        "total_ops": "26843545600",
-        "n_cols": "1",
-        "n_rows": "1"
-      },
-      {
-        "name": "matmul_512_512_4096_bf16_f32_O2_npu1_4col_ctrlpkt_benchmark",
-        "time_mean": "2220",
-        "time_mean_unit": "us",
-        "total_ops": "2147483648",
-        "n_cols": "4",
-        "n_rows": "4"
-      },
-      {
-        "name": "matmul_512_512_4096_bf16_f32_O2_npu1_4col_outline_ctrlpkt_benchmark",
-        "time_mean": "1754",
-        "time_mean_unit": "us",
-        "total_ops": "2147483648",
-        "n_cols": "4",
-        "n_rows": "4"
-      },
-      {
-        "name": "matmul_512_512_4096_bf16_f32_O3_npu1_4col_ctrlpkt_benchmark",
-        "time_mean": "2180",
-        "time_mean_unit": "us",
-        "total_ops": "2147483648",
-        "n_cols": "4",
-        "n_rows": "4"
-      },
-      {
-        "name": "matmul_512_512_4096_bf16_f32_O3_npu1_4col_outline_ctrlpkt_benchmark",
-        "time_mean": "1711",
-        "time_mean_unit": "us",
-        "total_ops": "2147483648",
-        "n_cols": "4",
-        "n_rows": "4"
-      },
-      {
-        "name": "matmul_512_512_4096_bf16_f32_O3_npu1_4col_outline_ukernel_chess_ctrlpkt_benchmark",
-        "time_mean": "1516",
-        "time_mean_unit": "us",
-        "total_ops": "2147483648",
-        "n_cols": "4",
-        "n_rows": "4"
-      },
-      {
-        "name": "matmul_512_512_4096_bf16_f32_O3_npu1_4col_outline_packet_flow_ctrlpkt_benchmark",
-        "time_mean": "1683",
-        "time_mean_unit": "us",
-        "total_ops": "2147483648",
-        "n_cols": "4",
-        "n_rows": "4"
-      },
-      {
-        "name": "matmul_512_4096_512_bf16_f32_O3_npu1_4col_outline_ctrlpkt_benchmark",
-        "time_mean": "2395",
-        "time_mean_unit": "us",
-        "total_ops": "2147483648",
-        "n_cols": "4",
-        "n_rows": "4"
-      },
-      {
-        "name": "matmul_512_4096_512_bf16_f32_O3_npu1_4col_outline_ukernel_chess_ctrlpkt_benchmark",
-        "time_mean": "1879",
-        "time_mean_unit": "us",
-        "total_ops": "2147483648",
-        "n_cols": "4",
-        "n_rows": "4"
-      },
-      {
-        "name": "matmul_transpose_b_512_4096_512_bf16_f32_O3_npu1_4col_outline_ctrlpkt_benchmark",
-        "time_mean": "1878",
-        "time_mean_unit": "us",
-        "total_ops": "2147483648",
-        "n_cols": "4",
-        "n_rows": "4"
-      },
-      {
-        "name": "matmul_512_4096_512_bf16_f32_O3_npu1_4col_outline_packet_flow_ctrlpkt_benchmark",
-        "time_mean": "2311",
-        "time_mean_unit": "us",
-        "total_ops": "2147483648",
-        "n_cols": "4",
-        "n_rows": "4"
-      },
-      {
-        "name": "matmul_4096_512_512_bf16_f32_O3_npu1_4col_outline_ctrlpkt_benchmark",
-        "time_mean": "1825",
-        "time_mean_unit": "us",
-        "total_ops": "2147483648",
-        "n_cols": "4",
-        "n_rows": "4"
-      },
-      {
-        "name": "matmul_4096_512_512_bf16_f32_O3_npu1_4col_outline_ukernel_chess_ctrlpkt_benchmark",
-        "time_mean": "1644",
-        "time_mean_unit": "us",
-        "total_ops": "2147483648",
-        "n_cols": "4",
-        "n_rows": "4"
-      },
-      {
-        "name": "matmul_transpose_a_4096_512_512_bf16_f32_O3_npu1_4col_outline_ctrlpkt_benchmark",
-        "time_mean": "2225",
-        "time_mean_unit": "us",
-        "total_ops": "2147483648",
-        "n_cols": "4",
-        "n_rows": "4"
-      },
-      {
-        "name": "matmul_4096_512_512_bf16_f32_O3_npu1_4col_outline_packet_flow_ctrlpkt_benchmark",
-        "time_mean": "1849",
-        "time_mean_unit": "us",
-        "total_ops": "2147483648",
-        "n_cols": "4",
-        "n_rows": "4"
-      },
-      {
-        "name": "matmul_4096_512_512_bf16_f32_O3_npu1_4col_callrepl_0_outline_ctrlpkt_benchmark",
-        "time_mean": "1853",
-        "time_mean_unit": "us",
-        "total_ops": "0",
-        "n_cols": "4",
-        "n_rows": "4"
-      },
-      {
-        "name": "matmul_512_4096_512_bf16_f32_O3_npu1_4col_outline_4_level_tiling_ctrlpkt_benchmark",
-        "time_mean": "1218",
-        "time_mean_unit": "us",
-        "total_ops": "2147483648",
-        "n_cols": "4",
-        "n_rows": "4"
-      },
-      {
-        "name": "matmul_512_4096_512_bf16_f32_O3_npu1_4col_outline_4_level_tiling_ukernel_chess_ctrlpkt_benchmark",
-        "time_mean": "1043",
-        "time_mean_unit": "us",
-        "total_ops": "2147483648",
-        "n_cols": "4",
-        "n_rows": "4"
-      },
-      {
-        "name": "matmul4d_512_4096_512_bf16_f32_O3_npu1_4col_outline_4_level_tiling_ukernel_chess_ctrlpkt_benchmark",
-        "time_mean": "949",
-        "time_mean_unit": "us",
-        "total_ops": "2147483648",
-        "n_cols": "4",
-        "n_rows": "4"
-      },
-      {
-        "name": "matmul_512_4096_512_bf16_f32_O3_npu1_4col_callrepl_0_outline_4_level_tiling_ctrlpkt_benchmark",
-        "time_mean": "1069",
-        "time_mean_unit": "us",
-        "total_ops": "0",
-        "n_cols": "4",
-        "n_rows": "4"
-      },
-      {
-        "name": "matmul_1024_1024_1024_i8_i32_npu1_4col_reconfigure_only_ctrlpkt_benchmark",
-        "time_mean": "767",
-        "time_mean_unit": "us"
-      },
-      {
-        "name": "matmul_1024_1024_1024_i8_i32_npu1_4col_pdi_load_only_benchmark",
-        "time_mean": "78021",
-        "time_mean_unit": "us"
-      }
-    ]
-  },
-  {
     "commit_hash": "f50ca972e6985241d5160b9a93c9aeb32aee16a4",
     "cpu": "AMD Ryzen 7 8845HS w/ Radeon 780M Graphics",
     "tests": [
@@ -19345,6 +19153,198 @@
       {
         "name": "matmul_1024_1024_1024_i8_i32_npu1_4col_pdi_load_only_benchmark",
         "time_mean": "818",
+        "time_mean_unit": "us"
+      }
+    ]
+  },
+  {
+    "commit_hash": "8e1433275e5ebb3ce609af223a65737e0db2b283",
+    "cpu": "AMD Ryzen 7 8845HS w/ Radeon 780M Graphics",
+    "tests": [
+      {
+        "name": "matmul_512_512_512_bf16_f32_O2_npu1_4col_callrepl_100_outline_ctrlpkt_benchmark",
+        "time_mean": "256550",
+        "time_mean_unit": "us",
+        "total_ops": "26843545600",
+        "n_cols": "1",
+        "n_rows": "1"
+      },
+      {
+        "name": "matmul_512_512_512_bf16_f32_O3_npu1_4col_callrepl_100_outline_ctrlpkt_benchmark",
+        "time_mean": "200509",
+        "time_mean_unit": "us",
+        "total_ops": "26843545600",
+        "n_cols": "1",
+        "n_rows": "1"
+      },
+      {
+        "name": "matmul_512_512_512_bf16_f32_O3_npu1_4col_callrepl_100_outline_ukernel_chess_ctrlpkt_benchmark",
+        "time_mean": "92676",
+        "time_mean_unit": "us",
+        "total_ops": "26843545600",
+        "n_cols": "1",
+        "n_rows": "1"
+      },
+      {
+        "name": "matmul_512_512_4096_bf16_f32_O2_npu1_4col_ctrlpkt_benchmark",
+        "time_mean": "2251",
+        "time_mean_unit": "us",
+        "total_ops": "2147483648",
+        "n_cols": "4",
+        "n_rows": "4"
+      },
+      {
+        "name": "matmul_512_512_4096_bf16_f32_O2_npu1_4col_outline_ctrlpkt_benchmark",
+        "time_mean": "1884",
+        "time_mean_unit": "us",
+        "total_ops": "2147483648",
+        "n_cols": "4",
+        "n_rows": "4"
+      },
+      {
+        "name": "matmul_512_512_4096_bf16_f32_O3_npu1_4col_ctrlpkt_benchmark",
+        "time_mean": "1808",
+        "time_mean_unit": "us",
+        "total_ops": "2147483648",
+        "n_cols": "4",
+        "n_rows": "4"
+      },
+      {
+        "name": "matmul_512_512_4096_bf16_f32_O3_npu1_4col_outline_ctrlpkt_benchmark",
+        "time_mean": "1747",
+        "time_mean_unit": "us",
+        "total_ops": "2147483648",
+        "n_cols": "4",
+        "n_rows": "4"
+      },
+      {
+        "name": "matmul_512_512_4096_bf16_f32_O3_npu1_4col_outline_ukernel_chess_ctrlpkt_benchmark",
+        "time_mean": "1508",
+        "time_mean_unit": "us",
+        "total_ops": "2147483648",
+        "n_cols": "4",
+        "n_rows": "4"
+      },
+      {
+        "name": "matmul_512_512_4096_bf16_f32_O3_npu1_4col_outline_packet_flow_ctrlpkt_benchmark",
+        "time_mean": "2216",
+        "time_mean_unit": "us",
+        "total_ops": "2147483648",
+        "n_cols": "4",
+        "n_rows": "4"
+      },
+      {
+        "name": "matmul_512_4096_512_bf16_f32_O3_npu1_4col_outline_ctrlpkt_benchmark",
+        "time_mean": "2392",
+        "time_mean_unit": "us",
+        "total_ops": "2147483648",
+        "n_cols": "4",
+        "n_rows": "4"
+      },
+      {
+        "name": "matmul_512_4096_512_bf16_f32_O3_npu1_4col_outline_ukernel_chess_ctrlpkt_benchmark",
+        "time_mean": "1790",
+        "time_mean_unit": "us",
+        "total_ops": "2147483648",
+        "n_cols": "4",
+        "n_rows": "4"
+      },
+      {
+        "name": "matmul_transpose_b_512_4096_512_bf16_f32_O3_npu1_4col_outline_ctrlpkt_benchmark",
+        "time_mean": "1861",
+        "time_mean_unit": "us",
+        "total_ops": "2147483648",
+        "n_cols": "4",
+        "n_rows": "4"
+      },
+      {
+        "name": "matmul_512_4096_512_bf16_f32_O3_npu1_4col_outline_packet_flow_ctrlpkt_benchmark",
+        "time_mean": "2398",
+        "time_mean_unit": "us",
+        "total_ops": "2147483648",
+        "n_cols": "4",
+        "n_rows": "4"
+      },
+      {
+        "name": "matmul_4096_512_512_bf16_f32_O3_npu1_4col_outline_ctrlpkt_benchmark",
+        "time_mean": "1829",
+        "time_mean_unit": "us",
+        "total_ops": "2147483648",
+        "n_cols": "4",
+        "n_rows": "4"
+      },
+      {
+        "name": "matmul_4096_512_512_bf16_f32_O3_npu1_4col_outline_ukernel_chess_ctrlpkt_benchmark",
+        "time_mean": "1659",
+        "time_mean_unit": "us",
+        "total_ops": "2147483648",
+        "n_cols": "4",
+        "n_rows": "4"
+      },
+      {
+        "name": "matmul_transpose_a_4096_512_512_bf16_f32_O3_npu1_4col_outline_ctrlpkt_benchmark",
+        "time_mean": "2246",
+        "time_mean_unit": "us",
+        "total_ops": "2147483648",
+        "n_cols": "4",
+        "n_rows": "4"
+      },
+      {
+        "name": "matmul_4096_512_512_bf16_f32_O3_npu1_4col_outline_packet_flow_ctrlpkt_benchmark",
+        "time_mean": "1826",
+        "time_mean_unit": "us",
+        "total_ops": "2147483648",
+        "n_cols": "4",
+        "n_rows": "4"
+      },
+      {
+        "name": "matmul_4096_512_512_bf16_f32_O3_npu1_4col_callrepl_0_outline_ctrlpkt_benchmark",
+        "time_mean": "1818",
+        "time_mean_unit": "us",
+        "total_ops": "0",
+        "n_cols": "4",
+        "n_rows": "4"
+      },
+      {
+        "name": "matmul_512_4096_512_bf16_f32_O3_npu1_4col_outline_4_level_tiling_ctrlpkt_benchmark",
+        "time_mean": "1209",
+        "time_mean_unit": "us",
+        "total_ops": "2147483648",
+        "n_cols": "4",
+        "n_rows": "4"
+      },
+      {
+        "name": "matmul_512_4096_512_bf16_f32_O3_npu1_4col_outline_4_level_tiling_ukernel_chess_ctrlpkt_benchmark",
+        "time_mean": "1067",
+        "time_mean_unit": "us",
+        "total_ops": "2147483648",
+        "n_cols": "4",
+        "n_rows": "4"
+      },
+      {
+        "name": "matmul4d_512_4096_512_bf16_f32_O3_npu1_4col_outline_4_level_tiling_ukernel_chess_ctrlpkt_benchmark",
+        "time_mean": "944",
+        "time_mean_unit": "us",
+        "total_ops": "2147483648",
+        "n_cols": "4",
+        "n_rows": "4"
+      },
+      {
+        "name": "matmul_512_4096_512_bf16_f32_O3_npu1_4col_callrepl_0_outline_4_level_tiling_ctrlpkt_benchmark",
+        "time_mean": "1062",
+        "time_mean_unit": "us",
+        "total_ops": "0",
+        "n_cols": "4",
+        "n_rows": "4"
+      },
+      {
+        "name": "matmul_1024_1024_1024_i8_i32_npu1_4col_reconfigure_only_ctrlpkt_benchmark",
+        "time_mean": "630",
+        "time_mean_unit": "us"
+      },
+      {
+        "name": "matmul_1024_1024_1024_i8_i32_npu1_4col_pdi_load_only_benchmark",
+        "time_mean": "830",
         "time_mean_unit": "us"
       }
     ]
