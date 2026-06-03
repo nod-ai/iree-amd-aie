@@ -11,6 +11,7 @@ iree_lit_test_suite(
     lit
   SRCS
     "canonicalize.mlir"
+    "canonicalize_logicalobjectfifo_from_memref.mlir"
     "invalid.mlir"
     "roundtrip.mlir"
   TOOLS
