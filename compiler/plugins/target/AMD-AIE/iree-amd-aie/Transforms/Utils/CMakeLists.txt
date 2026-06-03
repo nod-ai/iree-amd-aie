@@ -26,6 +26,7 @@ iree_cc_library(
     "AMDAIEUtils.cpp"
   DEPS
     iree::compiler::Utils
+    iree::compiler::Dialect::HAL::IR::IR
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
     iree::target::amd-aie::IR::AMDAIEDialect
   PUBLIC
