@@ -757,23 +757,28 @@ void LogicalObjectFifoFromMemrefOp::build(
 LogicalResult LogicalObjectFifoFromMemrefOp::canonicalize(
     LogicalObjectFifoFromMemrefOp logicalObjectFifo,
     PatternRewriter &rewriter) {
-  // We only canonicalize the tiles for now, so return if empty
+  // We only canonicalize the tiles for now, so return failure if empty.
   if (logicalObjectFifo.getTiles().empty()) {
-    return success();
-  }
-
-  SmallVector<Value> tiles = logicalObjectFifo.getTiles();
-  if (llvm::is_sorted(tiles, TileOp::tileValueColumnAndRowComparator)) {
-    // Still erase duplicates.
-    tiles.erase(std::unique(tiles.begin(), tiles.end()), tiles.end());
-    return success();
+    return failure();
   }
 
   // If tiles are not sorted, sort them, erase duplicates and replace the
   // logical objectfifo.
-  llvm::sort(tiles.begin(), tiles.end(),
-             TileOp::tileValueColumnAndRowComparator);
+  SmallVector<Value> tiles = logicalObjectFifo.getTiles();
+  bool wasSorted =
+      llvm::is_sorted(tiles, TileOp::tileValueColumnAndRowComparator);
+  if (!wasSorted) {
+    llvm::sort(tiles.begin(), tiles.end(),
+               TileOp::tileValueColumnAndRowComparator);
+  }
+  size_t origSize = tiles.size();
   tiles.erase(std::unique(tiles.begin(), tiles.end()), tiles.end());
+  bool dedupChanged = tiles.size() != origSize;
+
+  // Already canonical: nothing to do, so return failure.
+  if (wasSorted && !dedupChanged) {
+    return failure();
+  }
 
   rewriter.replaceOpWithNewOp<AMDAIE::LogicalObjectFifoFromMemrefOp>(
       logicalObjectFifo,
