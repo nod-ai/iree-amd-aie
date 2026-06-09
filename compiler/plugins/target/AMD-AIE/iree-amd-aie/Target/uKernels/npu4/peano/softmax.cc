@@ -10,30 +10,32 @@ constexpr int kVecLanes = 32;
 
 // Horizontal max-reduce a v32bfloat16 to a single bf16.
 INTRINSIC(bfloat16) reduce_max_v32bf16(v32bfloat16 v) {
-  bfloat16 m = ext_elem(v, 0);
-  for (int i = 1; i < kVecLanes; ++i) {
-    bfloat16 e = ext_elem(v, i);
-    m = (e > m) ? e : m;
-  }
-  return m;
+  const v32bfloat16 z = broadcast_zero_to_v32bfloat16();
+  v = max(v, shift(v, z, 16));
+  v = max(v, shift(v, z, 8));
+  v = max(v, shift(v, z, 4));
+  v = max(v, shift(v, z, 2));
+  v = max(v, shift(v, z, 1));
+  return ext_elem(v, 0);
 }
 
 // Horizontal add-reduce a v32accfloat to a scalar float.
 INTRINSIC(float) reduce_add_v32accf(v32accfloat acc) {
-  v16accfloat r16 =
-      add(extract_v16accfloat(acc, 0), extract_v16accfloat(acc, 1));
-  v16bfloat16 r16b = to_v16bfloat16(r16);
-  v32bfloat16 r32b = set_v32bfloat16(0, r16b);
-  float s = 0.0f;
-  for (int i = 0; i < 16; ++i) {
-    s += (float)ext_elem(r32b, i);
-  }
-  return s;
+  const v16accfloat z = broadcast_zero_to_v16accfloat();
+  // Fold 32 -> 16 lanes (lossless), then a log2(16) = 4-step shift/add
+  // butterfly down to lane 0, all in accfloat.
+  v16accfloat r = add(extract_v16accfloat(acc, 0), extract_v16accfloat(acc, 1));
+  r = add(r, shift(r, z, 8));
+  r = add(r, shift(r, z, 4));
+  r = add(r, shift(r, z, 2));
+  r = add(r, shift(r, z, 1));
+  // Lane 0 holds the full f32 sum; narrow just that scalar to read it out.
+  return (float)ext_elem(set_v32bfloat16(0, to_v16bfloat16(r)), 0);
 }
 
 // Three-pass softmax over a contiguous bf16 row of length `n`, where
-// `n % 32 == 0`. Math involved in this implementation:
-//   pass 1: m = max_i(x_i * log2e)
+// `n % 32 == 0`. Math:
+//   pass 1: m = max_i(x_i) * log2e
 //   pass 2: e_i = 2^(x_i * log2e - m) ; sum = sum_i e_i ; out[i] = e_i
 //   pass 3: out[i] = e_i * (1 / sum)
 inline void softmax_bf16_impl(bfloat16 *restrict in, bfloat16 *restrict out,
@@ -42,43 +44,47 @@ inline void softmax_bf16_impl(bfloat16 *restrict in, bfloat16 *restrict out,
 
   const int32_t iters = n / kVecLanes;
 
-  // bf16 representable value of log2(e).
+  // bf16-representable value of log2(e). 1.4453125 = 0x3FB9 in bf16, same
+  // constant mlir-aie's aie_kernels/aie2p/softmax.cc uses.
   const v32bfloat16 log2e_v = broadcast_to_v32bfloat16((bfloat16)1.4453125f);
 
-  // ---- Pass 1: max-track of (x_i * log2e), in bf16 ---------------------
+  // ---- Pass 1: running max of the raw row -----------------------------
+  // 2^(x*log2e) is monotonic in x and log2e > 0, so
+  //   max_i(x_i * log2e) = log2e * max_i(x_i).
+  // Take the max in the raw x domain (no per-element multiply / demote)
+  // and fold the log2e factor into the single scalar multiply below.
   v32bfloat16 max_v = broadcast_to_v32bfloat16((bfloat16)-32768.0f);
   {
     const v32bfloat16 *restrict pIn = (const v32bfloat16 *)in;
     for (int32_t i = 0; i < iters; ++i) {
-      v32bfloat16 x = *pIn++;
-      v32accfloat scaled_acc = mul_elem_32(x, /*sgn_x=*/1, log2e_v,
-                                           /*sgn_y=*/1);
-      v32bfloat16 scaled_bf = to_v32bfloat16(scaled_acc);
-      max_v = max(max_v, scaled_bf);
+      max_v = max(max_v, *pIn++);
     }
   }
-  bfloat16 max_scalar = reduce_max_v32bf16(max_v);
-  v32accfloat max_acc = ups(broadcast_to_v32bfloat16(max_scalar));
+  // m = max_i(x_i) * log2e (one scalar multiply, kept in f32). Pre-negate
+  // and broadcast so pass 2 can fuse the scale-and-shift into one MAC.
+  const float neg_m = -((float)reduce_max_v32bf16(max_v) * 1.4453125f);
+  const v16accfloat neg_m16 = broadcast_to_v16accfloat(neg_m);
+  const v32accfloat neg_m_acc = concat(neg_m16, neg_m16);
 
   // ---- Pass 2: e_i = exp2(x_i * log2e - m); accumulate sum; store e_i --
-  v32accfloat sum_acc = ups(broadcast_to_v32bfloat16((bfloat16)0.0f));
+  // shifted = x_i * log2e - m in a single fused multiply-accumulate:
+  // mac_elem_32 computes neg_m_acc + x * log2e.
+  v32accfloat sum_acc = ups(broadcast_zero_to_v32bfloat16());
   {
     const v32bfloat16 *restrict pIn = (const v32bfloat16 *)in;
     v32bfloat16 *restrict pOut = (v32bfloat16 *)out;
     for (int32_t i = 0; i < iters; ++i) {
       v32bfloat16 x = *pIn++;
-      v32accfloat scaled = mul_elem_32(x, /*sgn_x=*/1, log2e_v,
-                                       /*sgn_y=*/1);
-      v32accfloat shifted = sub(scaled, max_acc);
+      v32accfloat shifted = mac_elem_32(x, /*sgn_x=*/1, log2e_v,
+                                        /*sgn_y=*/1, neg_m_acc);
       v32bfloat16 e = exp2(shifted);
       *pOut++ = e;
       sum_acc = add(sum_acc, ups(e));
     }
   }
 
-  // ---- Pass 3: out_i = e_i * (1 / sum) ---------------------------------
-  float total = reduce_add_v32accf(sum_acc);
-  bfloat16 inv_sum = (bfloat16)inv(total);
+  // ---- Pass 3: out_i = e_i * (1 / sum) --------------------------------
+  bfloat16 inv_sum = (bfloat16)inv(reduce_add_v32accf(sum_acc));
   v32bfloat16 inv_sum_v = broadcast_to_v32bfloat16(inv_sum);
   {
     const v32bfloat16 *restrict pIn = (const v32bfloat16 *)out;
