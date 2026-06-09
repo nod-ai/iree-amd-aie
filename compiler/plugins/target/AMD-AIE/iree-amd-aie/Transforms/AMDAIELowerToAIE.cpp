@@ -15,6 +15,7 @@
 
 #include <memory>
 #include <numeric>
+#include <tuple>
 
 #include "aie/AIEDialect.h"
 #include "aie/AIEXDialect.h"
@@ -24,6 +25,8 @@
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-amd-aie/Transforms/Utils/AMDAIEDmaUtils.h"
 #include "iree-amd-aie/Transforms/Utils/AMDAIEUtils.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
@@ -189,6 +192,111 @@ LogicalResult AIEDeviceBuilder::createDMABlocks(
       createDMAOps(succ, bufferOps[blockIndex], dims, isFirst, isLast,
                    transferLength, offset + addOffset);
       curr = succ;
+    }
+  }
+  return success();
+}
+
+LogicalResult AIEDeviceBuilder::mergeSharedChannelDmaChains(Operation *memOp) {
+  Region &region = memOp->getRegion(0);
+
+  // Group `aie.dma_start` ops by (direction, channel index), preserving the
+  // order in which they were created. A group with more than one entry means
+  // several object FIFOs were independently lowered onto one physical channel
+  // and must be fused into a single BD chain.
+  llvm::MapVector<std::pair<int, int>, SmallVector<AIE::DMAStartOp>> groups;
+  for (Block &block : region) {
+    for (AIE::DMAStartOp dmaStart : block.getOps<AIE::DMAStartOp>()) {
+      std::pair<int, int> key = {static_cast<int>(dmaStart.getChannelDir()),
+                                 static_cast<int>(dmaStart.getChannelIndex())};
+      groups[key].push_back(dmaStart);
+    }
+  }
+
+  for (auto &entry : groups) {
+    SmallVector<AIE::DMAStartOp> &dmaStarts = entry.second;
+    if (dmaStarts.size() < 2) continue;
+
+    // Collect each chain's BD blocks in chain order. A chain starts at the
+    // `dma_start`'s `dest` successor and is linked by `aie.next_bd` until it
+    // loops back to the first block.
+    SmallVector<SmallVector<Block *>> chains;
+    chains.reserve(dmaStarts.size());
+    bool mergeable = true;
+    for (AIE::DMAStartOp dmaStart : dmaStarts) {
+      SmallVector<Block *> bdBlocks;
+      Block *first = dmaStart.getDest();
+      Block *curr = first;
+      do {
+        // Only fuse pure circuit chains.
+        if (!curr->getOps<AIE::DMABDPACKETOp>().empty()) {
+          mergeable = false;
+          break;
+        }
+        bdBlocks.push_back(curr);
+        auto nextBd = dyn_cast<AIE::NextBDOp>(curr->getTerminator());
+        if (!nextBd) {
+          mergeable = false;
+          break;
+        }
+        curr = nextBd.getDest();
+      } while (curr != first);
+      if (!mergeable) break;
+      chains.push_back(std::move(bdBlocks));
+    }
+    if (!mergeable) continue;
+
+    // All chains must have equal length to round-robin interleave cleanly
+    // (they correspond to the same producer double-buffering depth).
+    size_t depth = chains.front().size();
+    if (llvm::any_of(chains, [&](const SmallVector<Block *> &c) {
+          return c.size() != depth;
+        })) {
+      return memOp->emitOpError()
+             << "cannot fuse DMA chains sharing channel " << entry.first.second
+             << ": chains have differing buffer-descriptor counts";
+    }
+
+    // Round-robin interleave: chain0[d], chain1[d], ..., for each depth `d`.
+    // This reproduces the producer's send order (values BD, then ids BD, ...)
+    // at the consuming end.
+    SmallVector<Block *> interleaved;
+    interleaved.reserve(depth * chains.size());
+    for (size_t d = 0; d < depth; ++d)
+      for (SmallVector<Block *> &c : chains) interleaved.push_back(c[d]);
+
+    // Relink the `aie.next_bd` terminators into one cyclic chain.
+    for (size_t i = 0; i < interleaved.size(); ++i) {
+      Block *next = interleaved[(i + 1) % interleaved.size()];
+      interleaved[i]->getTerminator()->setSuccessor(next, 0);
+    }
+
+    // Keep `dmaStarts[0]` as the single entry point for the channel; its `dest`
+    // already points at `interleaved[0]` (== chains[0][0]). Remove the other
+    // `dma_start` ops by bypassing them in the dma_start linked list (each
+    // `dma_start`'s second successor `chain` points at the next dma_start
+    // block) and erasing their (now BD-less) blocks.
+    for (size_t k = 1; k < dmaStarts.size(); ++k) {
+      AIE::DMAStartOp dead = dmaStarts[k];
+      Block *deadBlock = dead->getBlock();
+      Block *deadChain = dead.getChain();
+      AIE::DMAStartOp pred;
+      for (Block &block : region) {
+        auto candidate = dyn_cast<AIE::DMAStartOp>(block.getTerminator());
+        if (candidate && candidate != dead &&
+            candidate.getChain() == deadBlock) {
+          pred = candidate;
+          break;
+        }
+      }
+      if (!pred) {
+        return memOp->emitOpError()
+               << "failed to fuse shared-channel DMA chains: could not find "
+                  "the predecessor dma_start for channel "
+               << entry.first.second;
+      }
+      pred->setSuccessor(deadChain, 1);
+      rewriter.eraseBlock(deadBlock);
     }
   }
   return success();
@@ -944,6 +1052,34 @@ LogicalResult AIEDeviceBuilder::workgroupToAIE(AMDAIE::WorkgroupOp workgroupOp,
         });
   });
   if (res.wasInterrupted()) return failure();
+
+  // Fuse DMA chains that were independently lowered onto a single shared
+  // channel (e.g. a core's values + ids object FIFOs sent sequentially on one
+  // MM2S channel and collected on one memtile S2MM channel) into one BD chain.
+  // For channels owned by a single object FIFO this is a no-op.
+  for (auto &[tile, memOp] : tileToMemOpMap) {
+    if (failed(mergeSharedChannelDmaChains(memOp))) return failure();
+  }
+
+  // Remove duplicate `aie.flow` ops that arise when multiple connections share
+  // one circuit (e.g. the values + ids collects sharing a channel emit the same
+  // source->dest flow). A duplicate circuit flow would otherwise route the same
+  // stream-switch connection more than once.
+  {
+    llvm::DenseSet<std::tuple<const void *, int, int, const void *, int, int>>
+        seen;
+    SmallVector<AIE::FlowOp> deadFlows;
+    for (AIE::FlowOp flow : deviceBlock->getOps<AIE::FlowOp>()) {
+      auto key = std::make_tuple(flow.getSource().getAsOpaquePointer(),
+                                 static_cast<int>(flow.getSourceBundle()),
+                                 static_cast<int>(flow.getSourceChannel()),
+                                 flow.getDest().getAsOpaquePointer(),
+                                 static_cast<int>(flow.getDestBundle()),
+                                 static_cast<int>(flow.getDestChannel()));
+      if (!seen.insert(key).second) deadFlows.push_back(flow);
+    }
+    for (AIE::FlowOp flow : deadFlows) rewriter.eraseOp(flow);
+  }
 
   // Merge core operations into end of the device block
   rewriter.inlineBlockBefore(deviceCoreBlock, deviceBlock,

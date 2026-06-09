@@ -83,6 +83,18 @@ class AIEDeviceBuilder {
       const std::pair<AIE::LockOp, AIE::LockOp> &locks,
       std::optional<uint8_t> pktId);
 
+  /// Post-process a memory op (`aie.mem` or `aie.memtile_dma`) so that when two
+  /// or more *circuit* DMA chains were independently created for the SAME DMA
+  /// channel, they are fused into a single `aie.dma_start` whose BD chain
+  /// round-robin-interleaves the per-chain buffer descriptors. Hardware allows
+  /// only one BD-chain entry point per channel, so two object FIFOs that
+  /// intentionally share one channel (e.g. a core's values + ids outputs sent
+  /// sequentially on one MM2S channel and collected on one memtile S2MM
+  /// channel) must be merged here. The relative order of the chains is
+  /// preserved (chain 0's d-th BD, then chain 1's d-th BD, ...), so the same
+  /// send order is reproduced at both the producing and consuming ends.
+  LogicalResult mergeSharedChannelDmaChains(Operation *memOp);
+
   /// Utility to create flow ops from connection ops.
   SmallVector<Operation *> createFlowOps(
       AMDAIE::FlowOp flowOp, ArrayRef<AMDAIE::ChannelOp> producerChannels,
