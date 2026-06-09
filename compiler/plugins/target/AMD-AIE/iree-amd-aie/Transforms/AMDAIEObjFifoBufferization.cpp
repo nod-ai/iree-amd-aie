@@ -71,11 +71,81 @@ LogicalResult bufferize(AMDAIE::WorkgroupOp workgroupOp) {
                 ? copyLikeProducers.size() * depth
                 : copyLikeConsumers.size() * depth;
 
+        // Detect the multi-producer "join" pattern (e.g. the TopK L2
+        // output-gather): several producer DMAs (one per compute core-row)
+        // funnel into a single consumer DMA (the L2->L3 drain). A shared L2
+        // buffer with multiple S2MM channels targeting it hangs on hardware,
+        // so instead we materialize one private sub-buffer per producer, each
+        // a clean single-producer / single-consumer flow with its own lock
+        // pair. The consumer (drain) later walks them with a chained BD
+        // sequence (see `AMDAIELowerToAIE.cpp`). This is the `objectfifo.link`
+        // equivalent in the LOF flow. The single-producer case is left
+        // byte-for-byte unchanged.
+        bool isJoin =
+            copyLikeProducers.size() > 1 && copyLikeConsumers.size() == 1;
+        unsigned numProducers = copyLikeProducers.size();
+
         SmallVector<Value> buffers;
         SmallVector<Value> producerLocks;
         SmallVector<Value> consumerLocks;
+
+        auto createLockOnTile = [&](AMDAIE::TileOp tileOp, int8_t initValue,
+                                    const char *kind) -> std::optional<Value> {
+          int64_t col = getConstantIndexOrAssert(tileOp.getCol());
+          int64_t row = getConstantIndexOrAssert(tileOp.getRow());
+          std::optional<uint32_t> lockId =
+              lockGenerator.getAndAssignLockId(col, row);
+          if (!lockId) {
+            logicalObjFifo.emitOpError()
+                << "could not find an available " << kind << " lock";
+            return std::nullopt;
+          }
+          auto lockOp = rewriter.create<AMDAIE::LockOp>(
+              rewriter.getUnknownLoc(), tileOp, lockId.value(),
+              rewriter.getI8IntegerAttr(initValue));
+          return lockOp.getResult();
+        };
+
         for (AMDAIE::TileOp tileOp : tiles) {
           rewriter.setInsertionPointAfter(tileOp);
+
+          if (isJoin) {
+            // Split the `<numProducers, K>` L2 region into `numProducers`
+            // private `<K>` sub-buffers, each double-buffered to `depth`. The
+            // buffers are stored producer-major: producer `r` owns buffers
+            // [r * depth, (r + 1) * depth). Each producer gets its own
+            // (producer, consumer) lock pair, so there is no shared lock and no
+            // multi-S2MM-into-one-buffer race.
+            int64_t numElems = memrefType.getNumElements();
+            assert(numElems % numProducers == 0 &&
+                   "join L2 region must be divisible by the number of "
+                   "producers");
+            int64_t regionElems = numElems / numProducers;
+            auto subBufferType = MemRefType::get(
+                {regionElems}, memrefType.getElementType(),
+                MemRefLayoutAttrInterface{}, memrefType.getMemorySpace());
+            for (unsigned r = 0; r < numProducers; r++) {
+              for (unsigned i = 0; i < depth; i++) {
+                auto bufferOp = rewriter.create<AMDAIE::BufferOp>(
+                    rewriter.getUnknownLoc(), subBufferType, tileOp, nullptr,
+                    nullptr, nullptr);
+                buffers.push_back(bufferOp.getResult());
+              }
+              // Each private sub-flow is single-producer/single-consumer, so
+              // the producer (space) lock starts full at `depth` and the
+              // consumer (data) lock starts empty.
+              std::optional<Value> producerLock =
+                  createLockOnTile(tileOp, depth, "producer");
+              if (!producerLock) return WalkResult::interrupt();
+              producerLocks.push_back(producerLock.value());
+              std::optional<Value> consumerLock =
+                  createLockOnTile(tileOp, 0, "consumer");
+              if (!consumerLock) return WalkResult::interrupt();
+              consumerLocks.push_back(consumerLock.value());
+            }
+            continue;
+          }
+
           for (unsigned i = 0; i < depth; i++) {
             auto bufferOp = rewriter.create<AMDAIE::BufferOp>(
                 rewriter.getUnknownLoc(), memrefType, tileOp, nullptr, nullptr,
@@ -84,31 +154,15 @@ LogicalResult bufferize(AMDAIE::WorkgroupOp workgroupOp) {
           }
 
           // Every set of buffers needs one producer and one consumer lock.
-          int64_t col = getConstantIndexOrAssert(tileOp.getCol());
-          int64_t row = getConstantIndexOrAssert(tileOp.getRow());
-          std::optional<uint32_t> producerLock =
-              lockGenerator.getAndAssignLockId(col, row);
-          if (!producerLock) {
-            logicalObjFifo.emitOpError()
-                << "could not find an available producer lock";
-            return WalkResult::interrupt();
-          }
-          auto producerLockOp = rewriter.create<AMDAIE::LockOp>(
-              rewriter.getUnknownLoc(), tileOp, producerLock.value(),
-              rewriter.getI8IntegerAttr(producerLockInitValue));
-          producerLocks.push_back(producerLockOp.getResult());
+          std::optional<Value> producerLock =
+              createLockOnTile(tileOp, producerLockInitValue, "producer");
+          if (!producerLock) return WalkResult::interrupt();
+          producerLocks.push_back(producerLock.value());
 
-          std::optional<uint32_t> consumerLock =
-              lockGenerator.getAndAssignLockId(col, row);
-          if (!consumerLock) {
-            logicalObjFifo.emitOpError()
-                << "could not find an available consumer lock";
-            return WalkResult::interrupt();
-          }
-          auto consumerLockOp = rewriter.create<AMDAIE::LockOp>(
-              rewriter.getUnknownLoc(), tileOp, consumerLock.value(),
-              rewriter.getI8IntegerAttr(consumerLockInitValue));
-          consumerLocks.push_back(consumerLockOp.getResult());
+          std::optional<Value> consumerLock =
+              createLockOnTile(tileOp, consumerLockInitValue, "consumer");
+          if (!consumerLock) return WalkResult::interrupt();
+          consumerLocks.push_back(consumerLock.value());
         }
 
         rewriter.setInsertionPoint(logicalObjFifo);

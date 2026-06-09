@@ -163,3 +163,62 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
     return
   }
 }
+
+// -----
+
+// Multi-producer "join" pattern (e.g. the TopK L2 output-gather): two producer
+// DMAs (one per compute core-row) funnel into a single consumer (the L2->L3
+// drain). Instead of one shared `<2, K>` L2 buffer protected by a single
+// producer lock, the pass splits the region into one private `<K>` sub-buffer
+// per producer, double-buffered (depth 2) and stored producer-major, each with
+// its own (producer, consumer) lock pair. The producer (space) lock starts full
+// at `depth` and the consumer (data) lock starts empty at 0.
+
+// CHECK-LABEL: @join
+// CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
+// CHECK-DAG:   %[[C1:.+]] = arith.constant 1 : index
+// CHECK:       amdaie.workgroup
+// CHECK:         %[[TILE_0_1:.+]] = amdaie.tile(%[[C0]], %[[C1]])
+// Producer 0: two private sub-buffers + its own (space, data) lock pair.
+// CHECK:         %[[BUFFER:.+]] = amdaie.buffer(%[[TILE_0_1]]) : memref<2xf32, 1 : i32>
+// CHECK:         %[[BUFFER_0:.+]] = amdaie.buffer(%[[TILE_0_1]]) : memref<2xf32, 1 : i32>
+// CHECK:         %[[LOCK:.+]] = amdaie.lock(%[[TILE_0_1]](0), 2)
+// CHECK:         %[[LOCK_1:.+]] = amdaie.lock(%[[TILE_0_1]](1), 0)
+// Producer 1: two private sub-buffers + its own (space, data) lock pair.
+// CHECK:         %[[BUFFER_2:.+]] = amdaie.buffer(%[[TILE_0_1]]) : memref<2xf32, 1 : i32>
+// CHECK:         %[[BUFFER_3:.+]] = amdaie.buffer(%[[TILE_0_1]]) : memref<2xf32, 1 : i32>
+// CHECK:         %[[LOCK_4:.+]] = amdaie.lock(%[[TILE_0_1]](2), 2)
+// CHECK:         %[[LOCK_5:.+]] = amdaie.lock(%[[TILE_0_1]](3), 0)
+// The four sub-buffers are grouped producer-major; the producer locks and the
+// consumer locks are listed in producer order.
+// CHECK:         %[[FROM_BUFFERS:.+]] = amdaie.logicalobjectfifo.from_buffers({%[[BUFFER]], %[[BUFFER_0]], %[[BUFFER_2]], %[[BUFFER_3]]}, {%[[LOCK]], %[[LOCK_4]]}, {%[[LOCK_1]], %[[LOCK_5]]}) : memref<2xf32, 1 : i32>, memref<2xf32, 1 : i32>, memref<2xf32, 1 : i32>, memref<2xf32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<4xf32, 1 : i32>, 2>
+// CHECK:         amdaie.connection(%[[FROM_BUFFERS]], %{{.+}})
+// CHECK:         amdaie.connection(%[[FROM_BUFFERS]], %{{.+}})
+// CHECK:         amdaie.connection(%{{.+}}, %[[FROM_BUFFERS]])
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @join(%arg0: memref<2x2xf32, 1 : i32>) {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c2 = arith.constant 2 : index
+    %c3 = arith.constant 3 : index
+    amdaie.workgroup {
+      %tile_0_0 = amdaie.tile(%c0, %c0)
+      %tile_0_1 = amdaie.tile(%c0, %c1)
+      %tile_0_2 = amdaie.tile(%c0, %c2)
+      %tile_0_3 = amdaie.tile(%c0, %c3)
+      %l2 = amdaie.logicalobjectfifo.from_memref %arg0, {%tile_0_1} : memref<2x2xf32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<4xf32, 1 : i32>, 2>
+      %src0 = amdaie.logicalobjectfifo.placeholder{%tile_0_2} : !amdaie.logicalobjectfifo<memref<2xf32, 2 : i32>>
+      %src1 = amdaie.logicalobjectfifo.placeholder{%tile_0_3} : !amdaie.logicalobjectfifo<memref<2xf32, 2 : i32>>
+      %dst = amdaie.logicalobjectfifo.placeholder{%tile_0_0} : !amdaie.logicalobjectfifo<memref<128x2xf32>>
+      // Two producers (target == L2) and one consumer (source == L2).
+      %p0 = amdaie.connection(%l2, %src0) : (!amdaie.logicalobjectfifo<memref<4xf32, 1 : i32>, 2>, !amdaie.logicalobjectfifo<memref<2xf32, 2 : i32>>)
+      %p1 = amdaie.connection(%l2, %src1) : (!amdaie.logicalobjectfifo<memref<4xf32, 1 : i32>, 2>, !amdaie.logicalobjectfifo<memref<2xf32, 2 : i32>>)
+      %c = amdaie.connection(%dst, %l2) : (!amdaie.logicalobjectfifo<memref<128x2xf32>>, !amdaie.logicalobjectfifo<memref<4xf32, 1 : i32>, 2>)
+      amdaie.controlcode {
+        amdaie.end
+      }
+    }
+    return
+  }
+}

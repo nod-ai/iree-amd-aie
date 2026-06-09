@@ -83,6 +83,19 @@ class AIEDeviceBuilder {
       const std::pair<AIE::LockOp, AIE::LockOp> &locks,
       std::optional<uint8_t> pktId);
 
+  /// Utility to create the chained-BD drain for a multi-producer "join"
+  /// objectFifo (the `objectfifo.link` equivalent). `bufferOps` are the private
+  /// per-producer sub-buffers in BD-chain (round-major) order, and
+  /// `perBlockLocks` holds the matching (acquire, release) lock pair for each
+  /// sub-buffer. Each BD reads `regionLength` contiguous elements from its own
+  /// sub-buffer and synchronizes on that producer's own lock, so the cores can
+  /// run independently and the drain remains a single MM2S channel.
+  LogicalResult createJoinDrainBlocks(
+      Operation *memOp, AIE::DMAChannelDir channelDir, int channelIndex,
+      int64_t regionLength, const SmallVector<AIE::BufferOp> &bufferOps,
+      const SmallVector<std::pair<AIE::LockOp, AIE::LockOp>> &perBlockLocks,
+      std::optional<uint8_t> pktId);
+
   /// Utility to create flow ops from connection ops.
   SmallVector<Operation *> createFlowOps(
       AMDAIE::FlowOp flowOp, ArrayRef<AMDAIE::ChannelOp> producerChannels,

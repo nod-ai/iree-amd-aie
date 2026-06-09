@@ -194,6 +194,62 @@ LogicalResult AIEDeviceBuilder::createDMABlocks(
   return success();
 }
 
+LogicalResult AIEDeviceBuilder::createJoinDrainBlocks(
+    Operation *memOp, AIE::DMAChannelDir channelDir, int channelIndex,
+    int64_t regionLength, const SmallVector<AIE::BufferOp> &bufferOps,
+    const SmallVector<std::pair<AIE::LockOp, AIE::LockOp>> &perBlockLocks,
+    std::optional<uint8_t> pktId) {
+  OpBuilder::InsertionGuard g(rewriter);
+  assert(bufferOps.size() == perBlockLocks.size() &&
+         "expected one lock pair per sub-buffer");
+  assert(!bufferOps.empty() && "expected at least one sub-buffer");
+
+  Block &endBlock = memOp->getRegion(0).getBlocks().back();
+  assert(!endBlock.getOps<AIE::EndOp>().empty() &&
+         "expected last block to have aie.end");
+  Block *lastDmaBlock = endBlock.getSinglePredecessor(),
+        *dmaBlock = rewriter.createBlock(&endBlock),
+        *bdBlock = rewriter.createBlock(&endBlock);
+
+  // Create DMA channel.
+  rewriter.setInsertionPointToStart(dmaBlock);
+  rewriter.create<AIE::DMAStartOp>(rewriter.getUnknownLoc(), channelDir,
+                                   channelIndex, /*repeatCount=*/1, bdBlock,
+                                   &endBlock);
+  if (lastDmaBlock) lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
+
+  // Each sub-buffer becomes one BD in the chain. The BD acquires that
+  // producer's data lock, reads its private region, and releases that
+  // producer's space lock, then chains to the next sub-buffer (looping back to
+  // the first). Because every segment blocks only on its own producer's lock,
+  // the cores never starve each other and the output order is deterministic
+  // (BD-chain order).
+  Block *curr = bdBlock;
+  for (size_t i = 0; i < bufferOps.size(); ++i) {
+    bool isLast = i == bufferOps.size() - 1;
+    Block *succ = isLast ? bdBlock : rewriter.createBlock(&endBlock);
+    rewriter.setInsertionPointToStart(curr);
+    AIE::LockOp acqLock = perBlockLocks[i].first;
+    AIE::LockOp relLock = perBlockLocks[i].second;
+    AIE::BufferOp buff = bufferOps[i];
+    rewriter.create<AIE::UseLockOp>(rewriter.getUnknownLoc(), acqLock,
+                                    AIE::LockAction::AcquireGreaterEqual,
+                                    /*value=*/1);
+    if (channelDir == AIE::DMAChannelDir::MM2S && pktId.has_value()) {
+      rewriter.create<AIE::DMABDPACKETOp>(rewriter.getUnknownLoc(),
+                                          /*pkt_type*/ 0,
+                                          /*pkt_id*/ pktId.value());
+    }
+    rewriter.create<AIE::DMABDOp>(rewriter.getUnknownLoc(), buff,
+                                  /*offset=*/0, regionLength);
+    rewriter.create<AIE::UseLockOp>(rewriter.getUnknownLoc(), relLock,
+                                    AIE::LockAction::Release, /*value=*/1);
+    rewriter.create<AIE::NextBDOp>(rewriter.getUnknownLoc(), succ);
+    curr = succ;
+  }
+  return success();
+}
+
 SmallVector<Operation *> AIEDeviceBuilder::createFlowOps(
     AMDAIE::FlowOp flowOp, ArrayRef<AMDAIE::ChannelOp> producerChannels,
     ArrayRef<AMDAIE::ChannelOp> consumerChannels) {
@@ -579,6 +635,51 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
           [&](AMDAIE::LockOp lockOp) {
             return cast<AIE::LockOp>(mapper.lookup(lockOp.getOperation()));
           });
+      // Multi-producer "join" drain (objectfifo.link equivalent): a single
+      // consumer (this MM2S drain) gathers from `numProducers` private
+      // per-producer sub-buffers, each with its own lock pair. Emit a chained
+      // BD sequence that walks the sub-buffers in round-major order.
+      if (objFifoProducers.size() > 1 && objFifoConsumers.size() == 1) {
+        size_t numProducers = objFifoProducers.size();
+        if (producerLocks.size() != numProducers ||
+            consumerLocks.size() != numProducers) {
+          return sourceObjFifo.emitOpError()
+                 << "expected one producer/consumer lock per producer for the "
+                    "join drain on tile: "
+                 << channel.getTile();
+        }
+        if (buffers.size() % numProducers != 0) {
+          return sourceObjFifo.emitOpError()
+                 << "expected the number of sub-buffers to be divisible by the "
+                    "number of producers for the join drain";
+        }
+        size_t subDepth = buffers.size() / numProducers;
+        int64_t regionLength =
+            cast<MemRefType>(buffers[0].getType()).getNumElements();
+        // Buffers are stored producer-major (buffer[r * subDepth + d]).
+        // Reorder to round-major (for each depth instance, walk all producers)
+        // so each `<numProducers, K>` host transfer is drained in producer
+        // order and the per-producer double buffers rotate in lockstep.
+        SmallVector<AIE::BufferOp> orderedBuffers;
+        SmallVector<std::pair<AIE::LockOp, AIE::LockOp>> perBlockLocks;
+        for (size_t d = 0; d < subDepth; ++d) {
+          for (size_t r = 0; r < numProducers; ++r) {
+            orderedBuffers.push_back(buffers[r * subDepth + d]);
+            // Consumer acquires the data lock, releases the space lock.
+            perBlockLocks.push_back(
+                std::make_pair(consumerLocks[r], producerLocks[r]));
+          }
+        }
+        rewriter.moveOpBefore(memOp, deviceBlock,
+                              deviceBlock->without_terminator().end());
+        if (failed(createJoinDrainBlocks(
+                memOp, AIE::DMAChannelDir::MM2S, channel.getValue(),
+                regionLength, orderedBuffers, perBlockLocks, packetId))) {
+          return sourceObjFifo.emitOpError()
+                 << "could not create join drain DMA operations";
+        }
+        continue;
+      }
       if (producerLocks.size() != 1) {
         return sourceObjFifo.emitOpError()
                << "expected a single producer lock for tile: "
@@ -684,6 +785,53 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
           [&](AMDAIE::LockOp lockOp) {
             return cast<AIE::LockOp>(mapper.lookup(lockOp.getOperation()));
           });
+      // Multi-producer "join" collect: this producer (one compute core-row)
+      // writes its own private sub-buffer instead of a slice of a shared L2
+      // buffer. Pick the sub-buffer group and lock pair for this producer,
+      // identified by its target base offset (`r * K`), and emit a plain
+      // single-producer double-buffered DMA into its own region (offset 0).
+      if (objFifoProducers.size() > 1 && objFifoConsumers.size() == 1) {
+        size_t numProducers = objFifoProducers.size();
+        if (producerLocks.size() != numProducers ||
+            consumerLocks.size() != numProducers) {
+          return targetObjFifo.emitOpError()
+                 << "expected one producer/consumer lock per producer for the "
+                    "join collect on tile: "
+                 << channel.getTile();
+        }
+        if (buffers.size() % numProducers != 0) {
+          return targetObjFifo.emitOpError()
+                 << "expected the number of sub-buffers to be divisible by the "
+                    "number of producers for the join collect";
+        }
+        size_t subDepth = buffers.size() / numProducers;
+        int64_t regionLength =
+            cast<MemRefType>(buffers[0].getType()).getNumElements();
+        int64_t producerIdx = maybeOffset.value() / regionLength;
+        if (producerIdx < 0 ||
+            static_cast<size_t>(producerIdx) >= numProducers) {
+          return targetObjFifo.emitOpError()
+                 << "computed producer index " << producerIdx
+                 << " out of range for the join collect";
+        }
+        SmallVector<AIE::BufferOp> subBuffers(
+            buffers.begin() + producerIdx * subDepth,
+            buffers.begin() + (producerIdx + 1) * subDepth);
+        std::pair<AIE::LockOp, AIE::LockOp> lockPair = std::make_pair(
+            producerLocks[producerIdx], consumerLocks[producerIdx]);
+        SmallVector<int64_t> joinSizes = {regionLength};
+        SmallVector<int64_t> joinStrides = {1};
+        rewriter.moveOpBefore(memOp, deviceBlock,
+                              deviceBlock->without_terminator().end());
+        if (failed(createDMABlocks(memOp, AIE::DMAChannelDir::S2MM,
+                                   channel.getValue(), joinSizes, joinStrides,
+                                   /*acqNum=*/1, /*relNum=*/1, /*offset=*/0,
+                                   subBuffers, lockPair, packetId))) {
+          return targetObjFifo.emitOpError()
+                 << "could not create join collect DMA operations";
+        }
+        continue;
+      }
       if (producerLocks.size() != 1) {
         return targetObjFifo.emitOpError()
                << "expected a single producer lock for tile: "

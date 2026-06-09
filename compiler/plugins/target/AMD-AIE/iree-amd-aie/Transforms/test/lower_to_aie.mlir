@@ -1422,3 +1422,126 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
     return
   }
 }
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// Multi-producer "join" (objectfifo.link equivalent), e.g. the TopK L2
+// output-gather. Two producers (tile(0,2) and tile(0,3)) each write their own
+// private `<2>` L2 sub-buffer (double-buffered), and a single L2->L3 drain
+// gathers from all of them. The pre-bufferized L2 objectFifo `%2` holds 4
+// sub-buffers + a per-producer (space, data) lock pair.
+//
+// The lowering must produce:
+//   * collect: one S2MM channel per producer, writing that producer's own two
+//     sub-buffers (acquire its space lock, release its data lock); and
+//   * drain: a *single* MM2S channel walking the sub-buffers as a chained BD
+//     sequence in round-major order [P0d0, P1d0, P0d1, P1d1], each BD acquiring
+//     that producer's data lock and releasing its space lock.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: aie.device(npu4)
+// Per-producer private sub-buffers and their (space, data) locks.
+// CHECK-DAG: %[[BUF_P0_0:.+]] = aie.buffer(%{{.+}}) {sym_name = "buff_0"} : memref<2xf32, 1 : i32>
+// CHECK-DAG: %[[BUF_P0_1:.+]] = aie.buffer(%{{.+}}) {sym_name = "buff_1"} : memref<2xf32, 1 : i32>
+// CHECK-DAG: %[[LOCK_P0_S:.+]] = aie.lock(%{{.+}}, 4) {init = 2 : i8, sym_name = "lock_0"}
+// CHECK-DAG: %[[LOCK_P0_D:.+]] = aie.lock(%{{.+}}, 5) {init = 0 : i8, sym_name = "lock_1"}
+// CHECK-DAG: %[[BUF_P1_0:.+]] = aie.buffer(%{{.+}}) {sym_name = "buff_2"} : memref<2xf32, 1 : i32>
+// CHECK-DAG: %[[BUF_P1_1:.+]] = aie.buffer(%{{.+}}) {sym_name = "buff_3"} : memref<2xf32, 1 : i32>
+// CHECK-DAG: %[[LOCK_P1_S:.+]] = aie.lock(%{{.+}}, 6) {init = 2 : i8, sym_name = "lock_2"}
+// CHECK-DAG: %[[LOCK_P1_D:.+]] = aie.lock(%{{.+}}, 7) {init = 0 : i8, sym_name = "lock_3"}
+//
+// CHECK:      aie.memtile_dma
+// Chained drain: one MM2S channel, 4 BDs in round-major order, each BD acquires
+// its producer's data lock and releases its producer's space lock.
+// CHECK:      aie.dma_start(MM2S
+// CHECK:      aie.use_lock(%[[LOCK_P0_D]], AcquireGreaterEqual, 1)
+// CHECK-NEXT: aie.dma_bd_packet
+// CHECK-NEXT: aie.dma_bd(%[[BUF_P0_0]] : memref<2xf32, 1 : i32>) {len = 2 : i32}
+// CHECK-NEXT: aie.use_lock(%[[LOCK_P0_S]], Release, 1)
+// CHECK:      aie.use_lock(%[[LOCK_P1_D]], AcquireGreaterEqual, 1)
+// CHECK-NEXT: aie.dma_bd_packet
+// CHECK-NEXT: aie.dma_bd(%[[BUF_P1_0]] : memref<2xf32, 1 : i32>) {len = 2 : i32}
+// CHECK-NEXT: aie.use_lock(%[[LOCK_P1_S]], Release, 1)
+// CHECK:      aie.use_lock(%[[LOCK_P0_D]], AcquireGreaterEqual, 1)
+// CHECK-NEXT: aie.dma_bd_packet
+// CHECK-NEXT: aie.dma_bd(%[[BUF_P0_1]] : memref<2xf32, 1 : i32>) {len = 2 : i32}
+// CHECK-NEXT: aie.use_lock(%[[LOCK_P0_S]], Release, 1)
+// CHECK:      aie.use_lock(%[[LOCK_P1_D]], AcquireGreaterEqual, 1)
+// CHECK-NEXT: aie.dma_bd_packet
+// CHECK-NEXT: aie.dma_bd(%[[BUF_P1_1]] : memref<2xf32, 1 : i32>) {len = 2 : i32}
+// CHECK-NEXT: aie.use_lock(%[[LOCK_P1_S]], Release, 1)
+// Collect: each producer writes its own two sub-buffers via its own S2MM
+// channel (acquire its space lock, release its data lock).
+// CHECK:      aie.dma_start(S2MM
+// CHECK:      aie.use_lock(%[[LOCK_P0_S]], AcquireGreaterEqual, 1)
+// CHECK-NEXT: aie.dma_bd(%[[BUF_P0_0]] : memref<2xf32, 1 : i32>) {len = 2 : i32}
+// CHECK-NEXT: aie.use_lock(%[[LOCK_P0_D]], Release, 1)
+// CHECK:      aie.use_lock(%[[LOCK_P0_S]], AcquireGreaterEqual, 1)
+// CHECK-NEXT: aie.dma_bd(%[[BUF_P0_1]] : memref<2xf32, 1 : i32>) {len = 2 : i32}
+// CHECK-NEXT: aie.use_lock(%[[LOCK_P0_D]], Release, 1)
+// CHECK:      aie.use_lock(%[[LOCK_P1_S]], AcquireGreaterEqual, 1)
+// CHECK-NEXT: aie.dma_bd(%[[BUF_P1_0]] : memref<2xf32, 1 : i32>) {len = 2 : i32}
+// CHECK-NEXT: aie.use_lock(%[[LOCK_P1_D]], Release, 1)
+// CHECK:      aie.use_lock(%[[LOCK_P1_S]], AcquireGreaterEqual, 1)
+// CHECK-NEXT: aie.dma_bd(%[[BUF_P1_1]] : memref<2xf32, 1 : i32>) {len = 2 : i32}
+// CHECK-NEXT: aie.use_lock(%[[LOCK_P1_D]], Release, 1)
+#executable_target_amdaie_pdi_fb = #hal.executable.target<"amd-aie", "amdaie-pdi-fb", {num_cols = 8 : i32, num_rows = 4 : i32, target_device = "npu4", ukernels = "all"}>
+module attributes {hal.executable.target = #executable_target_amdaie_pdi_fb} {
+  func.func @join() attributes {translation_info = #iree_codegen.translation_info<pipeline = Custom>} {
+    %c3 = arith.constant 3 : index
+    %c2 = arith.constant 2 : index
+    %c1 = arith.constant 1 : index
+    %c0 = arith.constant 0 : index
+    amdaie.workgroup {
+      %tile_0_0 = amdaie.tile(%c0, %c0)
+      %tile_0_1 = amdaie.tile(%c0, %c1)
+      %tile_0_2 = amdaie.tile(%c0, %c2)
+      %tile_0_3 = amdaie.tile(%c0, %c3)
+      // L2 join buffer: two private <2xf32> sub-buffers per producer (depth 2),
+      // each producer with its own (space, data) lock pair.
+      %buffer_6 = amdaie.buffer(%tile_0_1) : memref<2xf32, 1 : i32>
+      %buffer_7 = amdaie.buffer(%tile_0_1) : memref<2xf32, 1 : i32>
+      %lock_8 = amdaie.lock(%tile_0_1(4), 2)
+      %lock_9 = amdaie.lock(%tile_0_1(5), 0)
+      %buffer_10 = amdaie.buffer(%tile_0_1) : memref<2xf32, 1 : i32>
+      %buffer_11 = amdaie.buffer(%tile_0_1) : memref<2xf32, 1 : i32>
+      %lock_12 = amdaie.lock(%tile_0_1(6), 2)
+      %lock_13 = amdaie.lock(%tile_0_1(7), 0)
+      %2 = amdaie.logicalobjectfifo.from_buffers({%buffer_6, %buffer_7, %buffer_10, %buffer_11}, {%lock_8, %lock_12}, {%lock_9, %lock_13}) : memref<2xf32, 1 : i32>, memref<2xf32, 1 : i32>, memref<2xf32, 1 : i32>, memref<2xf32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<4xf32, 1 : i32>, 2>
+      // Per-producer L1 outputs.
+      %buffer_26 = amdaie.buffer(%tile_0_2) : memref<2xf32, 2 : i32>
+      %buffer_27 = amdaie.buffer(%tile_0_2) : memref<2xf32, 2 : i32>
+      %lock_28 = amdaie.lock(%tile_0_2(2), 2)
+      %lock_29 = amdaie.lock(%tile_0_2(3), 0)
+      %6 = amdaie.logicalobjectfifo.from_buffers({%buffer_26, %buffer_27}, {%lock_28}, {%lock_29}) : memref<2xf32, 2 : i32>, memref<2xf32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<2xf32, 2 : i32>, 2>
+      %buffer_38 = amdaie.buffer(%tile_0_3) : memref<2xf32, 2 : i32>
+      %buffer_39 = amdaie.buffer(%tile_0_3) : memref<2xf32, 2 : i32>
+      %lock_40 = amdaie.lock(%tile_0_3(2), 2)
+      %lock_41 = amdaie.lock(%tile_0_3(3), 0)
+      %7 = amdaie.logicalobjectfifo.from_buffers({%buffer_38, %buffer_39}, {%lock_40}, {%lock_41}) : memref<2xf32, 2 : i32>, memref<2xf32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<2xf32, 2 : i32>, 2>
+      // Single consumer drain L2 -> L3.
+      %19 = amdaie.logicalobjectfifo.placeholder{%tile_0_0} : !amdaie.logicalobjectfifo<memref<128x2xf32>>
+      %channel_50 = amdaie.channel(%tile_0_1, 1, port_type = DMA, direction = MM2S)
+      %channel_51 = amdaie.channel(%tile_0_0, 0, port_type = DMA, direction = S2MM)
+      %20 = amdaie.flow({%channel_50} -> {%channel_51}) {is_packet_flow = true, packet_id = 0 : ui8}
+      %21 = amdaie.connection(%19 {%channel_51}, %2 {%channel_50}, flow = %20) {connection_type = #amdaie<connection_type Packet>} : (!amdaie.logicalobjectfifo<memref<128x2xf32>>, !amdaie.logicalobjectfifo<memref<4xf32, 1 : i32>, 2>)
+      // Two producer collects core -> L2; the target base offset r*K selects the
+      // producer's private sub-buffer group.
+      %channel_54 = amdaie.channel(%tile_0_2, 0, port_type = DMA, direction = MM2S)
+      %channel_55 = amdaie.channel(%tile_0_1, 1, port_type = DMA, direction = S2MM)
+      %25 = amdaie.flow({%channel_54} -> {%channel_55}) {is_packet_flow = false}
+      %26 = amdaie.connection(%2 {%channel_55}, %6 {%channel_54}, flow = %25) {connection_type = #amdaie<connection_type Circuit>} : (!amdaie.logicalobjectfifo<memref<4xf32, 1 : i32>, 2>, !amdaie.logicalobjectfifo<memref<2xf32, 2 : i32>, 2>)
+      %channel_58 = amdaie.channel(%tile_0_3, 0, port_type = DMA, direction = MM2S)
+      %30 = amdaie.flow({%channel_58} -> {%channel_55}) {is_packet_flow = false}
+      %31 = amdaie.connection(%2 {%channel_55}, %7 {%channel_58}, flow = %30) {connection_type = #amdaie<connection_type Circuit>} : (!amdaie.logicalobjectfifo<memref<4xf32, 1 : i32>, 2>, !amdaie.logicalobjectfifo<memref<2xf32, 2 : i32>, 2>)
+      amdaie.controlcode {
+        %50 = amdaie.npu.circular_dma_cpy_nd %26([0] [2] [1], [0] [2] [1])
+        %51 = amdaie.npu.circular_dma_cpy_nd %31([2] [2] [1], [0] [2] [1])
+        %52 = amdaie.npu.circular_dma_cpy_nd %21([] [] [], [0] [4] [1])
+        amdaie.end
+      }
+    }
+    return
+  }
+}
