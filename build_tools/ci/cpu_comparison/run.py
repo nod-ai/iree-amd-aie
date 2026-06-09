@@ -22,6 +22,8 @@ import numpy as np
 
 from convolution_template.convolution_generator import ConvolutionMlirGenerator
 from input_generator import (
+    bf16_to_f32,
+    f32_to_bf16,
     generate_inputs,
     get_output_type,
     np_from_binfile,
@@ -2558,6 +2560,33 @@ class Tests:
         #                 ),
         #             )
         #         )
+
+        softmax_rng = np.random.default_rng(seed=0)
+        softmax_in_f32 = softmax_rng.uniform(-2.0, 2.0, size=(4, 128)).astype(
+            np.float32
+        )
+        softmax_in_bf16 = bf16_to_f32(f32_to_bf16(softmax_in_f32))
+        softmax_shifted = softmax_in_bf16 - softmax_in_bf16.max(axis=1, keepdims=True)
+        softmax_exp = np.exp(softmax_shifted)
+        softmax_out_ref = softmax_exp / softmax_exp.sum(axis=1, keepdims=True)
+        self.register(
+            Softmax(
+                4,
+                128,
+                "bf16",
+                test_params=TestParams(
+                    run_on_target=["npu4"],
+                    name_suffix="npu4_peano",
+                    use_chess=False,
+                    use_chess_for_ukernel=False,
+                    use_ukernel=True,
+                    tile_pipeline="general-copy",
+                    rtol=8e-2,
+                    preset_inputs={1: softmax_in_bf16},
+                    preset_output=softmax_out_ref,
+                ),
+            )
+        )
 
         # Reduction op tests:
         self.register(

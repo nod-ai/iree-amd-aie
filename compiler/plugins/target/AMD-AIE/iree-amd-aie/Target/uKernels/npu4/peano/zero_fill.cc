@@ -24,6 +24,20 @@ void zero_fill_vectorized(v16float *__restrict pC, unsigned offsetC) {
   }
 }
 
+// bf16 overload. aie2p has no broadcast_zero_to_v32bfloat16 helper, so we
+// splat a (bfloat16)0 via broadcast_to_v32bfloat16 (same intrinsic family
+// the softmax.cc kernel uses). Vector width r = 32 lanes (= 512 bits,
+// matching the i32/f32 overloads above on a per-store basis).
+template <int M, int N, int r, int u>
+void zero_fill_vectorized(v32bfloat16 *__restrict pC, unsigned offsetC) {
+  static_assert(M * N / r / u > 0);
+  v32bfloat16 zeros = broadcast_to_v32bfloat16((bfloat16)0.0f);
+#pragma clang loop unroll_count(M *N / r / u)
+  for (unsigned i = offsetC / r; i < offsetC / r + M * N / r; i++) {
+    pC[i] = zeros;
+  }
+}
+
 // clang-format off
 extern "C" {
 
@@ -32,6 +46,9 @@ extern "C" {
 
 #define zero_fill_combos_f32(X, M, N)  \
   X(v16float, f32, M, N, 16, 8)
+
+#define zero_fill_combos_bf16(X, M, N)  \
+  X(v32bfloat16, bf16, M, N, 32, 4)
 
 // A vectorized zeroization function on a buffer of size M * N with vectorization size
 // 'r' and unrolling factor 'u'. The unrolling factor is typically found experimentally.
@@ -47,6 +64,10 @@ zero_fill_combos_i32(zero_fill_vectorized_c_func, 64, 64)
 zero_fill_combos_f32(zero_fill_vectorized_c_func, 16, 8)
 zero_fill_combos_f32(zero_fill_vectorized_c_func, 16, 16)
 zero_fill_combos_f32(zero_fill_vectorized_c_func, 32, 32)
+
+// Matches the (M=4, N=128) per-core L1 tile chosen by
+// setRootConfigForSoftmaxCopyPipeline for the Softmax(4,128,"bf16") test.
+zero_fill_combos_bf16(zero_fill_vectorized_c_func, 4, 128)
 
 }  // extern "C"
 // clang-format on
