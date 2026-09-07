@@ -63,7 +63,7 @@ jobs:
           sudo apt-get install python3.11-dev python3.11-venv build-essential -y
 
       - name: ccache
-        uses: hendrikmuhs/ccache-action@d62db5f07c26379fc4b4e0916f098a92573c3b03 # v1.2.23
+        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
         with:
           key: ${{ github.job }}
           save: ${{ needs.setup.outputs.write-caches == 1 }}
@@ -76,7 +76,7 @@ jobs:
           pip install pyyaml pybind11[global]==2.13.6 nanobind==2.9.0
 
       - name: Enable cache
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.CACHE_DIR }}
           key:  ${{ env.CACHE_KEY }}
@@ -129,7 +129,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Save cache
-        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: ${{ !cancelled() && github.event_name == 'push' && github.ref_name == 'main' }}
         with:
           path: ${{ env.CACHE_DIR }}
@@ -147,7 +147,7 @@ jobs:
       XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic
     steps:
       - name: "Checking out repository" # for test scripts
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: false # not required for testbench
 
@@ -164,7 +164,7 @@ jobs:
           bash build_tools/download_peano.sh
           echo "PEANO_INSTALL_DIR=$PWD/llvm-aie" >> $GITHUB_ENV
 
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.11'
 
@@ -271,7 +271,7 @@ jobs:
       XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic
     steps:
       - name: "Checking out repository" # for test scripts
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: false # not required for testbench
 
@@ -288,7 +288,7 @@ jobs:
           bash build_tools/download_peano.sh
           echo "PEANO_INSTALL_DIR=$PWD/llvm-aie" >> $GITHUB_ENV
 
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.11'
 
